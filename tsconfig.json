@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "CommonJS",
+    "esModuleInterop": true,
+    "lib": ["es2020"],
+    "resolveJsonModule": true,
+    "preserveConstEnums": true,
+    "skipLibCheck": true /* Skip type checking of declaration files. */,
+    "forceConsistentCasingInFileNames": true /* Disallow inconsistently-cased references to the same file. */,
+    "moduleResolution": "node",
+    "strict": true,
+    "sourceMap": true,
+    "types": ["node"],
+    "outDir": "dist",
+    "rootDir": "lib"
+  },
+  "include": ["lib/*.ts", "lib/**/*", "./lib/**/*.ts", "./lib/**/*.tsx"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,63 @@
+{
+  "name": "volcanic-backend",
+  "version": "0.1.0",
+  "codename": "turin",
+  "license": "MIT",
+  "description": "",
+  "keywords": [],
+  "main": "./dist/index.js",
+  "engines": {
+    "node": ">=16"
+  },
+  "scripts": {
+    "compile": "tsc",
+    "preprod": "npm run compile",
+    "prod": "node ./dist/index.js",
+    "start": "ts-node ./lib/index.ts",
+    "dev": "./node_modules/nodemon/bin/nodemon.js",
+    "test": "jest test --config ./jest.config.js",
+    "upgrade-deps": "npm-upgrade"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.0.2",
+    "@as-integrations/fastify": "^1.1.0",
+    "@fastify/compress": "^6.1.1",
+    "@fastify/cors": "^8.1.0",
+    "@fastify/helmet": "^10.0.2",
+    "@fastify/rate-limit": "^7.5.0",
+    "@types/node": "^18.11.3",
+    "dotenv": "^16.0.3",
+    "fastify": "^4.9.2",
+    "graphql": "^16.6.0",
+    "pino": "^8.7.0",
+    "pino-pretty": "^9.1.1",
+    "yn": "^5.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.2.1",
+    "nodemon": "^2.0.20",
+    "npm-upgrade": "^3.1.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.8.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/volcanicminds/volcanic-backend.git"
+  },
+  "homepage": "https://github.com/volcanicminds/volcanic-backend#readme",
+  "bugs": {
+    "url": "https://github.com/volcanicminds/volcanic-backend/issues"
+  },
+  "author": {
+    "name": "Volcanic Minds",
+    "email": "developers@volcanicminds.com",
+    "url": "https://volcanicminds.com"
+  },
+  "maintainers": [
+    {
+      "name": "Developers",
+      "email": "developers@volcanicminds.com",
+      "url": "https://volcanicminds.com"
+    }
+  ]
+}
