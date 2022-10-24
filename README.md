@@ -99,7 +99,7 @@ Other settings:
 - **LOG_TIMESTAMP_READABLE** (bool): if timestamp is enabled this specify a human-readable format (worst performance)
 - **LOG_COLORIZE** (bool): add a bit of colors
 
-Defaults (see ./lib/util.logger.js):
+Defaults, see [logger.ts](./lib/util/logger.ts):
 
 ```js
 const logColorize = yn(LOG_COLORIZE, true)
