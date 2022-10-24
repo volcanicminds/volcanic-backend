@@ -19,8 +19,12 @@ import { myContextFunction, MyContext } from './apollo/context'
 import resolvers from './apollo/resolvers'
 import typeDefs from './apollo/type-defs'
 
-global.log = logger
+export interface global {}
+declare global {
+  var log: any
+}
 
+global.log = logger
 print()
 
 async function attachApollo(fastify: FastifyInstance) {
