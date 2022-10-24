@@ -15,6 +15,6 @@
     "outDir": "dist",
     "rootDir": "lib"
   },
-  "include": ["lib/*.ts", "lib/**/*", "./lib/**/*.ts", "./lib/**/*.tsx"],
+  "include": ["./lib/*.ts", "./lib/**/*", "./lib/**/*.ts", "./lib/**/*.tsx"],
   "exclude": ["node_modules"]
 }
