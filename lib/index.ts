@@ -3,6 +3,10 @@
 import dotenv from 'dotenv'
 dotenv.config()
 
+import yn from './util/yn'
+import logger from './util/logger'
+import { print } from './util/mark'
+
 import Fastify, { FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
@@ -11,14 +15,9 @@ import rateLimit from '@fastify/rate-limit'
 
 import { ApolloServer } from '@apollo/server'
 import fastifyApollo, { fastifyApolloHandler, fastifyApolloDrainPlugin } from '@as-integrations/fastify'
-
-import typeDefs from './type-defs'
-import resolvers from './resolvers'
-
-import { myContextFunction, MyContext } from './context'
-import yn from './util/yn'
-import logger from './util/logger'
-import { print } from './util/mark'
+import { myContextFunction, MyContext } from './apollo/context'
+import resolvers from './apollo/resolvers'
+import typeDefs from './apollo/type-defs'
 
 export interface global {}
 declare global {
