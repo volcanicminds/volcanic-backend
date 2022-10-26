@@ -535,6 +535,17 @@
     ms "^2.1.3"
     tiny-lru "^9.0.2"
 
+"@fastify/swagger@^8.0.0":
+  version "8.0.0"
+  resolved "https://registry.yarnpkg.com/@fastify/swagger/-/swagger-8.0.0.tgz#c8c60fe0899928df9b9eef3de52fafeaa26c821a"
+  integrity sha512-e+f8U8vwYXV5aXPLvEegGIFitRJi2Peqop10u7Qo5Eoc6jl/ovgK7RU2RA8jyZdCkgX4X8xx5zgaQM85eDoQlg==
+  dependencies:
+    fastify-plugin "^4.0.0"
+    json-schema-resolver "^2.0.0"
+    openapi-types "^12.0.0"
+    rfdc "^1.3.0"
+    yaml "^2.1.1"
+
 "@gar/promisify@^1.0.1":
   version "1.1.3"
   resolved "https://registry.yarnpkg.com/@gar/promisify/-/promisify-1.1.3.tgz#555193ab2e3bb3b6adc3d551c9c030d9e860daf6"
@@ -2453,10 +2464,24 @@ fast-uri@^2.0.0, fast-uri@^2.1.0:
   resolved "https://registry.yarnpkg.com/fast-uri/-/fast-uri-2.1.0.tgz#9279432d6b53675c90116b947ed2bbba582d6fb5"
   integrity sha512-qKRta6N7BWEFVlyonVY/V+BMLgFqktCUV0QjT259ekAIlbVrMaFnFLxJ4s/JPl4tou56S1BzPufI60bLe29fHA==
 
+fastify-guard@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/fastify-guard/-/fastify-guard-2.0.0.tgz#e9b64c6e16b3e0be5bf0f5b502459b73067922e8"
+  integrity sha512-1NGzfCcjnD2oEs0cWJQKpldlzUQvVWbcIqjYL2Zsj5URENcn95shqLyZHHIAkrYs8R/yTevnRKFT2/etTiQE+g==
+  dependencies:
+    fastify-plugin "^3.0.1"
+    http-errors "^2.0.0"
+    lodash.get "^4.4.2"
+
 fastify-plugin@4.3.0, fastify-plugin@^4.0.0, fastify-plugin@^4.2.1:
   version "4.3.0"
   resolved "https://registry.yarnpkg.com/fastify-plugin/-/fastify-plugin-4.3.0.tgz#c6eaa87a7a0d6d1d16129e43e31d6bc1d8868e53"
   integrity sha512-M3+i368lV0OYTJ5TfClIoPKEKSOF7112iiPdwgfSR0gN98BjA1Nk+c6oBHtfcVt9KiMxl+EQKHC1QNWo3ZOpYQ==
+
+fastify-plugin@^3.0.1:
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/fastify-plugin/-/fastify-plugin-3.0.1.tgz#79e84c29f401020f38b524f59f2402103fd21ed2"
+  integrity sha512-qKcDXmuZadJqdTm6vlCqioEbyewF60b/0LOFCcYN1B6BIZGlYJumWWOYs70SFYLDAH4YqdE1cxH/RKMG7rFxgA==
 
 fastify@^4.9.2:
   version "4.9.2"
@@ -2873,7 +2898,7 @@ http-cache-semantics@^4.0.0, http-cache-semantics@^4.1.0:
   resolved "https://registry.yarnpkg.com/http-cache-semantics/-/http-cache-semantics-4.1.0.tgz#49e91c5cbf36c9b94bcfcd71c23d5249ec74e390"
   integrity sha512-carPklcUh7ROWRK7Cv27RPtdhYhUsela/ue5/jKzjegVvXDqM2ILE9Q2BGn9JZJh1g87cp56su/FgQSzcWS8cQ==
 
-http-errors@2.0.0:
+http-errors@2.0.0, http-errors@^2.0.0:
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/http-errors/-/http-errors-2.0.0.tgz#b7774a1486ef73cf7667ac9ae0858c012c57b9d3"
   integrity sha512-FtwrG/euBzaEjYeRqOgly7G0qviiXoJWnvEH2Z1plBdXgbyjv34pHTSb9zoeHMyDy33+DWy5Wt9Wo+TURtOYSQ==
@@ -3659,6 +3684,15 @@ json-parse-helpfulerror@^1.0.3:
   dependencies:
     jju "^1.1.0"
 
+json-schema-resolver@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/json-schema-resolver/-/json-schema-resolver-2.0.0.tgz#d17fdf53560e6bc9af084b930fee27f6ce4a03b6"
+  integrity sha512-pJ4XLQP4Q9HTxl6RVDLJ8Cyh1uitSs0CzDBAz1uoJ4sRD/Bk7cFSXL1FUXDW3zJ7YnfliJx6eu8Jn283bpZ4Yg==
+  dependencies:
+    debug "^4.1.1"
+    rfdc "^1.1.4"
+    uri-js "^4.2.2"
+
 json-schema-traverse@^0.4.1:
   version "0.4.1"
   resolved "https://registry.yarnpkg.com/json-schema-traverse/-/json-schema-traverse-0.4.1.tgz#69f6a87d9513ab8bb8fe63bdb0979c448e684660"
@@ -3779,6 +3813,11 @@ locate-path@^6.0.0:
   integrity sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==
   dependencies:
     p-locate "^5.0.0"
+
+lodash.get@^4.4.2:
+  version "4.4.2"
+  resolved "https://registry.yarnpkg.com/lodash.get/-/lodash.get-4.4.2.tgz#2d177f652fa31e939b4438d5341499dfa3825e99"
+  integrity sha512-z+Uw/vLuy6gQe8cfaFWD7p0wVv8fJl3mbzXh33RS+0oW2wvUqiRXiQ69gLWSLpgB5/6sU+r6BlQR0MBILadqTQ==
 
 lodash.sortby@^4.7.0:
   version "4.7.0"
@@ -4373,6 +4412,11 @@ open@7.4.2:
   dependencies:
     is-docker "^2.0.0"
     is-wsl "^2.1.1"
+
+openapi-types@^12.0.0:
+  version "12.0.2"
+  resolved "https://registry.yarnpkg.com/openapi-types/-/openapi-types-12.0.2.tgz#b752ab0a463c594fd7e3142e0e5983a9645503f6"
+  integrity sha512-GuTo7FyZjOIWVhIhQSWJVaws6A82sWIGyQogxxYBYKZ0NBdyP2CYSIgOwFfSB+UVoPExk/YzFpyYitHS8KVZtA==
 
 os-tmpdir@~1.0.2:
   version "1.0.2"
@@ -5008,7 +5052,7 @@ reusify@^1.0.4:
   resolved "https://registry.yarnpkg.com/reusify/-/reusify-1.0.4.tgz#90da382b1e126efc02146e90845a88db12925d76"
   integrity sha512-U9nH88a3fc/ekCF1l0/UP1IosiuIjyTh7hBvXVMHYgVcfGvt897Xguj2UOLDeI5BG2m7/uwyaLVT6fbtCwTyzw==
 
-rfdc@^1.2.0, rfdc@^1.3.0:
+rfdc@^1.1.4, rfdc@^1.2.0, rfdc@^1.3.0:
   version "1.3.0"
   resolved "https://registry.yarnpkg.com/rfdc/-/rfdc-1.3.0.tgz#d0b7c441ab2720d05dc4cf26e01c89631d9da08b"
   integrity sha512-V2hovdzFbOi77/WajaSMXk2OLm+xNIeQdMMuB7icj7bk6zi2F8GGAxigcnDFpJHbNyNcgyJDiP+8nOrY5cZGrA==
@@ -5827,6 +5871,11 @@ yallist@^4.0.0:
   version "4.0.0"
   resolved "https://registry.yarnpkg.com/yallist/-/yallist-4.0.0.tgz#9bb92790d9c0effec63be73519e11a35019a3a72"
   integrity sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A==
+
+yaml@^2.1.1:
+  version "2.1.3"
+  resolved "https://registry.yarnpkg.com/yaml/-/yaml-2.1.3.tgz#9b3a4c8aff9821b696275c79a8bee8399d945207"
+  integrity sha512-AacA8nRULjKMX2DvWvOAdBZMOfQlypSFkjcOcu9FalllIDJ1kvlREzcdIZmidQUqqeMv7jorHjq2HlLv/+c2lg==
 
 yargs-parser@^20.2.2:
   version "20.2.9"

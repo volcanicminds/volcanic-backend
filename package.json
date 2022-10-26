@@ -14,7 +14,7 @@
     "preprod": "npm run compile",
     "prod": "node ./dist/index.js",
     "start": "ts-node ./lib/index.ts",
-    "dev": "./node_modules/nodemon/bin/nodemon.js",
+    "dev": "nodemon --exec \"ts-node\" ./lib/index.ts",
     "test": "jest test --config ./jest.config.js",
     "upgrade-deps": "npm-upgrade"
   },
@@ -25,9 +25,11 @@
     "@fastify/cors": "^8.1.0",
     "@fastify/helmet": "^10.0.2",
     "@fastify/rate-limit": "^7.5.0",
+    "@fastify/swagger": "^8.0.0",
     "@types/node": "^18.11.3",
     "dotenv": "^16.0.3",
     "fastify": "^4.9.2",
+    "fastify-guard": "^2.0.0",
     "graphql": "^16.6.0",
     "pino": "^8.7.0",
     "pino-pretty": "^9.1.1"
