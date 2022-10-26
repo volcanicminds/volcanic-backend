@@ -2,6 +2,7 @@
   "watch": [
     "lib"
   ],
+  "verbose": true,
   "ext": "js,ts,json,jsonc",
   "ignore": [
     ".git",
