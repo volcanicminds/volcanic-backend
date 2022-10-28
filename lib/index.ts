@@ -5,10 +5,10 @@ dotenv.config()
 
 import yn from './util/yn'
 import logger from './util/logger'
-import { print } from './util/mark'
+import * as mark from './util/mark'
+import * as router from './util/router'
 
 import Fastify, { FastifyInstance } from 'fastify'
-import guard from 'fastify-guard'
 import swagger from '@fastify/swagger'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
@@ -23,12 +23,11 @@ import typeDefs from './apollo/type-defs'
 
 const begin = new Date().getTime()
 
-interface AuthenticatedUser {
-  id: number
-  name: string
-  roles: string[]
-  scope: string[]
+export interface global {}
+declare global {
+  var log: any
 }
+global.log = logger
 
 declare module 'fastify' {
   export interface FastifyRequest {
@@ -36,13 +35,7 @@ declare module 'fastify' {
   }
 }
 
-export interface global {}
-declare global {
-  var log: any
-}
-
-global.log = logger
-print()
+mark.print()
 
 async function attachApollo(fastify: FastifyInstance) {
   log.info('Attach ApolloServer to Fastify')
@@ -96,6 +89,7 @@ async function addFastifyRouting(fastify: FastifyInstance) {
   fastify.addHook('onClose', async (instance) => {
     log.debug('onClose')
   })
+
   fastify.addHook('onError', async (req, reply, error) => {
     log.debug(`onError ${error}`)
   })
@@ -119,35 +113,36 @@ async function addFastifyRouting(fastify: FastifyInstance) {
     }
   })
 
-  fastify.get('/me/is-admin', async function (req, reply) {
-    return { isAdmin: (req.user?.roles || []).includes('admin') || false }
-  })
+  // fastify.get('/me/is-admin', async function (req, reply) {
+  //   return { isAdmin: (req.user?.roles || []).includes('admin') || false }
+  // })
 
-  fastify.get('/hello', async (req, reply) => {
-    return reply.send('world 123 ' + new Date().getTime())
-  })
+  // fastify.get('/me', async function (req, reply) {
+  //   return req.user || {}
+  // })
 
-  // this route can only be called by users who has 'cto' and 'admin' roles
-  fastify.get('/admin', { preHandler: [fastify.guard.role(['cto', 'admin'])] }, async (req, reply) => {
-    // 'user' should already be defined in req object
-    return reply.send(req.user)
-  })
+  // fastify.get('/hello', async (req, reply) => {
+  //   return reply.send('world 123 ' + new Date().getTime())
+  // })
 
-  fastify.get('/a/b/c', async (req, reply) => {
-    // 'user' should already be defined in req object
-    return reply.send(req.user)
-  })
+  // fastify.get('/a/b/c', async (req, reply) => {
+  //   // 'user' should already be defined in req object
+  //   return reply.send(req.user)
+  // })
 
-  fastify.get('/admin2', async (req, reply) => {
-    // 'user' should already be defined in req object
-    return reply.send(req.user)
-  })
+  // fastify.get('/admin2', async (req, reply) => {
+  //   // 'user' should already be defined in req object
+  //   return reply.send(req.user)
+  // })
 
-  fastify.get('/admin3', async () => {
-    log.debug('recall GET admin')
-    // 'user' should already be defined in req object
-    return 'aiut'
-  })
+  // fastify.get('/admin3', async () => {
+  //   log.debug('recall GET admin')
+  //   // 'user' should already be defined in req object
+  //   return 'aiut'
+  // })
+
+  const routes = router.load()
+  routes && router.apply(fastify, routes)
 }
 
 async function addFastifySwagger(fastify: FastifyInstance) {
@@ -203,19 +198,28 @@ async function addFastifySwagger(fastify: FastifyInstance) {
 Fastify().then(async (fastify) => {
   const defaultPort = 2230
   const { PORT: port = defaultPort, GRAPHQL } = process.env
+  const { SRV_CORS, SRV_HELMET, SRV_RATELIMIT, SRV_COMPRESS } = process.env
+
   const loadApollo = yn(GRAPHQL, true)
+  const addPluginCors = yn(SRV_CORS, true)
+  const addPluginHelmet = yn(SRV_HELMET, true)
+  const addPluginRateLimit = yn(SRV_RATELIMIT, true)
+  const addPluginCompress = yn(SRV_COMPRESS, true)
+
+  log.t && log.trace(`Attach Apollo Server ${loadApollo}`)
+  log.t && log.trace(`Add plugin CORS: ${addPluginCors}`)
+  log.t && log.trace(`Add plugin HELMET: ${!loadApollo ? addPluginHelmet : 'Not usable with Apollo'}`)
+  log.t && log.trace(`Add plugin COMPRESS: ${addPluginCompress}`)
+  log.t && log.trace(`Add plugin RATELIMIT: ${addPluginRateLimit}`)
 
   const apollo = loadApollo ? await attachApollo(fastify) : null
-  !loadApollo && (await fastify.register(helmet))
+  // Helmet is not usable with Apollo Server
+  !loadApollo && addPluginHelmet && (await fastify.register(helmet))
 
-  await fastify.register(rateLimit)
-  await fastify.register(cors)
-  await fastify.register(compress)
-  await fastify.register(guard, {
-    errorHandler: (result, req, reply) => {
-      return reply.send('you are not allowed to call this route')
-    }
-  })
+  // Usable with Apollo Server
+  addPluginRateLimit && (await fastify.register(rateLimit))
+  addPluginCors && (await fastify.register(cors))
+  addPluginCompress && (await fastify.register(compress))
 
   await addFastifySwagger(fastify)
   await addApolloRouting(fastify, apollo)
