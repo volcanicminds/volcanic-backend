@@ -6,7 +6,8 @@ dotenv.config()
 import yn from './util/yn'
 import logger from './util/logger'
 import * as mark from './util/mark'
-import * as router from './util/router'
+import * as loaderRoles from './loader/roles'
+import * as loaderRouter from './loader/router'
 
 import Fastify, { FastifyInstance } from 'fastify'
 import swagger from '@fastify/swagger'
@@ -26,8 +27,11 @@ const begin = new Date().getTime()
 export interface global {}
 declare global {
   var log: any
+  var roles: Roles
 }
+
 global.log = logger
+global.roles = loaderRoles.load()
 
 declare module 'fastify' {
   export interface FastifyRequest {
@@ -98,23 +102,24 @@ async function addFastifyRouting(fastify: FastifyInstance) {
     log.debug(`onRequest ${req.method} ${req.url}`)
     req.user = {
       id: 306,
-      name: 'Huseyin2222',
-      roles: ['user', 'admin', 'editor'],
+      name: 'Huseyin',
+      roles: ['admin', 'public'],
       scope: ['profile', 'email', 'openid']
     }
   })
 
   fastify.addHook('preParsing', async (req) => {
+    log.debug(`preParsing ${req.method} ${req.url}`)
     req.user = {
       id: 42,
       name: 'Jane Doe',
-      roles: ['admin'],
+      roles: ['admin', 'public'],
       scope: ['profile', 'email', 'openid']
     }
   })
 
-  const routes = router.load()
-  routes && router.apply(fastify, routes)
+  const routes = loaderRouter.load()
+  routes && loaderRouter.apply(fastify, routes)
 }
 
 async function addFastifySwagger(fastify: FastifyInstance) {

@@ -2,7 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 
 const glob = require('glob')
 const path = require('path')
-const methods = ['get', 'post', 'put', 'delete', 'head', 'patch', 'options']
+const methods = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'PATCH', 'OPTIONS']
 
 export function load(): ConfiguredRoute[] {
   const check = true,
@@ -19,11 +19,8 @@ export function load(): ConfiguredRoute[] {
       const dir = path.basename(base)
       const file = path.join(dir, path.basename(f))
 
-      log.debug('f ' + f)
-
       // allow array or structure
       const routesjs = require(f)
-
       const { routes = [], config: defaultConfig = {} } = routesjs?.default
 
       // adjust default config
@@ -49,7 +46,7 @@ export function load(): ConfiguredRoute[] {
 
         // adjust something
         const endpoint = `${dir}${pathName.replace(/\/+$/, '')}`
-        const method = methodCase.toLowerCase()
+        const method = methodCase.toUpperCase()
         const num = index + 1
         const handlerParts = handler.split('.')
 
@@ -118,24 +115,45 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
 
   routes.forEach(({ handler, method, path, middlewares, roles, enable, base, file, func }) => {
     if (enable) {
-      log.t && log.trace(`Add path ${method.toUpperCase()} ${path} on handle ${handler}`)
+      log.t && log.trace(`Add path ${method} ${path} on handle ${handler}`)
 
-      server[method](path, (request: FastifyRequest, reply: FastifyReply) => {
-        try {
-          if (roles?.length > 0) {
-            const userRoles = request.user?.roles || []
-            const resolvedRole = roles.filter((r) => userRoles.includes(r.code))
-            if (!resolvedRole || resolvedRole.length === 0) {
-              log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${path}`)
-              return reply.code(403).send()
+      server.route({
+        method: method,
+        path: path,
+        handler: (request: FastifyRequest, reply: FastifyReply) => {
+          try {
+            if (roles?.length > 0) {
+              const userRoles = request.user?.roles || []
+              const resolvedRole = roles.filter((r) => userRoles.includes(r.code))
+              if (!resolvedRole || resolvedRole.length === 0) {
+                log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${path}`)
+                return reply.code(403).send()
+              }
             }
+            return require(file + '.ts')[func](request, reply)
+          } catch (err) {
+            log.e && log.error(`Cannot find ${file}.js or method ${func}: ${err}`)
+            return reply.code(500).send(`Invalid handler ${handler}`)
           }
-          return require(file + '.ts')[func](request, reply)
-        } catch (err) {
-          log.e && log.error(`Cannot find ${file}.js or method ${func}: ${err}`)
-          return reply.code(500).send(`Invalid handler ${handler}`)
         }
       })
+
+      // server[method](path, (request: FastifyRequest, reply: FastifyReply) => {
+      //   try {
+      //     if (roles?.length > 0) {
+      //       const userRoles = request.user?.roles || []
+      //       const resolvedRole = roles.filter((r) => userRoles.includes(r.code))
+      //       if (!resolvedRole || resolvedRole.length === 0) {
+      //         log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${path}`)
+      //         return reply.code(403).send()
+      //       }
+      //     }
+      //     return require(file + '.ts')[func](request, reply)
+      //   } catch (err) {
+      //     log.e && log.error(`Cannot find ${file}.js or method ${func}: ${err}`)
+      //     return reply.code(500).send(`Invalid handler ${handler}`)
+      //   }
+      // })
     }
   })
 }

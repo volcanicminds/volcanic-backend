@@ -12,7 +12,16 @@ declare global {
     code: string
     name: string
     description: string
-    inherits: string[]
+  }
+
+  declare enum RoleKey {
+    public = 'public',
+    admin = 'admin',
+    backoffice = 'backoffice'
+  }
+
+  declare type Roles = {
+    [key in RoleKey]: Role
   }
 
   interface RouteConfig {

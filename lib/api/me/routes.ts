@@ -12,7 +12,7 @@ export default {
       method: 'GET',
       path: '/',
       handler: 'me.user',
-      roles: ['admin'],
+      roles: [],
       config: {
         title: 'Me',
         description: 'Me',
@@ -25,7 +25,7 @@ export default {
       method: 'GET',
       path: '/is-admin',
       handler: 'me.isAdmin',
-      roles: ['admin'],
+      roles: [],
       config: {
         title: 'Admin',
         description: 'Admin',
