@@ -1,12 +1,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![opensource](https://img.shields.io/badge/open-source-blue)](https://en.wikipedia.org/wiki/Open_source)
-[![kura](https://img.shields.io/badge/volcanic-minds-orange)](https://github.com/volcanicminds/volcanic-backend)
+[![volcanic-backend](https://img.shields.io/badge/volcanic-minds-orange)](https://github.com/volcanicminds/volcanic-backend)
 
 # volcanic-backend
 
 ## Based on
 
 Based on [Fastify](https://www.fastify.io) ([GitHub](https://github.com/fastify/fastify)).
+
 Based on [Apollo Server](https://www.apollographql.com) ([GitHub](https://github.com/apollographql/apollo-server)).
 
 And, what you see in [package.json](package.json).
