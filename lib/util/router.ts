@@ -4,7 +4,7 @@ const glob = require('glob')
 const path = require('path')
 const methods = ['get', 'post', 'put', 'delete', 'head', 'patch', 'options']
 
-export function load() {
+export function load(): ConfiguredRoute[] {
   const check = true,
     print = true,
     load = true
@@ -113,7 +113,7 @@ export function load() {
   return validRoutes
 }
 
-export function apply(server: any, routes: ConfiguredRoute[]) {
+export function apply(server: any, routes: ConfiguredRoute[]): void {
   log.t && log.trace(`Apply ${routes.length} routes to server with pid ${process.pid}`)
 
   routes.forEach(({ handler, method, path, middlewares, roles, enable, base, file, func }) => {

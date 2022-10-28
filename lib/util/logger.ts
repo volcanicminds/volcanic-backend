@@ -18,7 +18,7 @@ const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace']
 
 const { LOG_LEVEL, LOG_COLORIZE, LOG_TIMESTAMP, LOG_TIMESTAMP_READABLE } = process.env
 
-function getLogLevel() {
+function getLogLevel(): string {
   const lvl = LOG_LEVEL?.toLowerCase()
   return LOG_LEVEL && logLevels.includes(lvl!) ? lvl! : 'debug'
 }
@@ -64,6 +64,8 @@ const loggerExt = Object.assign(logger, {
   }
 })
 
-loggerExt.on('level-change', () => {})
+loggerExt.on('level-change', () => {
+  log.trace('Log level changed')
+})
 
 export default loggerExt

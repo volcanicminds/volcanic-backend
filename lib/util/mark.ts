@@ -4,7 +4,7 @@ const pkg = require('../../package.json')
  * Minimal mark printed at startup
  */
 
-export function print() {
+export function print(): void {
   log.i && log.info('Ciao')
   log.i && log.info(`              ,--.                  ,--.      `)
   log.i && log.info(`.--.  ,--,---.|  |,---.,--,--,--,--\\\`--',---. `)

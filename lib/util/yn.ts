@@ -1,6 +1,6 @@
 'use strict'
 
-export default function yn(value: any, defaultValue: boolean) {
+export default function yn(value: any, defaultValue: boolean): boolean {
   if (value === undefined || value === null) {
     return defaultValue
   }

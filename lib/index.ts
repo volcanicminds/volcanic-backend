@@ -113,34 +113,6 @@ async function addFastifyRouting(fastify: FastifyInstance) {
     }
   })
 
-  // fastify.get('/me/is-admin', async function (req, reply) {
-  //   return { isAdmin: (req.user?.roles || []).includes('admin') || false }
-  // })
-
-  // fastify.get('/me', async function (req, reply) {
-  //   return req.user || {}
-  // })
-
-  // fastify.get('/hello', async (req, reply) => {
-  //   return reply.send('world 123 ' + new Date().getTime())
-  // })
-
-  // fastify.get('/a/b/c', async (req, reply) => {
-  //   // 'user' should already be defined in req object
-  //   return reply.send(req.user)
-  // })
-
-  // fastify.get('/admin2', async (req, reply) => {
-  //   // 'user' should already be defined in req object
-  //   return reply.send(req.user)
-  // })
-
-  // fastify.get('/admin3', async () => {
-  //   log.debug('recall GET admin')
-  //   // 'user' should already be defined in req object
-  //   return 'aiut'
-  // })
-
   const routes = router.load()
   routes && router.apply(fastify, routes)
 }
