@@ -29,7 +29,6 @@
     "@types/node": "^18.11.3",
     "dotenv": "^16.0.3",
     "fastify": "^4.9.2",
-    "fastify-guard": "^2.0.0",
     "graphql": "^16.6.0",
     "pino": "^8.7.0",
     "pino-pretty": "^9.1.1"
