@@ -23,6 +23,7 @@ import resolvers from './apollo/resolvers'
 import typeDefs from './apollo/type-defs'
 
 const begin = new Date().getTime()
+mark.print(logger)
 
 export interface global {}
 declare global {
@@ -38,8 +39,6 @@ declare module 'fastify' {
     user?: AuthenticatedUser
   }
 }
-
-mark.print()
 
 async function attachApollo(fastify: FastifyInstance) {
   log.info('Attach ApolloServer to Fastify')
@@ -103,8 +102,7 @@ async function addFastifyRouting(fastify: FastifyInstance) {
     req.user = {
       id: 306,
       name: 'Huseyin',
-      roles: ['admin', 'public'],
-      scope: ['profile', 'email', 'openid']
+      roles: ['admin', 'public']
     }
   })
 
@@ -113,8 +111,7 @@ async function addFastifyRouting(fastify: FastifyInstance) {
     req.user = {
       id: 42,
       name: 'Jane Doe',
-      roles: ['admin', 'public'],
-      scope: ['profile', 'email', 'openid']
+      roles: ['admin', 'public']
     }
   })
 
@@ -207,8 +204,8 @@ Fastify().then(async (fastify) => {
       port: Number(port || defaultPort)
     })
     .then((address) => {
-      const a = (new Date().getTime() - begin) / 100
-      log.info(`All stuff loaded in ${a} sec`)
+      const elapsed = (new Date().getTime() - begin) / 100
+      log.info(`All stuff loaded in ${elapsed} sec`)
       log.info(`🚀 Server ready at ${address}`)
     })
 })
