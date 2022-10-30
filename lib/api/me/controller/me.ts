@@ -7,3 +7,7 @@ export async function user(req: FastifyRequest, reply: FastifyReply) {
 export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
   return { isAdmin: (req.user?.roles || []).includes('admin') || false }
 }
+
+export async function demo(req: FastifyRequest, reply: FastifyReply) {
+  return { demo: true }
+}

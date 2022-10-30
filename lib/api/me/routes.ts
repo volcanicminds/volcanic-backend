@@ -2,17 +2,18 @@ export default {
   config: {
     title: 'Useful functions',
     description: 'Useful functions',
+    controller: 'controller',
     enable: true,
     deprecated: false,
-    version: false,
-    controller: 'controller'
+    version: false
   },
   routes: [
     {
       method: 'GET',
       path: '/',
-      handler: 'me.user',
       roles: [],
+      handler: 'me.user',
+      middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Me',
         description: 'Me',
@@ -24,11 +25,26 @@ export default {
     {
       method: 'GET',
       path: '/is-admin',
-      handler: 'me.isAdmin',
       roles: [],
+      handler: 'me.isAdmin',
+      middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Admin',
         description: 'Admin',
+        enable: true,
+        deprecated: false,
+        version: false
+      }
+    },
+    {
+      method: 'GET',
+      path: '/demo',
+      roles: [],
+      handler: 'me.demo',
+      middlewares: ['global.isAdmin'],
+      config: {
+        title: 'Demo',
+        description: 'Demo',
         enable: true,
         deprecated: false,
         version: false

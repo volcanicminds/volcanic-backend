@@ -110,16 +110,31 @@ export function load(): ConfiguredRoute[] {
   return validRoutes
 }
 
+function normalizeMiddlewarePath(base: string, middleware: string = '') {
+  const key = 'global.'
+  const idx = middleware.indexOf(key)
+  return idx == 0
+    ? path.resolve(__dirname + '/../middleware/' + middleware.substring(key.length) + '.ts')
+    : path.resolve(base + '/middleware/' + middleware + '.ts')
+}
+
 export function apply(server: any, routes: ConfiguredRoute[]): void {
   log.t && log.trace(`Apply ${routes.length} routes to server with pid ${process.pid}`)
 
-  routes.forEach(({ handler, method, path, middlewares, roles, enable, base, file, func }) => {
+  routes.forEach(async ({ handler, method, path, middlewares, roles, enable, base, file, func }) => {
     if (enable) {
       log.t && log.trace(`Add path ${method} ${path} on handle ${handler}`)
+
+      const allMiddlewares =
+        middlewares?.length > 0 ? middlewares.map((m) => require(normalizeMiddlewarePath(base, m))) : []
+
+      log.trace('path ' + path + ' middlewares ' + middlewares?.length)
+      log.trace('path ' + path + ' allMiddlewares ' + allMiddlewares?.length)
 
       server.route({
         method: method,
         path: path,
+        preHandler: allMiddlewares,
         handler: (request: FastifyRequest, reply: FastifyReply) => {
           try {
             if (roles?.length > 0) {

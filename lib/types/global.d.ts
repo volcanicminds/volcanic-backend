@@ -5,7 +5,6 @@ declare global {
     id: number
     name: string
     roles: string[]
-    scope: string[]
   }
 
   interface Role {
