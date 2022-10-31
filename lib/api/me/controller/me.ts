@@ -1,13 +1,13 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 
 export async function user(req: FastifyRequest, reply: FastifyReply) {
-  return req.user || {}
+  reply.send(req.user || {})
 }
 
 export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
-  return { isAdmin: (req.user?.roles || []).includes('admin') || false }
+  reply.send({ isAdmin: (req.user?.roles || []).includes('admin') || false })
 }
 
 export async function demo(req: FastifyRequest, reply: FastifyReply) {
-  return { demo: true }
+  reply.send({ demo: true })
 }

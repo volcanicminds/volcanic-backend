@@ -3,9 +3,10 @@ export default {
     title: 'Useful functions',
     description: 'Useful functions',
     controller: 'controller',
+    tags: ['user', 'code'], // swagger
     enable: true,
-    deprecated: false,
-    version: false
+    deprecated: false, // swagger
+    version: false // swagger
   },
   routes: [
     {
@@ -15,11 +16,28 @@ export default {
       handler: 'me.user',
       middlewares: ['global.isAuthenticated'],
       config: {
-        title: 'Me',
-        description: 'Me',
         enable: true,
-        deprecated: false,
-        version: false
+        title: 'Me title', // swagger summary
+        description: 'Me description', // swagger
+        tags: ['user', 'code'], // swagger
+        deprecated: false, // swagger
+        version: false, // swagger
+        response: {
+          403: {
+            description: 'Successful response',
+            type: 'object',
+            properties: {
+              hello: { type: 'string' }
+            }
+          },
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              id: { type: 'number' }
+            }
+          }
+        } // swagger
       }
     },
     {
@@ -43,11 +61,37 @@ export default {
       handler: 'me.demo',
       middlewares: ['global.isAdmin'],
       config: {
-        title: 'Demo',
-        description: 'Demo',
         enable: true,
-        deprecated: false,
-        version: false
+        title: 'Me title', // swagger summary
+        description: 'Me description', // swagger
+        tags: ['user', 'code'], // swagger
+        deprecated: false, // swagger
+        version: false, // swagger
+        params: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'user id'
+            }
+          }
+        }, // swagger
+        response: {
+          201: {
+            description: 'Successful response',
+            type: 'object',
+            properties: {
+              hello: { type: 'string' }
+            }
+          },
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              foo: { type: 'string' }
+            }
+          }
+        } // swagger
       }
     }
   ]

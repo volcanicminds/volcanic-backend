@@ -10,7 +10,7 @@ export function load(): ConfiguredRoute[] {
     load = true
 
   const validRoutes: ConfiguredRoute[] = []
-  const patterns = [`${__dirname}/../api/**/routes.ts`, `${process.cwd()}/src/api/**/routes.ts`]
+  const patterns = [`${__dirname}/../api/**/routes.{ts,js}`, `${process.cwd()}/src/api/**/routes.{ts,js}`]
 
   patterns.forEach((pattern) => {
     check && log.i && log.info('Looking for ' + pattern)
@@ -41,7 +41,10 @@ export function load(): ConfiguredRoute[] {
           description = '',
           enable = defaultConfig.enable || true,
           deprecated = defaultConfig.deprecated || false,
-          version = defaultConfig.version || ''
+          version = defaultConfig.version || '',
+          params,
+          body,
+          response
         } = config || {}
 
         // adjust something
@@ -64,7 +67,7 @@ export function load(): ConfiguredRoute[] {
           }
 
           const key = method + endpoint + version
-          if (validRoutes.some((r) => `${r.method}${r.path}${r.version}` === key)) {
+          if (validRoutes.some((r) => `${r.method}${r.path}${r.doc?.version}` === key)) {
             errors.push(`Error in [${file}] duplicated path [${pathName}] at route n. ${num}`)
           }
 
@@ -86,21 +89,25 @@ export function load(): ConfiguredRoute[] {
             : log.i && log.info(`* Method [${method}] path ${endpoint} handler ${handler} enabled.`)
 
           validRoutes.push({
-            title,
-            description,
+            handler,
             method,
             path: '/' + endpoint,
-            handler,
-
-            file: path.join(base, defaultConfig.controller, handlerParts[0]),
-            func: handlerParts[1],
-            base,
-
             middlewares,
             roles,
             enable,
-            deprecated,
-            version
+            base,
+            file: path.join(base, defaultConfig.controller, handlerParts[0]),
+            func: handlerParts[1],
+            // swagger
+            doc: {
+              summary: title,
+              description,
+              deprecated,
+              version,
+              params,
+              body,
+              response
+            }
           })
         }
       })
@@ -114,14 +121,14 @@ function normalizeMiddlewarePath(base: string, middleware: string = '') {
   const key = 'global.'
   const idx = middleware.indexOf(key)
   return idx == 0
-    ? path.resolve(__dirname + '/../middleware/' + middleware.substring(key.length) + '.ts')
-    : path.resolve(base + '/middleware/' + middleware + '.ts')
+    ? path.resolve(__dirname + '/../middleware/' + middleware.substring(key.length))
+    : path.resolve(base + '/middleware/' + middleware)
 }
 
 export function apply(server: any, routes: ConfiguredRoute[]): void {
   log.t && log.trace(`Apply ${routes.length} routes to server with pid ${process.pid}`)
 
-  routes.forEach(async ({ handler, method, path, middlewares, roles, enable, base, file, func }) => {
+  routes.forEach(async ({ handler, method, path, middlewares, roles, enable, base, file, func, doc }) => {
     if (enable) {
       log.t && log.trace(`Add path ${method} ${path} on handle ${handler}`)
 
@@ -134,7 +141,8 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
       server.route({
         method: method,
         path: path,
-        preHandler: allMiddlewares,
+        schema: doc,
+        // preHandler: allMiddlewares,
         handler: (request: FastifyRequest, reply: FastifyReply) => {
           try {
             if (roles?.length > 0) {

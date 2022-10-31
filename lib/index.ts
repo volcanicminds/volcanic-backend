@@ -11,6 +11,8 @@ import * as loaderRouter from './loader/router'
 
 import Fastify, { FastifyInstance } from 'fastify'
 import swagger from '@fastify/swagger'
+import swaggerUI from '@fastify/swagger-ui'
+
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import compress from '@fastify/compress'
@@ -120,7 +122,7 @@ async function addFastifyRouting(fastify: FastifyInstance) {
 }
 
 async function addFastifySwagger(fastify: FastifyInstance) {
-  const { SWAGGER } = process.env
+  const { SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION } = process.env
   const loadSwagger = yn(SWAGGER, false)
 
   if (loadSwagger) {
@@ -129,49 +131,88 @@ async function addFastifySwagger(fastify: FastifyInstance) {
     await fastify.register(swagger, {
       swagger: {
         info: {
-          title: 'Test swagger',
-          description: 'Testing the Fastify swagger API',
-          version: '0.1.0'
+          title: SWAGGER_TITLE || 'API Documentation',
+          description: SWAGGER_DESCRIPTION || 'List of available APIs and schemes to use',
+          version: SWAGGER_VERSION || '0.1.0'
         },
-        externalDocs: {
-          url: 'https://swagger.io',
-          description: 'Find more info here'
-        },
-        host: 'localhost',
-        schemes: ['http'],
         consumes: ['application/json'],
-        produces: ['application/json'],
-        tags: [
-          { name: 'user', description: 'User related end-points' },
-          { name: 'code', description: 'Code related end-points' }
-        ],
-        definitions: {
-          User: {
-            type: 'object',
-            required: ['id', 'email'],
-            properties: {
-              id: { type: 'string', format: 'uuid' },
-              firstName: { type: 'string' },
-              lastName: { type: 'string' },
-              email: { type: 'string', format: 'email' }
-            }
-          }
-        },
-        securityDefinitions: {
-          apiKey: {
-            type: 'apiKey',
-            name: 'apiKey',
-            in: 'header'
-          }
-        }
+        produces: ['application/json']
       }
     })
+
+    await fastify.register(swaggerUI, {
+      routePrefix: '/documentation',
+      uiConfig: {
+        docExpansion: 'list',
+        deepLinking: true,
+        defaultModelsExpandDepth: 1
+      },
+      uiHooks: {
+        onRequest: function (request, reply, next) {
+          next()
+        },
+        preHandler: function (request, reply, next) {
+          next()
+        }
+      },
+      staticCSP: true,
+      transformStaticCSP: (header) => header
+    })
+
+    await fastify.put(
+      '/some-route/:id',
+      {
+        schema: {
+          description: 'post some data',
+          tags: ['user', 'code'],
+          deprecated: true,
+          summary: 'qwerty',
+          params: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                description: 'user id'
+              }
+            }
+          },
+          body: {
+            type: 'object',
+            properties: {
+              hello: { type: 'string' },
+              obj: {
+                type: 'object',
+                properties: {
+                  some: { type: 'string' }
+                }
+              }
+            }
+          },
+          response: {
+            201: {
+              description: 'Successful response',
+              type: 'object',
+              properties: {
+                hello: { type: 'string' }
+              }
+            },
+            default: {
+              description: 'Default response',
+              type: 'object',
+              properties: {
+                foo: { type: 'string' }
+              }
+            }
+          }
+        }
+      },
+      (req, reply) => {}
+    )
   }
 }
 
-Fastify().then(async (fastify) => {
-  const defaultPort = 2230
-  const { PORT: port = defaultPort, GRAPHQL } = process.env
+Fastify({ logger: logger }).then(async (fastify) => {
+  const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
   const { SRV_CORS, SRV_HELMET, SRV_RATELIMIT, SRV_COMPRESS } = process.env
 
   const loadApollo = yn(GRAPHQL, true)
@@ -201,7 +242,8 @@ Fastify().then(async (fastify) => {
 
   fastify
     .listen({
-      port: Number(port || defaultPort)
+      port: Number(port),
+      host: host
     })
     .then((address) => {
       const elapsed = (new Date().getTime() - begin) / 100

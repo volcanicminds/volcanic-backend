@@ -29,6 +29,9 @@ declare global {
     enable: boolean
     deprecated: boolean
     version: string
+    params?: any
+    body?: any
+    response?: any
   }
 
   interface Route {
@@ -41,20 +44,23 @@ declare global {
   }
 
   interface ConfiguredRoute {
-    title: string
-    description: string
+    enable: boolean
     method: any
     path: string
     handler: any
-
     file: string
     func: any
     base: string
-
     middlewares: string[]
     roles: Role[]
-    enable: boolean
-    deprecated: boolean
-    version: string
+    doc: {
+      summary?: string
+      description?: string
+      deprecated?: boolean
+      version?: string
+      params?: any
+      body?: any
+      response?: any
+    }
   }
 }

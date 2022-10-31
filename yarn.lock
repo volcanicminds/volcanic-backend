@@ -535,6 +535,28 @@
     ms "^2.1.3"
     tiny-lru "^9.0.2"
 
+"@fastify/static@^6.0.0":
+  version "6.5.0"
+  resolved "https://registry.yarnpkg.com/@fastify/static/-/static-6.5.0.tgz#004fdb487ddf0ee5fdf7541e56bfcb493d7a1060"
+  integrity sha512-WEk6iqgejA6ivjkvbJ47A+uMci225z5lZwLXCXZS3ZYR/kYje1gzzarkKKGL6TWpBw6smkOzxA7dfEoY0347Nw==
+  dependencies:
+    "@fastify/accept-negotiator" "^1.0.0"
+    content-disposition "^0.5.3"
+    fastify-plugin "^4.0.0"
+    glob "^8.0.1"
+    p-limit "^3.1.0"
+    readable-stream "^4.0.0"
+    send "^0.18.0"
+
+"@fastify/swagger-ui@^1.1.0":
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/@fastify/swagger-ui/-/swagger-ui-1.1.0.tgz#8fe45a2a688c374ca0747d0e81f01f4067fbd075"
+  integrity sha512-LIWlnWsNXCnVs7ybE+in4WyiwU7ZJs44HM2osK8qnvQPDI6jgls+z/P/vv2D8IgKVSDws/2hJULmHckBUBqQ0g==
+  dependencies:
+    "@fastify/static" "^6.0.0"
+    fastify-plugin "^4.0.0"
+    openapi-types "^12.0.2"
+
 "@fastify/swagger@^8.0.0":
   version "8.0.0"
   resolved "https://registry.yarnpkg.com/@fastify/swagger/-/swagger-8.0.0.tgz#c8c60fe0899928df9b9eef3de52fafeaa26c821a"
@@ -1959,7 +1981,7 @@ console-control-strings@^1.0.0, console-control-strings@~1.1.0:
   resolved "https://registry.yarnpkg.com/console-control-strings/-/console-control-strings-1.1.0.tgz#3d7cf4464db6446ea644bf4b39507f9851008e8e"
   integrity sha512-ty/fTekppD2fIwRvnZAVdeOiGd1c7YXEixbgJTNzqcxJWKQnjJ/V1bNEEE6hygpM3WjwHFUVK6HTjWSzV4a8sQ==
 
-content-disposition@0.5.4:
+content-disposition@0.5.4, content-disposition@^0.5.3:
   version "0.5.4"
   resolved "https://registry.yarnpkg.com/content-disposition/-/content-disposition-0.5.4.tgz#8b82b4efac82512a02bb0b1dcec9d2c5e8eb5bfe"
   integrity sha512-FveZTNuGw04cxlAiWbzi6zTAL/lhehaWbTtgluJh4/E95DqMwTmha3KZN1aAWA8cFIhHzMZUvLevkw5Rqk+tSQ==
@@ -2723,7 +2745,7 @@ glob@^7.0.0, glob@^7.1.3, glob@^7.1.4, glob@^7.1.6:
     once "^1.3.0"
     path-is-absolute "^1.0.0"
 
-glob@^8.0.0:
+glob@^8.0.0, glob@^8.0.1:
   version "8.0.3"
   resolved "https://registry.yarnpkg.com/glob/-/glob-8.0.3.tgz#415c6eb2deed9e502c68fa44a272e6da6eeca42e"
   integrity sha512-ull455NHSHI/Y1FqGaaYFaLGkNMMJbavMrEGFXG/PGrg6y7sutWHUHrz6gy6WEBH6akM1M414dWKCNs+IhKdiQ==
@@ -4394,7 +4416,7 @@ open@7.4.2:
     is-docker "^2.0.0"
     is-wsl "^2.1.1"
 
-openapi-types@^12.0.0:
+openapi-types@^12.0.0, openapi-types@^12.0.2:
   version "12.0.2"
   resolved "https://registry.yarnpkg.com/openapi-types/-/openapi-types-12.0.2.tgz#b752ab0a463c594fd7e3142e0e5983a9645503f6"
   integrity sha512-GuTo7FyZjOIWVhIhQSWJVaws6A82sWIGyQogxxYBYKZ0NBdyP2CYSIgOwFfSB+UVoPExk/YzFpyYitHS8KVZtA==
@@ -5137,7 +5159,7 @@ semver@~7.0.0:
   resolved "https://registry.yarnpkg.com/semver/-/semver-7.0.0.tgz#5f3ca35761e47e05b206c6daff2cf814f0316b8e"
   integrity sha512-+GB6zVA9LWh6zovYQLALHwv5rb2PHGlJi3lfiqIHxR0uuwCgefcOJc59v9fv1w8GbStwxuuqqAjI9NMAOOgq1A==
 
-send@0.18.0:
+send@0.18.0, send@^0.18.0:
   version "0.18.0"
   resolved "https://registry.yarnpkg.com/send/-/send-0.18.0.tgz#670167cc654b05f5aa4a767f9113bb371bc706be"
   integrity sha512-qqWzuOjSFOuqPjFe4NOsMLafToQQwBSOEpS+FwEt3A2V3vKubTquT3vmLTQpFgMXp8AlFWFuP1qKaJZOtPpVXg==
