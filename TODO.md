@@ -3,7 +3,6 @@
 - roles
 - database psql
 - models
-- swagger solo se NODE_ENV != prod
 - validations
 - authentication
 - hooks (come middlewares esposti)

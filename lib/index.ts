@@ -122,10 +122,10 @@ async function addFastifyRouting(fastify: FastifyInstance) {
 }
 
 async function addFastifySwagger(fastify: FastifyInstance) {
-  const { SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION } = process.env
+  const { NODE_ENV, SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION } = process.env
   const loadSwagger = yn(SWAGGER, false)
 
-  if (loadSwagger) {
+  if (loadSwagger && NODE_ENV !== 'production') {
     log.info('Add swagger plugin')
 
     await fastify.register(swagger, {
