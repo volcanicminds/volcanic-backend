@@ -12,19 +12,34 @@ Based on [Apollo Server](https://www.apollographql.com) ([GitHub](https://github
 
 And, what you see in [package.json](package.json).
 
-## Environment
+## Environment (example)
 
 ```ruby
 NODE_ENV=development
+
+HOST=0.0.0.0
 PORT=2230
 
-LOG_LEVEL=trace
+# LOG_LEVEL: trace, debug, info, warn, error, fatal
+LOG_LEVEL=info
 LOG_COLORIZE=true
 LOG_TIMESTAMP=true
 LOG_TIMESTAMP_READABLE=true
+LOG_FASTIFY=false
 
-GRAPHQL=true
+GRAPHQL=false
+SWAGGER=true
+SWAGGER_TITLE=API Documentation
+SWAGGER_DESCRIPTION=List of available APIs and schemes to use
+SWAGGER_VERSION=0.1.0
+
+SRV_CORS=false
+SRV_HELMET=false
+SRV_RATELIMIT=false
+SRV_COMPRESS=false
 ```
+
+For docker may be useful set HOST as 0.0.0.0 (instead 127.0.0.1).
 
 ## How to upgrade packages
 
@@ -106,4 +121,26 @@ Defaults, see [logger.ts](./lib/util/logger.ts):
 const logColorize = yn(LOG_COLORIZE, true)
 const logTimestamp = yn(LOG_TIMESTAMP, true)
 const logTimestampReadable = yn(LOG_TIMESTAMP_READABLE, true)
+```
+
+## Swagger
+
+In the .env file you can change swagger settings in this way:
+
+```ruby
+SWAGGER=true
+SWAGGER_TITLE=API Documentation
+SWAGGER_DESCRIPTION=List of available APIs and schemes to use
+SWAGGER_VERSION=0.1.0
+```
+
+## Fastify modules
+
+In the .env file you can activate some modules in this way:
+
+```ruby
+SRV_CORS=false
+SRV_HELMET=false
+SRV_RATELIMIT=false
+SRV_COMPRESS=false
 ```
