@@ -1,9 +1,9 @@
 {
-  "name": "volcanic-backend",
+  "name": "@volcanicminds/backend",
   "version": "0.1.0",
   "codename": "turin",
   "license": "MIT",
-  "description": "",
+  "description": "The volcanic (minds) backend",
   "keywords": [],
   "main": "./dist/index.js",
   "engines": {
@@ -49,16 +49,12 @@
   "bugs": {
     "url": "https://github.com/volcanicminds/volcanic-backend/issues"
   },
-  "author": {
-    "name": "Volcanic Minds",
-    "email": "developers@volcanicminds.com",
-    "url": "https://volcanicminds.com"
-  },
+  "author": "Volcanic Minds <developers@volcanicminds.com> (https://volcanicminds.com)",
   "maintainers": [
-    {
-      "name": "Developers",
-      "email": "developers@volcanicminds.com",
-      "url": "https://volcanicminds.com"
-    }
-  ]
+    "Developers <developers@volcanicminds.com> (https://volcanicminds.com)"
+  ],
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  }
 }
