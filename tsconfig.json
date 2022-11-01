@@ -5,11 +5,11 @@
     "files": true
   },
   "compilerOptions": {
-    "target": "es2022",
+    "target": "ESNext",
     "allowJs": true,
     "module": "CommonJS",
     "esModuleInterop": true,
-    "lib": ["es2020"],
+    "lib": ["ES6"],
     "resolveJsonModule": true,
     "preserveConstEnums": true,
     "skipLibCheck": true /* Skip type checking of declaration files. */,
@@ -17,11 +17,15 @@
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
     "strict": true,
-    // "sourceMap": true,
-    // "types": ["node"],
+    "sourceMap": true,
+    "types": ["node"],
     "typeRoots": ["./node_modules/@types", "./types", "./lib/types"],
     "outDir": "dist",
-    "rootDirs": ["lib", "config", "types"]
+    "rootDirs": ["lib", "config", "types"],
+    "baseUrl": ".",
+    "paths": {
+      "*": ["*", "components/*"]
+    }
   },
   "include": ["./lib/*", "./lib/**/*", "./config/*", "./config/**/*", "./types/*", "./types/**/*"],
   "exclude": ["node_modules"]

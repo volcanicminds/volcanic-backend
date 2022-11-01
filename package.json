@@ -5,7 +5,8 @@
   "license": "MIT",
   "description": "The volcanic (minds) backend",
   "keywords": [],
-  "main": "./lib/index.ts",
+  "main": "dist/index",
+  "typings": "dist/index",
   "engines": {
     "node": ">=16"
   },

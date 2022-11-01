@@ -1,5 +1,3 @@
-export {}
-
 declare global {
   interface AuthenticatedUser {
     id: number
@@ -64,3 +62,5 @@ declare global {
     }
   }
 }
+
+export { global }

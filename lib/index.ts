@@ -252,4 +252,17 @@ Fastify(opts).then(async (fastify) => {
     })
 })
 
+/**
+ * These export configurations enable JS and TS developers
+ * to consumer BE in whatever way best suits their needs.
+ * Some examples of supported import syntax includes:
+ * - `const server = require('@volcanicminds/backend')`
+ * - `const { server } = require('@volcanicminds/backend')`
+ * - `import * as Server from '@volcanicminds/backend'`
+ * - `import { server, TSC_definition } from '@volcanicminds/backend'`
+ * - `import server from '@volcanicminds/backend'`
+ * - `import server, { TSC_definition } from '@volcanicminds/backend'`
+ */
 module.exports = this
+module.exports.server = this
+module.exports.default = this
