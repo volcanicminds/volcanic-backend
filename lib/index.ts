@@ -210,8 +210,8 @@ async function addFastifySwagger(fastify: FastifyInstance) {
     )
   }
 }
-
-Fastify({ logger: logger }).then(async (fastify) => {
+const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: logger } : {}
+Fastify(opts).then(async (fastify) => {
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
   const { SRV_CORS, SRV_HELMET, SRV_RATELIMIT, SRV_COMPRESS } = process.env
 
