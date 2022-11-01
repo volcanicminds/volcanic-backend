@@ -150,7 +150,8 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
                 return reply.code(403).send()
               }
             }
-            return require(file + '.ts')[func](request, reply)
+
+            return require(file)[func](request, reply)
           } catch (err) {
             log.e && log.error(`Cannot find ${file}.js or method ${func}: ${err}`)
             return reply.code(500).send(`Invalid handler ${handler}`)
