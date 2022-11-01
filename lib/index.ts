@@ -251,3 +251,5 @@ Fastify(opts).then(async (fastify) => {
       log.info(`🚀 Server ready at ${address}`)
     })
 })
+
+module.exports = this
