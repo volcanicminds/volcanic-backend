@@ -21,8 +21,8 @@
     // "types": ["node"],
     "typeRoots": ["./node_modules/@types", "./types", "./lib/types"],
     "outDir": "dist",
-    "rootDir": "lib"
+    "rootDirs": ["lib", "config", "types"]
   },
-  "include": ["./lib/*", "./lib/**/*"],
+  "include": ["./lib/*", "./lib/**/*", "./config/*", "./config/**/*", "./types/*", "./types/**/*"],
   "exclude": ["node_modules"]
 }
