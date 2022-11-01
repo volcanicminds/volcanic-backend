@@ -135,9 +135,6 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
       const allMiddlewares =
         middlewares?.length > 0 ? middlewares.map((m) => require(normalizeMiddlewarePath(base, m))) : []
 
-      log.trace('path ' + path + ' middlewares ' + middlewares?.length)
-      log.trace('path ' + path + ' allMiddlewares ' + allMiddlewares?.length)
-
       server.route({
         method: method,
         path: path,
