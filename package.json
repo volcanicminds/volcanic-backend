@@ -1,11 +1,12 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "codename": "turin",
+  "type": "module",
   "license": "MIT",
   "description": "The volcanic (minds) backend",
   "keywords": [],
-  "main": "./dist/index.js",
+  "main": "./lib/index.ts",
   "engines": {
     "node": ">=16"
   },
