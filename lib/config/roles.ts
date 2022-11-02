@@ -1,3 +1,4 @@
+import { Role } from '../../types/global'
 export {}
 
 // additional roles

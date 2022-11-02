@@ -24,18 +24,6 @@ import { myContextFunction, MyContext } from './apollo/context'
 import resolvers from './apollo/resolvers'
 import typeDefs from './apollo/type-defs'
 
-export interface global {}
-declare global {
-  var log: any
-  var roles: Roles
-}
-
-declare module 'fastify' {
-  export interface FastifyRequest {
-    user?: AuthenticatedUser
-  }
-}
-
 async function attachApollo(fastify: FastifyInstance) {
   log.info('Attach ApolloServer to Fastify')
   const apollo = new ApolloServer<MyContext>({

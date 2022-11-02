@@ -1,3 +1,4 @@
+import { Route, ConfiguredRoute } from '../../types/global'
 import { FastifyReply, FastifyRequest } from 'fastify'
 
 const glob = require('glob')
@@ -152,23 +153,6 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
           }
         }
       })
-
-      // server[method](path, (request: FastifyRequest, reply: FastifyReply) => {
-      //   try {
-      //     if (roles?.length > 0) {
-      //       const userRoles = request.user?.roles || []
-      //       const resolvedRole = roles.filter((r) => userRoles.includes(r.code))
-      //       if (!resolvedRole || resolvedRole.length === 0) {
-      //         log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${path}`)
-      //         return reply.code(403).send()
-      //       }
-      //     }
-      //     return require(file + '.ts')[func](request, reply)
-      //   } catch (err) {
-      //     log.e && log.error(`Cannot find ${file}.js or method ${func}: ${err}`)
-      //     return reply.code(500).send(`Invalid handler ${handler}`)
-      //   }
-      // })
     }
   })
 }

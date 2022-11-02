@@ -1,3 +1,4 @@
+import { Role, RoleKey, Roles } from '../../types/global'
 import { roles as configRoles } from '../config/roles'
 
 export function load() {
