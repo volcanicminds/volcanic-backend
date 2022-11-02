@@ -1,5 +1,7 @@
 # NPM
 
+[more info](https://zellwk.com/blog/publish-to-npm/)
+
 ## how to publish
 
 ```ruby
