@@ -127,8 +127,7 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
     if (enable) {
       log.t && log.trace(`* Add path ${method} ${path} on handle ${handler}`)
 
-      const allMiddlewares =
-        middlewares?.length > 0 ? middlewares.map((m) => require(normalizeMiddlewarePath(base, m))) : []
+      const allMiddlewares = (middlewares || []).map((m) => require(normalizeMiddlewarePath(base, m)))
 
       server.route({
         method: method,
