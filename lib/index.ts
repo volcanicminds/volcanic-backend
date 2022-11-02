@@ -24,17 +24,11 @@ import { myContextFunction, MyContext } from './apollo/context'
 import resolvers from './apollo/resolvers'
 import typeDefs from './apollo/type-defs'
 
-const begin = new Date().getTime()
-mark.print(logger)
-
 export interface global {}
 declare global {
   var log: any
   var roles: Roles
 }
-
-global.log = logger
-global.roles = loaderRoles.load()
 
 declare module 'fastify' {
   export interface FastifyRequest {
@@ -210,8 +204,17 @@ async function addFastifySwagger(fastify: FastifyInstance) {
     )
   }
 }
-const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: logger } : {}
-Fastify(opts).then(async (fastify) => {
+
+const start = async () => {
+  const begin = new Date().getTime()
+  mark.print(logger)
+
+  global.log = logger
+  global.roles = loaderRoles.load()
+
+  const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: logger } : {}
+  const fastify = await Fastify(opts)
+
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
   const { SRV_CORS, SRV_HELMET, SRV_RATELIMIT, SRV_COMPRESS } = process.env
 
@@ -240,7 +243,7 @@ Fastify(opts).then(async (fastify) => {
   await addApolloRouting(fastify, apollo)
   await addFastifyRouting(fastify)
 
-  fastify
+  await fastify
     .listen({
       port: Number(port),
       host: host
@@ -250,7 +253,9 @@ Fastify(opts).then(async (fastify) => {
       log.info(`All stuff loaded in ${elapsed} sec`)
       log.info(`🚀 Server ready at ${address}`)
     })
-})
+
+  return fastify
+}
 
 /**
  * These export configurations enable JS and TS developers
@@ -263,6 +268,6 @@ Fastify(opts).then(async (fastify) => {
  * - `import server from '@volcanicminds/backend'`
  * - `import server, { TSC_definition } from '@volcanicminds/backend'`
  */
-module.exports = this
-module.exports.server = this
-module.exports.default = this
+module.exports = start
+module.exports.server = start
+module.exports.default = start

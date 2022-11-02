@@ -13,9 +13,9 @@
   "scripts": {
     "compile": "tsc",
     "preprod": "npm run compile",
-    "prod": "node ./dist/index.js",
-    "start": "ts-node ./lib/index.ts",
-    "dev": "nodemon --exec \"ts-node\" ./lib/index.ts",
+    "prod": "node ./dist/server.js",
+    "start": "ts-node ./lib/server.ts",
+    "dev": "nodemon --exec \"ts-node\" ./lib/server.ts",
     "test": "jest test --config ./jest.config.js",
     "upgrade-deps": "npm-upgrade"
   },

@@ -2,9 +2,9 @@
 
 - roles
 - database psql
+- hooks (esposti, es come middlewares ma per nome file specifico es onReady ecc)
 - models
 - validations
 - authentication
-- hooks (come middlewares esposti)
 - testare middlewares
 - metrics (plugin?)
