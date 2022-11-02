@@ -144,3 +144,73 @@ SRV_HELMET=false
 SRV_RATELIMIT=false
 SRV_COMPRESS=false
 ```
+
+# Routes
+
+Minimal setup (routes.ts):
+
+```js
+module.exports = {
+  routes: [
+    {
+      method: 'GET',
+      path: '/',
+      handler: 'myController.test'
+    }
+  ]
+}
+```
+
+Some notes:
+
+- It's possible define a generic **config** (optional).
+- It's possible define a **config** for a specific route (optional).
+- It's possible define a list of **roles** (optional).
+- It's possible define a list of **middleware** (optional).
+
+```js
+module.exports = {
+  config: {
+    title: 'Example of routes.ts',
+    description: 'Example of routes.ts',
+    controller: 'controller',
+    tags: ['user', 'code'], // swagger
+    enable: true,
+    deprecated: false, // swagger
+    version: false // swagger
+  },
+  routes: [
+    {
+      method: 'GET',
+      path: '/',
+      roles: [],
+      handler: 'demo.user',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        enable: true,
+        title: 'Demo title', // swagger summary
+        description: 'Demo description', // swagger
+        tags: ['user', 'code'], // swagger
+        deprecated: false, // swagger
+        version: false, // swagger
+        response: {
+          403: {
+            description: 'Unsuccessful response',
+            type: 'object',
+            properties: {
+              hello: { type: 'string' }
+            }
+          },
+          200: {
+            description: 'Successful response',
+            type: 'object',
+            properties: {
+              id: { type: 'number' }
+            }
+          }
+        } // swagger
+      }
+    }
+  ]
+}
+```
