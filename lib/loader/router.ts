@@ -125,7 +125,7 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
 
   routes.forEach(async ({ handler, method, path, middlewares, roles, enable, base, file, func, doc }) => {
     if (enable) {
-      log.t && log.trace(`Add path ${method} ${path} on handle ${handler}`)
+      log.t && log.trace(`* Add path ${method} ${path} on handle ${handler}`)
 
       const allMiddlewares =
         middlewares?.length > 0 ? middlewares.map((m) => require(normalizeMiddlewarePath(base, m))) : []
@@ -134,7 +134,7 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
         method: method,
         path: path,
         schema: doc,
-        // preHandler: allMiddlewares,
+        preHandler: allMiddlewares,
         handler: (request: FastifyRequest, reply: FastifyReply) => {
           try {
             if (roles?.length > 0) {
