@@ -18,7 +18,7 @@ export function load(): ConfiguredRoute[] {
 
       // allow array or structure
       const routesjs = require(f)
-      const { routes = [], config: defaultConfig = {} } = routesjs?.default
+      const { routes = [], config: defaultConfig = {} } = routesjs || {}
 
       // adjust default config
       if (!defaultConfig.enable) defaultConfig.enable = true
