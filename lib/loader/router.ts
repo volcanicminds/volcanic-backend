@@ -5,15 +5,11 @@ const path = require('path')
 const methods = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'PATCH', 'OPTIONS']
 
 export function load(): ConfiguredRoute[] {
-  const check = true,
-    print = true,
-    load = true
-
   const validRoutes: ConfiguredRoute[] = []
   const patterns = [`${__dirname}/../api/**/routes.{ts,js}`, `${process.cwd()}/src/api/**/routes.{ts,js}`]
 
   patterns.forEach((pattern) => {
-    check && log.i && log.info('Looking for ' + pattern)
+    log.i && log.info('Looking for ' + pattern)
     glob.sync(pattern).forEach((f: string, index: number, values: string[]) => {
       const base = path.dirname(f)
       const dir = path.basename(base)
@@ -28,11 +24,11 @@ export function load(): ConfiguredRoute[] {
       if (defaultConfig.deprecated == null) defaultConfig.deprecated = false
       if (defaultConfig.controller == null) defaultConfig.controller = 'controller'
 
-      check && log.i && log.info(`Load ${file} with ${routes.length} routes defined`)
-      print && log.d && log.debug(`Valid routes loaded from ${file}`)
+      log.i && log.info(`Load ${file} with ${routes.length} routes defined`)
+      log.d && log.debug(`Valid routes loaded from ${file}`)
 
       routes.forEach((route: Route, index: number) => {
-        const errors = []
+        const errors: string[] = []
         const { method: methodCase, path: pathName = '/', handler, config, middlewares = [], roles = [] } = route
 
         // specific route config
@@ -72,21 +68,19 @@ export function load(): ConfiguredRoute[] {
           }
 
           if (errors.length > 0) {
-            check && log.e && errors.forEach((error) => log.error(error))
+            log.e && errors.forEach((error) => log.error(error))
           }
         }
 
         if (errors.length == 0) {
-          enable && print
+          enable
             ? log.d &&
               log.debug(
-                `* Method [${method}] path ${endpoint} handler ${handler}, has middleware? ${
-                  (middlewares && middlewares.length) || 'no'
-                }`
+                `* Method [${method}] path ${endpoint} handler ${handler} enabled with ${
+                  middlewares?.length || 0
+                } middlewares`
               )
-            : !enable
-            ? log.w && log.warn(`* Method [${method}] path ${endpoint} handler ${handler} disabled. Skip.`)
-            : log.i && log.info(`* Method [${method}] path ${endpoint} handler ${handler} enabled.`)
+            : log.w && log.warn(`* Method [${method}] path ${endpoint} handler ${handler} disabled. Skip.`)
 
           validRoutes.push({
             handler,
