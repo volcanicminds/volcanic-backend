@@ -12,14 +12,8 @@ export interface Role {
   description: string
 }
 
-export declare enum RoleKey {
-  public = 'public',
-  admin = 'admin',
-  backoffice = 'backoffice'
-}
-
-export declare type Roles = {
-  [key in RoleKey]: Role
+export interface Roles {
+  [option: string]: Role
 }
 
 export interface RouteConfig {

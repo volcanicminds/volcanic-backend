@@ -39,7 +39,7 @@ async function attachApollo(fastify: FastifyInstance) {
 
 async function addApolloRouting(fastify: FastifyInstance, apollo: ApolloServer<MyContext> | null) {
   if (apollo) {
-    log.info('Add graphql routes')
+    log.trace('Add graphql routes')
     await fastify.register(fastifyApollo(apollo), {
       context: myContextFunction
     })
@@ -55,7 +55,7 @@ async function addApolloRouting(fastify: FastifyInstance, apollo: ApolloServer<M
 }
 
 async function addFastifyRouting(fastify: FastifyInstance) {
-  log.info('Add fastify routes')
+  log.trace('Add fastify routes')
 
   fastify.addHook('onSend', async (req, reply) => {
     log.debug('onSend')
@@ -108,7 +108,7 @@ async function addFastifySwagger(fastify: FastifyInstance) {
   const loadSwagger = yn(SWAGGER, false)
 
   if (loadSwagger && NODE_ENV !== 'production') {
-    log.info('Add swagger plugin')
+    log.trace('Add swagger plugin')
 
     await fastify.register(swagger, {
       swagger: {

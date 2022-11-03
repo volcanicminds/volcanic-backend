@@ -10,7 +10,7 @@ export function load(): ConfiguredRoute[] {
   const patterns = [`${__dirname}/../api/**/routes.{ts,js}`, `${process.cwd()}/src/api/**/routes.{ts,js}`]
 
   patterns.forEach((pattern) => {
-    log.i && log.info('Looking for ' + pattern)
+    log.d && log.debug('Looking for ' + pattern)
     glob.sync(pattern).forEach((f: string, index: number, values: string[]) => {
       const base = path.dirname(f)
       const dir = path.basename(base)
@@ -25,7 +25,7 @@ export function load(): ConfiguredRoute[] {
       if (defaultConfig.deprecated == null) defaultConfig.deprecated = false
       if (defaultConfig.controller == null) defaultConfig.controller = 'controller'
 
-      log.i && log.info(`Load ${file} with ${routes.length} routes defined`)
+      log.i && log.info(`Routes loaded: ${file} with ${routes.length} routes defined`)
       log.d && log.debug(`Valid routes loaded from ${file}`)
 
       routes.forEach((route: Route, index: number) => {

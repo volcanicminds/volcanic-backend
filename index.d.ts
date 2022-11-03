@@ -4,7 +4,6 @@ export {
   FastifyRequest,
   AuthenticatedUser,
   Role,
-  RoleKey,
   Roles,
   Route,
   RouteConfig,

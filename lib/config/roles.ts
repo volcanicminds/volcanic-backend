@@ -1,11 +1,4 @@
 import { Role } from '../../types/global'
-export {}
-
-// additional roles
-declare global {
-  enum RoleKey {}
-  // customer = 'customer'
-}
 
 export const roles: Role[] = [
   {
