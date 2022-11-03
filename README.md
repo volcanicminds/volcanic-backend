@@ -145,7 +145,7 @@ SRV_RATELIMIT=false
 SRV_COMPRESS=false
 ```
 
-# Routes
+## Routes
 
 Minimal setup (routes.ts):
 
@@ -213,4 +213,32 @@ module.exports = {
     }
   ]
 }
+```
+
+## Roles
+
+By default, there are some basic roles:
+
+- **public**
+- **admin**
+- **backoffice**
+
+In this way you can add custom roles:
+
+```js
+import { Role } from '@volcanicminds/backend'
+
+export const roles: Role[] = [
+  {
+    code: 'customer',
+    name: 'Customer',
+    description: 'Customer role'
+  }
+]
+```
+
+You can use something like this to specify which roles (routes.ts) can recall some routes:
+
+```js
+roles: [roles.admin, roles.public]
 ```
