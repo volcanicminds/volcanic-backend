@@ -6,11 +6,9 @@ https://github.com/fastify/fastify-swagger
 https://www.fastify.io/docs/latest/Reference/Validation-and-Serialization/
 https://json-schema.org/draft/2020-12/json-schema-validation.html#name-pattern
 
-- roles
 - database psql
 - hooks (esposti, es come middlewares ma per nome file specifico es onReady ecc)
 - models
 - validations
 - authentication
-- testare middlewares
 - metrics (plugin?)
