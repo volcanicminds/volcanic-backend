@@ -132,6 +132,7 @@ SWAGGER=true
 SWAGGER_TITLE=API Documentation
 SWAGGER_DESCRIPTION=List of available APIs and schemes to use
 SWAGGER_VERSION=0.1.0
+SWAGGER_PREFIX_URL=/documentation
 ```
 
 ## Fastify modules

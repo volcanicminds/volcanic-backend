@@ -104,9 +104,9 @@ async function addFastifyRouting(fastify: FastifyInstance) {
 }
 
 async function addFastifySwagger(fastify: FastifyInstance) {
-  const { NODE_ENV, SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION } = process.env
-  const loadSwagger = yn(SWAGGER, false)
+  const { NODE_ENV, SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION, SWAGGER_PREFIX_URL } = process.env
 
+  const loadSwagger = yn(SWAGGER, false)
   if (loadSwagger && NODE_ENV !== 'production') {
     log.trace('Add swagger plugin')
 
@@ -123,7 +123,7 @@ async function addFastifySwagger(fastify: FastifyInstance) {
     })
 
     await fastify.register(swaggerUI, {
-      routePrefix: '/documentation',
+      routePrefix: SWAGGER_PREFIX_URL || '/documentation',
       uiConfig: {
         docExpansion: 'list',
         deepLinking: true,
@@ -240,6 +240,9 @@ const start = async () => {
       const elapsed = (new Date().getTime() - begin) / 100
       log.info(`All stuff loaded in ${elapsed} sec`)
       log.info(`🚀 Server ready at ${address}`)
+
+      const loadSwagger = yn(process.env.SWAGGER, false)
+      loadSwagger && log.info(`📄 Swagger ready at ${address}${process.env.SWAGGER_PREFIX_URL || '/documentation'}`)
     })
 
   return fastify
