@@ -28,6 +28,7 @@ export interface RouteConfig {
   tags?: string[]
   version: string
   params?: Data
+  query?: Data
   body?: Data
   response?: any
 }

@@ -39,6 +39,7 @@ export function load(): ConfiguredRoute[] {
           deprecated = defaultConfig.deprecated || false,
           tags = defaultConfig.tags || false,
           version = defaultConfig.version || '',
+          query,
           params,
           body,
           response
@@ -100,8 +101,8 @@ export function load(): ConfiguredRoute[] {
               deprecated,
               tags,
               version,
-              querystring: params,
-              // params,
+              querystring: query,
+              params,
               body,
               response
             }

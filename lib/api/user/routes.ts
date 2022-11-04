@@ -17,7 +17,7 @@ module.exports = {
       middlewares: ['global.isAuthenticated'],
       config: {
         enable: true,
-        title: 'Get user', // swagger summary
+        title: 'Get current user', // swagger summary
         description: 'Get current user', // swagger
         tags: ['user'], // swagger
         deprecated: false, // swagger
@@ -47,8 +47,8 @@ module.exports = {
       handler: 'user.isAdmin',
       middlewares: ['global.isAuthenticated'],
       config: {
-        title: 'Is admin',
-        description: 'Check if this user is an admin',
+        title: 'Check if is an admin',
+        description: 'Check if the current user is an admin',
         enable: true,
         deprecated: false,
         version: false
@@ -61,7 +61,7 @@ module.exports = {
       handler: 'user.demo',
       middlewares: ['global.isAdmin'],
       config: {
-        enable: true,
+        enable: false,
         title: 'Me title', // swagger summary
         description: 'Me description', // swagger
         tags: ['user', 'code'], // swagger
@@ -105,7 +105,7 @@ module.exports = {
       handler: 'user.demo',
       middlewares: ['global.isAdmin'],
       config: {
-        enable: true,
+        enable: false,
         title: 'Me title', // swagger summary
         description: 'Me description', // swagger
         tags: ['user', 'code'], // swagger
