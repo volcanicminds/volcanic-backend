@@ -23,7 +23,7 @@ import fastifyApollo, { fastifyApolloHandler, fastifyApolloDrainPlugin } from '@
 import { myContextFunction, MyContext } from './apollo/context'
 import resolvers from './apollo/resolvers'
 import typeDefs from './apollo/type-defs'
-import { getData } from './util/common'
+import { getParams, getData } from './util/common'
 // import { FastifyRequest } from './../types/global'
 
 async function attachApollo(fastify: FastifyInstance) {
@@ -95,6 +95,7 @@ async function addFastifyRouting(fastify: FastifyInstance) {
       roles: ['admin', 'public']
     }
     req.data = () => getData(req)
+    req.pars = () => getParams(req)
   })
 
   // fastify.addHook('preParsing', async (req) => {

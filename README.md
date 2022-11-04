@@ -227,6 +227,7 @@ export async function user(req: FastifyRequest, reply: FastifyReply) {
 ```
 
 An useful method is `req.data()` to grab **query** or **body** parameters.
+An useful method is `req.pars()` to grab **params** data.
 
 ## Roles
 

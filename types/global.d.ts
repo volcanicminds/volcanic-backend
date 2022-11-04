@@ -70,6 +70,7 @@ declare module 'fastify' {
     user?: AuthenticatedUser
     start?: Date
     data(): Data
+    pars(): Data
   }
 }
 
@@ -77,6 +78,7 @@ export interface FastifyRequest extends FastifyRequest {
   user?: AuthenticatedUser
   start?: Date
   data(): Data
+  pars(): Data
 }
 
 export interface FastifyReply extends FastifyReply {}
