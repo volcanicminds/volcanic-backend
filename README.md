@@ -216,6 +216,18 @@ module.exports = {
 }
 ```
 
+## Controllers
+
+```js
+import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
+
+export async function user(req: FastifyRequest, reply: FastifyReply) {
+  reply.send(req.user || {})
+}
+```
+
+An useful method is `req.data()` to grab **query** or **body** parameters.
+
 ## Roles
 
 By default, there are some basic roles:

@@ -1,9 +1,9 @@
 module.exports = {
   config: {
-    title: 'Useful functions',
-    description: 'Useful functions',
+    title: 'User useful functions',
+    description: 'User useful functions',
     controller: 'controller',
-    tags: ['user', 'code'], // swagger
+    tags: ['user'], // swagger
     enable: true,
     deprecated: false, // swagger
     version: false // swagger
@@ -13,13 +13,13 @@ module.exports = {
       method: 'GET',
       path: '/',
       roles: [],
-      handler: 'me.user',
+      handler: 'user.user',
       middlewares: ['global.isAuthenticated'],
       config: {
         enable: true,
-        title: 'Me title', // swagger summary
-        description: 'Me description', // swagger
-        tags: ['user', 'code'], // swagger
+        title: 'Get user', // swagger summary
+        description: 'Get current user', // swagger
+        tags: ['user'], // swagger
         deprecated: false, // swagger
         version: false, // swagger
         response: {
@@ -44,11 +44,11 @@ module.exports = {
       method: 'GET',
       path: '/is-admin',
       roles: [],
-      handler: 'me.isAdmin',
+      handler: 'user.isAdmin',
       middlewares: ['global.isAuthenticated'],
       config: {
-        title: 'Admin',
-        description: 'Admin',
+        title: 'Is admin',
+        description: 'Check if this user is an admin',
         enable: true,
         deprecated: false,
         version: false
@@ -58,7 +58,7 @@ module.exports = {
       method: 'GET',
       path: '/demo',
       roles: [],
-      handler: 'me.demo',
+      handler: 'user.demo',
       middlewares: ['global.isAdmin'],
       config: {
         enable: true,
@@ -88,7 +88,60 @@ module.exports = {
             description: 'Default response',
             type: 'object',
             properties: {
-              foo: { type: 'string' }
+              id: { type: 'string' },
+              demo: { type: 'boolean' },
+              date: { type: 'string' },
+              query: { type: 'object' },
+              body: { type: 'object' }
+            }
+          }
+        } // swagger
+      }
+    },
+    {
+      method: 'POST',
+      path: '/demo',
+      roles: [],
+      handler: 'user.demo',
+      middlewares: ['global.isAdmin'],
+      config: {
+        enable: true,
+        title: 'Me title', // swagger summary
+        description: 'Me description', // swagger
+        tags: ['user', 'code'], // swagger
+        deprecated: false, // swagger
+        version: false, // swagger
+        body: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'user id'
+            }
+          }
+        }, // swagger
+        response: {
+          201: {
+            description: 'Successful response',
+            type: 'object',
+            properties: {
+              hello: { type: 'string' }
+            }
+          },
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              demo: { type: 'boolean' },
+              date: { type: 'string' },
+              body: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  role: { type: 'string' }
+                }
+              }
             }
           }
         } // swagger

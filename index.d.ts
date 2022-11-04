@@ -4,8 +4,11 @@ export {
   FastifyRequest,
   AuthenticatedUser,
   Role,
+  Data,
   Roles,
   Route,
   RouteConfig,
   ConfiguredRoute
 } from './types/global'
+
+export { getData } from './lib/util/common'

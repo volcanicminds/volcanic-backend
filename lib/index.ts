@@ -23,6 +23,7 @@ import fastifyApollo, { fastifyApolloHandler, fastifyApolloDrainPlugin } from '@
 import { myContextFunction, MyContext } from './apollo/context'
 import resolvers from './apollo/resolvers'
 import typeDefs from './apollo/type-defs'
+import { getData } from './util/common'
 
 async function attachApollo(fastify: FastifyInstance) {
   log.info('Attach ApolloServer to Fastify')
@@ -88,6 +89,7 @@ async function addFastifyRouting(fastify: FastifyInstance) {
       name: 'Huseyin',
       roles: ['admin', 'public']
     }
+    req.data = () => getData(req)
   })
 
   fastify.addHook('preParsing', async (req) => {
@@ -141,55 +143,55 @@ async function addFastifySwagger(fastify: FastifyInstance) {
       transformStaticCSP: (header) => header
     })
 
-    await fastify.put(
-      '/some-route/:id',
-      {
-        schema: {
-          description: 'post some data',
-          tags: ['user', 'code'],
-          deprecated: true,
-          summary: 'qwerty',
-          params: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-                description: 'user id'
-              }
-            }
-          },
-          body: {
-            type: 'object',
-            properties: {
-              hello: { type: 'string' },
-              obj: {
-                type: 'object',
-                properties: {
-                  some: { type: 'string' }
-                }
-              }
-            }
-          },
-          response: {
-            201: {
-              description: 'Successful response',
-              type: 'object',
-              properties: {
-                hello: { type: 'string' }
-              }
-            },
-            default: {
-              description: 'Default response',
-              type: 'object',
-              properties: {
-                foo: { type: 'string' }
-              }
-            }
-          }
-        }
-      },
-      (req, reply) => {}
-    )
+    // await fastify.put(
+    //   '/some-route/:id',
+    //   {
+    //     schema: {
+    //       description: 'post some data',
+    //       tags: ['user', 'code'],
+    //       deprecated: true,
+    //       summary: 'qwerty',
+    //       params: {
+    //         type: 'object',
+    //         properties: {
+    //           id: {
+    //             type: 'string',
+    //             description: 'user id'
+    //           }
+    //         }
+    //       },
+    //       body: {
+    //         type: 'object',
+    //         properties: {
+    //           hello: { type: 'string' },
+    //           obj: {
+    //             type: 'object',
+    //             properties: {
+    //               some: { type: 'string' }
+    //             }
+    //           }
+    //         }
+    //       },
+    //       response: {
+    //         201: {
+    //           description: 'Successful response',
+    //           type: 'object',
+    //           properties: {
+    //             hello: { type: 'string' }
+    //           }
+    //         },
+    //         default: {
+    //           description: 'Default response',
+    //           type: 'object',
+    //           properties: {
+    //             foo: { type: 'string' }
+    //           }
+    //         }
+    //       }
+    //     }
+    //   },
+    //   (req, reply) => {}
+    // )
   }
 }
 

@@ -9,5 +9,14 @@ export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function demo(req: FastifyRequest, reply: FastifyReply) {
-  reply.send({ demo: true })
+  const data = req.data() // query or body
+
+  log.debug('data ' + data.id + ' ' + data.role)
+
+  reply.send({
+    id: data.id || 'notfound',
+    demo: true,
+    date: new Date(),
+    body: data
+  })
 }

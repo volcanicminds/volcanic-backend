@@ -16,14 +16,19 @@ export interface Roles {
   [option: string]: Role
 }
 
+export interface Data {
+  [option: string]: any
+}
+
 export interface RouteConfig {
   title: string
   description: string
   enable: boolean
   deprecated: boolean
+  tags?: string[]
   version: string
-  params?: any
-  body?: any
+  params?: Data
+  body?: Data
   response?: any
 }
 
@@ -50,8 +55,10 @@ export interface ConfiguredRoute {
     summary?: string
     description?: string
     deprecated?: boolean
+    tags?: string[]
     version?: string
     params?: any
+    querystring?: any
     body?: any
     response?: any
   }
@@ -61,11 +68,13 @@ declare module 'fastify' {
   import { FastifyRequest } from 'fastify'
   export interface FastifyRequest {
     user?: AuthenticatedUser
+    data(): Data
   }
 }
 
 export interface FastifyRequest extends FastifyRequest {
   user?: AuthenticatedUser
+  data(): Data
 }
 
 export interface FastifyReply extends FastifyReply {}

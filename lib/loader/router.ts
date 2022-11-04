@@ -26,7 +26,6 @@ export function load(): ConfiguredRoute[] {
       if (defaultConfig.controller == null) defaultConfig.controller = 'controller'
 
       log.i && log.info(`Routes loaded: ${file} with ${routes.length} routes defined`)
-      log.d && log.debug(`Valid routes loaded from ${file}`)
 
       routes.forEach((route: Route, index: number) => {
         const errors: string[] = []
@@ -38,6 +37,7 @@ export function load(): ConfiguredRoute[] {
           description = '',
           enable = defaultConfig.enable || true,
           deprecated = defaultConfig.deprecated || false,
+          tags = defaultConfig.tags || false,
           version = defaultConfig.version || '',
           params,
           body,
@@ -98,8 +98,10 @@ export function load(): ConfiguredRoute[] {
               summary: title,
               description,
               deprecated,
+              tags,
               version,
-              params,
+              querystring: params,
+              // params,
               body,
               response
             }
