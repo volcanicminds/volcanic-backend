@@ -65,7 +65,7 @@ async function addFastifyRouting(fastify: FastifyInstance) {
 
   fastify.addHook('onResponse', async (req, reply) => {
     const elapsed: number = new Date().getTime() - (req.start?.getTime() || 0)
-    log.debug(`Return ${reply.statusCode} - ${req.method} ${req.url} (${elapsed}ms)`)
+    log.info(`Return ${reply.statusCode} - ${req.method} ${req.url} (${elapsed}ms)`)
     // log.debug(req)
     // log.debug('onResponse')
   })
