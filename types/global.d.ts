@@ -68,12 +68,14 @@ declare module 'fastify' {
   import { FastifyRequest } from 'fastify'
   export interface FastifyRequest {
     user?: AuthenticatedUser
+    start?: Date
     data(): Data
   }
 }
 
 export interface FastifyRequest extends FastifyRequest {
   user?: AuthenticatedUser
+  start?: Date
   data(): Data
 }
 

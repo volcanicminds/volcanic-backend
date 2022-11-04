@@ -24,6 +24,7 @@ import { myContextFunction, MyContext } from './apollo/context'
 import resolvers from './apollo/resolvers'
 import typeDefs from './apollo/type-defs'
 import { getData } from './util/common'
+// import { FastifyRequest } from './../types/global'
 
 async function attachApollo(fastify: FastifyInstance) {
   log.info('Attach ApolloServer to Fastify')
@@ -58,32 +59,35 @@ async function addApolloRouting(fastify: FastifyInstance, apollo: ApolloServer<M
 async function addFastifyRouting(fastify: FastifyInstance) {
   log.trace('Add fastify routes')
 
-  fastify.addHook('onSend', async (req, reply) => {
-    log.debug('onSend')
-  })
+  // fastify.addHook('onSend', async (req, reply) => {
+  //   log.debug('onSend')
+  // })
 
   fastify.addHook('onResponse', async (req, reply) => {
-    log.debug('onResponse')
+    const elapsed: number = new Date().getTime() - (req.start?.getTime() || 0)
+    log.debug(`Return ${reply.statusCode} - ${req.method} ${req.url} (${elapsed}ms)`)
+    // log.debug(req)
+    // log.debug('onResponse')
   })
 
-  fastify.addHook('onTimeout', async (req, reply) => {
-    log.debug('onTimeout')
-  })
+  // fastify.addHook('onTimeout', async (req, reply) => {
+  //   log.debug('onTimeout')
+  // })
 
-  fastify.addHook('onReady', async () => {
-    log.debug('onReady')
-  })
+  // fastify.addHook('onReady', async () => {
+  //   log.debug('onReady')
+  // })
 
-  fastify.addHook('onClose', async (instance) => {
-    log.debug('onClose')
-  })
+  // fastify.addHook('onClose', async (instance) => {
+  //   log.debug('onClose')
+  // })
 
   fastify.addHook('onError', async (req, reply, error) => {
     log.debug(`onError ${error}`)
   })
 
   fastify.addHook('onRequest', async (req, reply) => {
-    log.debug(`onRequest ${req.method} ${req.url}`)
+    req.start = new Date()
     req.user = {
       id: 306,
       name: 'Huseyin',
@@ -92,14 +96,14 @@ async function addFastifyRouting(fastify: FastifyInstance) {
     req.data = () => getData(req)
   })
 
-  fastify.addHook('preParsing', async (req) => {
-    log.debug(`preParsing ${req.method} ${req.url}`)
-    req.user = {
-      id: 42,
-      name: 'Jane Doe',
-      roles: ['admin', 'public']
-    }
-  })
+  // fastify.addHook('preParsing', async (req) => {
+  //   log.debug(`preParsing ${req.method} ${req.url}`)
+  //   req.user = {
+  //     id: 42,
+  //     name: 'Jane Doe',
+  //     roles: ['admin', 'public']
+  //   }
+  // })
 
   const routes = loaderRouter.load()
   routes && loaderRouter.apply(fastify, routes)
