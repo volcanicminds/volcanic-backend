@@ -17,5 +17,5 @@ RUN apk --no-cache add curl
 # Bundle app source
 COPY . .
 
-# EXPOSE 2230
+EXPOSE 2230
 CMD [ "yarn", "start" ]
