@@ -3,11 +3,12 @@
 import dotenv from 'dotenv'
 dotenv.config()
 
-import yn from './util/yn'
-import logger from './util/logger'
-import * as mark from './util/mark'
-import * as loaderRoles from './loader/roles'
-import * as loaderRouter from './loader/router'
+import yn from './lib/util/yn'
+import logger from './lib/util/logger'
+import * as mark from './lib/util/mark'
+import * as loaderRoles from './lib/loader/roles'
+import * as loaderRouter from './lib/loader/router'
+import * as loaderHooks from './lib/loader/hooks'
 
 import Fastify, { FastifyInstance } from 'fastify'
 import swagger from '@fastify/swagger'
@@ -20,10 +21,10 @@ import rateLimit from '@fastify/rate-limit'
 
 import { ApolloServer } from '@apollo/server'
 import fastifyApollo, { fastifyApolloHandler, fastifyApolloDrainPlugin } from '@as-integrations/fastify'
-import { myContextFunction, MyContext } from './apollo/context'
-import resolvers from './apollo/resolvers'
-import typeDefs from './apollo/type-defs'
-import { getParams, getData } from './util/common'
+import { myContextFunction, MyContext } from './lib/apollo/context'
+import resolvers from './lib/apollo/resolvers'
+import typeDefs from './lib/apollo/type-defs'
+import { getParams, getData } from './lib/util/common'
 // import { FastifyRequest } from './../types/global'
 
 async function attachApollo(fastify: FastifyInstance) {
@@ -62,6 +63,8 @@ async function addFastifyRouting(fastify: FastifyInstance) {
   // fastify.addHook('onSend', async (req, reply) => {
   //   log.debug('onSend')
   // })
+
+  loaderHooks.apply(fastify)
 
   fastify.addHook('onResponse', async (req, reply) => {
     const elapsed: number = new Date().getTime() - (req.start?.getTime() || 0)
@@ -255,6 +258,21 @@ const start = async () => {
 
   return fastify
 }
+
+export {
+  global,
+  FastifyReply,
+  FastifyRequest,
+  AuthenticatedUser,
+  Role,
+  Data,
+  Roles,
+  Route,
+  RouteConfig,
+  ConfiguredRoute
+} from './types/global'
+
+export { getData } from './lib/util/common'
 
 /**
  * These export configurations enable JS and TS developers

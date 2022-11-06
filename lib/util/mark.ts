@@ -1,4 +1,4 @@
-const pkg = require('../../package.json')
+const pkg = require('root-require')('package.json')
 
 /**
  * Minimal mark printed at startup

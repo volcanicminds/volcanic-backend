@@ -4503,6 +4503,11 @@ package-json@^6.3.0:
     registry-url "^5.0.0"
     semver "^6.2.0"
 
+packpath@~0.1.0:
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/packpath/-/packpath-0.1.0.tgz#a521534222dfeaa9c612ef0c640ec399149ecdd8"
+  integrity sha512-6E+ncOyZ83bDW/3TFriKpz8XENvpG56Yt3di3KjyYaJV5deZ4o0OmwvFThHrscugBfGQqTWOGnf2IoEecJewuA==
+
 pacote@11.2.7:
   version "11.2.7"
   resolved "https://registry.yarnpkg.com/pacote/-/pacote-11.2.7.tgz#a44a9d40d4feac524e9ce78d77e2b390181d8afc"
@@ -5066,6 +5071,13 @@ rimraf@^3.0.2:
   integrity sha512-JZkJMZkAGFFPP2YqXZXPbMlMBgsxzE8ILs4lMIX/2o0L9UBw9O/Y3o6wFw/i9YLapcUJWwqbi3kdxIPdC62TIA==
   dependencies:
     glob "^7.1.3"
+
+root-require@^0.3.1:
+  version "0.3.1"
+  resolved "https://registry.yarnpkg.com/root-require/-/root-require-0.3.1.tgz#95e1554d63cc869a2abde3e3bfc9bbaaa1edacd3"
+  integrity sha512-ELHRna2cNq2HK6BxBGgyLtNCb4ltsQc0Y03ihTlb0VGR4f3zTVZ3soiu215Oqxfwncd5teOEk3sQkD8uHQBZBw==
+  dependencies:
+    packpath "~0.1.0"
 
 run-async@^2.4.0:
   version "2.4.1"

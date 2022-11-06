@@ -12,3 +12,4 @@ https://json-schema.org/draft/2020-12/json-schema-validation.html#name-pattern
 - validations
 - authentication
 - metrics (plugin?)
+- api versioning

@@ -1,6 +1,4 @@
-import { Role } from '../../types/global'
-
-export const roles: Role[] = [
+module.exports = [
   {
     code: 'public',
     name: 'Public',
