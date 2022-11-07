@@ -1,6 +1,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![opensource](https://img.shields.io/badge/open-source-blue)](https://en.wikipedia.org/wiki/Open_source)
 [![volcanic-backend](https://img.shields.io/badge/volcanic-minds-orange)](https://github.com/volcanicminds/volcanic-backend)
+[![npm](https://img.shields.io/badge/package-npm-white)](https://www.npmjs.com/package/@volcanicminds/backend)
 
 # volcanic-backend
 
@@ -11,6 +12,18 @@ Based on [Fastify](https://www.fastify.io) ([GitHub](https://github.com/fastify/
 Based on [Apollo Server](https://www.apollographql.com) ([GitHub](https://github.com/apollographql/apollo-server)).
 
 And, what you see in [package.json](package.json).
+
+## How to install
+
+```js
+yarn add @volcanicminds/backend
+```
+
+## How to upgrade packages
+
+```js
+yarn upgrade-deps
+```
 
 ## Environment (example)
 
@@ -40,12 +53,6 @@ SRV_COMPRESS=false
 ```
 
 For docker may be useful set HOST as 0.0.0.0 (instead 127.0.0.1).
-
-## How to upgrade packages
-
-```js
-yarn upgrade-deps
-```
 
 ## How to run
 
