@@ -256,3 +256,39 @@ You can use something like this to specify which roles (routes.ts) can recall so
 ```js
 roles: [roles.admin, roles.public]
 ```
+
+## Hooks
+
+It's possible add hook to application or request/reply lifecycles. More info on [Fastify Hooks](https://www.fastify.io/docs/latest/Reference/Hooks/).
+
+Available hooks are:
+
+```js
+const hooks = [
+  'onRequest',
+  'onError',
+  'onSend',
+  'onResponse',
+  'onTimeout',
+  'onReady',
+  'onClose',
+  'onRoute',
+  'onRegistry',
+  'preParsing',
+  'preValidation',
+  'preSeralization',
+  'preHandler'
+]
+```
+
+Under `src` create the `hooks` folder and inside add the hook as shown in the fastify docs, for example:
+
+```js
+// src/hooks/onRequest.ts
+
+async function hook(req, reply) {
+  log.debug('onRequest called')
+}
+
+export { hook }
+```
