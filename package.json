@@ -25,7 +25,8 @@
     "postgresql",
     "graphql",
     "pino",
-    "rate limit"
+    "rate limit",
+    "jest"
   ],
   "main": "dist/index",
   "typings": "dist/index",
