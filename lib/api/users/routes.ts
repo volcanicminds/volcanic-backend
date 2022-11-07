@@ -3,7 +3,7 @@ module.exports = {
     title: 'User useful functions',
     description: 'User useful functions',
     controller: 'controller',
-    tags: ['user'], // swagger
+    tags: ['users'],
     enable: true,
     deprecated: false, // swagger
     version: false // swagger
@@ -19,7 +19,6 @@ module.exports = {
         enable: true,
         title: 'Get current user', // swagger summary
         description: 'Get current user', // swagger
-        tags: ['user'], // swagger
         deprecated: false, // swagger
         version: false, // swagger
         response: {
@@ -64,7 +63,6 @@ module.exports = {
         enable: false,
         title: 'Me title', // swagger summary
         description: 'Me description', // swagger
-        tags: ['user', 'code'], // swagger
         deprecated: false, // swagger
         version: false, // swagger
         params: {
@@ -108,7 +106,6 @@ module.exports = {
         enable: false,
         title: 'Me title', // swagger summary
         description: 'Me description', // swagger
-        tags: ['user', 'code'], // swagger
         deprecated: false, // swagger
         version: false, // swagger
         body: {

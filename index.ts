@@ -115,7 +115,8 @@ async function addFastifyRouting(fastify: FastifyInstance) {
 }
 
 async function addFastifySwagger(fastify: FastifyInstance) {
-  const { NODE_ENV, SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION, SWAGGER_PREFIX_URL } = process.env
+  const { NODE_ENV, SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION, SWAGGER_PREFIX_URL, SWAGGER_HOST } =
+    process.env
 
   const loadSwagger = yn(SWAGGER, false)
   if (loadSwagger && NODE_ENV !== 'production') {
@@ -128,6 +129,8 @@ async function addFastifySwagger(fastify: FastifyInstance) {
           description: SWAGGER_DESCRIPTION || 'List of available APIs and schemes to use',
           version: SWAGGER_VERSION || '0.1.0'
         },
+        host: SWAGGER_HOST || 'localhost:2230',
+        schemes: ['http', 'https'],
         consumes: ['application/json'],
         produces: ['application/json']
       }

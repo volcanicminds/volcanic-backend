@@ -129,6 +129,7 @@ In the .env file you can change swagger settings in this way:
 
 ```ruby
 SWAGGER=true
+SWAGGER_HOST=localhost
 SWAGGER_TITLE=API Documentation
 SWAGGER_DESCRIPTION=List of available APIs and schemes to use
 SWAGGER_VERSION=0.1.0
