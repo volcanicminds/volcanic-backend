@@ -140,10 +140,10 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
         handler: (req: FastifyRequest, reply: FastifyReply) => {
           try {
             if (roles?.length > 0) {
-              const userRoles = req.user?.roles || []
-              const resolvedRole = roles.filter((r) => userRoles.includes(r.code))
+              const userRoles: string[] = req.user?.roles?.map(({ code }) => code) || []
+              const resolvedRole = userRoles.length > 0 ? roles.filter((r) => userRoles.includes(r.code)) : []
 
-              if (!resolvedRole || resolvedRole.length === 0) {
+              if (!!resolvedRole?.length) {
                 log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${path}`)
                 return reply.code(403).send()
               }

@@ -92,13 +92,11 @@ async function addFastifyRouting(fastify: FastifyInstance) {
 
   fastify.addHook('onRequest', async (req, reply) => {
     req.start = new Date()
-    req.user = {
-      id: 306,
-      name: 'Huseyin',
-      roles: ['admin', 'public']
-    }
     req.data = () => getData(req)
     req.pars = () => getParams(req)
+    if (req.user) {
+      req.user.getRoles = () => req.user?.roles?.map(({ code }) => code) || []
+    }
   })
 
   // fastify.addHook('preParsing', async (req) => {

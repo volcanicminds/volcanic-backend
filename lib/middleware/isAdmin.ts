@@ -3,7 +3,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 const log = global.log
 module.exports = (req: FastifyRequest, res: FastifyReply, next: any) => {
   try {
-    if (!!req.user?.id && (req.user?.roles || []).includes(roles.admin.code)) {
+    if (!!req.user?.id && req.user.getRoles().includes(roles.admin.code)) {
       log.d && log.trace('isAdmin - user id ' + req.user?.id)
       return next()
     }
