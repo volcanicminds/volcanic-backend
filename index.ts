@@ -24,7 +24,6 @@ import fastifyApollo, { fastifyApolloHandler, fastifyApolloDrainPlugin } from '@
 import { myContextFunction, MyContext } from './lib/apollo/context'
 import resolvers from './lib/apollo/resolvers'
 import typeDefs from './lib/apollo/type-defs'
-// import { FastifyRequest } from './../types/global'
 
 async function attachApollo(fastify: FastifyInstance) {
   log.info('Attach ApolloServer to Fastify')
