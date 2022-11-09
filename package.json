@@ -55,6 +55,7 @@
     "dotenv": "^16.0.3",
     "fastify": "^4.9.2",
     "graphql": "^16.6.0",
+    "object-sizeof": "^1.6.3",
     "pino": "^8.7.0",
     "pino-pretty": "^9.1.1",
     "root-require": "^0.3.1"

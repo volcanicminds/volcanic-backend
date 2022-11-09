@@ -24,7 +24,6 @@ import fastifyApollo, { fastifyApolloHandler, fastifyApolloDrainPlugin } from '@
 import { myContextFunction, MyContext } from './lib/apollo/context'
 import resolvers from './lib/apollo/resolvers'
 import typeDefs from './lib/apollo/type-defs'
-import { getParams, getData } from './lib/util/common'
 // import { FastifyRequest } from './../types/global'
 
 async function attachApollo(fastify: FastifyInstance) {
@@ -60,53 +59,9 @@ async function addApolloRouting(fastify: FastifyInstance, apollo: ApolloServer<M
 async function addFastifyRouting(fastify: FastifyInstance) {
   log.trace('Add fastify routes')
 
-  // fastify.addHook('onSend', async (req, reply) => {
-  //   log.debug('onSend')
-  // })
-
   loaderHooks.apply(fastify)
 
-  fastify.addHook('onResponse', async (req, reply) => {
-    const elapsed: number = new Date().getTime() - (req.start?.getTime() || 0)
-    const message: string = `Return ${reply.statusCode} - ${req.method} ${req.url} (${elapsed}ms)`
-    reply.statusCode < 300 ? log.info(message) : reply.statusCode < 400 ? log.warn(message) : log.error(message)
-    // log.debug(req)
-    // log.debug('onResponse')
-  })
-
-  // fastify.addHook('onTimeout', async (req, reply) => {
-  //   log.debug('onTimeout')
-  // })
-
-  // fastify.addHook('onReady', async () => {
-  //   log.debug('onReady')
-  // })
-
-  // fastify.addHook('onClose', async (instance) => {
-  //   log.debug('onClose')
-  // })
-
-  fastify.addHook('onError', async (req, reply, error) => {
-    log.debug(`onError ${error}`)
-  })
-
-  fastify.addHook('onRequest', async (req, reply) => {
-    req.start = new Date()
-    req.data = () => getData(req)
-    req.pars = () => getParams(req)
-    if (req.user) {
-      req.user.getRoles = () => req.user?.roles?.map(({ code }) => code) || []
-    }
-  })
-
-  // fastify.addHook('preParsing', async (req) => {
-  //   log.debug(`preParsing ${req.method} ${req.url}`)
-  //   req.user = {
-  //     id: 42,
-  //     name: 'Jane Doe',
-  //     roles: ['admin', 'public']
-  //   }
-  // })
+  fastify.addHook('onRequest', async (req, reply) => {})
 
   const routes = loaderRouter.load()
   routes && loaderRouter.apply(fastify, routes)
@@ -251,10 +206,10 @@ const start = async () => {
     .then((address) => {
       const elapsed = (new Date().getTime() - begin) / 100
       log.info(`All stuff loaded in ${elapsed} sec`)
-      log.info(`🚀 Server ready at ${address}`)
+      log.info(`Server ready at ${address} 🚀`)
 
       const loadSwagger = yn(process.env.SWAGGER, false)
-      loadSwagger && log.info(`📄 Swagger ready at ${address}${process.env.SWAGGER_PREFIX_URL || '/documentation'}`)
+      loadSwagger && log.info(`Swagger ready at ${address}${process.env.SWAGGER_PREFIX_URL || '/documentation'} 📄`)
     })
 
   return fastify

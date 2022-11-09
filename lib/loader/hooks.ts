@@ -10,7 +10,7 @@ const hooks = [
   'onRegistry',
   'preParsing',
   'preValidation',
-  'preSeralization',
+  'preSerialization',
   'preHandler'
 ]
 
@@ -18,7 +18,6 @@ const glob = require('glob')
 const path = require('path')
 
 export function apply(server: any): void {
-  log.debug('LOAD HOOKS')
   //const patterns = [`{${__dirname},${process.cwd()}}/../hooks/*.{ts,js}`]
   const patterns = [`${__dirname}/../hooks/*.{ts,js}`, `${process.cwd()}/src/hooks/*.{ts,js}`]
   const allHooks: any = hooks.reduce((acc, v) => ({ ...acc, [v]: [] as Function[] }), {})
@@ -28,7 +27,7 @@ export function apply(server: any): void {
     log.d && log.debug('Looking for ' + pattern)
     glob.sync(pattern).forEach((f: string) => {
       const hookName = path.basename(f, path.extname(f))
-      const { hook: fn } = require(f)
+      const fn = require(f)
 
       if (fn != null) {
         if (allHooks[hookName] == null) {
