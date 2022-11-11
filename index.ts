@@ -20,10 +20,12 @@ import compress from '@fastify/compress'
 import rateLimit from '@fastify/rate-limit'
 
 import { ApolloServer } from '@apollo/server'
-import fastifyApollo, { fastifyApolloHandler, fastifyApolloDrainPlugin } from '@as-integrations/fastify'
+import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastify'
 import { myContextFunction, MyContext } from './lib/apollo/context'
 import resolvers from './lib/apollo/resolvers'
 import typeDefs from './lib/apollo/type-defs'
+
+global.log = logger
 
 async function attachApollo(fastify: FastifyInstance) {
   log.info('Attach ApolloServer to Fastify')
@@ -59,7 +61,6 @@ async function addFastifyRouting(fastify: FastifyInstance) {
   log.trace('Add fastify routes')
 
   loaderHooks.apply(fastify)
-
   fastify.addHook('onRequest', async (req, reply) => {})
 
   const routes = loaderRouter.load()
@@ -162,8 +163,6 @@ async function addFastifySwagger(fastify: FastifyInstance) {
 const start = async () => {
   const begin = new Date().getTime()
   mark.print(logger)
-
-  global.log = logger
   global.roles = loaderRoles.load()
 
   const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: logger } : {}
@@ -187,8 +186,6 @@ const start = async () => {
   const apollo = loadApollo ? await attachApollo(fastify) : null
   // Helmet is not usable with Apollo Server
   !loadApollo && addPluginHelmet && (await fastify.register(helmet))
-
-  // Usable with Apollo Server
   addPluginRateLimit && (await fastify.register(rateLimit))
   addPluginCors && (await fastify.register(cors))
   addPluginCompress && (await fastify.register(compress))
