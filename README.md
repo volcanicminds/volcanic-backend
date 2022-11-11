@@ -15,13 +15,13 @@ And, what you see in [package.json](package.json).
 
 ## How to install
 
-```js
+```ts
 yarn add @volcanicminds/backend
 ```
 
 ## How to upgrade packages
 
-```js
+```ts
 yarn upgrade-deps
 ```
 
@@ -56,7 +56,7 @@ For docker may be useful set HOST as 0.0.0.0 (instead 127.0.0.1).
 
 ## How to run
 
-```js
+```ts
 yarn dev
 yarn start
 yarn prod
@@ -66,7 +66,7 @@ When you execute `yarn dev` the server is restarted whenever a .js/.ts file is c
 
 ## How to test (logic)
 
-```js
+```ts
 yarn test
 yarn test -t 'Logging'
 ```
@@ -96,7 +96,7 @@ Log levels:
 
 a bit of code:
 
-```js
+```ts
 log.trace('Annoying message')
 log.debug('Where is my bug?')
 log.info('Useful information')
@@ -124,7 +124,7 @@ Other settings:
 
 Defaults, see [logger.ts](./lib/util/logger.ts):
 
-```js
+```ts
 const logColorize = yn(LOG_COLORIZE, true)
 const logTimestamp = yn(LOG_TIMESTAMP, true)
 const logTimestampReadable = yn(LOG_TIMESTAMP_READABLE, true)
@@ -158,7 +158,7 @@ SRV_COMPRESS=false
 
 Minimal setup (routes.ts):
 
-```js
+```ts
 module.exports = {
   routes: [
     {
@@ -177,7 +177,7 @@ Some notes:
 - It's possible define a list of **roles** (optional).
 - It's possible define a list of **middleware** (optional).
 
-```js
+```ts
 module.exports = {
   config: {
     title: 'Example of routes.ts',
@@ -226,7 +226,7 @@ module.exports = {
 
 ## Controllers
 
-```js
+```ts
 import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
 
 export async function user(req: FastifyRequest, reply: FastifyReply) {
@@ -247,7 +247,7 @@ By default, there are some basic roles:
 
 In this way you can add custom roles:
 
-```js
+```ts
 import { Role } from '@volcanicminds/backend'
 
 export const roles: Role[] = [
@@ -261,7 +261,7 @@ export const roles: Role[] = [
 
 You can use something like this to specify which roles (routes.ts) can recall some routes:
 
-```js
+```ts
 roles: [roles.admin, roles.public]
 ```
 
@@ -271,7 +271,7 @@ It's possible add hook to application or request/reply lifecycles. More info on 
 
 Available hooks are:
 
-```js
+```ts
 const hooks = [
   'onRequest',
   'onError',
@@ -291,7 +291,7 @@ const hooks = [
 
 Under `src` create the `hooks` folder and inside add the hook as shown in the fastify docs, for example:
 
-```js
+```ts
 // src/hooks/onRequest.ts
 
 async function hook(req, reply) {
