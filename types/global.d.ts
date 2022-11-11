@@ -73,6 +73,10 @@ declare module 'fastify' {
     start?: Date
     data(): Data
     pars(): Data
+    payloadSize?: number
+  }
+  export interface FastifyReply {
+    payloadSize?: number
   }
 }
 
@@ -81,15 +85,22 @@ export interface FastifyRequest extends FastifyRequest {
   start?: Date
   data(): Data
   pars(): Data
+  payloadSize?: number
 }
 
-export interface FastifyReply extends FastifyReply {}
+export interface FastifyReply extends FastifyReply {
+  payloadSize?: number
+}
 
 export interface global {}
 
 declare global {
   var log: any
   var roles: Roles
+  var database: {
+    model: any
+    repository: any
+  }
 }
 
 export { global }
