@@ -18,10 +18,8 @@ const glob = require('glob')
 const path = require('path')
 
 export function apply(server: any): void {
-  //const patterns = [`{${__dirname},${process.cwd()}}/../hooks/*.{ts,js}`]
   const patterns = [`${__dirname}/../hooks/*.{ts,js}`, `${process.cwd()}/src/hooks/*.{ts,js}`]
   const allHooks: any = hooks.reduce((acc, v) => ({ ...acc, [v]: [] as Function[] }), {})
-  // log.error(allHooks)
 
   patterns.forEach((pattern) => {
     log.d && log.debug('Looking for ' + pattern)
