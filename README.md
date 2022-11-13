@@ -300,3 +300,7 @@ async function hook(req, reply) {
 
 export { hook }
 ```
+
+## Database
+
+Use package `@volcaniminds/typeorm`

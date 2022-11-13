@@ -9,7 +9,6 @@ https://json-schema.org/draft/2020-12/json-schema-validation.html#name-pattern
 - route schemas ($ref)
 - validations
 - authentication
-- metrics (plugin?)
 - api versioning
 
 ## knex
