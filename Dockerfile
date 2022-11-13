@@ -1,4 +1,4 @@
-FROM node:16-alpine
+FROM node:18-alpine
 
 LABEL version="0.1.0"
 LABEL description="Volcanic Backend"
