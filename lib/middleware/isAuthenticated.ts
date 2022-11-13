@@ -3,7 +3,6 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 const log = global.log
 module.exports = (req: FastifyRequest, res: FastifyReply, next: any) => {
   try {
-    // TODO: do something and then you can throw an exception or call next()..
     if (!!req.user?.id) {
       log.d && log.trace('isAuthenticated - user id ' + req.user?.id)
       return next()

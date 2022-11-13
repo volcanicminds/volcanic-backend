@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * Minimal logger thanks to Pino
+ * Minimal logger (thanks Pino)
  */
 
 // log.debug('test log test log test log')

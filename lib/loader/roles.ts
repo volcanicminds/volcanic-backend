@@ -1,8 +1,5 @@
 import { Role, Roles } from '../../types/global'
-// import { roles as configRoles } from '../config/roles'
-
 const glob = require('glob')
-// const path = require('path')
 
 export function load() {
   const roles: Roles = {}

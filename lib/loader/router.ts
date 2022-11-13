@@ -94,7 +94,7 @@ export function load(): ConfiguredRoute[] {
             base,
             file: path.join(base, defaultConfig.controller, handlerParts[0]),
             func: handlerParts[1],
-            // swagger
+            // swagger: doc
             doc: {
               summary: title,
               description,
