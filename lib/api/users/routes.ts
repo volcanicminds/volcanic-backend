@@ -50,7 +50,23 @@ module.exports = {
         description: 'Check if the current user is an admin',
         enable: true,
         deprecated: false,
-        version: false
+        version: false,
+        response: {
+          403: {
+            description: 'Successful response',
+            type: 'object',
+            properties: {
+              hello: { type: 'string' }
+            }
+          },
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' }
+            }
+          }
+        } // swagger
       }
     }
   ]
