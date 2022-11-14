@@ -23,8 +23,8 @@ module.exports = {
         version: false, // swagger
         response: {
           403: {
-            description: 'Forbidden',
-            type: 'object'
+            description: 'Unauthorized',
+            type: 'string'
           },
           200: {
             description: 'Default response',
@@ -50,8 +50,8 @@ module.exports = {
         version: false,
         response: {
           403: {
-            description: 'Forbidden',
-            type: 'object'
+            description: 'Unauthorized',
+            type: 'string'
           },
           200: {
             description: 'Default response',
