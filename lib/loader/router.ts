@@ -10,7 +10,7 @@ export function load(): ConfiguredRoute[] {
   const patterns = [`${__dirname}/../api/**/routes.{ts,js}`, `${process.cwd()}/src/api/**/routes.{ts,js}`]
 
   patterns.forEach((pattern) => {
-    log.d && log.debug('Looking for ' + pattern)
+    log.t && log.trace('Looking for ' + pattern)
     glob.sync(pattern).forEach((f: string, index: number, values: string[]) => {
       const base = path.dirname(f)
       const dir = path.basename(base)

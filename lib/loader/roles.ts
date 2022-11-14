@@ -6,7 +6,7 @@ export function load() {
 
   const patterns = [`${__dirname}/../config/roles.{ts,js}`, `${process.cwd()}/src/config/roles.{ts,js}`]
   patterns.forEach((pattern) => {
-    log.d && log.debug('Looking for ' + pattern)
+    log.t && log.trace('Looking for ' + pattern)
     glob.sync(pattern).forEach((f: string) => {
       const configRoles = require(f)
 

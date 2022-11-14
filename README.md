@@ -265,6 +265,10 @@ You can use something like this to specify which roles (routes.ts) can recall so
 roles: [roles.admin, roles.public]
 ```
 
+## Database
+
+Use package `@volcaniminds/typeorm`
+
 ## Hooks
 
 It's possible add hook to application or request/reply lifecycles. More info on [Fastify Hooks](https://www.fastify.io/docs/latest/Reference/Hooks/).
@@ -301,6 +305,27 @@ async function hook(req, reply) {
 export { hook }
 ```
 
-## Database
+## Schemas
 
-Use package `@volcaniminds/typeorm`
+It's possible add schemas referenceable by `$ref`. More info on [Fastify Validation & Serialization](https://www.fastify.io/docs/latest/Reference/Validation-and-Serialization/).
+
+Under `src` create the `schemas` folder and inside add the schema as shown in the fastify docs, for example:
+
+```ts
+module.exports = {
+  $id: 'commonSchema',
+  type: 'object',
+  properties: {
+    hello: { type: 'string' }
+  }
+}
+```
+
+So, in your `routes.ts` you'll can use something like this:
+
+```ts
+  params: { $ref: 'commonSchema#' },
+  query: { $ref: 'commonSchema#' },
+  body: { $ref: 'commonSchema#' },
+  headers: { $ref: 'commonSchema#' }
+```

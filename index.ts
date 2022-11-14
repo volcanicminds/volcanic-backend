@@ -9,6 +9,7 @@ import * as mark from './lib/util/mark'
 import * as loaderRoles from './lib/loader/roles'
 import * as loaderRouter from './lib/loader/router'
 import * as loaderHooks from './lib/loader/hooks'
+import * as loaderSchemas from './lib/loader/schemas'
 
 import Fastify, { FastifyInstance } from 'fastify'
 import swagger from '@fastify/swagger'
@@ -61,7 +62,7 @@ async function addFastifyRouting(fastify: FastifyInstance) {
   log.trace('Add fastify routes')
 
   loaderHooks.apply(fastify)
-  fastify.addHook('onRequest', async (req, reply) => {})
+  loaderSchemas.apply(fastify)
 
   const routes = loaderRouter.load()
   routes && loaderRouter.apply(fastify, routes)

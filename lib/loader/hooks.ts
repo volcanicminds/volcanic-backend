@@ -22,7 +22,7 @@ export function apply(server: any): void {
   const allHooks: any = hooks.reduce((acc, v) => ({ ...acc, [v]: [] as Function[] }), {})
 
   patterns.forEach((pattern) => {
-    log.d && log.debug('Looking for ' + pattern)
+    log.t && log.trace('Looking for ' + pattern)
     glob.sync(pattern).forEach((f: string) => {
       const hookName = path.basename(f, path.extname(f))
       const fn = require(f)
