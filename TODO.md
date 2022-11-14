@@ -6,7 +6,6 @@ https://github.com/fastify/fastify-swagger
 https://www.fastify.io/docs/latest/Reference/Validation-and-Serialization/
 https://json-schema.org/draft/2020-12/json-schema-validation.html#name-pattern
 
-- route schemas ($ref)
 - validations
 - authentication
 - api versioning
