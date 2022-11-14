@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "codename": "turin",
   "license": "MIT",
   "description": "The volcanic (minds) backend",
@@ -57,7 +57,8 @@
     "object-sizeof": "^1.6.3",
     "pino": "^8.7.0",
     "pino-pretty": "^9.1.1",
-    "root-require": "^0.3.1"
+    "root-require": "^0.3.1",
+    "semver": "^7.3.8"
   },
   "devDependencies": {
     "jest": "^29.3.1",
