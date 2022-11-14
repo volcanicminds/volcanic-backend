@@ -42,15 +42,15 @@
     "upgrade-deps": "npm-upgrade"
   },
   "dependencies": {
-    "@apollo/server": "^4.0.2",
+    "@apollo/server": "^4.1.1",
     "@as-integrations/fastify": "^1.1.0",
     "@fastify/compress": "^6.1.1",
-    "@fastify/cors": "^8.1.0",
+    "@fastify/cors": "^8.2.0",
     "@fastify/helmet": "^10.0.2",
     "@fastify/rate-limit": "^7.5.0",
-    "@fastify/swagger": "^8.0.0",
-    "@fastify/swagger-ui": "^1.1.0",
-    "@types/node": "^18.11.3",
+    "@fastify/swagger": "^8.1.0",
+    "@fastify/swagger-ui": "^1.2.0",
+    "@types/node": "^18.11.9",
     "dotenv": "^16.0.3",
     "fastify": "^4.9.2",
     "graphql": "^16.6.0",
@@ -60,7 +60,7 @@
     "root-require": "^0.3.1"
   },
   "devDependencies": {
-    "jest": "^29.2.1",
+    "jest": "^29.3.1",
     "nodemon": "^2.0.20",
     "npm-upgrade": "^3.1.0",
     "ts-node": "^10.9.1",
