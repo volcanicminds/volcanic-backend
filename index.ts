@@ -172,11 +172,11 @@ const start = async () => {
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
   const { SRV_CORS, SRV_HELMET, SRV_RATELIMIT, SRV_COMPRESS } = process.env
 
-  const loadApollo = yn(GRAPHQL, true)
-  const addPluginCors = yn(SRV_CORS, true)
-  const addPluginHelmet = yn(SRV_HELMET, true)
-  const addPluginRateLimit = yn(SRV_RATELIMIT, true)
-  const addPluginCompress = yn(SRV_COMPRESS, true)
+  const loadApollo = yn(GRAPHQL, false)
+  const addPluginCors = yn(SRV_CORS, false)
+  const addPluginHelmet = yn(SRV_HELMET, false)
+  const addPluginRateLimit = yn(SRV_RATELIMIT, false)
+  const addPluginCompress = yn(SRV_COMPRESS, false)
 
   log.t && log.trace(`Attach Apollo Server ${loadApollo}`)
   log.t && log.trace(`Add plugin CORS: ${addPluginCors}`)
