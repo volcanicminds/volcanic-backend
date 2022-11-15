@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM --platform=linux/amd64 node:18-alpine
 
 LABEL version="0.1.0"
 LABEL description="Volcanic Backend"
@@ -12,7 +12,6 @@ COPY package*.json yarn.lock ./
 COPY lib lib/
 
 RUN yarn install
-RUN apk --no-cache add curl
 
 # Bundle app source
 COPY . .
