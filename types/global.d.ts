@@ -5,6 +5,7 @@ export interface AuthenticatedUser {
   extra: any
   roles: Role[]
   getRoles(): string[]
+  hasRole(role: Role): boolean
 }
 
 export interface Role {

@@ -18,5 +18,5 @@ export function apply(server: any): void {
     })
   })
 
-  log.debug(`Schemas loaded: ${schemaCount} referenceable by $ref`)
+  log.i && log.info(`Schemas loaded: ${schemaCount} referenceable by $ref`)
 }

@@ -57,7 +57,7 @@ module.exports = {
             description: 'Default response',
             type: 'object',
             properties: {
-              ok: { type: 'boolean' }
+              isAdmin: { type: 'boolean' }
             }
           }
         } // swagger

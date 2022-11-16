@@ -5,5 +5,5 @@ export async function user(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
-  reply.send({ isAdmin: !!req.user?.id && req.user.getRoles().includes('admin') })
+  reply.send({ isAdmin: req.user && req.user.id && req.user.hasRole(roles.admin) })
 }
