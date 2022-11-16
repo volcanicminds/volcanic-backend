@@ -30,7 +30,10 @@ module.exports = {
             description: 'Default response',
             type: 'object',
             properties: {
-              id: { type: 'number' }
+              id: { type: 'number' },
+              name: { type: 'string' },
+              email: { type: 'string' },
+              roles: { type: 'array' }
             }
           }
         } // swagger

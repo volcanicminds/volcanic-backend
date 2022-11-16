@@ -137,18 +137,11 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
         path: path,
         schema: doc,
         preHandler: allMiddlewares,
-        handler: (req: FastifyRequest, reply: FastifyReply) => {
+        config: {
+          requiredRoles: roles || []
+        },
+        handler: function (req: FastifyRequest, reply: FastifyReply) {
           try {
-            if (roles?.length > 0) {
-              const userRoles: string[] = req.user?.roles?.map(({ code }) => code) || []
-              const resolvedRole = userRoles.length > 0 ? roles.filter((r) => userRoles.includes(r.code)) : []
-
-              if (!!resolvedRole?.length) {
-                log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${path}`)
-                return reply.code(403).send()
-              }
-            }
-
             return require(file)[func](req, reply)
           } catch (err) {
             log.e && log.error(`Cannot find ${file}.js or method ${func}: ${err}`)

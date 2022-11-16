@@ -12,6 +12,7 @@ import * as loaderHooks from './lib/loader/hooks'
 import * as loaderSchemas from './lib/loader/schemas'
 
 import Fastify, { FastifyInstance } from 'fastify'
+import jwtValidator from '@fastify/jwt'
 import swagger from '@fastify/swagger'
 import swaggerUI from '@fastify/swagger-ui'
 
@@ -69,11 +70,10 @@ async function addFastifyRouting(fastify: FastifyInstance) {
 }
 
 async function addFastifySwagger(fastify: FastifyInstance) {
-  const { NODE_ENV, SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION, SWAGGER_PREFIX_URL, SWAGGER_HOST } =
-    process.env
+  const { SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION, SWAGGER_PREFIX_URL, SWAGGER_HOST } = process.env
 
   const loadSwagger = yn(SWAGGER, false)
-  if (loadSwagger && NODE_ENV !== 'production') {
+  if (loadSwagger) {
     log.trace('Add swagger plugin')
 
     await fastify.register(swagger, {
@@ -170,7 +170,7 @@ const start = async () => {
   const fastify = await Fastify(opts)
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
-  const { SRV_CORS, SRV_HELMET, SRV_RATELIMIT, SRV_COMPRESS } = process.env
+  const { SRV_CORS, SRV_HELMET, SRV_RATELIMIT, SRV_COMPRESS, JWT_SECRET, JWT_EXPIRES_IN = '15d' } = process.env
 
   const loadApollo = yn(GRAPHQL, false)
   const addPluginCors = yn(SRV_CORS, false)
@@ -184,12 +184,21 @@ const start = async () => {
   log.t && log.trace(`Add plugin COMPRESS: ${addPluginCompress}`)
   log.t && log.trace(`Add plugin RATELIMIT: ${addPluginRateLimit}`)
 
-  const apollo = loadApollo ? await attachApollo(fastify) : null
   // Helmet is not usable with Apollo Server
   !loadApollo && addPluginHelmet && (await fastify.register(helmet))
   addPluginRateLimit && (await fastify.register(rateLimit))
   addPluginCors && (await fastify.register(cors))
   addPluginCompress && (await fastify.register(compress))
+
+  // JWT Validator
+  await fastify.register(jwtValidator, {
+    secret: JWT_SECRET || 'supersecret',
+    sign: { expiresIn: JWT_EXPIRES_IN }
+  })
+
+  log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
+
+  const apollo = loadApollo ? await attachApollo(fastify) : null
 
   await addFastifySwagger(fastify)
   await addApolloRouting(fastify, apollo)

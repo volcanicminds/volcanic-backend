@@ -1,7 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 
 export async function user(req: FastifyRequest, reply: FastifyReply) {
-  reply.send(req.user || {})
+  reply.send(req.user ? { ...req.user, roles: req.user.getRoles() } : {})
 }
 
 export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
