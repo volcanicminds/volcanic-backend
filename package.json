@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "codename": "turin",
   "license": "MIT",
   "description": "The volcanic (minds) backend",
@@ -33,7 +33,7 @@
     "node": ">=16"
   },
   "scripts": {
-    "compile": "tsc",
+    "compile": "rm -rf ./dist && tsc",
     "preprod": "npm run compile",
     "prod": "node ./dist/server.js",
     "start": "ts-node ./server.ts",
