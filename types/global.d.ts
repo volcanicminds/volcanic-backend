@@ -2,10 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify'
 
 export interface AuthenticatedUser {
   id: number
-  extra: any
   roles: Role[]
-  getRoles(): string[]
-  hasRole(role: Role): boolean
 }
 
 export interface Role {
@@ -68,12 +65,13 @@ export interface ConfiguredRoute {
 }
 
 declare module 'fastify' {
-  import { FastifyRequest } from 'fastify'
   export interface FastifyRequest {
     user?: AuthenticatedUser
-    start?: Date
+    startedAt?: Date
     data(): Data
-    pars(): Data
+    parameters(): Data
+    roles(): string[]
+    hasRole(role: Role): boolean
     payloadSize?: number
   }
   export interface FastifyReply {
@@ -83,9 +81,11 @@ declare module 'fastify' {
 
 export interface FastifyRequest extends FastifyRequest {
   user?: AuthenticatedUser
-  start?: Date
+  startedAt?: Date
   data(): Data
-  pars(): Data
+  parameters(): Data
+  roles(): string[]
+  hasRole(role: Role): boolean
   payloadSize?: number
 }
 

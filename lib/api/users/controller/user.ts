@@ -1,9 +1,12 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
+import { AuthenticatedUser } from '../../../../types/global'
 
 export async function user(req: FastifyRequest, reply: FastifyReply) {
-  reply.send(req.user ? { ...req.user, roles: req.user.getRoles() } : {})
+  const user: AuthenticatedUser | undefined = req.user
+  reply.send(user ? { ...user, roles: req.roles() } : {})
 }
 
 export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
-  reply.send({ isAdmin: req.user && req.user.id && req.user.hasRole(roles.admin) })
+  const user: AuthenticatedUser | undefined = req.user
+  reply.send({ isAdmin: user?.id && req.hasRole(roles.admin) })
 }
