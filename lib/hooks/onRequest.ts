@@ -1,11 +1,13 @@
 import { getParams, getData } from '../util/common'
-import { Role } from '../../types/global'
+import { AuthenticatedUser, Role } from '../../types/global'
 
 module.exports = async (req, reply) => {
   // request enrichment
   log.i && (req.startedAt = new Date())
   req.data = () => getData(req)
-  req.pars = () => getParams(req)
+  req.parameters = () => getParams(req)
+  req.roles = () => ((req.user && req.user.roles) || []).map((role: Role) => role?.code) || []
+  req.hasRole = (r: Role) => ((req.user && req.user.roles) || []).some((role: Role) => role?.code === r?.code)
 
   // authorization
   const auth = req.headers?.authorization || ''
@@ -17,7 +19,7 @@ module.exports = async (req, reply) => {
     if (global.npmDebugServerStarted) {
       req.user = {
         id: userId || 123,
-        name: 'Jerry',
+        name: name,
         email: 'jerry@george.com',
         password: 'pippolippo',
         // roles: [roles.admin, roles.public]
@@ -40,9 +42,5 @@ module.exports = async (req, reply) => {
     }
 
     // recall UserManager find / enrichment
-    if (req.user) {
-      req.user.getRoles = () => (req.user.roles || []).map((role: Role) => role?.code) || []
-      req.user.hasRole = (r: Role) => (req.user.roles || []).some((role: Role) => role?.code === r?.code)
-    }
   }
 }
