@@ -1,7 +1,7 @@
 module.exports = async (req, reply) => {
   let extraMessage: string = ''
-  if (log.i) {
-    const elapsed: number = new Date().getTime() - (req.startedAt?.getTime() || 0)
+  if (log.i && req.startedAt) {
+    const elapsed: number = new Date().getTime() - req.startedAt.getTime()
     extraMessage = `(${elapsed}ms)`
   }
   if (log.t) {

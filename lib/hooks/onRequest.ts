@@ -9,38 +9,39 @@ module.exports = async (req, reply) => {
   req.roles = () => ((req.user && req.user.roles) || []).map((role: Role) => role?.code) || []
   req.hasRole = (r: Role) => ((req.user && req.user.roles) || []).some((role: Role) => role?.code === r?.code)
 
-  // authorization
+  // authorization check
   const auth = req.headers?.authorization || ''
   const [prefix, token] = auth.split(' ')
   if (prefix === 'Bearer' && token != null) {
     const { sub: userId, name, iat, exp } = reply.server.jwt.verify(token)
 
-    // demo
+    //TODO: demo
     if (global.npmDebugServerStarted) {
       req.user = {
         id: userId || 123,
         name: name,
         email: 'jerry@george.com',
-        password: 'pippolippo',
+        password: 'seinfeld',
         // roles: [roles.admin, roles.public]
         roles: [roles.public]
-      }
+      } as AuthenticatedUser
+
       log.debug('Inject demo user ' + req.user.id)
     }
+
+    //TODO: recall plugin UserManagement for find user or error
 
     if (req.routeConfig.requiredRoles?.length > 0) {
       const { method, url, requiredRoles } = req.routeConfig
       const userRoles: string[] = req.user?.roles?.map(({ code }) => code) || []
-      const resolvedRole = userRoles.length > 0 ? requiredRoles.filter((r) => userRoles.includes(r.code)) : []
+      const resolvedRoles = userRoles.length > 0 ? requiredRoles.filter((r) => userRoles.includes(r.code)) : []
 
-      if (!resolvedRole.length) {
+      if (!resolvedRoles.length) {
         log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${url}`)
         return reply
           .code(403)
           .send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to call this route' })
       }
     }
-
-    // recall UserManager find / enrichment
   }
 }
