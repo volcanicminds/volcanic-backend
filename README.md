@@ -33,6 +33,9 @@ NODE_ENV=development
 HOST=0.0.0.0
 PORT=2230
 
+JWT_SECRET=yourSecret
+JWT_EXPIRES_IN=5d
+
 # LOG_LEVEL: trace, debug, info, warn, error, fatal
 LOG_LEVEL=info
 LOG_COLORIZE=true
@@ -42,6 +45,7 @@ LOG_FASTIFY=false
 
 GRAPHQL=false
 SWAGGER=true
+SWAGGER_HOST=myawesome.backend.com
 SWAGGER_TITLE=API Documentation
 SWAGGER_DESCRIPTION=List of available APIs and schemes to use
 SWAGGER_VERSION=0.1.0
@@ -129,6 +133,17 @@ const logColorize = yn(LOG_COLORIZE, true)
 const logTimestamp = yn(LOG_TIMESTAMP, true)
 const logTimestampReadable = yn(LOG_TIMESTAMP_READABLE, true)
 ```
+
+## Bearer token
+
+```ruby
+JWT_SECRET=yourSecret
+JWT_EXPIRES_IN=5d
+```
+
+With `reply.jwtSign(user)` is possible obtain a fresh JWT token. Each authenticated calls must be recalled specifying in the header:
+
+`Authorization: Bearer <generated-token>`
 
 ## Swagger
 
@@ -234,8 +249,13 @@ export async function user(req: FastifyRequest, reply: FastifyReply) {
 }
 ```
 
-An useful method is `req.data()` to grab **query** or **body** parameters.
-An useful method is `req.pars()` to grab **params** data.
+Useful methods / objects:
+
+- `req.user` to grab **user** data (validated and linked by JWT).
+- `req.data()` to grab **query** or **body** parameters.
+- `req.parameters()` to grab **params** data.
+- `req.roles()` to grab **Roles** (as `string[]`) from `req.user` if compiled.
+- `req.hasRole(role:Role)` to check if the **Role** is appliable for `req.user`.
 
 ## Roles
 
