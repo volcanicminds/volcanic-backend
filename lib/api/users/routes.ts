@@ -4,9 +4,7 @@ module.exports = {
     description: 'User useful functions',
     controller: 'controller',
     tags: ['users'],
-    enable: true,
-    deprecated: false, // swagger
-    version: false // swagger
+    version: false
   },
   routes: [
     {
@@ -16,11 +14,8 @@ module.exports = {
       handler: 'user.user',
       middlewares: ['global.isAuthenticated'],
       config: {
-        enable: true,
-        title: 'Get current user', // swagger summary
-        description: 'Get current user', // swagger
-        deprecated: false, // swagger
-        version: false, // swagger
+        title: 'Get current user',
+        description: 'Get current user',
         response: {
           403: {
             description: 'Unauthorized',
@@ -36,7 +31,7 @@ module.exports = {
               roles: { type: 'array' }
             }
           }
-        } // swagger
+        }
       }
     },
     {
@@ -48,9 +43,6 @@ module.exports = {
       config: {
         title: 'Check if is an admin',
         description: 'Check if the current user is an admin',
-        enable: true,
-        deprecated: false,
-        version: false,
         response: {
           403: {
             description: 'Unauthorized',
@@ -63,7 +55,7 @@ module.exports = {
               isAdmin: { type: 'boolean' }
             }
           }
-        } // swagger
+        }
       }
     }
   ]

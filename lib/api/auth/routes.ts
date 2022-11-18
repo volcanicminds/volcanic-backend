@@ -4,9 +4,9 @@ module.exports = {
     description: 'User useful functions',
     controller: 'controller',
     tags: ['auth'],
-    enable: true,
-    deprecated: false, // swagger
-    version: false // swagger
+
+    deprecated: false,
+    version: false
   },
   routes: [
     {
@@ -16,9 +16,8 @@ module.exports = {
       handler: 'auth.login',
       middlewares: [],
       config: {
-        enable: true,
-        title: 'Login', // swagger summary
-        description: 'Login', // swagger
+        title: 'Login',
+        description: 'Basic login authentication',
         body: {
           type: 'object',
           properties: {
@@ -36,7 +35,7 @@ module.exports = {
               roles: { type: 'array' }
             }
           }
-        } // swagger
+        }
       }
     },
     {
@@ -46,9 +45,8 @@ module.exports = {
       handler: 'auth.demo',
       middlewares: ['global.isAuthenticated'],
       config: {
-        title: 'Demo auth',
-        description: 'Demo auth',
-        enable: true,
+        title: 'For debug purpose',
+        description: 'Demo login authentication',
         response: {
           200: {
             description: 'Default response',
@@ -57,7 +55,7 @@ module.exports = {
               ok: { type: 'boolean' }
             }
           }
-        } // swagger
+        }
       }
     }
   ]

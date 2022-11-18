@@ -79,14 +79,34 @@ async function addFastifySwagger(fastify: FastifyInstance) {
     await fastify.register(swagger, {
       swagger: {
         info: {
-          title: SWAGGER_TITLE || 'API Documentation',
+          title: SWAGGER_TITLE || 'Volcanic API Documentation',
           description: SWAGGER_DESCRIPTION || 'List of available APIs and schemes to use',
-          version: SWAGGER_VERSION || '0.1.0'
+          version: SWAGGER_VERSION || '0.0.1'
         },
         host: SWAGGER_HOST || 'localhost:2230',
-        schemes: ['http', 'https'],
+        schemes: ['https', 'http'],
         consumes: ['application/json'],
         produces: ['application/json']
+      },
+      openapi: {
+        info: {
+          title: SWAGGER_TITLE || 'Volcanic API Documentation',
+          description: SWAGGER_DESCRIPTION || 'List of available APIs and schemes to use',
+          version: SWAGGER_VERSION || '0.0.1'
+        },
+        servers: [
+          {
+            url: SWAGGER_HOST || 'http://localhost:2230'
+          }
+        ],
+        components: {
+          securitySchemes: {
+            Bearer: {
+              type: 'http',
+              scheme: 'bearer'
+            }
+          }
+        }
       }
     })
 

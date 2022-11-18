@@ -2,6 +2,8 @@ import { FastifyRequest, FastifyReply } from 'fastify'
 
 export interface AuthenticatedUser {
   id: number
+  name: string
+  email: string
   roles: Role[]
 }
 
@@ -26,9 +28,10 @@ export interface RouteConfig {
   deprecated: boolean
   tags?: string[]
   version: string
-  params?: Data
-  query?: Data
-  body?: Data
+  security?: any
+  params?: any
+  query?: any
+  body?: any
   response?: any
 }
 
@@ -57,6 +60,7 @@ export interface ConfiguredRoute {
     deprecated?: boolean
     tags?: string[]
     version?: string
+    security?: any
     params?: any
     querystring?: any
     body?: any

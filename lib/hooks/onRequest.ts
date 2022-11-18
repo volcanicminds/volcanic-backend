@@ -12,21 +12,36 @@ module.exports = async (req, reply) => {
   // authorization check
   const auth = req.headers?.authorization || ''
   const [prefix, token] = auth.split(' ')
+
+  // 1. verificare se public è presente
+  // 2. se è presente il JWT non è mandante quindi se c'è completa utente altrimenti va comunque avanti
+  // 3. se utente è presente allora richiama UserManagerment find e completa oggetto
+  // 4. se utente specificato ma inesistente da errore anche se c'è ruolo public
+
+  const isRoutePublic = (req.routeConfig.requiredRoles || []).some((role: Role) => role.code === roles.public.code)
+
   if (prefix === 'Bearer' && token != null) {
-    const { sub: userId, name, iat, exp } = reply.server.jwt.verify(token)
+    const user: AuthenticatedUser = {} as AuthenticatedUser
+    try {
+      const tokenData = reply.server.jwt.verify(token)
+      user.id = tokenData.sub
+      user.name = tokenData.name
+      user.email = tokenData.email
 
-    //TODO: demo
-    if (global.npmDebugServerStarted) {
-      req.user = {
-        id: userId || 123,
-        name: name,
-        email: 'jerry@george.com',
-        password: 'seinfeld',
-        // roles: [roles.admin, roles.public]
-        roles: [roles.public]
-      } as AuthenticatedUser
+      if (global.npmDebugServerStarted) {
+        user.id = user.id || 123
+        user.name = user.name || 'Jerry Seinfeld'
+        user.email = user.email || 'jerry@george.com'
+        user.roles = [roles.public, roles.backoffice]
+        log.debug('Inject demo user ' + user.id)
+      }
 
-      log.debug('Inject demo user ' + req.user.id)
+      // ok, we have the full user here
+      req.user = user
+    } catch (error) {
+      if (!isRoutePublic) {
+        throw error
+      }
     }
 
     //TODO: recall plugin UserManagement for find user or error

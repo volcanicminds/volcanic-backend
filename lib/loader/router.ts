@@ -1,4 +1,4 @@
-import { Route, ConfiguredRoute } from '../../types/global'
+import { Route, ConfiguredRoute, RouteConfig } from '../../types/global'
 import { FastifyReply, FastifyRequest } from 'fastify'
 
 const glob = require('glob')
@@ -29,7 +29,22 @@ export function load(): ConfiguredRoute[] {
 
       routes.forEach((route: Route, index: number) => {
         const errors: string[] = []
-        const { method: methodCase, path: pathName = '/', handler, config, middlewares = [], roles = [] } = route
+        const {
+          method: methodCase,
+          path: pathName = '/',
+          handler,
+          config = {} as RouteConfig,
+          middlewares = [],
+          roles: requiredRole = []
+        } = route
+
+        if (
+          !config?.security &&
+          (requiredRole.some((r) => r.code !== roles.public.code) ||
+            middlewares.some((m) => m === 'global.isAuthenticated'))
+        ) {
+          config.security = 'bearer'
+        }
 
         // specific route config
         const {
@@ -39,6 +54,7 @@ export function load(): ConfiguredRoute[] {
           deprecated = defaultConfig.deprecated || false,
           tags = defaultConfig.tags || false,
           version = defaultConfig.version || '',
+          security = defaultConfig.security || undefined,
           query,
           params,
           body,
@@ -89,7 +105,7 @@ export function load(): ConfiguredRoute[] {
             method,
             path: '/' + endpoint,
             middlewares,
-            roles,
+            roles: requiredRole,
             enable,
             base,
             file: path.join(base, defaultConfig.controller, handlerParts[0]),
@@ -101,6 +117,7 @@ export function load(): ConfiguredRoute[] {
               deprecated,
               tags,
               version,
+              security: security === 'bearer' ? [{ Bearer: [] }] : security,
               querystring: query,
               params,
               body,
