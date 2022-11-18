@@ -21,7 +21,7 @@ module.exports = {
         body: {
           type: 'object',
           properties: {
-            username: { type: 'string' },
+            email: { type: 'string' },
             password: { type: 'string' }
           }
         },
@@ -30,7 +30,8 @@ module.exports = {
             description: 'Default response',
             type: 'object',
             properties: {
-              ok: { type: 'boolean' },
+              id: { type: 'number' },
+              name: { type: 'string' },
               token: { type: 'string' },
               roles: { type: 'array' }
             }
