@@ -33,7 +33,7 @@ module.exports = {
               id: { type: 'number' },
               name: { type: 'string' },
               token: { type: 'string' },
-              roles: { type: 'array' }
+              roles: { type: 'array', items: { type: 'string' } }
             }
           }
         }

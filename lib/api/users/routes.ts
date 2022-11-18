@@ -28,7 +28,7 @@ module.exports = {
               id: { type: 'number' },
               name: { type: 'string' },
               email: { type: 'string' },
-              roles: { type: 'array' }
+              roles: { type: 'array', items: { type: 'string' } }
             }
           }
         }
