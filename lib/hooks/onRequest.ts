@@ -12,12 +12,6 @@ module.exports = async (req, reply) => {
   // authorization check
   const auth = req.headers?.authorization || ''
   const [prefix, token] = auth.split(' ')
-
-  // 1. verificare se public è presente
-  // 2. se è presente il JWT non è mandante quindi se c'è completa utente altrimenti va comunque avanti
-  // 3. se utente è presente allora richiama UserManagerment find e completa oggetto
-  // 4. se utente specificato ma inesistente da errore anche se c'è ruolo public
-
   const isRoutePublic = (req.routeConfig.requiredRoles || []).some((role: Role) => role.code === roles.public.code)
 
   if (prefix === 'Bearer' && token != null) {
@@ -36,6 +30,8 @@ module.exports = async (req, reply) => {
         log.debug('Inject demo user ' + user.id)
       }
 
+      //TODO: recall plugin UserManagement for find user or error
+
       // ok, we have the full user here
       req.user = user
     } catch (error) {
@@ -44,10 +40,8 @@ module.exports = async (req, reply) => {
       }
     }
 
-    //TODO: recall plugin UserManagement for find user or error
-
     if (req.routeConfig.requiredRoles?.length > 0) {
-      const { method, url, requiredRoles } = req.routeConfig
+      const { method = '', url = '', requiredRoles } = req.routeConfig
       const userRoles: string[] = req.user?.roles?.map(({ code }) => code) || []
       const resolvedRoles = userRoles.length > 0 ? requiredRoles.filter((r) => userRoles.includes(r.code)) : []
 
