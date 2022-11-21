@@ -8,6 +8,10 @@ try to use these to run the app in a docker node:16-alpine image:
 docker build -t volcanic-backend .
 docker run -dp 2230:2230 -it volcanic-backend
 
+// prod
+docker build -f Dockerfile.prod -t volcanic-backend-prod .
+docker run -dp 2230:2230 -it volcanic-backend-prod
+
 // detached mode with autoremove when stopped
 docker run --rm -dp 2230:2230 -it volcanic-backend
 

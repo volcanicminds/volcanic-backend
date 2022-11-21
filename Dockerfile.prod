@@ -21,4 +21,4 @@ WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app .
 
 EXPOSE 2230
-CMD [ "yarn", "start" ]
+CMD [ "yarn", "prod" ]
