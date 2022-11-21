@@ -159,7 +159,7 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
           try {
             return require(file)[func](req, reply)
           } catch (err) {
-            log.e && log.error(`Cannot find ${file}.js or method ${func}: ${err}`)
+            log.e && log.error(`Cannot find ${file} or method ${func}: ${err}`)
             return reply.code(500).send(`Invalid handler ${handler}`)
           }
         }
