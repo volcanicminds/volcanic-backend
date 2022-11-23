@@ -7,10 +7,19 @@ WORKDIR /usr/src/app
 COPY package*.json yarn.lock ./
 COPY lib lib/
 
-RUN yarn install
+RUN yarn install \
+        --prefer-offline \
+        --non-interactive
 
 # Bundle app source
 COPY . .
+
+RUN yarn compile && \
+    rm -rf node_modules && \
+    yarn install \
+        --prefer-offline \
+        --non-interactive \
+        --production
 
 FROM --platform=linux/amd64 node:18-alpine
 LABEL version="0.1.0"
@@ -21,4 +30,4 @@ WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app .
 
 EXPOSE 2230
-CMD [ "yarn", "prod" ]
+CMD [ "yarn", "server" ]
