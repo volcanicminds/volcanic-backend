@@ -42,7 +42,7 @@ module.exports = {
     {
       method: 'GET',
       path: '/demo',
-      roles: [roles.backoffice],
+      roles: [],
       handler: 'auth.demo',
       middlewares: ['global.isAuthenticated'],
       config: {

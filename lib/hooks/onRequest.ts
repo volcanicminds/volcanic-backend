@@ -21,14 +21,15 @@ module.exports = async (req, reply) => {
       user.id = tokenData.sub
       user.name = tokenData.name
       user.email = tokenData.email
+      user.roles = [roles.public, roles.admin]
 
-      if (global.npmDebugServerStarted) {
-        user.id = user.id || 123
-        user.name = user.name || 'Jerry Seinfeld'
-        user.email = user.email || 'jerry@george.com'
-        user.roles = [roles.public, roles.backoffice]
-        log.debug('Inject demo user ' + user.id)
-      }
+      // if (global.npmDebugServerStarted) {
+      //   user.id = user.id || 123
+      //   user.name = user.name || 'Jerry Seinfeld'
+      //   user.email = user.email || 'jerry@george.com'
+      //   user.roles = [roles.public, roles.backoffice]
+      //   log.debug('Inject demo user ' + user.id)
+      // }
 
       //TODO: recall plugin UserManagement for find user or error
 

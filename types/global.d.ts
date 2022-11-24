@@ -102,10 +102,8 @@ export interface global {}
 declare global {
   var log: any
   var roles: Roles
-  var database: {
-    model: any
-    repository: any
-  }
+  var entity: any
+  var repository: any
 }
 
 export { global }
