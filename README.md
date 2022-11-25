@@ -47,7 +47,7 @@ GRAPHQL=false
 SWAGGER=true
 SWAGGER_HOST=myawesome.backend.com
 SWAGGER_TITLE=API Documentation
-SWAGGER_DESCRIPTION=List of available APIs and schemes to use
+SWAGGER_DESCRIPTION=List of available APIs and schemas to use
 SWAGGER_VERSION=0.1.0
 
 SRV_CORS=false
@@ -151,7 +151,7 @@ In the .env file you can change swagger settings in this way:
 
 ```ruby
 SWAGGER=true
-SWAGGER_HOST=localhost
+SWAGGER_HOST=http://localhost:2230
 SWAGGER_TITLE=Volcanic API Documentation
 SWAGGER_DESCRIPTION=List of available APIs and schemes to use
 SWAGGER_VERSION=0.1.0
@@ -242,6 +242,7 @@ module.exports = {
 ## Controllers
 
 ```ts
+// src/api/example/controller/demo.ts
 import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
 
 export async function user(req: FastifyRequest, reply: FastifyReply) {
@@ -268,6 +269,7 @@ By default, there are some basic roles:
 In this way you can add custom roles:
 
 ```ts
+// src/config/roles.ts
 import { Role } from '@volcanicminds/backend'
 
 export const roles: Role[] = [
