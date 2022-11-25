@@ -254,8 +254,6 @@ export {
   ConfiguredRoute
 } from './types/global'
 
-export { getData } from './lib/util/common'
-
 /**
  * These export configurations enable JS and TS developers
  * to consumer BE in whatever way best suits their needs.

@@ -10,5 +10,3 @@ export {
   RouteConfig,
   ConfiguredRoute
 } from './types/global'
-
-export { getData } from './lib/util/common'
