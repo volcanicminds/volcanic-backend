@@ -102,6 +102,7 @@ export interface global {}
 declare global {
   var log: any
   var roles: Roles
+  var connection: any
   var entity: any
   var repository: any
 }
