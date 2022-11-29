@@ -7,5 +7,7 @@ https://www.fastify.io/docs/latest/Reference/Validation-and-Serialization/
 https://json-schema.org/draft/2020-12/json-schema-validation.html#name-pattern
 
 - authentication
-- validations
+- userManager methods
+- validations (see typeorm)
+- subscribers / hooks (Active Records: in separated files)
 - api versioning
