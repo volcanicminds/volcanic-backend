@@ -1,4 +1,5 @@
 'use strict'
 
 global.npmDebugServerStarted = true // internal debug purpose
-require('./index')()
+const { start } = require('./index')
+start()
