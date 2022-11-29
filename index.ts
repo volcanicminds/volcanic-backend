@@ -232,12 +232,13 @@ const start = async () => {
     .then((address) => {
       const elapsed = (new Date().getTime() - begin) / 100
       log.info(`All stuff loaded in ${elapsed} sec`)
-      log.info(`Server ready at ${address} 🚀`)
+      log.info(`Server ready 🚀 at ${address}`)
 
       const loadSwagger = yn(process.env.SWAGGER, false)
-      loadSwagger && log.info(`Swagger ready at ${address}${process.env.SWAGGER_PREFIX_URL || '/documentation'} 📄`)
+      loadSwagger && log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/documentation'}`)
     })
 
+  global.server = fastify
   return fastify
 }
 
