@@ -265,6 +265,6 @@ export {
  * - `import server from '@volcanicminds/backend'`
  * - `import server, { TSC_definition } from '@volcanicminds/backend'`
  */
-module.exports = start
-module.exports.server = start
-module.exports.default = start
+module.exports = { yn, start }
+module.exports.server = { yn, start }
+module.exports.default = { yn, start }
