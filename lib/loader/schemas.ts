@@ -8,13 +8,18 @@ export function apply(server: any): void {
   patterns.forEach((pattern) => {
     log.t && log.trace('Looking for ' + pattern)
     glob.sync(pattern).forEach((f: string) => {
-      const schemaName = path.basename(f)
-      const schema = require(f)
-      if (schema != null) {
-        log.debug(`* Schema [${schema?.$id}] loaded from ${schemaName}`)
-        server.addSchema(schema)
-        schemaCount++
-      }
+      const schemaFileName = path.basename(f)
+      const schemaClass = require(f)
+      const schemaNames = Object.keys(schemaClass)
+
+      schemaNames.map((name) => {
+        const schema = schemaClass[name]
+        if (schema != null) {
+          log.debug(`* Schema [${schema.$id}] loaded from ${schemaFileName}`)
+          server.addSchema(schema)
+          schemaCount++
+        }
+      })
     })
   })
 
