@@ -334,16 +334,26 @@ It's possible add schemas referenceable by `$ref`. More info on [Fastify Validat
 Under `src` create the `schemas` folder and inside add the schema as shown in the fastify docs, for example:
 
 ```ts
-module.exports = {
+// src/schemas/commonSchemas.ts
+
+export const commonSchema = {
   $id: 'commonSchema',
   type: 'object',
   properties: {
     hello: { type: 'string' }
   }
 }
+
+export const commonSchemaAlt = {
+  $id: 'commonSchemaAlt',
+  type: 'object',
+  properties: {
+    world: { type: 'string' }
+  }
+}
 ```
 
-So, in your `routes.ts` you'll can use something like this:
+So, in your `routes.ts` (under the section `config`) you'll can use something like this:
 
 ```ts
   params: { $ref: 'commonSchema#' },
