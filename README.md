@@ -289,7 +289,7 @@ roles: [roles.admin, roles.public]
 
 ## Database
 
-Use package `@volcaniminds/typeorm`
+Use package `@volcaniminds/typeorm` [github](https://github.com/volcanicminds/volcanic-database-typeorm) [npm](https://www.npmjs.com/package/@volcanicminds/typeorm))
 
 ## Hooks
 
