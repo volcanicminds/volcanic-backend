@@ -161,15 +161,13 @@ const start = async () => {
   addPluginCompress && (await fastify.register(compress))
 
   // JWT Validator
+  log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
   await fastify.register(jwtValidator, {
     secret: JWT_SECRET || 'supersecret',
     sign: { expiresIn: JWT_EXPIRES_IN }
   })
 
-  log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
-
   const apollo = loadApollo ? await attachApollo(fastify) : null
-
   await addFastifySwagger(fastify)
   await addApolloRouting(fastify, apollo)
   await addFastifyRouting(fastify)
