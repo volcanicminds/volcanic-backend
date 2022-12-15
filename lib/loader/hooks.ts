@@ -38,7 +38,9 @@ export function apply(server: any): void {
 
   hooks.map((hookName) => {
     const fns: Function[] = allHooks[hookName]
-    log.t && log.trace(`Loaded ${fns?.length || 0} hook for ${hookName}`)
+    log.t && log.trace(`* Add ${fns?.length || 0} hooks for ${hookName}`)
     fns?.length > 0 && fns.map((fn) => server.addHook(hookName, fn as Function))
   })
+
+  log.d && log.debug(`Hooks loaded: ${hooks?.length || 0}`)
 }

@@ -15,7 +15,7 @@ export function apply(server: any): void {
       schemaNames.map((name) => {
         const schema = schemaClass[name]
         if (schema != null) {
-          log.debug(`* Schema [${schema.$id}] loaded from ${schemaFileName}`)
+          log.trace(`* Schema [${schema.$id}] loaded from ${schemaFileName}`)
           server.addSchema(schema)
           schemaCount++
         }
@@ -23,5 +23,5 @@ export function apply(server: any): void {
     })
   })
 
-  log.i && log.info(`Schemas loaded: ${schemaCount} referenceable by $ref`)
+  log.d && log.debug(`Schemas loaded: ${schemaCount} referenceable by $ref`)
 }

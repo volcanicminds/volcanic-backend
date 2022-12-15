@@ -25,7 +25,7 @@ export function load(): ConfiguredRoute[] {
       if (defaultConfig.deprecated == null) defaultConfig.deprecated = false
       if (defaultConfig.controller == null) defaultConfig.controller = 'controller'
 
-      log.i && log.info(`Routes loaded: ${file} with ${routes.length} routes defined`)
+      log.t && log.trace(`* Add ${routes.length} routes from ${file}`)
 
       routes.forEach((route: Route, index: number) => {
         const errors: string[] = []
@@ -92,8 +92,8 @@ export function load(): ConfiguredRoute[] {
 
         if (errors.length == 0) {
           enable
-            ? log.d &&
-              log.debug(
+            ? log.t &&
+              log.trace(
                 `* Method [${method}] path ${endpoint} handler ${handler} enabled with ${
                   middlewares?.length || 0
                 } middlewares`
@@ -129,6 +129,7 @@ export function load(): ConfiguredRoute[] {
     })
   })
 
+  log.d && log.debug(`Routes loaded: ${validRoutes.length}`)
   return validRoutes
 }
 

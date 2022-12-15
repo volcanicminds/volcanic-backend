@@ -15,6 +15,6 @@ export function load() {
       })
     })
   })
-  log.i && log.info('Roles loaded: ' + Object.keys(roles).join(', '))
+  log.d && log.debug('Roles loaded: ' + Object.keys(roles).join(', '))
   return roles
 }
