@@ -157,7 +157,11 @@ const start = async () => {
   // Helmet is not usable with Apollo Server
   !loadApollo && addPluginHelmet && (await fastify.register(helmet))
   addPluginRateLimit && (await fastify.register(rateLimit))
-  addPluginCors && (await fastify.register(cors))
+  addPluginCors &&
+    (await fastify.register(cors, {
+      origin: false,
+      allowedHeaders: ['v-total', 'v-count', 'v-page', 'v-pageSize']
+    }))
   addPluginCompress && (await fastify.register(compress))
 
   // JWT Validator
