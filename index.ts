@@ -160,8 +160,19 @@ const start = async () => {
   addPluginCors &&
     (await fastify.register(cors, {
       origin: '*',
-      allowedHeaders: ['v-total', 'v-count', 'v-page', 'v-pageSize'],
-      exposedHeaders: ['v-total', 'v-count', 'v-page', 'v-pageSize']
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+      maxAge: 31536000,
+      credentials: true,
+      allowedHeaders: [
+        'Content-Type',
+        'Content-Length',
+        'Authorization',
+        'Origin',
+        'v-total',
+        'v-count',
+        'v-page',
+        'v-pageSize'
+      ]
     }))
   addPluginCompress && (await fastify.register(compress))
 
