@@ -159,8 +159,9 @@ const start = async () => {
   addPluginRateLimit && (await fastify.register(rateLimit))
   addPluginCors &&
     (await fastify.register(cors, {
-      origin: false,
-      allowedHeaders: ['v-total', 'v-count', 'v-page', 'v-pageSize']
+      origin: '*',
+      allowedHeaders: ['v-total', 'v-count', 'v-page', 'v-pageSize'],
+      exposedHeaders: ['v-total', 'v-count', 'v-page', 'v-pageSize']
     }))
   addPluginCompress && (await fastify.register(compress))
 
