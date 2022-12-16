@@ -6,6 +6,7 @@ dotenv.config()
 import yn from './lib/util/yn'
 import logger from './lib/util/logger'
 import * as mark from './lib/util/mark'
+import * as loaderPlugins from './lib/loader/plugins'
 import * as loaderRoles from './lib/loader/roles'
 import * as loaderRouter from './lib/loader/router'
 import * as loaderHooks from './lib/loader/hooks'
@@ -140,41 +141,16 @@ const start = async () => {
   const fastify = await Fastify(opts)
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
-  const { SRV_CORS, SRV_HELMET, SRV_RATELIMIT, SRV_COMPRESS, JWT_SECRET, JWT_EXPIRES_IN = '15d' } = process.env
+  const { JWT_SECRET, JWT_EXPIRES_IN = '15d' } = process.env
 
   const loadApollo = yn(GRAPHQL, false)
-  const addPluginCors = yn(SRV_CORS, false)
-  const addPluginHelmet = yn(SRV_HELMET, false)
-  const addPluginRateLimit = yn(SRV_RATELIMIT, false)
-  const addPluginCompress = yn(SRV_COMPRESS, false)
-
-  log.t && log.trace(`Attach Apollo Server ${loadApollo}`)
-  log.t && log.trace(`Add plugin CORS: ${addPluginCors}`)
-  log.t && log.trace(`Add plugin HELMET: ${!loadApollo ? addPluginHelmet : 'Not usable with Apollo'}`)
-  log.t && log.trace(`Add plugin COMPRESS: ${addPluginCompress}`)
-  log.t && log.trace(`Add plugin RATELIMIT: ${addPluginRateLimit}`)
+  const plugins = loaderPlugins.load()
 
   // Helmet is not usable with Apollo Server
-  !loadApollo && addPluginHelmet && (await fastify.register(helmet))
-  addPluginRateLimit && (await fastify.register(rateLimit))
-  addPluginCors &&
-    (await fastify.register(cors, {
-      origin: '*',
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-      maxAge: 31536000,
-      credentials: true,
-      allowedHeaders: [
-        'Content-Type',
-        'Content-Length',
-        'Authorization',
-        'Origin',
-        'v-total',
-        'v-count',
-        'v-page',
-        'v-pageSize'
-      ]
-    }))
-  addPluginCompress && (await fastify.register(compress))
+  !loadApollo && plugins?.helmet && (await fastify.register(helmet))
+  plugins?.rateLimit && (await fastify.register(rateLimit))
+  plugins?.cors && (await fastify.register(cors, plugins.cors || {}))
+  plugins?.compress && (await fastify.register(compress))
 
   // JWT Validator
   log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)

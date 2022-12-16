@@ -1,6 +1,5 @@
 # TODO
 
-- plugins custom configuration (es cors)
 - add example / demo project (with @volcanicminds/backend & @volcanicminds/typeorm)
 - authentication
 - userManager methods
