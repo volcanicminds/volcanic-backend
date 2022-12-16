@@ -49,11 +49,6 @@ SWAGGER_HOST=myawesome.backend.com
 SWAGGER_TITLE=API Documentation
 SWAGGER_DESCRIPTION=List of available APIs and schemas to use
 SWAGGER_VERSION=0.1.0
-
-SRV_CORS=false
-SRV_HELMET=false
-SRV_RATELIMIT=false
-SRV_COMPRESS=false
 ```
 
 For docker may be useful set HOST as 0.0.0.0 (instead 127.0.0.1).
@@ -160,13 +155,32 @@ SWAGGER_PREFIX_URL=/documentation
 
 ## Fastify modules
 
-In the .env file you can activate some modules in this way:
+Under the folder `src/config` is possible add a file `plugin.ts` where you can activate/customize some modules in this way:
 
-```ruby
-SRV_CORS=false
-SRV_HELMET=false
-SRV_RATELIMIT=false
-SRV_COMPRESS=false
+```ts
+// src/config/plugins.ts
+module.exports = [
+  {
+    name: 'cors',
+    enable: false,
+    options: {}
+  },
+  {
+    name: 'rateLimit',
+    enable: false,
+    options: {}
+  },
+  {
+    name: 'helmet',
+    enable: false,
+    options: {}
+  },
+  {
+    name: 'compress',
+    enable: false,
+    options: {}
+  }
+]
 ```
 
 ## Routes
@@ -193,6 +207,7 @@ Some notes:
 - It's possible define a list of **middleware** (optional).
 
 ```ts
+// src/api/example/routes.ts
 module.exports = {
   config: {
     title: 'Example of routes.ts',
