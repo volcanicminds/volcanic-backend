@@ -27,6 +27,7 @@ import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastif
 import { myContextFunction, MyContext } from './lib/apollo/context'
 import resolvers from './lib/apollo/resolvers'
 import typeDefs from './lib/apollo/type-defs'
+import { UserManagement } from './types/global'
 
 global.log = logger
 
@@ -132,7 +133,7 @@ async function addFastifySwagger(fastify: FastifyInstance) {
   }
 }
 
-const start = async () => {
+const start = async (decorators) => {
   const begin = new Date().getTime()
   mark.print(logger)
   global.roles = loaderRoles.load()
@@ -164,6 +165,52 @@ const start = async () => {
   await addApolloRouting(fastify, apollo)
   await addFastifyRouting(fastify)
 
+  // defaults
+  decorators = {
+    userManager: {
+      createUser(data: any) {
+        throw Error('Not implemented')
+      },
+      resetExternalId(data: any) {
+        throw Error('Not implemented')
+      },
+      updateUserById(id: string, user: any) {
+        throw Error('Not implemented')
+      },
+      retrieveUserById(id: string) {
+        throw Error('Not implemented')
+      },
+      retrieveUserByEmail(email: string) {
+        throw Error('Not implemented')
+      },
+      retrieveUserByExternalId(externalId: string) {
+        throw Error('Not implemented')
+      },
+      retrieveUserByPassword(email: string, password: string) {
+        throw Error('Not implemented')
+      },
+      changePassword(email: string, password: string, oldPassword: string) {
+        throw Error('Not implemented')
+      },
+      enableUserById(id: string) {
+        throw Error('Not implemented')
+      },
+      disableUserById(id: string) {
+        throw Error('Not implemented')
+      },
+      isValidUser(data: any) {
+        throw Error('Not implemented')
+      }
+    } as UserManagement,
+    ...decorators
+  }
+
+  await Promise.all(
+    Object.keys(decorators || {}).map(async (key) => {
+      await fastify.decorate(key, decorators[key])
+    })
+  )
+
   await fastify
     .listen({
       port: Number(port),
@@ -192,7 +239,8 @@ export {
   Roles,
   Route,
   RouteConfig,
-  ConfiguredRoute
+  ConfiguredRoute,
+  UserManagement
 } from './types/global'
 
 /**

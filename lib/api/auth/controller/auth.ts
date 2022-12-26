@@ -1,31 +1,122 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
-import { AuthenticatedUser } from '../../../../types/global'
+import * as regExp from '../../../util/regexp'
 
-export async function login(req: FastifyRequest, reply: FastifyReply) {
-  const { email = '', password = '' } = req.data()
+export async function register(req: FastifyRequest, reply: FastifyReply) {
+  const { password1: password, password2, ...data } = req.data()
 
-  // TODO: use UserManagement.find and check password
-  // demo code here
-  const username = email.substr(0, email.indexOf('@')) || 'jerry'
-  const roleList = [username === 'admin' ? roles.admin : username === 'vminds' ? roles.backoffice : roles.public]
-  const user =
-    username !== null
-      ? ({
-          id: 306, // user id
-          name: username, // optional
-          email: email,
-          roles: roleList
-        } as AuthenticatedUser)
-      : null
+  if (!data.username) {
+    return reply.status(404).send(Error('Username not valid'))
+  }
+  if (!data.email || !regExp.email.test(data.email)) {
+    return reply.status(404).send(Error('Email not valid'))
+  }
+  if (!password || !regExp.password.test(password)) {
+    return reply.status(404).send(Error('Password not valid'))
+  }
+  if (!password2 || password2 !== password) {
+    return reply.status(404).send(Error('Repeated password not match'))
+  }
 
-  // TODO: review if email is important to include in token (for a security purpose)
-  // https://www.iana.org/assignments/jwt/jwt.xhtml
-  const token = user !== null ? await reply.jwtSign({ sub: user.id, name: user.name, email: user.email }) : null
-  reply.send({ ...user, token: token || null, roles: roleList.map((r) => r.code) })
+  // public is the default
+  data.roles = data.roles || [global.role?.public?.code || 'public']
+
+  const user = await req.server['userManager'].createUser({ ...data, password: password })
+  if (!user) {
+    return reply.status(400).send(Error('User not registered'))
+  }
+
+  return user
 }
 
-export async function demo(req: FastifyRequest, reply: FastifyReply) {
-  // JSON.stringify(req.user)
+export async function unregister(req: FastifyRequest, reply: FastifyReply) {
+  const { email, password } = req.data()
 
-  reply.send({ ok: req.user })
+  let user = await req.server['userManager'].retrieveUserByPassword(email, password)
+  let isValid = await req.server['userManager'].isValidUser(user)
+
+  if (!isValid) {
+    return reply.status(403).send(Error('Wrong credentials'))
+  }
+
+  if (!user.enabled) {
+    return reply.status(403).send(Error('User not enabled'))
+  }
+
+  user = await req.server['userManager'].disableUserById(user?.id)
+  isValid = await req.server['userManager'].isValidUser(user)
+
+  if (!isValid) {
+    return reply.status(400).send(Error('User not valid'))
+  }
+
+  return { ok: true }
+}
+
+export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
+  const { email, oldPassword, newPassword1, newPassword2 } = req.data()
+
+  if (!newPassword1 || !regExp.password.test(newPassword1)) {
+    return reply.status(404).send(Error('New password not valid'))
+  }
+
+  if (!newPassword2 || newPassword2 !== newPassword1) {
+    return reply.status(404).send(Error('Repeated new password not match'))
+  }
+
+  let user = await req.server['userManager'].retrieveUserByPassword(email, oldPassword)
+  let isValid = await req.server['userManager'].isValidUser(user)
+
+  if (!isValid) {
+    return reply.status(403).send(Error('Wrong credentials'))
+  }
+
+  if (!user.enabled) {
+    return reply.status(403).send(Error('User not enabled'))
+  }
+
+  user = await req.server['userManager'].changePassword(email, newPassword1, oldPassword)
+  isValid = await req.server['userManager'].isValidUser(user)
+  return { ok: isValid }
+}
+
+export async function login(req: FastifyRequest, reply: FastifyReply) {
+  const { email, password } = req.data()
+
+  if (!email || !regExp.email.test(email)) {
+    return reply.status(404).send(Error('Email not valid'))
+  }
+  if (!password || !regExp.password.test(password)) {
+    return reply.status(404).send(Error('Password not valid'))
+  }
+
+  const user = await req.server['userManager'].retrieveUserByPassword(email, password)
+  const isValid = await req.server['userManager'].isValidUser(user)
+
+  if (!isValid) {
+    return reply.status(403).send(Error('Wrong credentials'))
+  }
+
+  if (!user.enabled) {
+    return reply.status(403).send(Error('User not enabled'))
+  }
+
+  // log.trace('User: ' + JSON.stringify(user) + ' ' + roles)
+  // https://www.iana.org/assignments/jwt/jwt.xhtml
+  const token = user !== null ? await reply.jwtSign({ sub: user.externalId }) : null
+  return {
+    ...user,
+    token: token || null,
+    roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r)
+  }
+}
+
+export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply) {
+  let isValid = await req.server['userManager'].isValidUser(req.user)
+  if (!isValid) {
+    return reply.status(403).send(Error('User not linked'))
+  }
+
+  const user = await req.server['userManager'].resetExternalId(req.user?.id)
+  isValid = await req.server['userManager'].isValidUser(user)
+  return { ok: isValid }
 }

@@ -2,7 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify'
 
 export interface AuthenticatedUser {
   id: number
-  name: string
+  username: string
   email: string
   roles: Role[]
 }
@@ -66,6 +66,20 @@ export interface ConfiguredRoute {
     body?: any
     response?: any
   }
+}
+
+export interface UserManagement {
+  createUser(data: any): any | null
+  resetExternalId(data: any): any | null
+  updateUserById(id: string, user: any): any | null
+  retrieveUserById(id: string): any | null
+  retrieveUserByEmail(email: string): any | null
+  retrieveUserByExternalId(externalId: string): any | null
+  retrieveUserByPassword(email: string, password: string): any | null
+  changePassword(email: string, password: string, oldPassword: string): any | null
+  enableUserById(id: string): any | null
+  disableUserById(id: string): any | null
+  isValidUser(data: any): boolean
 }
 
 declare module 'fastify' {

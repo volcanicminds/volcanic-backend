@@ -8,5 +8,6 @@ export {
   Roles,
   Route,
   RouteConfig,
-  ConfiguredRoute
+  ConfiguredRoute,
+  UserManagement
 } from './types/global'

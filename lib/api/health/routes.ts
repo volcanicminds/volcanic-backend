@@ -1,7 +1,7 @@
 module.exports = {
   config: {
-    title: 'Health useful functions',
-    description: 'Health useful functions',
+    title: 'Health functions',
+    description: 'Health functions',
     controller: 'controller',
     tags: ['health']
   },

@@ -1,7 +1,7 @@
 module.exports = {
   config: {
-    title: 'User useful functions',
-    description: 'User useful functions',
+    title: 'User functions',
+    description: 'User functions',
     controller: 'controller',
     tags: ['users'],
     version: false
@@ -10,7 +10,7 @@ module.exports = {
     {
       method: 'GET',
       path: '/',
-      roles: [],
+      roles: [roles.public],
       handler: 'user.user',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -25,10 +25,16 @@ module.exports = {
             description: 'Default response',
             type: 'object',
             properties: {
-              id: { type: 'number' },
-              name: { type: 'string' },
+              id: { type: 'string' },
+              externalId: { type: 'string' },
+              username: { type: 'string' },
               email: { type: 'string' },
-              roles: { type: 'array', items: { type: 'string' } }
+              enabled: { type: 'boolean' },
+              enabledAt: { type: 'string' },
+              roles: { type: 'array', items: { type: 'string' } },
+              createdAt: { type: 'string' },
+              version: { type: 'number' },
+              updatedAt: { type: 'string' }
             }
           }
         }

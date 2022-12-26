@@ -1,14 +1,104 @@
 module.exports = {
   config: {
-    title: 'User useful functions',
-    description: 'User useful functions',
+    title: 'Authentication functions',
+    description: 'Authentication functions',
     controller: 'controller',
     tags: ['auth'],
-
     deprecated: false,
-    version: false
+    version: false,
+    enable: true
   },
   routes: [
+    {
+      method: 'POST',
+      path: '/register',
+      roles: [],
+      handler: 'auth.register',
+      middlewares: [],
+      config: {
+        title: 'Register new user',
+        description: 'Register a new user',
+        body: {
+          type: 'object',
+          properties: {
+            username: { type: 'string' },
+            email: { type: 'string' },
+            password1: { type: 'string' },
+            password2: { type: 'string' }
+          }
+        },
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              externalId: { type: 'string' },
+              username: { type: 'string' },
+              email: { type: 'string' },
+              enabled: { type: 'boolean' },
+              roles: { type: 'array', items: { type: 'string' } }
+            }
+          }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/unregister',
+      roles: [],
+      handler: 'auth.unregister',
+      middlewares: [],
+      config: {
+        title: 'Unregister existing user',
+        description: 'Unregister an existing user',
+        body: {
+          type: 'object',
+          properties: {
+            email: { type: 'string' },
+            password: { type: 'string' }
+          }
+        },
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' }
+            }
+          }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/change-password',
+      roles: [],
+      handler: 'auth.changePassword',
+      middlewares: [],
+      config: {
+        title: 'Change password',
+        description: 'Change password for an existing user',
+        body: {
+          type: 'object',
+          properties: {
+            email: { type: 'string' },
+            oldPassword: { type: 'string' },
+            newPassword1: { type: 'string' },
+            newPassword2: { type: 'string' }
+          }
+        },
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' }
+            }
+          }
+        }
+      }
+    },
     {
       method: 'POST',
       path: '/login',
@@ -30,24 +120,26 @@ module.exports = {
             description: 'Default response',
             type: 'object',
             properties: {
-              id: { type: 'number' },
-              name: { type: 'string' },
-              token: { type: 'string' },
-              roles: { type: 'array', items: { type: 'string' } }
+              id: { type: 'string' },
+              externalId: { type: 'string' },
+              username: { type: 'string' },
+              email: { type: 'string' },
+              roles: { type: 'array', items: { type: 'string' } },
+              token: { type: 'string' }
             }
           }
         }
       }
     },
     {
-      method: 'GET',
-      path: '/demo',
+      method: 'POST',
+      path: '/invalidate-tokens',
       roles: [],
-      handler: 'auth.demo',
+      handler: 'auth.invalidateTokens',
       middlewares: ['global.isAuthenticated'],
       config: {
-        title: 'For debug purpose',
-        description: 'Demo login authentication',
+        title: 'Invalidate all tokens',
+        description: 'Invalidate all tokens',
         response: {
           200: {
             description: 'Default response',

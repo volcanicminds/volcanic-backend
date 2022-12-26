@@ -13,7 +13,6 @@ export function load() {
       configPlugins.forEach((plugin) => {
         plugins[plugin.name] = plugin.enable ? plugin.options : false
         log.t && log.trace(`* Plugin ${plugin.name} ${plugin.enable ? 'enabled' : 'disabled'}`)
-        log.error(plugin)
       })
     })
   })
