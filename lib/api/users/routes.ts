@@ -17,10 +17,6 @@ module.exports = {
         title: 'Get current user',
         description: 'Get current user',
         response: {
-          403: {
-            description: 'Unauthorized',
-            type: 'string'
-          },
           200: {
             description: 'Default response',
             type: 'object',
@@ -50,10 +46,6 @@ module.exports = {
         title: 'Check if is an admin',
         description: 'Check if the current user is an admin',
         response: {
-          403: {
-            description: 'Unauthorized',
-            type: 'string'
-          },
           200: {
             description: 'Default response',
             type: 'object',

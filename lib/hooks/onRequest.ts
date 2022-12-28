@@ -20,11 +20,11 @@ module.exports = async (req, reply) => {
       const tokenData = reply.server.jwt.verify(token)
       user = await req.server['userManager'].retrieveUserByExternalId(tokenData?.sub)
       if (!user) {
-        return reply.code(404).send({ statusCode: 404, code: 'USER_NOT_FOUND', message: 'User not found' })
+        return reply.status(404).send({ statusCode: 404, code: 'USER_NOT_FOUND', message: 'User not found' })
       }
       const isValid = await req.server['userManager'].isValidUser(user)
       if (!isValid) {
-        return reply.code(404).send({ statusCode: 404, code: 'USER_NOT_VALID', message: 'User not valid' })
+        return reply.status(404).send({ statusCode: 404, code: 'USER_NOT_VALID', message: 'User not valid' })
       }
 
       // ok, we have the full user here
@@ -43,7 +43,7 @@ module.exports = async (req, reply) => {
       if (!resolvedRoles.length) {
         log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${url}`)
         return reply
-          .code(403)
+          .status(403)
           .send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to call this route' })
       }
     }

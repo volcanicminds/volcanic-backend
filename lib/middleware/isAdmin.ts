@@ -1,7 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 
-const log = global.log
-module.exports = (req: FastifyRequest, res: FastifyReply, done: any) => {
+export function preHandler(req: FastifyRequest, res: FastifyReply, done: any) {
   try {
     if (req.user && req.user.id && req.hasRole(roles.admin)) {
       return done()

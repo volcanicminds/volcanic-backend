@@ -2,7 +2,6 @@ import yn from '../util/yn'
 import { Route, ConfiguredRoute, RouteConfig } from '../../types/global'
 import { FastifyReply, FastifyRequest } from 'fastify'
 
-const fs = require('fs')
 const glob = require('glob')
 const path = require('path')
 const methods = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'PATCH', 'OPTIONS']
@@ -150,8 +149,8 @@ async function loadMiddleware(base: string, middleware: string = '') {
 
   if (isGlobal) {
     const name = middleware.substring(key.length)
-    required = await tryToLoadFile(path.resolve(__dirname + '/../middleware/' + name)).catch(async () => {
-      return await tryToLoadFile(path.resolve(process.cwd() + '/src/middleware/' + name))
+    required = await tryToLoadFile(path.resolve(process.cwd() + '/src/middleware/' + name)).catch(async () => {
+      return await tryToLoadFile(path.resolve(__dirname + '/../middleware/' + name))
     })
   } else {
     required = await tryToLoadFile(path.resolve(base + '/middleware/' + middleware))
@@ -164,6 +163,18 @@ async function loadMiddleware(base: string, middleware: string = '') {
   return required
 }
 
+async function loadMiddlewares(base: string, middlewares: string[] = []) {
+  const midds = {}
+  await Promise.all(
+    middlewares.map(async (m) => {
+      const middleware = await loadMiddleware(base, m)
+      Object.keys(middleware).map((name) => (midds[name] = [...(midds[name] || []), middleware[name]]))
+    })
+  )
+  // log.debug(base + ' middleware ' + middlewares.length + ' -> ' + Object.keys(midds))
+  return midds
+}
+
 // preParsing, preValidation, preHandler, preSerialization, ..
 
 export function apply(server: any, routes: ConfiguredRoute[]): void {
@@ -172,15 +183,15 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
   routes.forEach(async ({ handler, method, path, middlewares, roles, enable, base, file, func, doc }) => {
     if (enable) {
       log.t && log.trace(`* Add path ${method} ${path} on handle ${handler}`)
+      const midds = await loadMiddlewares(base, middlewares)
 
       server.route({
         method: method,
         path: path,
         schema: doc,
-        // preHandler: (middlewares || []).map((m) => require(normalizeMiddlewarePath(base, m))),
-        preHandler: await Promise.all((middlewares || []).map(async (m) => await loadMiddleware(base, m))),
+        ...midds,
         config: {
-          requiredRoless: roles || []
+          requiredRoles: roles || []
         },
         handler: function (req: FastifyRequest, reply: FastifyReply) {
           try {

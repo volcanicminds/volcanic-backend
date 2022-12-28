@@ -14,7 +14,7 @@ module.exports = {
       path: '/register',
       roles: [],
       handler: 'auth.register',
-      middlewares: [],
+      middlewares: ['global.preAuth', 'global.postAuth'],
       config: {
         title: 'Register new user',
         description: 'Register a new user',
@@ -24,7 +24,8 @@ module.exports = {
             username: { type: 'string' },
             email: { type: 'string' },
             password1: { type: 'string' },
-            password2: { type: 'string' }
+            password2: { type: 'string' },
+            requiredRoles: { type: 'array', items: { type: 'string' } }
           }
         },
         response: {
@@ -48,7 +49,7 @@ module.exports = {
       path: '/unregister',
       roles: [],
       handler: 'auth.unregister',
-      middlewares: [],
+      middlewares: ['global.preAuth', 'global.postAuth'],
       config: {
         title: 'Unregister existing user',
         description: 'Unregister an existing user',
@@ -104,7 +105,7 @@ module.exports = {
       path: '/login',
       roles: [],
       handler: 'auth.login',
-      middlewares: [],
+      middlewares: ['global.preAuth', 'global.postAuth'],
       config: {
         title: 'Login',
         description: 'Basic login authentication',

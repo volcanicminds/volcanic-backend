@@ -15,9 +15,13 @@ export function apply(server: any): void {
       schemaNames.map((name) => {
         const schema = schemaClass[name]
         if (schema != null) {
-          log.trace(`* Schema [${schema.$id}] loaded from ${schemaFileName}`)
-          server.addSchema(schema)
-          schemaCount++
+          if (schema?.$id) {
+            log.trace(`* Schema [${schema.$id}] loaded from ${schemaFileName}`)
+            server.addSchema(schema)
+            schemaCount++
+          } else {
+            log.warn(`* Schema [${schema.$id}] not loaded from ${schemaFileName}`)
+          }
         }
       })
     })

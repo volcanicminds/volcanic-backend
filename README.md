@@ -233,13 +233,6 @@ module.exports = {
         deprecated: false, // swagger
         version: false, // swagger
         response: {
-          403: {
-            description: 'Unsuccessful response',
-            type: 'object',
-            properties: {
-              hello: { type: 'string' }
-            }
-          },
           200: {
             description: 'Successful response',
             type: 'object',

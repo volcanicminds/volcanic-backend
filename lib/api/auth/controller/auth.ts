@@ -18,7 +18,11 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   }
 
   // public is the default
-  data.roles = data.roles || [global.role?.public?.code || 'public']
+  const publicRole = global.roles?.public?.code || 'public'
+  data.roles = (data.requiredRoles || []).map((r) => global.roles[r]?.code).filter((r) => !!r)
+  if (!data.roles.includes(publicRole)) {
+    data.roles.push(publicRole)
+  }
 
   const user = await req.server['userManager'].createUser({ ...data, password: password })
   if (!user) {
