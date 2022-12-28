@@ -34,18 +34,18 @@ module.exports = async (req, reply) => {
         throw error
       }
     }
+  }
 
-    if (req.routeConfig.requiredRoles?.length > 0) {
-      const { method = '', url = '', requiredRoles } = req.routeConfig
-      const userRoles: string[] = req.user?.roles?.map((code) => code) || []
-      const resolvedRoles = userRoles.length > 0 ? requiredRoles.filter((r) => userRoles.includes(r.code)) : []
+  if (req.routeConfig.requiredRoles?.length > 0) {
+    const { method = '', url = '', requiredRoles } = req.routeConfig
+    const userRoles: string[] = req.user?.roles?.map((code) => code) || []
+    const resolvedRoles = userRoles.length > 0 ? requiredRoles.filter((r) => userRoles.includes(r.code)) : []
 
-      if (!resolvedRoles.length) {
-        log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${url}`)
-        return reply
-          .status(403)
-          .send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to call this route' })
-      }
+    if (!resolvedRoles.length) {
+      log.w && log.warn(`Not allowed to call ${method.toUpperCase()} ${url}`)
+      return reply
+        .status(403)
+        .send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to call this route' })
     }
   }
 }
