@@ -38,7 +38,7 @@ module.exports = async (req, reply) => {
 
   if (req.routeConfig.requiredRoles?.length > 0) {
     const { method = '', url = '', requiredRoles } = req.routeConfig
-    const userRoles: string[] = req.user?.roles?.map((code) => code) || []
+    const userRoles: string[] = req.user?.roles?.map((code) => code) || [roles.public?.code || 'public']
     const resolvedRoles = userRoles.length > 0 ? requiredRoles.filter((r) => userRoles.includes(r.code)) : []
 
     if (!resolvedRoles.length) {
