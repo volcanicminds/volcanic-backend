@@ -124,3 +124,27 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
   isValid = await req.server['userManager'].isValidUser(user)
   return { ok: isValid }
 }
+
+export async function block(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
+    return reply.status(403).send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to block a user' })
+  }
+
+  const { id: userId } = req.parameters()
+  const { reason } = req.data()
+
+  const user = await req.server['userManager'].blockUserById(userId, reason)
+  return { ok: !!user?.id }
+}
+
+export async function unblock(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
+    return reply
+      .status(403)
+      .send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to unblock a user' })
+  }
+
+  const { id: userId } = req.parameters()
+  const user = await req.server['userManager'].unblockUserById(userId)
+  return { ok: !!user?.id }
+}

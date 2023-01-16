@@ -151,6 +151,46 @@ module.exports = {
           }
         }
       }
+    },
+    {
+      method: 'POST',
+      path: '/block/:id',
+      roles: [roles.admin, roles.backoffice],
+      handler: 'auth.block',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Block a user by id',
+        description: 'Block a user by id',
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' }
+            }
+          }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/unblock/:id',
+      roles: [roles.admin, roles.backoffice],
+      handler: 'auth.unblock',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Unblock a user by id',
+        description: 'Unblock a user by id',
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' }
+            }
+          }
+        }
+      }
     }
   ]
 }
