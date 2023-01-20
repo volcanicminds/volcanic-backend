@@ -192,6 +192,12 @@ const start = async (decorators) => {
       changePassword(email: string, password: string, oldPassword: string) {
         throw Error('Not implemented')
       },
+      forgotPassword(email: string) {
+        throw Error('Not implemented')
+      },
+      resetPassword(user: any, password: string) {
+        throw Error('Not implemented')
+      },
       enableUserById(id: string) {
         throw Error('Not implemented')
       },
