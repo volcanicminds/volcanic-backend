@@ -102,6 +102,39 @@ module.exports = {
     },
     {
       method: 'POST',
+      path: '/reset-password/:code',
+      roles: [],
+      handler: 'auth.resetPassword',
+      middlewares: [],
+      config: {
+        title: 'Reset password',
+        description: 'Reset password for an existing user given the reset token',
+        params: {
+          code: {
+            type: 'string',
+            description: 'Reset code'
+          }
+        },
+        body: {
+          type: 'object',
+          properties: {
+            newPassword1: { type: 'string' },
+            newPassword2: { type: 'string' }
+          }
+        },
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' }
+            }
+          }
+        }
+      }
+    },
+    {
+      method: 'POST',
       path: '/login',
       roles: [],
       handler: 'auth.login',
