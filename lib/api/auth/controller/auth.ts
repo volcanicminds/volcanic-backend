@@ -42,8 +42,8 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(Error('Wrong credentials'))
   }
 
-  if (!user.enabled) {
-    return reply.status(403).send(Error('User not enabled'))
+  if (user.blocked) {
+    return reply.status(403).send(Error('User blocked'))
   }
 
   user = await req.server['userManager'].disableUserById(user?.id)
@@ -74,8 +74,8 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(Error('Wrong credentials'))
   }
 
-  if (!user.enabled) {
-    return reply.status(403).send(Error('User not enabled'))
+  if (user.blocked) {
+    return reply.status(403).send(Error('User blocked'))
   }
 
   user = await req.server['userManager'].changePassword(email, newPassword1, oldPassword)
@@ -100,8 +100,8 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(Error('Wrong credentials'))
   }
 
-  if (!user.enabled) {
-    return reply.status(403).send(Error('User not enabled'))
+  if (user.blocked) {
+    return reply.status(403).send(Error('User blocked'))
   }
 
   // log.trace('User: ' + JSON.stringify(user) + ' ' + roles)
