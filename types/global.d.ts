@@ -122,6 +122,7 @@ declare global {
   var connection: any
   var entity: any
   var repository: any
+  // var mongoRepository: any
 }
 
 export { global }

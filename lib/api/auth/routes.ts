@@ -51,8 +51,8 @@ module.exports = {
       handler: 'auth.unregister',
       middlewares: ['global.preAuth', 'global.postAuth'],
       config: {
-        title: 'Unregister existing user',
-        description: 'Unregister an existing user',
+        title: 'Unregister existing user (actually disables it)',
+        description: 'Unregister an existing user (actually disables it)',
         body: {
           type: 'object',
           properties: {
