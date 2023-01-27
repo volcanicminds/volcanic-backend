@@ -129,22 +129,17 @@ module.exports = {
     },
     {
       method: 'POST',
-      path: '/reset-password/:code',
+      path: '/reset-password',
       roles: [],
       handler: 'auth.resetPassword',
       middlewares: [],
       config: {
         title: 'Reset password',
         description: 'Reset password for an existing user given the reset token',
-        params: {
-          code: {
-            type: 'string',
-            description: 'Reset code'
-          }
-        },
         body: {
           type: 'object',
           properties: {
+            code: { type: 'string' },
             newPassword1: { type: 'string' },
             newPassword2: { type: 'string' }
           }
@@ -221,6 +216,15 @@ module.exports = {
       config: {
         title: 'Block a user by id',
         description: 'Block a user by id',
+        params: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'User id'
+            }
+          }
+        },
         response: {
           200: {
             description: 'Default response',
@@ -241,6 +245,15 @@ module.exports = {
       config: {
         title: 'Unblock a user by id',
         description: 'Unblock a user by id',
+        params: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'User id'
+            }
+          }
+        },
         response: {
           200: {
             description: 'Default response',

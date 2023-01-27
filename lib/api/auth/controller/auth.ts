@@ -110,8 +110,7 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
-  const { code } = req.parameters()
-  const { newPassword1, newPassword2 } = req.data()
+  const { code, newPassword1, newPassword2 } = req.data()
 
   if (!newPassword1 || !regExp.password.test(newPassword1)) {
     return reply.status(404).send(Error('New password not valid'))
