@@ -102,6 +102,33 @@ module.exports = {
     },
     {
       method: 'POST',
+      path: '/forgot-password',
+      roles: [],
+      handler: 'auth.forgotPassword',
+      middlewares: ['global.dispatchForgotPasswordLink'],
+      config: {
+        title: 'Forgot password',
+        description: 'Forgot password for an existing user given the email or username',
+        body: {
+          type: 'object',
+          properties: {
+            username: { type: 'string' },
+            email: { type: 'string' }
+          }
+        },
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' }
+            }
+          }
+        }
+      }
+    },
+    {
+      method: 'POST',
       path: '/reset-password/:code',
       roles: [],
       handler: 'auth.resetPassword',

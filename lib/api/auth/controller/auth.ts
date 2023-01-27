@@ -83,6 +83,32 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
   return { ok: isValid }
 }
 
+export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
+  const { username, email } = req.data()
+
+  if (!username && (!email || (email && !regExp.email.test(email)))) {
+    return reply.status(404).send(Error('Missing a valid user identifier'))
+  }
+
+  let user = await repository.users.findOne({
+    where: [{ username }, { email }]
+  })
+  let isValid = await req.server['userManager'].isValidUser(user)
+
+  if (!isValid) {
+    return reply.status(403).send(Error('Wrong credentials'))
+  }
+
+  if (user.blocked) {
+    return reply.status(403).send(Error('User blocked'))
+  }
+
+  user = await req.server['userManager'].forgotPassword(user.email)
+  isValid = await req.server['userManager'].isValidUser(user)
+
+  return { ok: isValid }
+}
+
 export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
   const { code } = req.parameters()
   const { newPassword1, newPassword2 } = req.data()
@@ -104,13 +130,13 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(Error('Wrong credentials'))
   }
 
-  if (!user.enabled) {
-    return reply.status(403).send(Error('User not enabled'))
+  if (user.blocked) {
+    return reply.status(403).send(Error('User blocked'))
   }
 
   user = await req.server['userManager'].resetPassword(user, newPassword1)
   isValid = await req.server['userManager'].isValidUser(user)
-  return { ok: isValid }
+  return { ok: isValid, user }
 }
 
 export async function login(req: FastifyRequest, reply: FastifyReply) {
