@@ -35,7 +35,9 @@ export function load(): ConfiguredRoute[] {
           roles: rs = []
         } = route
 
-        const requiredRoles = !rs.length ? [roles.public] : rs
+        const rsp = !rs.length ? [roles.public] : rs
+        const requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin] // admin is always present
+
         const reqAuth: boolean =
           middlewares.some((m) => authMiddlewares.includes(m)) ||
           requiredRoles.every((r) => r.code !== roles.public.code)
