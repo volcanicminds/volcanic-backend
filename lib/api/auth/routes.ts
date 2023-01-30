@@ -129,6 +129,32 @@ module.exports = {
     },
     {
       method: 'POST',
+      path: '/confirm-email',
+      roles: [],
+      handler: 'auth.confirmEmail',
+      middlewares: [],
+      config: {
+        title: 'Confirm email',
+        description: 'Confirm email for an existing user',
+        body: {
+          type: 'object',
+          properties: {
+            code: { type: 'string' }
+          }
+        },
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' }
+            }
+          }
+        }
+      }
+    },
+    {
+      method: 'POST',
       path: '/reset-password',
       roles: [],
       handler: 'auth.resetPassword',

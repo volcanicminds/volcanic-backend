@@ -78,6 +78,7 @@ export interface UserManagement {
   retrieveUserByPassword(email: string, password: string): any | null
   changePassword(email: string, password: string, oldPassword: string): any | null
   forgotPassword(email: string): any | null
+  userConfirmation(user: any)
   resetPassword(user: any, password: string): any | null
   enableUserById(id: string): any | null
   disableUserById(id: string): any | null

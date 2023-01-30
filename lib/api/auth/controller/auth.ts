@@ -60,11 +60,11 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
   const { email, oldPassword, newPassword1, newPassword2 } = req.data()
 
   if (!newPassword1 || !regExp.password.test(newPassword1)) {
-    return reply.status(404).send(Error('New password not valid'))
+    return reply.status(400).send(Error('New password is not valid'))
   }
 
   if (!newPassword2 || newPassword2 !== newPassword1) {
-    return reply.status(404).send(Error('Repeated new password not match'))
+    return reply.status(400).send(Error('Repeated new password not match'))
   }
 
   let user = await req.server['userManager'].retrieveUserByPassword(email, oldPassword)
@@ -87,7 +87,7 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
   const { username, email } = req.data()
 
   if (!username && (!email || (email && !regExp.email.test(email)))) {
-    return reply.status(404).send(Error('Missing a valid user identifier'))
+    return reply.status(400).send(Error('Missing a valid user identifier'))
   }
 
   let user = await repository.users.findOne({
@@ -109,15 +109,41 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
   return { ok: isValid }
 }
 
+export async function confirmEmail(req: FastifyRequest, reply: FastifyReply) {
+  const { code } = req.data()
+
+  if (!code) {
+    return reply.status(400).send(Error('Missing the confirm email token'))
+  }
+
+  let user = await repository.users.findOne({
+    where: { confirmationToken: code }
+  })
+  let isValid = await req.server['userManager'].isValidUser(user)
+
+  if (!isValid) {
+    return reply.status(403).send(Error('Wrong credentials'))
+  }
+
+  if (user.blocked) {
+    return reply.status(403).send(Error('User blocked'))
+  }
+
+  user = await req.server['userManager'].userConfirmation(user)
+  isValid = await req.server['userManager'].isValidUser(user)
+
+  return { ok: isValid }
+}
+
 export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
   const { code, newPassword1, newPassword2 } = req.data()
 
   if (!newPassword1 || !regExp.password.test(newPassword1)) {
-    return reply.status(404).send(Error('New password not valid'))
+    return reply.status(400).send(Error('New password not valid'))
   }
 
   if (!newPassword2 || newPassword2 !== newPassword1) {
-    return reply.status(404).send(Error('Repeated new password not match'))
+    return reply.status(400).send(Error('Repeated new password not match'))
   }
 
   let user = await repository.users.findOne({
