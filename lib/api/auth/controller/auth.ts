@@ -90,16 +90,20 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(Error('Missing a valid user identifier'))
   }
 
-  let user = await repository.users.findOne({
-    where: [{ username }, { email }]
-  })
+  let user = null as any
+  if (email) {
+    user = await req.server['userManager'].retrieveUserByEmail(email)
+  } else if (username) {
+    user = await req.server['userManager'].retrieveUserByUsername(username)
+  }
+
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
     return reply.status(403).send(Error('Wrong credentials'))
   }
 
-  if (user.blocked) {
+  if (user?.blocked) {
     return reply.status(403).send(Error('User blocked'))
   }
 
