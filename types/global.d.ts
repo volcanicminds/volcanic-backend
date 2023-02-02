@@ -74,6 +74,7 @@ export interface UserManagement {
   updateUserById(id: string, user: any): any | null
   retrieveUserById(id: string): any | null
   retrieveUserByEmail(email: string): any | null
+  retrieveUserByUsername(username: string): any | null
   retrieveUserByExternalId(externalId: string): any | null
   retrieveUserByPassword(email: string, password: string): any | null
   changePassword(email: string, password: string, oldPassword: string): any | null

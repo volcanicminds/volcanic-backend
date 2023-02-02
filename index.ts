@@ -183,6 +183,9 @@ const start = async (decorators) => {
       retrieveUserByEmail(email: string) {
         throw Error('Not implemented')
       },
+      retrieveUserByUsername(username: string) {
+        throw Error('Not implemented')
+      },
       retrieveUserByExternalId(externalId: string) {
         throw Error('Not implemented')
       },
