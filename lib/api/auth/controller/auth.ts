@@ -120,9 +120,7 @@ export async function confirmEmail(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(Error('Missing the confirm email token'))
   }
 
-  let user = await repository.users.findOne({
-    where: { confirmationToken: code }
-  })
+  let user = await req.server['userManager'].retrieveUserByConfirmationToken(code)
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
@@ -150,9 +148,7 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(Error('Repeated new password not match'))
   }
 
-  let user = await repository.users.findOne({
-    where: { resetPasswordToken: code }
-  })
+  let user = await req.server['userManager'].retrieveUserByResetPasswordToken(code)
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {

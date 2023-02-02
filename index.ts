@@ -183,6 +183,12 @@ const start = async (decorators) => {
       retrieveUserByEmail(email: string) {
         throw Error('Not implemented')
       },
+      retrieveUserByConfirmationToken(code: string) {
+        throw Error('Not implemented')
+      },
+      retrieveUserByResetPasswordToken(code: string) {
+        throw Error('Not implemented')
+      },
       retrieveUserByUsername(username: string) {
         throw Error('Not implemented')
       },
