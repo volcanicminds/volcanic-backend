@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 
 export interface AuthenticatedUser {
-  id: number
+  getId(): any
   username: string
   email: string
   roles: Role[]

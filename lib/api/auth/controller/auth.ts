@@ -46,7 +46,7 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(Error('User blocked'))
   }
 
-  user = await req.server['userManager'].disableUserById(user?.id)
+  user = await req.server['userManager'].disableUserById(user.getId())
   isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
@@ -197,11 +197,11 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
 
 export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply) {
   let isValid = await req.server['userManager'].isValidUser(req.user)
-  if (!isValid) {
+  if (!req.user || !isValid) {
     return reply.status(403).send(Error('User not linked'))
   }
 
-  const user = await req.server['userManager'].resetExternalId(req.user?.id)
+  const user = await req.server['userManager'].resetExternalId(req.user.getId())
   isValid = await req.server['userManager'].isValidUser(user)
   return { ok: isValid }
 }
@@ -215,7 +215,7 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   const { reason } = req.data()
 
   const user = await req.server['userManager'].blockUserById(userId, reason)
-  return { ok: !!user?.id }
+  return { ok: !!user.getId() }
 }
 
 export async function unblock(req: FastifyRequest, reply: FastifyReply) {
@@ -227,5 +227,5 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
 
   const { id: userId } = req.parameters()
   const user = await req.server['userManager'].unblockUserById(userId)
-  return { ok: !!user?.id }
+  return { ok: !!user.getId() }
 }

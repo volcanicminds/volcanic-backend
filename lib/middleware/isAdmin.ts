@@ -2,7 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 
 export function preHandler(req: FastifyRequest, res: FastifyReply, done: any) {
   try {
-    if (req.user && req.user.id && req.hasRole(roles.admin)) {
+    if (req.user && req.user.getId() && req.hasRole(roles.admin)) {
       return done()
     }
 

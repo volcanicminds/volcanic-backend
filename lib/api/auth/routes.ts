@@ -34,6 +34,7 @@ module.exports = {
             type: 'object',
             properties: {
               id: { type: 'string' },
+              _id: { type: 'string' },
               externalId: { type: 'string' },
               username: { type: 'string' },
               email: { type: 'string' },
@@ -203,6 +204,7 @@ module.exports = {
             type: 'object',
             properties: {
               id: { type: 'string' },
+              _id: { type: 'string' },
               externalId: { type: 'string' },
               username: { type: 'string' },
               email: { type: 'string' },
