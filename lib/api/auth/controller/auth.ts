@@ -181,6 +181,10 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(Error('Wrong credentials'))
   }
 
+  if (!(user.confirmed === true)) {
+    return reply.status(403).send(Error('User email unconfirmed'))
+  }
+
   if (user.blocked) {
     return reply.status(403).send(Error('User blocked'))
   }
