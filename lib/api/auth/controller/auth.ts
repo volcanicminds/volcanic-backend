@@ -56,6 +56,21 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
   return { ok: true }
 }
 
+export async function validatePassword(req: FastifyRequest, reply: FastifyReply) {
+  const { password } = req.data()
+
+  if (!password) {
+    return reply.status(400).send(Error('Password cannot be null'))
+  }
+
+  const match = regExp.password.test(password)
+  if (!match) {
+    return reply.status(400).send(Error('Password is not valid'))
+  }
+
+  return { ok: match }
+}
+
 export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
   const { email, oldPassword, newPassword1, newPassword2 } = req.data()
 

@@ -27,7 +27,7 @@ import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastif
 import { myContextFunction, MyContext } from './lib/apollo/context'
 import resolvers from './lib/apollo/resolvers'
 import typeDefs from './lib/apollo/type-defs'
-import { UserManagement } from './types/global'
+import { UserManagement, TokenManagement } from './types/global'
 
 global.log = logger
 
@@ -168,6 +168,9 @@ const start = async (decorators) => {
   // defaults
   decorators = {
     userManager: {
+      isValidUser(data: any) {
+        throw Error('Not implemented')
+      },
       createUser(data: any) {
         throw Error('Not implemented')
       },
@@ -210,16 +213,54 @@ const start = async (decorators) => {
       resetPassword(user: any, password: string) {
         throw Error('Not implemented')
       },
-      enableUserById(id: string) {
+      blockUserById(id: string, reason: string) {
         throw Error('Not implemented')
       },
-      disableUserById(id: string) {
+      unblockUserById(data: any) {
         throw Error('Not implemented')
       },
-      isValidUser(data: any) {
+      countQuery(data: any) {
+        throw Error('Not implemented')
+      },
+      findQuery(data: any) {
         throw Error('Not implemented')
       }
     } as UserManagement,
+    tokenManager: {
+      isValidToken(data: any) {
+        throw Error('Not implemented')
+      },
+      createToken(data: any) {
+        throw Error('Not implemented')
+      },
+      resetExternalId(id: string) {
+        throw Error('Not implemented')
+      },
+      updateTokenById(id: string, token: any) {
+        throw Error('Not implemented')
+      },
+      retrieveTokenById(id: string) {
+        throw Error('Not implemented')
+      },
+      retrieveTokenByExternalId(id: string) {
+        throw Error('Not implemented')
+      },
+      blockTokenById(id: string, reason: string) {
+        throw Error('Not implemented')
+      },
+      unblockTokenById(id: string) {
+        throw Error('Not implemented')
+      },
+      countQuery(data: any) {
+        throw Error('Not implemented')
+      },
+      findQuery(data: any) {
+        throw Error('Not implemented')
+      },
+      removeTokenById(id: string) {
+        throw Error('Not implemented')
+      }
+    } as TokenManagement,
     ...decorators
   }
 
@@ -252,13 +293,15 @@ export {
   FastifyReply,
   FastifyRequest,
   AuthenticatedUser,
+  AuthenticatedToken,
   Role,
   Data,
   Roles,
   Route,
   RouteConfig,
   ConfiguredRoute,
-  UserManagement
+  UserManagement,
+  TokenManagement
 } from './types/global'
 
 /**

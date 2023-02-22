@@ -3,6 +3,7 @@ export {
   FastifyReply,
   FastifyRequest,
   AuthenticatedUser,
+  AuthenticatedToken,
   Role,
   Data,
   Roles,

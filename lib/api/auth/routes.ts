@@ -74,6 +74,32 @@ module.exports = {
     },
     {
       method: 'POST',
+      path: '/validate-password',
+      roles: [],
+      handler: 'auth.validatePassword',
+      middlewares: [],
+      config: {
+        title: 'Validate password',
+        description: 'Validate password if valid and usable',
+        body: {
+          type: 'object',
+          properties: {
+            password: { type: 'string' }
+          }
+        },
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' }
+            }
+          }
+        }
+      }
+    },
+    {
+      method: 'POST',
       path: '/change-password',
       roles: [],
       handler: 'auth.changePassword',
@@ -253,6 +279,7 @@ module.exports = {
             }
           }
         },
+        body: { $ref: 'blockBodySchema' },
         response: {
           200: {
             description: 'Default response',

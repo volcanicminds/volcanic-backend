@@ -7,6 +7,12 @@ export interface AuthenticatedUser {
   roles: Role[]
 }
 
+export interface AuthenticatedToken {
+  getId(): any
+  name: string
+  roles: Role[]
+}
+
 export interface Role {
   code: string
   name: string
@@ -69,6 +75,7 @@ export interface ConfiguredRoute {
 }
 
 export interface UserManagement {
+  isValidUser(data: any): boolean
   createUser(data: any): any | null
   resetExternalId(data: any): any | null
   updateUserById(id: string, user: any): any | null
@@ -81,16 +88,32 @@ export interface UserManagement {
   retrieveUserByPassword(email: string, password: string): any | null
   changePassword(email: string, password: string, oldPassword: string): any | null
   forgotPassword(email: string): any | null
-  userConfirmation(user: any)
   resetPassword(user: any, password: string): any | null
-  enableUserById(id: string): any | null
-  disableUserById(id: string): any | null
-  isValidUser(data: any): boolean
+  userConfirmation(user: any)
+  blockUserById(id: string, reason: string): any | null
+  unblockUserById(id: string): any | null
+  countQuery(data: any): any | null
+  findQuery(data: any): any | null
+}
+
+export interface TokenManagement {
+  isValidToken(data: any): boolean
+  createToken(data: any): any | null
+  resetExternalId(id: string): any | null
+  updateTokenById(id: string, token: any): any | null
+  retrieveTokenById(id: string): any | null
+  retrieveTokenByExternalId(id: string): any | null
+  blockTokenById(id: string, reason: string): any | null
+  unblockTokenById(id: string): any | null
+  countQuery(data: any): any | null
+  findQuery(data: any): any | null
+  removeTokenById(id: string): any | null
 }
 
 declare module 'fastify' {
   export interface FastifyRequest {
     user?: AuthenticatedUser
+    token?: AuthenticatedToken
     startedAt?: Date
     data(): Data
     parameters(): Data
@@ -105,6 +128,7 @@ declare module 'fastify' {
 
 export interface FastifyRequest extends FastifyRequest {
   user?: AuthenticatedUser
+  token?: AuthenticatedToken
   startedAt?: Date
   data(): Data
   parameters(): Data
