@@ -35,7 +35,12 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(Error('Token not registered'))
   }
 
-  const bearerToken = await reply.jwtSign({ sub: token.externalId })
+  const bearerToken = await reply.jwtSign(
+    { sub: token.externalId },
+    {
+      sign: { expiresIn: undefined }
+    }
+  )
   if (!bearerToken) {
     return reply.status(400).send(Error('Token not signed'))
   }
