@@ -15,18 +15,14 @@ module.exports = async (req, reply) => {
   const isRoutePublic = (req.routeConfig.requiredRoles || []).some((role: Role) => role.code === roles.public.code)
 
   if (prefix === 'Bearer' && bearerToken != null) {
-    let user: AuthenticatedUser = {} as AuthenticatedUser
-    let token: AuthenticatedToken = {} as AuthenticatedToken
-
-    console.log('bearer ' + bearerToken)
+    let user: null | AuthenticatedUser = null
+    let token: null | AuthenticatedToken = null
 
     try {
       const tokenData = reply.server.jwt.verify(bearerToken)
       user = await req.server['userManager'].retrieveUserByExternalId(tokenData?.sub)
-      console.log(user)
       if (!user) {
         token = await req.server['tokenManager'].retrieveTokenByExternalId(tokenData?.sub)
-        console.log(token)
       }
       if (!user && !token) {
         return reply.status(404).send({ statusCode: 404, code: 'USER_NOT_FOUND', message: 'User not found' })
