@@ -54,7 +54,7 @@ module.exports = {
       config: {
         title: 'Find token',
         description: 'Get token by id',
-        params: { $ref: 'tokenParamsSchema#' },
+        params: { $ref: 'onlyIdSchema#' },
         response: {
           200: {
             description: 'Default response',
@@ -90,7 +90,7 @@ module.exports = {
       config: {
         title: 'Update existing token',
         description: 'Update an existing token',
-        params: { $ref: 'tokenParamsSchema#' },
+        params: { $ref: 'onlyIdSchema#' },
         body: { $ref: 'tokenBodySchema' },
         response: {
           200: {
@@ -109,15 +109,9 @@ module.exports = {
       config: {
         title: 'Unregister existing token (actually disables it)',
         description: 'Unregister an existing token (actually disables it)',
-        params: { $ref: 'tokenParamsSchema#' },
+        params: { $ref: 'onlyIdSchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -130,16 +124,10 @@ module.exports = {
       config: {
         title: 'Block a token by id',
         description: 'Block a token by id',
-        params: { $ref: 'tokenParamsSchema#' },
-        body: { $ref: 'blockBodySchema' },
+        params: { $ref: 'onlyIdSchema#' },
+        body: { $ref: 'blockBodySchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -152,15 +140,9 @@ module.exports = {
       config: {
         title: 'Unblock a token by id',
         description: 'Unblock a token by id',
-        params: { $ref: 'tokenParamsSchema#' },
+        params: { $ref: 'onlyIdSchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     }

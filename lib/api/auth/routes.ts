@@ -18,30 +18,9 @@ module.exports = {
       config: {
         title: 'Register new user',
         description: 'Register a new user',
-        body: {
-          type: 'object',
-          properties: {
-            username: { type: 'string' },
-            email: { type: 'string' },
-            password1: { type: 'string' },
-            password2: { type: 'string' },
-            requiredRoles: { type: 'array', items: { type: 'string' } }
-          }
-        },
+        body: { $ref: 'authRegisterBodySchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              _id: { type: 'string' },
-              externalId: { type: 'string' },
-              username: { type: 'string' },
-              email: { type: 'string' },
-              enabled: { type: 'boolean' },
-              roles: { type: 'array', items: { type: 'string' } }
-            }
-          }
+          200: { $ref: 'authRegisterResponseSchema#' }
         }
       }
     },
@@ -54,21 +33,9 @@ module.exports = {
       config: {
         title: 'Unregister existing user (actually disables it)',
         description: 'Unregister an existing user (actually disables it)',
-        body: {
-          type: 'object',
-          properties: {
-            email: { type: 'string' },
-            password: { type: 'string' }
-          }
-        },
+        body: { $ref: 'authLoginBodySchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -81,20 +48,9 @@ module.exports = {
       config: {
         title: 'Validate password',
         description: 'Validate password if valid and usable',
-        body: {
-          type: 'object',
-          properties: {
-            password: { type: 'string' }
-          }
-        },
+        body: { $ref: 'onlyPasswordSchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -107,23 +63,9 @@ module.exports = {
       config: {
         title: 'Change password',
         description: 'Change password for an existing user',
-        body: {
-          type: 'object',
-          properties: {
-            email: { type: 'string' },
-            oldPassword: { type: 'string' },
-            newPassword1: { type: 'string' },
-            newPassword2: { type: 'string' }
-          }
-        },
+        body: { $ref: 'authChangePasswordBodySchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -136,21 +78,9 @@ module.exports = {
       config: {
         title: 'Forgot password',
         description: 'Forgot password for an existing user given the email or username',
-        body: {
-          type: 'object',
-          properties: {
-            username: { type: 'string' },
-            email: { type: 'string' }
-          }
-        },
+        body: { $ref: 'authForgotPasswordBodySchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -163,20 +93,9 @@ module.exports = {
       config: {
         title: 'Confirm email',
         description: 'Confirm email for an existing user',
-        body: {
-          type: 'object',
-          properties: {
-            code: { type: 'string' }
-          }
-        },
+        body: { $ref: 'onlyCodeSchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -189,22 +108,9 @@ module.exports = {
       config: {
         title: 'Reset password',
         description: 'Reset password for an existing user given the reset token',
-        body: {
-          type: 'object',
-          properties: {
-            code: { type: 'string' },
-            newPassword1: { type: 'string' },
-            newPassword2: { type: 'string' }
-          }
-        },
+        body: { $ref: 'resetPasswordBodySchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -217,13 +123,7 @@ module.exports = {
       config: {
         title: 'Login',
         description: 'Basic login authentication',
-        body: {
-          type: 'object',
-          properties: {
-            email: { type: 'string' },
-            password: { type: 'string' }
-          }
-        },
+        body: { $ref: 'authLoginBodySchema#' },
         response: {
           200: {
             description: 'Default response',
@@ -251,13 +151,7 @@ module.exports = {
         title: 'Invalidate all tokens',
         description: 'Invalidate all tokens',
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -270,24 +164,10 @@ module.exports = {
       config: {
         title: 'Block a user by id',
         description: 'Block a user by id',
-        params: {
-          type: 'object',
-          properties: {
-            id: {
-              type: 'string',
-              description: 'User id'
-            }
-          }
-        },
-        body: { $ref: 'blockBodySchema' },
+        params: { $ref: 'onlyIdSchema#' },
+        body: { $ref: 'blockBodySchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },
@@ -300,23 +180,9 @@ module.exports = {
       config: {
         title: 'Unblock a user by id',
         description: 'Unblock a user by id',
-        params: {
-          type: 'object',
-          properties: {
-            id: {
-              type: 'string',
-              description: 'User id'
-            }
-          }
-        },
+        params: { $ref: 'onlyIdSchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     }

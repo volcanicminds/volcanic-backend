@@ -16,13 +16,7 @@ module.exports = {
         title: 'Health check service',
         description: 'Health check service',
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              ok: { type: 'boolean' }
-            }
-          }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     }

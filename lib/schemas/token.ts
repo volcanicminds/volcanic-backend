@@ -1,15 +1,3 @@
-export const tokenParamsSchema = {
-  $id: 'tokenParamsSchema',
-  type: 'object',
-  nullable: true,
-  properties: {
-    id: {
-      type: 'string',
-      description: 'Token id'
-    }
-  }
-}
-
 export const tokenBodySchema = {
   $id: 'tokenBodySchema',
   type: 'object',
