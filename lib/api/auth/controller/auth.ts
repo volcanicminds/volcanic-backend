@@ -17,6 +17,21 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(404).send(Error('Repeated password not match'))
   }
 
+  let existings = await req.server['userManager'].retrieveUserByEmail(data.email)
+  if (existings) {
+    return reply.status(404).send(Error('Email already registered'))
+  }
+
+  console.log('role ' + data.requiredRoles)
+  if ((data.requiredRoles || []).includes('admin')) {
+    console.log('requiredRoles ' + data.requiredRoles)
+    existings = await req.server['userManager'].findQuery({ 'roles:in': 'admin' })
+    console.log('existings ' + existings)
+    if (existings) {
+      return reply.status(404).send(Error('User admin already registered'))
+    }
+  }
+
   // public is the default
   const publicRole = global.roles?.public?.code || 'public'
   data.roles = (data.requiredRoles || []).map((r) => global.roles[r]?.code).filter((r) => !!r)
