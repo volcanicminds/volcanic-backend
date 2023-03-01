@@ -22,11 +22,8 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(404).send(Error('Email already registered'))
   }
 
-  console.log('role ' + data.requiredRoles)
   if ((data.requiredRoles || []).includes('admin')) {
-    console.log('requiredRoles ' + data.requiredRoles)
     existings = await req.server['userManager'].findQuery({ 'roles:in': 'admin' })
-    console.log('existings ' + existings)
     if (existings) {
       return reply.status(404).send(Error('User admin already registered'))
     }
