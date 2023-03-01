@@ -9,6 +9,6 @@ export function preHandler(req: FastifyRequest, res: FastifyReply, done: any) {
     throw new Error('Unauthorized')
   } catch (err) {
     log.e && log.error(`Upps, something just happened ${err}`)
-    return res.code(401).send(err) // must be authorized first
+    return res.code(401).send(new Error('Unauthorized')) // must be authorized first
   }
 }
