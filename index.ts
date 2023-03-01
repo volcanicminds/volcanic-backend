@@ -142,7 +142,7 @@ const start = async (decorators) => {
   const fastify = await Fastify(opts)
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
-  const { JWT_SECRET, JWT_EXPIRES_IN = '15d' } = process.env
+  const { JWT_SECRET = '', JWT_EXPIRES_IN = '15d' } = process.env
 
   const loadApollo = yn(GRAPHQL, false)
   const plugins = loaderPlugins.load()
@@ -156,7 +156,7 @@ const start = async (decorators) => {
   // JWT Validator
   log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
   await fastify.register(jwtValidator, {
-    secret: JWT_SECRET || 'supersecret',
+    secret: JWT_SECRET,
     sign: { expiresIn: JWT_EXPIRES_IN }
   })
 
