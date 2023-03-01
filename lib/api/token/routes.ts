@@ -72,7 +72,7 @@ module.exports = {
       config: {
         title: 'Create new token',
         description: 'Create a new token',
-        body: { $ref: 'tokenBodySchema' },
+        body: { $ref: 'tokenCreateBodySchema' },
         response: {
           200: {
             description: 'Default response',
@@ -91,7 +91,7 @@ module.exports = {
         title: 'Update existing token',
         description: 'Update an existing token',
         params: { $ref: 'onlyIdSchema#' },
-        body: { $ref: 'tokenBodySchema' },
+        body: { $ref: 'tokenUpdateBodySchema' },
         response: {
           200: {
             description: 'Default response',

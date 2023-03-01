@@ -38,7 +38,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   const bearerToken = await reply.jwtSign(
     { sub: token.externalId },
     {
-      sign: { expiresIn: undefined }
+      sign: { expiresIn: data?.expiresIn || undefined }
     }
   )
   if (!bearerToken) {
