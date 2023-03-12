@@ -1,0 +1,7 @@
+{
+  "watch": ["lib"],
+  "verbose": true,
+  "ext": "js,ts,json,jsonc",
+  "ignore": [".git", "coverage", "dist", "lib/**/*.spec.ts", "node_modules"],
+  "exec": "ts-node ./lib/index.ts"
+}
