@@ -1,3 +1,5 @@
+import { normalizePatterns } from '../util/path'
+
 const hooks = [
   'onRequest',
   'onError',
@@ -18,7 +20,7 @@ const glob = require('glob')
 const path = require('path')
 
 export function apply(server: any): void {
-  const patterns = [`${__dirname}/../hooks/*.{ts,js}`, `${process.cwd()}/src/hooks/*.{ts,js}`]
+  const patterns = normalizePatterns(['..', 'hooks', '*.{ts,js}'], ['src', 'hooks', '*.{ts,js}'])
   const allHooks: any = hooks.reduce((acc, v) => ({ ...acc, [v]: [] as Function[] }), {})
 
   patterns.forEach((pattern) => {
