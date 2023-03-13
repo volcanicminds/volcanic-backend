@@ -1,11 +1,12 @@
 import { config } from 'dotenv'
+import { normalizePatterns } from '../util/path'
 
 const glob = require('glob')
 
 export function load() {
   const plugins: any = {}
 
-  const patterns = [`${__dirname}/../config/plugins.{ts,js}`, `${process.cwd()}/src/config/plugins.{ts,js}`]
+  const patterns = normalizePatterns(['..', 'config', 'plugins.{ts,js}'], ['src', 'config', 'plugins.{ts,js}'])
   patterns.forEach((pattern) => {
     log.t && log.trace('Looking for ' + pattern)
     glob.sync(pattern).forEach((f: string) => {

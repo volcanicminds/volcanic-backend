@@ -1,10 +1,11 @@
 import { Role, Roles } from '../../types/global'
+import { normalizePatterns } from '../util/path'
 const glob = require('glob')
 
 export function load() {
   const roles: Roles = {}
 
-  const patterns = [`${__dirname}/../config/roles.{ts,js}`, `${process.cwd()}/src/config/roles.{ts,js}`]
+  const patterns = normalizePatterns(['..', 'config', 'roles.{ts,js}'], ['src', 'config', 'roles.{ts,js}'])
   patterns.forEach((pattern) => {
     log.t && log.trace('Looking for ' + pattern)
     glob.sync(pattern).forEach((f: string) => {

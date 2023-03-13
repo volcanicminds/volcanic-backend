@@ -1,8 +1,10 @@
+import { normalizePatterns } from '../util/path'
+
 const glob = require('glob')
 const path = require('path')
 
 export function apply(server: any): void {
-  const patterns = [`${__dirname}/../schemas/*.{ts,js}`, `${process.cwd()}/src/schemas/*.{ts,js}`]
+  const patterns = normalizePatterns(['..', 'schemas', '*.{ts,js}'], ['src', 'schemas', '*.{ts,js}'])
 
   let schemaCount = 0
   patterns.forEach((pattern) => {
