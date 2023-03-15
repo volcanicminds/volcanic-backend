@@ -527,10 +527,10 @@
     fastify-plugin "^4.2.1"
     helmet "^6.0.0"
 
-"@fastify/jwt@^6.5.0":
-  version "6.5.0"
-  resolved "https://registry.yarnpkg.com/@fastify/jwt/-/jwt-6.5.0.tgz#99fa697e7114aee5039f0c8761d0b3278f74f30a"
-  integrity sha512-5fR5bRXuWurP56gy/owng3BS/3e9vA0mON1XCGLsznvsudLZUdiPaK0R8Bl5gVwFAW75iFkNOp8qgnw26Csjrw==
+"@fastify/jwt@^6.6.0":
+  version "6.7.0"
+  resolved "https://registry.yarnpkg.com/@fastify/jwt/-/jwt-6.7.0.tgz#3ec0313df36f4ae5b1ca7dc69f83e43b89a19439"
+  integrity sha512-VSXbh63dG1C2sBtmM/BhFuoklB6OY3r0hkcAzUrc6C0iiv/eAvoAF/utFLO3vJoshsQHDax6+zCe7hG1iZcmyA==
   dependencies:
     "@fastify/error" "^3.0.0"
     "@lukeed/ms" "^2.0.0"
