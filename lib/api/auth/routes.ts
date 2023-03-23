@@ -74,7 +74,7 @@ module.exports = {
       path: '/forgot-password',
       roles: [],
       handler: 'auth.forgotPassword',
-      middlewares: ['global.dispatchForgotPasswordLink'],
+      middlewares: ['global.preForgotPasswordHandler', 'global.dispatchForgotPasswordLink'],
       config: {
         title: 'Forgot password',
         description: 'Forgot password for an existing user given the email or username',

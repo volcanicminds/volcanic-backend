@@ -1,6 +1,7 @@
 import yn from '../util/yn'
 import { Route, ConfiguredRoute, RouteConfig } from '../../types/global'
 import { FastifyReply, FastifyRequest } from 'fastify'
+import { normalizePatterns } from '../util/path'
 
 const glob = require('glob')
 const path = require('path')
@@ -8,7 +9,7 @@ const methods = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'PATCH', 'OPTIONS']
 
 export function load(): ConfiguredRoute[] {
   const validRoutes: ConfiguredRoute[] = []
-  const patterns = [`${__dirname}/../api/**/routes.{ts,js}`, `${process.cwd()}/src/api/**/routes.{ts,js}`]
+  const patterns = normalizePatterns(['..', 'api', '**', 'routes.{ts,js}'], ['src', 'api', '**', 'routes.{ts,js}'])
   const authMiddlewares = ['global.isAuthenticated', 'global.isAdmin']
 
   patterns.forEach((pattern) => {

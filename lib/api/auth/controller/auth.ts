@@ -5,27 +5,27 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   const { password1: password, password2, ...data } = req.data()
 
   if (!data.username) {
-    return reply.status(404).send(Error('Username not valid'))
+    return reply.status(400).send(Error('Username not valid'))
   }
   if (!data.email || !regExp.email.test(data.email)) {
-    return reply.status(404).send(Error('Email not valid'))
+    return reply.status(400).send(Error('Email not valid'))
   }
   if (!password || !regExp.password.test(password)) {
-    return reply.status(404).send(Error('Password not valid'))
+    return reply.status(400).send(Error('Password not valid'))
   }
   if (!password2 || password2 !== password) {
-    return reply.status(404).send(Error('Repeated password not match'))
+    return reply.status(400).send(Error('Repeated password not match'))
   }
 
   let existings = await req.server['userManager'].retrieveUserByEmail(data.email)
   if (existings) {
-    return reply.status(404).send(Error('Email already registered'))
+    return reply.status(400).send(Error('Email already registered'))
   }
 
   if ((data.requiredRoles || []).includes('admin')) {
     existings = await req.server['userManager'].findQuery({ 'roles:in': 'admin' })
-    if (existings) {
-      return reply.status(404).send(Error('User admin already registered'))
+    if (existings?.records?.length) {
+      return reply.status(400).send(Error('User admin already registered'))
     }
   }
 
@@ -195,10 +195,10 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   const { email, password } = req.data()
 
   if (!email || !regExp.email.test(email)) {
-    return reply.status(404).send(Error('Email not valid'))
+    return reply.status(400).send(Error('Email not valid'))
   }
   if (!password || !regExp.password.test(password)) {
-    return reply.status(404).send(Error('Password not valid'))
+    return reply.status(400).send(Error('Password not valid'))
   }
 
   const user = await req.server['userManager'].retrieveUserByPassword(email, password)
