@@ -78,6 +78,9 @@ async function addFastifySwagger(fastify: FastifyInstance) {
   if (loadSwagger) {
     log.trace('Add swagger plugin')
 
+    const fs = require('fs')
+    const contents = fs.readFileSync('logo-dark.png', { encoding: 'base64' })
+
     await fastify.register(swagger, {
       swagger: {
         info: {
@@ -118,17 +121,14 @@ async function addFastifySwagger(fastify: FastifyInstance) {
         docExpansion: 'list',
         deepLinking: true,
         defaultModelsExpandDepth: 1
+      },
+      logo: {
+        type: 'image/png',
+        content: Buffer.from(contents, 'base64')
+      },
+      theme: {
+        title: SWAGGER_TITLE
       }
-      // uiHooks: {
-      //   onRequest: function (request, reply, next) {
-      //     next()
-      //   },
-      //   preHandler: function (request, reply, next) {
-      //     next()
-      //   }
-      // }
-      // staticCSP: true,
-      // transformStaticCSP: (header) => header
     })
   }
 }
