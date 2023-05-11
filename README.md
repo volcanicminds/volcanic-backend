@@ -36,6 +36,10 @@ PORT=2230
 JWT_SECRET=yourSecret
 JWT_EXPIRES_IN=5d
 
+JWT_REFRESH=true
+JWT_REFRESH_SECRET=yourRefreshSecret
+JWT_REFRESH_EXPIRES_IN=180d
+
 # LOG_LEVEL: trace, debug, info, warn, error, fatal
 LOG_LEVEL=info
 LOG_COLORIZE=true
@@ -134,11 +138,19 @@ const logTimestampReadable = yn(LOG_TIMESTAMP_READABLE, true)
 ```ruby
 JWT_SECRET=yourSecret
 JWT_EXPIRES_IN=5d
+
+JWT_REFRESH=true
+JWT_REFRESH_SECRET=yourRefreshSecret
+JWT_REFRESH_EXPIRES_IN=180d
 ```
 
-With `reply.jwtSign(user)` is possible obtain a fresh JWT token. Each authenticated calls must be recalled specifying in the header:
+With `reply.jwtSign(payload)` is possible obtain a fresh JWT token. Each authenticated calls must be recalled specifying in the header:
 
 `Authorization: Bearer <generated-token>`
+
+With `await reply.server.jwt['refreshToken'].sign(payload)` is possible obtain a new Refresh JWT token.
+
+All tokens (authorization and refresh) can be invalidated through the appropriate route.
 
 ## Swagger
 

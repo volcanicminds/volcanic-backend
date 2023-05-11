@@ -125,19 +125,22 @@ module.exports = {
         description: 'Basic login authentication',
         body: { $ref: 'authLoginBodySchema#' },
         response: {
-          200: {
-            description: 'Default response',
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              _id: { type: 'string' },
-              externalId: { type: 'string' },
-              username: { type: 'string' },
-              email: { type: 'string' },
-              roles: { type: 'array', items: { type: 'string' } },
-              token: { type: 'string' }
-            }
-          }
+          200: { $ref: 'authLoginResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/refresh-token',
+      roles: [],
+      handler: 'auth.refreshToken',
+      middlewares: [],
+      config: {
+        title: 'Refresh authentication token',
+        description: 'Refresh login authentication token',
+        body: { $ref: 'authRefreshTokenBodySchema#' },
+        response: {
+          200: { $ref: 'authRefreshTokenResponseSchema#' }
         }
       }
     },

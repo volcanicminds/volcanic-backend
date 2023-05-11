@@ -75,6 +75,7 @@ export interface ConfiguredRoute {
 }
 
 export interface UserManagement {
+  isImplemented(): boolean
   isValidUser(data: any): boolean
   createUser(data: any): any | null
   resetExternalId(data: any): any | null
@@ -97,6 +98,7 @@ export interface UserManagement {
 }
 
 export interface TokenManagement {
+  isImplemented(): boolean
   isValidToken(data: any): boolean
   createToken(data: any): any | null
   resetExternalId(id: string): any | null

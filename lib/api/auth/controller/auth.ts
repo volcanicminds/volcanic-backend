@@ -4,6 +4,10 @@ import * as regExp from '../../../util/regexp'
 export async function register(req: FastifyRequest, reply: FastifyReply) {
   const { password1: password, password2, ...data } = req.data()
 
+  if (!req.server['userManager'].isImplemented()) {
+    throw Error('Not implemented')
+  }
+
   if (!data.username) {
     return reply.status(400).send(Error('Username not valid'))
   }
@@ -86,6 +90,10 @@ export async function validatePassword(req: FastifyRequest, reply: FastifyReply)
 export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
   const { email, oldPassword, newPassword1, newPassword2 } = req.data()
 
+  if (!req.server['userManager'].isImplemented()) {
+    throw Error('Not implemented')
+  }
+
   if (!newPassword1 || !regExp.password.test(newPassword1)) {
     return reply.status(400).send(Error('New password is not valid'))
   }
@@ -112,6 +120,10 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
 
 export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
   const { username, email } = req.data()
+
+  if (!req.server['userManager'].isImplemented()) {
+    throw Error('Not implemented')
+  }
 
   if (!username && (!email || (email && !regExp.email.test(email)))) {
     return reply.status(400).send(Error('Missing a valid user identifier'))
@@ -167,6 +179,10 @@ export async function confirmEmail(req: FastifyRequest, reply: FastifyReply) {
 export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
   const { code, newPassword1, newPassword2 } = req.data()
 
+  if (!req.server['userManager'].isImplemented()) {
+    throw Error('Not implemented')
+  }
+
   if (!newPassword1 || !regExp.password.test(newPassword1)) {
     return reply.status(400).send(Error('New password not valid'))
   }
@@ -194,6 +210,10 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
 export async function login(req: FastifyRequest, reply: FastifyReply) {
   const { email, password } = req.data()
 
+  if (!req.server['userManager'].isImplemented()) {
+    throw Error('Not implemented')
+  }
+
   if (!email || !regExp.email.test(email)) {
     return reply.status(400).send(Error('Email not valid'))
   }
@@ -203,6 +223,8 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
 
   const user = await req.server['userManager'].retrieveUserByPassword(email, password)
   const isValid = await req.server['userManager'].isValidUser(user)
+  // const user = { confirmed: true, blocked: false, externalId: 123456, roles: [{ code: 'admin' }] }
+  // const isValid = true
 
   if (!isValid) {
     return reply.status(403).send(Error('Wrong credentials'))
@@ -216,13 +238,46 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(Error('User blocked'))
   }
 
-  // log.trace('User: ' + JSON.stringify(user) + ' ' + roles)
   // https://www.iana.org/assignments/jwt/jwt.xhtml
-  const token = user !== null ? await reply.jwtSign({ sub: user.externalId }) : null
+  const token = await reply.jwtSign({ sub: user.externalId })
+  const refreshToken = reply.server.jwt['refreshToken']
+    ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId })
+    : undefined
+
   return {
     ...user,
-    token: token || null,
-    roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r)
+    roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
+    token: token,
+    refreshToken
+  }
+}
+
+export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
+  const { token, refreshToken } = req.data()
+
+  if (!req.server['userManager'].isImplemented()) {
+    throw Error('Not implemented')
+  }
+
+  const tokenData = (await reply.server.jwt.decode(token)) as any
+  const refreshTokenData = await reply.server.jwt['refreshToken'].verify(refreshToken)
+
+  if (tokenData?.sub && tokenData?.sub !== refreshTokenData?.sub) {
+    return reply.status(403).send(Error('Mismatched tokens'))
+  }
+
+  const user = await req.server['userManager'].retrieveUserByExternalId(tokenData?.sub)
+  const isValid = await req.server['userManager'].isValidUser(user)
+  // const user = { confirmed: true, blocked: false, externalId: 123456, roles: [{ code: 'admin' }] }
+  // const isValid = true
+
+  if (!isValid) {
+    return reply.status(403).send(Error('Wrong refresh token'))
+  }
+
+  const newToken = await reply.jwtSign({ sub: user.externalId })
+  return {
+    token: newToken
   }
 }
 
@@ -238,6 +293,10 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
 }
 
 export async function block(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.server['userManager'].isImplemented()) {
+    throw Error('Not implemented')
+  }
+
   if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
     return reply.status(403).send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to block a user' })
   }
@@ -250,6 +309,10 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function unblock(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.server['userManager'].isImplemented()) {
+    throw Error('Not implemented')
+  }
+
   if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
     return reply
       .status(403)

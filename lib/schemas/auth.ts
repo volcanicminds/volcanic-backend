@@ -7,6 +7,7 @@ export const authLoginBodySchema = {
     password: { type: 'string' }
   }
 }
+
 export const authForgotPasswordBodySchema = {
   $id: 'authForgotPasswordBodySchema',
   type: 'object',
@@ -27,6 +28,41 @@ export const authRegisterBodySchema = {
     password1: { type: 'string' },
     password2: { type: 'string' },
     requiredRoles: { type: 'array', items: { type: 'string' } }
+  }
+}
+
+export const authLoginResponseSchema = {
+  $id: 'authLoginResponseSchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    id: { type: 'string' },
+    _id: { type: 'string' },
+    externalId: { type: 'string' },
+    username: { type: 'string' },
+    email: { type: 'string' },
+    roles: { type: 'array', items: { type: 'string' } },
+    token: { type: 'string' },
+    refreshToken: { type: 'string' }
+  }
+}
+
+export const authRefreshTokenBodySchema = {
+  $id: 'authRefreshTokenBodySchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    token: { type: 'string' },
+    refreshToken: { type: 'string' }
+  }
+}
+
+export const authRefreshTokenResponseSchema = {
+  $id: 'authRefreshTokenResponseSchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    token: { type: 'string' }
   }
 }
 
