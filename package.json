@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "codename": "turin",
   "license": "MIT",
   "description": "The volcanic (minds) backend",
@@ -46,8 +46,7 @@
     "dev": "nodemon --exec \"ts-node\" server.ts",
     "test": "jest test --config jest.config.js",
     "reset": "yarn && yarn upgrade && yarn compile",
-    "upgrade-deps": "yarn upgrade-interactive",
-    "publish": "yarn && yarn compile && npm publish --access public"
+    "upgrade-deps": "yarn upgrade-interactive"
   },
   "dependencies": {
     "@apollo/server": "^4.2.2",
