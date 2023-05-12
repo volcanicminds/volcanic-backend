@@ -20,7 +20,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   const data = req.data()
 
   if (!data.name) {
-    return reply.status(404).send(Error('Token name not valid'))
+    return reply.status(404).send(new Error('Token name not valid'))
   }
 
   // public is the default
@@ -32,7 +32,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
 
   let token = await req.server['tokenManager'].createToken(data)
   if (!token || !token.getId() || !token.externalId) {
-    return reply.status(400).send(Error('Token not registered'))
+    return reply.status(400).send(new Error('Token not registered'))
   }
 
   const bearerToken = await reply.jwtSign(
@@ -42,7 +42,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     }
   )
   if (!bearerToken) {
-    return reply.status(400).send(Error('Token not signed'))
+    return reply.status(400).send(new Error('Token not signed'))
   }
 
   token = await req.server['tokenManager'].updateTokenById(token.getId(), { token: bearerToken })
@@ -57,7 +57,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
 
   let token = await req.server['tokenManager'].retrieveTokenById(id)
   if (!token) {
-    return reply.status(403).send(Error('Token not found'))
+    return reply.status(403).send(new Error('Token not found'))
   }
 
   token = await req.server['tokenManager'].removeTokenById(id)

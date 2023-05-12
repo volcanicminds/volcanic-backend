@@ -187,61 +187,61 @@ const start = async (decorators) => {
         return false
       },
       isValidUser(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       createUser(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       resetExternalId(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       updateUserById(id: string, user: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       retrieveUserById(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       retrieveUserByEmail(email: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       retrieveUserByConfirmationToken(code: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       retrieveUserByResetPasswordToken(code: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       retrieveUserByUsername(username: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       retrieveUserByExternalId(externalId: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       retrieveUserByPassword(email: string, password: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       changePassword(email: string, password: string, oldPassword: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       forgotPassword(email: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       userConfirmation(user: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       resetPassword(user: any, password: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       blockUserById(id: string, reason: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       unblockUserById(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       countQuery(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       findQuery(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       }
     } as UserManagement,
     tokenManager: {
@@ -249,37 +249,37 @@ const start = async (decorators) => {
         return false
       },
       isValidToken(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       createToken(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       resetExternalId(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       updateTokenById(id: string, token: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       retrieveTokenById(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       retrieveTokenByExternalId(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       blockTokenById(id: string, reason: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       unblockTokenById(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       countQuery(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       findQuery(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       },
       removeTokenById(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented')
       }
     } as TokenManagement,
     ...decorators
