@@ -129,7 +129,7 @@ async function addFastifySwagger(fastify: FastifyInstance) {
       theme: {
         title: SWAGGER_TITLE
       }
-    })
+    } as any)
   }
 }
 
@@ -241,6 +241,9 @@ const start = async (decorators) => {
         throw Error('Not implemented')
       },
       findQuery(data: any) {
+        throw Error('Not implemented')
+      },
+      isPasswordToBeChanged(data: any) {
         throw Error('Not implemented')
       }
     } as UserManagement,

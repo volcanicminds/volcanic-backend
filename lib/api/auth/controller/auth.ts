@@ -234,6 +234,13 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(Error('User email unconfirmed'))
   }
 
+  const isPasswordToBeChanged = req.server['userManager'].isPasswordToBeChanged(user)
+  if (isPasswordToBeChanged) {
+    return reply
+      .status(403)
+      .send({ statusCode: 403, code: 'PASSWORD_TO_BE_CHANGED', message: 'The password is expired' })
+  }
+
   if (user.blocked) {
     return reply.status(403).send(Error('User blocked'))
   }
