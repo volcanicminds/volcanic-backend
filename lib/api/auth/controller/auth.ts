@@ -309,7 +309,8 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   const { id: userId } = req.parameters()
   const { reason } = req.data()
 
-  const user = await req.server['userManager'].blockUserById(userId, reason)
+  let user = await req.server['userManager'].blockUserById(userId, reason)
+  user = await req.server['userManager'].resetExternalId(user.getId())
   return { ok: !!user.getId() }
 }
 
