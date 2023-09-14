@@ -1,0 +1,12 @@
+{
+  "hello": "Hello",
+  "greeting": {
+    "formal": "Hello",
+    "informal": "Hi",
+    "placeholder": {
+      "formal": "Hello %s",
+      "informal": "Hi %s"
+    }
+  },
+  "complex": "Hello {{user.firstname}} {{user.lastname}}"
+}

@@ -1,0 +1,12 @@
+{
+  "hello": "Ciao",
+  "greeting": {
+    "formal": "Ciao",
+    "informal": "Cià",
+    "placeholder": {
+      "formal": "Ciao %s",
+      "informal": "Cià %s"
+    }
+  },
+  "complex": "Ciao {{user.firstname}} {{user.lastname}}"
+}

@@ -23,6 +23,7 @@
     "allowJs": true,
     "outDir": "dist",
     "lib": ["es7"],
+    "resolveJsonModule": true,
     "paths": {
       "@types": ["./types"]
     }
@@ -34,6 +35,6 @@
     //   "*": ["*", "components/*"]
     // }
   },
-  "include": ["*.ts", "*.d.ts", "lib/**/*", "config/*", "hooks/*", "types/*"],
+  "include": ["*.ts", "*.d.ts", "*.json", "lib/**/*", "lib/**/*.json", "types/*"],
   "exclude": ["node_modules", "test/**/*"]
 }

@@ -6,11 +6,13 @@ dotenv.config()
 import yn from './lib/util/yn'
 import logger from './lib/util/logger'
 import * as mark from './lib/util/mark'
+import { TranslatedError } from './lib/util/errors'
 import * as loaderPlugins from './lib/loader/plugins'
 import * as loaderRoles from './lib/loader/roles'
 import * as loaderRouter from './lib/loader/router'
 import * as loaderHooks from './lib/loader/hooks'
 import * as loaderSchemas from './lib/loader/schemas'
+import * as loaderTranslation from './lib/loader/translation'
 
 import Fastify, { FastifyInstance } from 'fastify'
 import jwtValidator from '@fastify/jwt'
@@ -137,6 +139,7 @@ const start = async (decorators) => {
   const begin = new Date().getTime()
   mark.print(logger)
   global.roles = loaderRoles.load()
+  global.t = loaderTranslation.load()
 
   const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: logger } : {}
   const fastify = await Fastify(opts)
@@ -336,6 +339,7 @@ export {
  * - `import server from '@volcanicminds/backend'`
  * - `import server, { TSC_definition } from '@volcanicminds/backend'`
  */
-module.exports = { yn, start }
-module.exports.server = { yn, start }
-module.exports.default = { yn, start }
+export { yn, start, TranslatedError }
+module.exports = { yn, start, TranslatedError }
+module.exports.server = { yn, start, TranslatedError }
+module.exports.default = { yn, start, TranslatedError }
