@@ -62,7 +62,7 @@
     "dotenv": "^16.0.3",
     "fastify": "^4.13.0",
     "glob": "^8.0.3",
-    "graphql": "^16.6.0",
+    "graphql": "^16.8.1",
     "nanoid": "^4.0.1",
     "object-sizeof": "^1.6.3",
     "pino": "^8.10.0",
