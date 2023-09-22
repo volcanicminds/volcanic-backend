@@ -112,6 +112,11 @@ export interface TokenManagement {
   removeTokenById(id: string): any | null
 }
 
+export interface DataBaseManagement {
+  isImplemented(): boolean
+  synchronizeSchemas(): any | null
+}
+
 declare module 'fastify' {
   export interface FastifyRequest {
     user?: AuthenticatedUser

@@ -29,7 +29,7 @@ import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastif
 import { myContextFunction, MyContext } from './lib/apollo/context'
 import resolvers from './lib/apollo/resolvers'
 import typeDefs from './lib/apollo/type-defs'
-import { UserManagement, TokenManagement } from './types/global'
+import { UserManagement, TokenManagement, DataBaseManagement } from './types/global'
 
 global.log = logger
 
@@ -285,6 +285,14 @@ const start = async (decorators) => {
         throw new Error('Not implemented')
       }
     } as TokenManagement,
+    dataBaseManager: {
+      isImplemented() {
+        return true
+      },
+      synchronizeSchemas() {
+        throw new Error('Not implemented')
+      }
+    } as DataBaseManagement,
     ...decorators
   }
 
