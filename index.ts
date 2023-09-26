@@ -14,7 +14,7 @@ import * as loaderHooks from './lib/loader/hooks'
 import * as loaderSchemas from './lib/loader/schemas'
 import * as loaderTranslation from './lib/loader/translation'
 
-import Fastify, { FastifyInstance } from 'fastify'
+import fastify, { FastifyInstance } from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import swagger from '@fastify/swagger'
 import swaggerUI from '@fastify/swagger-ui'
@@ -33,12 +33,12 @@ import { UserManagement, TokenManagement, DataBaseManagement } from './types/glo
 
 global.log = logger
 
-async function attachApollo(fastify: FastifyInstance) {
+async function attachApollo(server: FastifyInstance) {
   log.info('Attach ApolloServer to Fastify')
   const apollo = new ApolloServer<MyContext>({
     typeDefs,
     resolvers,
-    plugins: [fastifyApolloDrainPlugin(fastify)]
+    plugins: [fastifyApolloDrainPlugin(server)]
   })
 
   await apollo.start()
@@ -46,15 +46,15 @@ async function attachApollo(fastify: FastifyInstance) {
   return apollo
 }
 
-async function addApolloRouting(fastify: FastifyInstance, apollo: ApolloServer<MyContext> | null) {
+async function addApolloRouting(server: FastifyInstance, apollo: ApolloServer<MyContext> | null) {
   if (apollo) {
     log.trace('Add graphql routes')
-    await fastify.register(fastifyApollo(apollo), {
+    await server.register(fastifyApollo(apollo), {
       context: myContextFunction
     })
 
     // // OR
-    // fastify.post(
+    // server.post(
     //   '/graphql-alt',
     //   fastifyApolloHandler(apollo, {
     //     context: myContextFunction
@@ -63,17 +63,17 @@ async function addApolloRouting(fastify: FastifyInstance, apollo: ApolloServer<M
   }
 }
 
-async function addFastifyRouting(fastify: FastifyInstance) {
-  log.trace('Add fastify routes')
+async function addFastifyRouting(server: FastifyInstance) {
+  log.trace('Add server routes')
 
-  loaderHooks.apply(fastify)
-  loaderSchemas.apply(fastify)
+  loaderHooks.apply(server)
+  loaderSchemas.apply(server)
 
   const routes = loaderRouter.load()
-  routes && loaderRouter.apply(fastify, routes)
+  routes && loaderRouter.apply(server, routes)
 }
 
-async function addFastifySwagger(fastify: FastifyInstance) {
+async function addFastifySwagger(server: FastifyInstance) {
   const { SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION, SWAGGER_PREFIX_URL, SWAGGER_HOST } = process.env
 
   const loadSwagger = yn(SWAGGER, false)
@@ -83,7 +83,7 @@ async function addFastifySwagger(fastify: FastifyInstance) {
     const fs = require('fs')
     const contents = fs.readFileSync('logo-dark.png', { encoding: 'base64' })
 
-    await fastify.register(swagger, {
+    await server.register(swagger, {
       swagger: {
         info: {
           title: SWAGGER_TITLE || 'Volcanic API Documentation',
@@ -117,7 +117,7 @@ async function addFastifySwagger(fastify: FastifyInstance) {
       }
     })
 
-    await fastify.register(swaggerUI, {
+    await server.register(swaggerUI, {
       routePrefix: SWAGGER_PREFIX_URL || '/documentation',
       uiConfig: {
         docExpansion: 'list',
@@ -142,7 +142,7 @@ const start = async (decorators) => {
   global.t = loaderTranslation.load()
 
   const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: logger } : {}
-  const fastify = await Fastify(opts)
+  const server: FastifyInstance = fastify()
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
   const {
@@ -158,30 +158,30 @@ const start = async (decorators) => {
   const plugins = loaderPlugins.load()
 
   // Helmet is not usable with Apollo Server
-  !loadApollo && plugins?.helmet && (await fastify.register(helmet))
-  plugins?.rateLimit && (await fastify.register(rateLimit))
-  plugins?.cors && (await fastify.register(cors, plugins.cors || {}))
-  plugins?.compress && (await fastify.register(compress))
+  !loadApollo && plugins?.helmet && (await server.register(helmet))
+  plugins?.rateLimit && (await server.register(rateLimit))
+  plugins?.cors && (await server.register(cors, plugins.cors || {}))
+  plugins?.compress && (await server.register(compress))
 
   // JWT Validator
   log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
-  await fastify.register(jwtValidator, {
+  await server.register(jwtValidator, {
     secret: JWT_SECRET,
     sign: { expiresIn: JWT_EXPIRES_IN }
   })
 
   if (loadRefreshJWT) {
-    await fastify.register(jwtValidator, {
+    await server.register(jwtValidator, {
       namespace: 'refreshToken',
       secret: JWT_REFRESH_SECRET || JWT_SECRET,
       sign: { expiresIn: JWT_REFRESH_EXPIRES_IN }
     })
   }
 
-  const apollo = loadApollo ? await attachApollo(fastify) : null
-  await addFastifySwagger(fastify)
-  await addApolloRouting(fastify, apollo)
-  await addFastifyRouting(fastify)
+  const apollo = loadApollo ? await attachApollo(server) : null
+  await addFastifySwagger(server)
+  await addApolloRouting(server, apollo)
+  await addFastifyRouting(server)
 
   // defaults
   decorators = {
@@ -298,11 +298,11 @@ const start = async (decorators) => {
 
   await Promise.all(
     Object.keys(decorators || {}).map(async (key) => {
-      await fastify.decorate(key, decorators[key])
+      await server.decorate(key, decorators[key])
     })
   )
 
-  await fastify
+  await server
     .listen({
       port: Number(port),
       host: host
@@ -316,8 +316,8 @@ const start = async (decorators) => {
       loadSwagger && log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/documentation'}`)
     })
 
-  global.server = fastify
-  return fastify
+  global.server = server
+  return server
 }
 
 export {
