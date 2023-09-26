@@ -266,7 +266,7 @@ module.exports = {
 // src/api/example/controller/demo.ts
 import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
 
-export async function user(req: FastifyRequest, reply: FastifyReply) {
+export function user(req: FastifyRequest, reply: FastifyReply) {
   reply.send(req.user || {})
 }
 ```
