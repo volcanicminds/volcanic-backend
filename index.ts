@@ -12,6 +12,7 @@ import * as loaderRoles from './lib/loader/roles'
 import * as loaderRouter from './lib/loader/router'
 import * as loaderHooks from './lib/loader/hooks'
 import * as loaderSchemas from './lib/loader/schemas'
+import * as loaderTracking from './lib/loader/tracking'
 import * as loaderTranslation from './lib/loader/translation'
 
 import fastify, { FastifyInstance } from 'fastify'
@@ -138,10 +139,12 @@ async function addFastifySwagger(server: FastifyInstance) {
 const start = async (decorators) => {
   const begin = new Date().getTime()
   mark.print(logger)
+
   global.roles = loaderRoles.load()
   global.t = loaderTranslation.load()
+  global.tracking = loaderTracking.load()
 
-  const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: logger } : {}
+  const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: { development: logger } } : { logger: true }
   const server: FastifyInstance = fastify()
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
@@ -190,61 +193,61 @@ const start = async (decorators) => {
         return false
       },
       isValidUser(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       createUser(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       resetExternalId(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       updateUserById(id: string, user: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserById(id: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByEmail(email: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByConfirmationToken(code: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByResetPasswordToken(code: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByUsername(username: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByExternalId(externalId: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByPassword(email: string, password: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       changePassword(email: string, password: string, oldPassword: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       forgotPassword(email: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       userConfirmation(user: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       resetPassword(user: any, password: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       blockUserById(id: string, reason: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       unblockUserById(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       countQuery(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       findQuery(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       }
     } as UserManagement,
     tokenManager: {
@@ -252,45 +255,51 @@ const start = async (decorators) => {
         return false
       },
       isValidToken(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       createToken(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       resetExternalId(id: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       updateTokenById(id: string, token: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveTokenById(id: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveTokenByExternalId(id: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       blockTokenById(id: string, reason: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       unblockTokenById(id: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       countQuery(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       findQuery(data: any) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       removeTokenById(id: string) {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       }
     } as TokenManagement,
     dataBaseManager: {
       isImplemented() {
-        return true
+        return false
       },
       synchronizeSchemas() {
-        throw new Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
+      retrieveBy(entityName, entityId) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
+      addChange(entityName, entityId, status, userId, contents, changeEntity) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       }
     } as DataBaseManagement,
     ...decorators

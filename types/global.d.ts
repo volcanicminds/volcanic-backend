@@ -74,6 +74,20 @@ export interface ConfiguredRoute {
   }
 }
 
+export interface TrackChanges {
+  enable: boolean
+  method: string
+  path: string
+  entity: string
+  changeEntity: string
+  fields?: { includes: string[] } | null
+  primaryKey?: string | null
+}
+
+export interface TrackChangesList {
+  [option: string]: TrackChanges
+}
+
 export interface UserManagement {
   isImplemented(): boolean
   isValidUser(data: any): boolean
@@ -115,6 +129,8 @@ export interface TokenManagement {
 export interface DataBaseManagement {
   isImplemented(): boolean
   synchronizeSchemas(): any | null
+  retrieveBy(entityName, entityId): any | null
+  addChange(entityName, entityId, status, userId, contents, changeEntity): any | null
 }
 
 declare module 'fastify' {
@@ -127,6 +143,7 @@ declare module 'fastify' {
     roles(): string[]
     hasRole(role: Role): boolean
     payloadSize?: number
+    trackingData?: any
   }
   export interface FastifyReply {
     payloadSize?: number
@@ -142,6 +159,7 @@ export interface FastifyRequest extends FastifyRequest {
   roles(): string[]
   hasRole(role: Role): boolean
   payloadSize?: number
+  trackingData?: any
 }
 
 export interface FastifyReply extends FastifyReply {
@@ -154,6 +172,7 @@ declare global {
   var log: any
   var server: any
   var roles: Roles
+  var tracking: TrackChangesList
   var connection: any
   var entity: any
   var repository: any

@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "codename": "turin",
   "license": "MIT",
   "description": "The volcanic (minds) backend",
@@ -60,6 +60,7 @@
     "@fastify/swagger": "^8.10.1",
     "@fastify/swagger-ui": "^1.9.3",
     "@types/node": "^20.7.0",
+    "dayjs": "^1.11.10",
     "dotenv": "^16.3.1",
     "fastify": "^4.23.2",
     "glob": "^8.1.0",
