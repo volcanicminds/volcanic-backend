@@ -50,12 +50,17 @@ export async function track(req: FastifyRequest, reply: FastifyReply, payload: a
         if (status === 'delete') {
           addChange = true
         } else {
-          ;(tc.fields?.includes || []).forEach((field) => {
-            const oldValue = oldData != null && field in oldData ? oldData[field] : undefined
-            const newValue = payload != null && field in payload ? payload[field] : undefined
-            if (isFieldChanged(oldValue, newValue) && newValue !== undefined) {
-              contents.push({ key: field, old: oldValue, new: newValue })
-              addChange = true
+          const fields = tc.fields?.includes || Object.keys(payload) || []
+          const excludes: string[] = tc.fields?.excludes || []
+
+          fields.forEach((field) => {
+            if (!excludes.includes(field)) {
+              const oldValue = oldData != null && field in oldData ? oldData[field] : undefined
+              const newValue = payload != null && field in payload ? payload[field] : undefined
+              if (newValue !== undefined && isFieldChanged(oldValue, newValue)) {
+                contents.push({ key: field, old: oldValue, new: newValue })
+                addChange = true
+              }
             }
           })
         }
@@ -82,8 +87,25 @@ function getTrackingConfigIfEnabled(req) {
 }
 
 function isFieldChanged(oldValue, newValue) {
-  if (oldValue instanceof Date || newValue instanceof Date) {
+  if ((oldValue instanceof Date || newValue instanceof Date) && oldValue != null && newValue != undefined) {
     return !dayjs(oldValue).isSame(dayjs(newValue))
+  }
+
+  if ((oldValue instanceof Object || newValue instanceof Object) && oldValue != null && newValue != undefined) {
+    const primaryKey = global.trackingConfig?.primaryKey
+    const oldId =
+      oldValue != null && primaryKey in oldValue
+        ? oldValue[primaryKey]
+        : typeof oldValue === 'string'
+        ? oldValue
+        : undefined
+    const newId =
+      newValue != null && primaryKey in newValue
+        ? newValue[primaryKey]
+        : typeof newValue === 'string'
+        ? newValue
+        : undefined
+    return oldId !== undefined && newId !== undefined ? oldId != newId : false
   }
 
   return oldValue != newValue

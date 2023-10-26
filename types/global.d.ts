@@ -80,7 +80,10 @@ export interface TrackChanges {
   path: string
   entity: string
   changeEntity: string
-  fields?: { includes: string[] } | null
+  fields?: {
+    includes?: string[] | null
+    excludes?: string[] | null
+  } | null
   primaryKey?: string | null
 }
 
@@ -173,6 +176,7 @@ declare global {
   var server: any
   var roles: Roles
   var tracking: TrackChangesList
+  var trackingConfig: Data
   var connection: any
   var entity: any
   var repository: any

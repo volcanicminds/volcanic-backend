@@ -1,4 +1,4 @@
-import { TrackChanges, TrackChangesList } from '../../types/global'
+import { TrackChanges, TrackChangesList, Data } from '../../types/global'
 import { normalizePatterns } from '../util/path'
 const glob = require('glob')
 
@@ -6,6 +6,7 @@ const METHODS = ['POST', 'PUT', 'DELETE']
 
 export function load() {
   const trackChangesList: TrackChangesList = {}
+  let trackConfig: Data = {}
 
   const patterns = normalizePatterns(['..', 'config', 'tracking.{ts,js}'], ['src', 'config', 'tracking.{ts,js}'])
   patterns.forEach((pattern) => {
@@ -14,6 +15,8 @@ export function load() {
       const configTracking = require(f)
       const { config, changes } = configTracking || {}
       const { enableAll = true, primaryKey = 'id', changeEntity = 'Change' } = config || {}
+
+      trackConfig = { ...trackConfig, ...config }
 
       enableAll &&
         changes.forEach((change) => {
@@ -32,7 +35,7 @@ export function load() {
 
   const keys = Object.keys(trackChangesList) || []
   log.d && log.debug(`Tracking changes loaded: ${keys?.length || 0}`)
-  return trackChangesList
+  return { tracking: trackChangesList, trackingConfig: trackConfig }
 }
 
 function getCodeBy(method, path) {

@@ -142,7 +142,10 @@ const start = async (decorators) => {
 
   global.roles = loaderRoles.load()
   global.t = loaderTranslation.load()
-  global.tracking = loaderTracking.load()
+
+  const { tracking, trackingConfig } = loaderTracking.load()
+  global.tracking = tracking
+  global.trackingConfig = trackingConfig
 
   const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: { development: logger } } : { logger: true }
   const server: FastifyInstance = fastify()
