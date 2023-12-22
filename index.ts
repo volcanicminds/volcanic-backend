@@ -251,6 +251,9 @@ const start = async (decorators) => {
       },
       findQuery(data: any) {
         throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
+      disableUserById(id: string) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       }
     } as UserManagement,
     tokenManager: {
