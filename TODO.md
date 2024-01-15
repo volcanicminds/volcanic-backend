@@ -1,8 +1,6 @@
 # TODO
 
 - add example / demo project (with @volcanicminds/backend & @volcanicminds/typeorm)
-- authentication
-- userManager methods
 - validations (see typeorm)
 - subscribers / hooks (Active Records: in separated files)
 - api versioning

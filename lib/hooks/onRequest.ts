@@ -11,8 +11,9 @@ module.exports = async (req, reply) => {
 
   // authorization check
   const auth = req.headers?.authorization || ''
+  const cfg = req.routeOptions?.config || req.routeConfig || {}
   const [prefix, bearerToken] = auth.split(' ')
-  const isRoutePublic = (req.routeConfig.requiredRoles || []).some((role: Role) => role.code === roles.public.code)
+  const isRoutePublic = (cfg.requiredRoles || []).some((role: Role) => role.code === roles.public.code)
 
   if (prefix === 'Bearer' && bearerToken != null) {
     let user: null | AuthenticatedUser = null
@@ -50,8 +51,8 @@ module.exports = async (req, reply) => {
     }
   }
 
-  if (req.routeConfig.requiredRoles?.length > 0) {
-    const { method = '', url = '', requiredRoles } = req.routeConfig
+  if (cfg.requiredRoles?.length > 0) {
+    const { method = '', url = '', requiredRoles } = cfg
     const authRoles: string[] = ((req.user?.roles || req.token?.roles)?.map((code) => code) as string[]) || [
       roles.public?.code || 'public'
     ]

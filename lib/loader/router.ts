@@ -101,7 +101,32 @@ export function load(): ConfiguredRoute[] {
             )
           : log.w && log.warn(`* Method [${method}] path ${endpoint} handler ${handler} disabled. Skip.`)
 
-        toAdd &&
+        if (toAdd) {
+          const doc = {
+            summary: title,
+            description,
+            deprecated,
+            tags,
+            version,
+            security: security === 'bearer' ? [{ Bearer: [] }] : security,
+            response
+          } as {
+            summary: string
+            description: string
+            deprecated: boolean
+            tags: string[]
+            version: string
+            security: any
+            response: any
+            querystring: any | undefined
+            params: any | undefined
+            body: any | undefined
+          }
+
+          if (query) doc.querystring = query
+          if (params) doc.params = params
+          if (body) doc.body = body
+
           validRoutes.push({
             handler,
             method,
@@ -112,20 +137,9 @@ export function load(): ConfiguredRoute[] {
             base,
             file: path.join(base, defaultConfig.controller || 'controller', handlerParts[0]),
             func: handlerParts[1],
-            // swagger: doc
-            doc: {
-              summary: title,
-              description,
-              deprecated,
-              tags,
-              version,
-              security: security === 'bearer' ? [{ Bearer: [] }] : security,
-              querystring: query,
-              params,
-              body,
-              response
-            }
+            doc: doc // swagger & schema validation
           })
+        }
       })
     })
   })

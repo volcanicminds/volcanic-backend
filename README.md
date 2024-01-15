@@ -151,6 +151,7 @@ With `reply.jwtSign(payload)` is possible obtain a fresh JWT token. Each authent
 With `await reply.server.jwt['refreshToken'].sign(payload)` is possible obtain a new Refresh JWT token.
 
 All tokens (authorization and refresh) can be invalidated through the appropriate route.
+**Example**: Both `JWT_SECRET` and `JWT_REFRESH_SECRET` can be generated with a command like `openssl rand -base64 64`
 
 ## Swagger
 
@@ -265,7 +266,7 @@ module.exports = {
 // src/api/example/controller/demo.ts
 import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
 
-export async function user(req: FastifyRequest, reply: FastifyReply) {
+export function user(req: FastifyRequest, reply: FastifyReply) {
   reply.send(req.user || {})
 }
 ```

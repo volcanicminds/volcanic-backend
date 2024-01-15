@@ -6,13 +6,16 @@ dotenv.config()
 import yn from './lib/util/yn'
 import logger from './lib/util/logger'
 import * as mark from './lib/util/mark'
+import { TranslatedError } from './lib/util/errors'
 import * as loaderPlugins from './lib/loader/plugins'
 import * as loaderRoles from './lib/loader/roles'
 import * as loaderRouter from './lib/loader/router'
 import * as loaderHooks from './lib/loader/hooks'
 import * as loaderSchemas from './lib/loader/schemas'
+import * as loaderTracking from './lib/loader/tracking'
+import * as loaderTranslation from './lib/loader/translation'
 
-import Fastify, { FastifyInstance } from 'fastify'
+import fastify, { FastifyInstance } from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import swagger from '@fastify/swagger'
 import swaggerUI from '@fastify/swagger-ui'
@@ -27,16 +30,16 @@ import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastif
 import { myContextFunction, MyContext } from './lib/apollo/context'
 import resolvers from './lib/apollo/resolvers'
 import typeDefs from './lib/apollo/type-defs'
-import { UserManagement, TokenManagement } from './types/global'
+import { UserManagement, TokenManagement, DataBaseManagement } from './types/global'
 
 global.log = logger
 
-async function attachApollo(fastify: FastifyInstance) {
+async function attachApollo(server: FastifyInstance) {
   log.info('Attach ApolloServer to Fastify')
   const apollo = new ApolloServer<MyContext>({
     typeDefs,
     resolvers,
-    plugins: [fastifyApolloDrainPlugin(fastify)]
+    plugins: [fastifyApolloDrainPlugin(server)]
   })
 
   await apollo.start()
@@ -44,15 +47,15 @@ async function attachApollo(fastify: FastifyInstance) {
   return apollo
 }
 
-async function addApolloRouting(fastify: FastifyInstance, apollo: ApolloServer<MyContext> | null) {
+async function addApolloRouting(server: FastifyInstance, apollo: ApolloServer<MyContext> | null) {
   if (apollo) {
     log.trace('Add graphql routes')
-    await fastify.register(fastifyApollo(apollo), {
+    await server.register(fastifyApollo(apollo), {
       context: myContextFunction
     })
 
     // // OR
-    // fastify.post(
+    // server.post(
     //   '/graphql-alt',
     //   fastifyApolloHandler(apollo, {
     //     context: myContextFunction
@@ -61,17 +64,17 @@ async function addApolloRouting(fastify: FastifyInstance, apollo: ApolloServer<M
   }
 }
 
-async function addFastifyRouting(fastify: FastifyInstance) {
-  log.trace('Add fastify routes')
+async function addFastifyRouting(server: FastifyInstance) {
+  log.trace('Add server routes')
 
-  loaderHooks.apply(fastify)
-  loaderSchemas.apply(fastify)
+  loaderHooks.apply(server)
+  loaderSchemas.apply(server)
 
   const routes = loaderRouter.load()
-  routes && loaderRouter.apply(fastify, routes)
+  routes && loaderRouter.apply(server, routes)
 }
 
-async function addFastifySwagger(fastify: FastifyInstance) {
+async function addFastifySwagger(server: FastifyInstance) {
   const { SWAGGER, SWAGGER_TITLE, SWAGGER_DESCRIPTION, SWAGGER_VERSION, SWAGGER_PREFIX_URL, SWAGGER_HOST } = process.env
 
   const loadSwagger = yn(SWAGGER, false)
@@ -81,7 +84,7 @@ async function addFastifySwagger(fastify: FastifyInstance) {
     const fs = require('fs')
     const contents = fs.readFileSync('logo-dark.png', { encoding: 'base64' })
 
-    await fastify.register(swagger, {
+    await server.register(swagger, {
       swagger: {
         info: {
           title: SWAGGER_TITLE || 'Volcanic API Documentation',
@@ -115,7 +118,7 @@ async function addFastifySwagger(fastify: FastifyInstance) {
       }
     })
 
-    await fastify.register(swaggerUI, {
+    await server.register(swaggerUI, {
       routePrefix: SWAGGER_PREFIX_URL || '/documentation',
       uiConfig: {
         docExpansion: 'list',
@@ -136,10 +139,16 @@ async function addFastifySwagger(fastify: FastifyInstance) {
 const start = async (decorators) => {
   const begin = new Date().getTime()
   mark.print(logger)
-  global.roles = loaderRoles.load()
 
-  const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: logger } : {}
-  const fastify = await Fastify(opts)
+  global.roles = loaderRoles.load()
+  global.t = loaderTranslation.load()
+
+  const { tracking, trackingConfig } = loaderTracking.load()
+  global.tracking = tracking
+  global.trackingConfig = trackingConfig
+
+  const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: { development: logger } } : { logger: true }
+  const server: FastifyInstance = fastify()
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
   const {
@@ -155,30 +164,30 @@ const start = async (decorators) => {
   const plugins = loaderPlugins.load()
 
   // Helmet is not usable with Apollo Server
-  !loadApollo && plugins?.helmet && (await fastify.register(helmet))
-  plugins?.rateLimit && (await fastify.register(rateLimit))
-  plugins?.cors && (await fastify.register(cors, plugins.cors || {}))
-  plugins?.compress && (await fastify.register(compress))
+  !loadApollo && plugins?.helmet && (await server.register(helmet))
+  plugins?.rateLimit && (await server.register(rateLimit))
+  plugins?.cors && (await server.register(cors, plugins.cors || {}))
+  plugins?.compress && (await server.register(compress))
 
   // JWT Validator
   log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
-  await fastify.register(jwtValidator, {
+  await server.register(jwtValidator, {
     secret: JWT_SECRET,
     sign: { expiresIn: JWT_EXPIRES_IN }
   })
 
   if (loadRefreshJWT) {
-    await fastify.register(jwtValidator, {
+    await server.register(jwtValidator, {
       namespace: 'refreshToken',
       secret: JWT_REFRESH_SECRET || JWT_SECRET,
       sign: { expiresIn: JWT_REFRESH_EXPIRES_IN }
     })
   }
 
-  const apollo = loadApollo ? await attachApollo(fastify) : null
-  await addFastifySwagger(fastify)
-  await addApolloRouting(fastify, apollo)
-  await addFastifyRouting(fastify)
+  const apollo = loadApollo ? await attachApollo(server) : null
+  await addFastifySwagger(server)
+  await addApolloRouting(server, apollo)
+  await addFastifyRouting(server)
 
   // defaults
   decorators = {
@@ -187,64 +196,64 @@ const start = async (decorators) => {
         return false
       },
       isValidUser(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       createUser(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       resetExternalId(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       updateUserById(id: string, user: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserById(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByEmail(email: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByConfirmationToken(code: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByResetPasswordToken(code: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByUsername(username: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByExternalId(externalId: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveUserByPassword(email: string, password: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       changePassword(email: string, password: string, oldPassword: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       forgotPassword(email: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       userConfirmation(user: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       resetPassword(user: any, password: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       blockUserById(id: string, reason: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       unblockUserById(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       countQuery(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       findQuery(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
-      isPasswordToBeChanged(data: any) {
-        throw Error('Not implemented')
+      disableUserById(id: string) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       }
     } as UserManagement,
     tokenManager: {
@@ -252,49 +261,63 @@ const start = async (decorators) => {
         return false
       },
       isValidToken(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       createToken(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       resetExternalId(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       updateTokenById(id: string, token: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveTokenById(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       retrieveTokenByExternalId(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       blockTokenById(id: string, reason: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       unblockTokenById(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       countQuery(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       findQuery(data: any) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
       removeTokenById(id: string) {
-        throw Error('Not implemented')
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       }
     } as TokenManagement,
+    dataBaseManager: {
+      isImplemented() {
+        return false
+      },
+      synchronizeSchemas() {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
+      retrieveBy(entityName, entityId) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
+      addChange(entityName, entityId, status, userId, contents, changeEntity) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      }
+    } as DataBaseManagement,
     ...decorators
   }
 
   await Promise.all(
     Object.keys(decorators || {}).map(async (key) => {
-      await fastify.decorate(key, decorators[key])
+      await server.decorate(key, decorators[key])
     })
   )
 
-  await fastify
+  await server
     .listen({
       port: Number(port),
       host: host
@@ -308,8 +331,8 @@ const start = async (decorators) => {
       loadSwagger && log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/documentation'}`)
     })
 
-  global.server = fastify
-  return fastify
+  global.server = server
+  return server
 }
 
 export {
@@ -339,6 +362,7 @@ export {
  * - `import server from '@volcanicminds/backend'`
  * - `import server, { TSC_definition } from '@volcanicminds/backend'`
  */
-module.exports = { yn, start }
-module.exports.server = { yn, start }
-module.exports.default = { yn, start }
+export { yn, start, TranslatedError }
+module.exports = { yn, start, TranslatedError }
+module.exports.server = { yn, start, TranslatedError }
+module.exports.default = { yn, start, TranslatedError }
