@@ -14,6 +14,7 @@ import * as loaderHooks from './lib/loader/hooks'
 import * as loaderSchemas from './lib/loader/schemas'
 import * as loaderTracking from './lib/loader/tracking'
 import * as loaderTranslation from './lib/loader/translation'
+import * as loaderConfig from './lib/loader/general'
 
 import fastify, { FastifyInstance } from 'fastify'
 import jwtValidator from '@fastify/jwt'
@@ -140,6 +141,7 @@ const start = async (decorators) => {
   const begin = new Date().getTime()
   mark.print(logger)
 
+  global.config = loaderConfig.load()
   global.roles = loaderRoles.load()
   global.t = loaderTranslation.load()
 

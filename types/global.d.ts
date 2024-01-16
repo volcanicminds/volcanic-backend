@@ -50,6 +50,14 @@ export interface Route {
   middlewares: string[]
 }
 
+export interface GeneralConfig {
+  name: string
+  enable: boolean
+  options: {
+    reset_external_id_on_login: boolean
+  }
+}
+
 export interface ConfiguredRoute {
   enable: boolean
   method: any
@@ -174,6 +182,7 @@ export interface global {}
 declare global {
   var log: any
   var server: any
+  var config: GeneralConfig
   var roles: Roles
   var tracking: TrackChangesList
   var trackingConfig: Data
