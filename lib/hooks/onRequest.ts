@@ -22,7 +22,7 @@ module.exports = async (req, reply) => {
     try {
       const tokenData = reply.server.jwt.verify(bearerToken)
       user = await req.server['userManager'].retrieveUserByExternalId(tokenData?.sub)
-      if (!user) {
+      if (!user && req.server['tokenManager'].isImplemented()) {
         token = await req.server['tokenManager'].retrieveTokenByExternalId(tokenData?.sub)
       }
       if (!user && !token) {
