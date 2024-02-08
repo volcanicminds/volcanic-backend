@@ -17,7 +17,7 @@ import { JobSchedule } from '../../types/global'
 // days * 24 * 60 * 60 * 1000
 
 export const schedule: JobSchedule = {
-  active: true,
+  active: false,
   interval: {
     seconds: 2
   }
