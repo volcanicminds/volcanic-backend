@@ -5,6 +5,6 @@ module.exports = {
   enable: true,
   options: {
     reset_external_id_on_login: false,
-    scheduler: true
+    scheduler: false
   }
 }
