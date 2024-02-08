@@ -10,5 +10,7 @@ export {
   Route,
   RouteConfig,
   ConfiguredRoute,
-  UserManagement
+  UserManagement,
+  TokenManagement,
+  JobSchedule
 } from './types/global'
