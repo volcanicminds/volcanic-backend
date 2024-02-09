@@ -386,3 +386,159 @@ So, in your `routes.ts` (under the section `config`) you'll can use something li
   body: { $ref: 'commonSchema#' },
   headers: { $ref: 'commonSchema#' }
 ```
+
+## Reset tokens on login
+
+It's possible to specify that all JWT tokens belonging to the user who logs in are reset at each login. To enable this feature, it's necessary to add or change the property `reset_external_id_on_login` to `true` (the default is `false`).
+
+```ts
+// src/config/general.ts
+'use strict'
+
+module.exports = {
+  name: 'general',
+  enable: true,
+  options: {
+    reset_external_id_on_login: true
+  }
+}
+```
+
+## Job Scheduler
+
+It's possible to add a job scheduler. For more information, go to [Fastify Schedule](https://github.com/fastify/fastify-schedule). To enable this feature, it's necessary to add or change the property `scheduler` to `true` (the default is `false`).
+
+```ts
+// src/config/general.ts
+'use strict'
+
+module.exports = {
+  name: 'general',
+  enable: true,
+  options: {
+    scheduler: true
+  }
+}
+```
+
+All jobs are to be created and placed in appropriate files under the /src/schedules/ folder.
+Each file name must follow the pattern \*.job.ts (for example, test.job.ts).
+
+Inside each job, both the configuration part and the job to be executed must be included using this syntax:
+
+```ts
+// src/schedules/test.job.ts
+import { JobSchedule } from '@volcanicminds/backend'
+
+export const schedule: JobSchedule = {
+  active: true,
+  interval: {
+    seconds: 2
+  }
+}
+
+export async function job() {
+  log.info('tick job 2 every 2 seconds')
+}
+```
+
+The job scheduling can have this configuration:
+
+```ts
+export interface JobSchedule {
+  active: boolean // boolean (required)
+  type?: string // cron|interval, default: interval
+  async?: boolean // boolean, default: true
+  preventOverrun?: boolean // boolean, default: true
+
+  cron?: {
+    expression?: string // required if type = 'cron', use cron syntax (if not specified, cron will be disabled)
+    timezone?: string // optional, like "Europe/Rome" (to test)
+  }
+
+  interval?: {
+    days?: number // number, default 0
+    hours?: number // number, default 0
+    minutes?: number // number, default 0
+    seconds?: number // number, default 0
+    milliseconds?: number // number, default 0
+    runImmediately?: boolean // boolean, default: false
+  }
+}
+```
+
+The active property is a boolean and is mandatory.
+The `type` property can have values of `cron` or `interval` (default).
+If the type is **cron**, the properties defined under `cron` are also considered.
+If the type is **interval**, the properties defined under `interval` are also considered.
+
+For cron type, the `cron.expression` property is mandatory and indicates the scheduling to be executed.
+The `timezone` property is considered experimental and should be defined, for example, as `"Europe/Rome"`.
+
+Below an example:
+
+```ts
+// src/schedules/test.job.ts
+import { JobSchedule } from '@volcanicminds/backend'
+
+export const schedule: JobSchedule = {
+  active: true,
+  type: 'cron',
+
+  // Run a task every 2 seconds
+  cron: {
+    expression: '*/2 * * * * *'
+  }
+}
+```
+
+Below the cron schema:
+
+```
+┌──────────────── (optional) second (0 - 59)
+│ ┌────────────── minute (0 - 59)
+│ │ ┌──────────── hour (0 - 23)
+│ │ │ ┌────────── day of month (1 - 31)
+│ │ │ │ ┌──────── month (1 - 12, January - December)
+│ │ │ │ │ ┌────── day of week (0 - 6, Sunday-Monday, Sunday is equal 0 or 7)
+│ │ │ │ │ │
+│ │ │ │ │ │
+* * * * * *
+
+// f.e. for every 2 seconds
+const expression = '*/2 * * * * *'
+
+```
+
+A useful site that can be used to check a cron configuration is [crontab.guru](https://crontab.guru/)
+
+For interval type, the sum of the properties `days, hours, minutes, seconds, milliseconds` (properly converted) must be equal to or greater than 1 second, otherwise the job will not be executed.
+
+The `runImmediately` property indicates that the **interval** task will be executed for the first time immediately and not after the defined wait time.
+
+Below an example:
+
+```ts
+// src/schedules/test.job.ts
+import { JobSchedule } from '@volcanicminds/backend'
+
+export const schedule: JobSchedule = {
+  active: true,
+  type: 'interval',
+
+  // Run a task every 1h 5m 30s
+  interval: {
+    days: 0,
+    hours: 1,
+    minutes: 5,
+    seconds: 30,
+    milliseconds: 0,
+    runImmediately: false
+  }
+}
+```
+
+Other properties common to both types of jobs are:
+
+- The **async** property, if true, indicates that a task will be executed as an async function.
+- The **preventOverrun** property, if true, prevents the second instance of a task from being started while the first one is still running.
