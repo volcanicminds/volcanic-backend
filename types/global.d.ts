@@ -50,6 +50,36 @@ export interface Route {
   middlewares: string[]
 }
 
+export interface GeneralConfig {
+  name: string
+  enable: boolean
+  options: {
+    reset_external_id_on_login: boolean
+    scheduler: boolean
+  }
+}
+
+export interface JobSchedule {
+  active: boolean // boolean (required)
+  type?: string // cron|interval, default: interval
+  async?: boolean // boolean, default: true
+  preventOverrun?: boolean // boolean, default: true
+
+  cron?: {
+    expression?: string // required if type = 'cron', use cron syntax (if not specified cron will be disabled)
+    timezone?: string // optional, like "Europe/Rome" (to test)
+  }
+
+  interval?: {
+    days?: number // number, default 0
+    hours?: number // number, default 0
+    minutes?: number // number, default 0
+    seconds?: number // number, default 0
+    milliseconds?: number // number, default 0
+    runImmediately?: boolean // boolean, default: false
+  }
+}
+
 export interface ConfiguredRoute {
   enable: boolean
   method: any
@@ -174,6 +204,7 @@ export interface global {}
 declare global {
   var log: any
   var server: any
+  var config: GeneralConfig
   var roles: Roles
   var tracking: TrackChangesList
   var trackingConfig: Data

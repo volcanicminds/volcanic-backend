@@ -221,7 +221,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(new Error('Password not valid'))
   }
 
-  const user = await req.server['userManager'].retrieveUserByPassword(email, password)
+  let user = await req.server['userManager'].retrieveUserByPassword(email, password)
   const isValid = await req.server['userManager'].isValidUser(user)
   // const user = { confirmed: true, blocked: false, externalId: 123456, roles: [{ code: 'admin' }] }
   // const isValid = true
@@ -234,8 +234,19 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(new Error('User email unconfirmed'))
   }
 
+  const isPasswordToBeChanged = req.server['userManager'].isPasswordToBeChanged(user)
+  if (isPasswordToBeChanged) {
+    return reply
+      .status(403)
+      .send({ statusCode: 403, code: 'PASSWORD_TO_BE_CHANGED', message: 'The password is expired' })
+  }
+
   if (user.blocked) {
     return reply.status(403).send(new Error('User blocked'))
+  }
+
+  if (config.enable && config.options.reset_external_id_on_login) {
+    user = await req.server['userManager'].resetExternalId(user.getId())
   }
 
   // https://www.iana.org/assignments/jwt/jwt.xhtml

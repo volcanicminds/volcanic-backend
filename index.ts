@@ -14,11 +14,14 @@ import * as loaderHooks from './lib/loader/hooks'
 import * as loaderSchemas from './lib/loader/schemas'
 import * as loaderTracking from './lib/loader/tracking'
 import * as loaderTranslation from './lib/loader/translation'
+import * as loaderConfig from './lib/loader/general'
+import * as loaderSchedules from './lib/loader/schedules'
 
 import fastify, { FastifyInstance } from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import swagger from '@fastify/swagger'
 import swaggerUI from '@fastify/swagger-ui'
+import { fastifySchedule } from '@fastify/schedule'
 
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
@@ -132,7 +135,16 @@ async function addFastifySwagger(server: FastifyInstance) {
       theme: {
         title: SWAGGER_TITLE
       }
-    })
+    } as any)
+  }
+}
+
+async function addFastifySchedule(server: FastifyInstance) {
+  const { scheduler = false } = global.config?.options || {}
+  if (scheduler) {
+    log.trace('Add scheduler plugin')
+
+    await server.register(fastifySchedule)
   }
 }
 
@@ -140,6 +152,7 @@ const start = async (decorators) => {
   const begin = new Date().getTime()
   mark.print(logger)
 
+  global.config = loaderConfig.load()
   global.roles = loaderRoles.load()
   global.t = loaderTranslation.load()
 
@@ -188,6 +201,9 @@ const start = async (decorators) => {
   await addFastifySwagger(server)
   await addApolloRouting(server, apollo)
   await addFastifyRouting(server)
+  await addFastifySchedule(server)
+
+  const schedules = loaderSchedules.load()
 
   // defaults
   decorators = {
@@ -332,6 +348,9 @@ const start = async (decorators) => {
     })
 
   global.server = server
+
+  // Ok, it's time to start the scheduler jobs
+  await loaderSchedules.start(server, schedules)
   return server
 }
 
@@ -348,7 +367,8 @@ export {
   RouteConfig,
   ConfiguredRoute,
   UserManagement,
-  TokenManagement
+  TokenManagement,
+  JobSchedule
 } from './types/global'
 
 /**

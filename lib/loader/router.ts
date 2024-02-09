@@ -1,5 +1,5 @@
 import yn from '../util/yn'
-import { Route, ConfiguredRoute, RouteConfig } from '../../types/global'
+import { Role, Route, ConfiguredRoute, RouteConfig } from '../../types/global'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { normalizePatterns } from '../util/path'
 
@@ -37,7 +37,15 @@ export function load(): ConfiguredRoute[] {
         } = route
 
         const rsp = !rs.length ? [roles.public] : rs
-        const requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin] // admin is always present
+        let requiredRoles: Role[] = []
+
+        try {
+          requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin] // admin is always present
+        } catch (err) {
+          log.e && log.error(`Error in loading roles for ${methodCase} ${pathName} (${handler})`)
+          log.t && log.trace(err)
+          config.enable = false
+        }
 
         const reqAuth: boolean =
           middlewares.some((m) => authMiddlewares.includes(m)) ||
