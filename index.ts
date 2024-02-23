@@ -27,6 +27,7 @@ import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import compress from '@fastify/compress'
 import rateLimit from '@fastify/rate-limit'
+import multipart from '@fastify/multipart'
 
 import { ApolloServer } from '@apollo/server'
 import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastify'
@@ -177,10 +178,11 @@ const start = async (decorators) => {
   const plugins = loaderPlugins.load()
 
   // Helmet is not usable with Apollo Server
-  !loadApollo && plugins?.helmet && (await server.register(helmet))
-  plugins?.rateLimit && (await server.register(rateLimit))
+  !loadApollo && plugins?.helmet && (await server.register(helmet, plugins.helmet || {}))
+  plugins?.rateLimit && (await server.register(rateLimit, plugins.rateLimit || {}))
+  plugins?.multipart && (await server.register(multipart, plugins.multipart || {}))
   plugins?.cors && (await server.register(cors, plugins.cors || {}))
-  plugins?.compress && (await server.register(compress))
+  plugins?.compress && (await server.register(compress, plugins.compress || {}))
 
   // JWT Validator
   log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
