@@ -67,7 +67,8 @@ export function load(): ConfiguredRoute[] {
           query,
           params,
           body,
-          response
+          response,
+          consumes
         } = config || {}
 
         // adjust something
@@ -129,11 +130,13 @@ export function load(): ConfiguredRoute[] {
             querystring: any | undefined
             params: any | undefined
             body: any | undefined
+            consumes: any | undefined
           }
 
           if (query) doc.querystring = query
           if (params) doc.params = params
           if (body) doc.body = body
+          if (consumes) doc.consumes = consumes
 
           validRoutes.push({
             handler,

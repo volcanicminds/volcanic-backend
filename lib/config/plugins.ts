@@ -53,5 +53,10 @@ module.exports = [
     name: 'compress',
     enable: false,
     options: {}
+  },
+  {
+    name: 'multipart',
+    enable: false,
+    options: {}
   }
 ]

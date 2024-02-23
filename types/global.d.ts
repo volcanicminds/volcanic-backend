@@ -39,6 +39,7 @@ export interface RouteConfig {
   query?: any
   body?: any
   response?: any
+  consumes?: any
 }
 
 export interface Route {
@@ -101,6 +102,7 @@ export interface ConfiguredRoute {
     querystring?: any
     body?: any
     response?: any
+    consumes?: any
   }
 }
 
