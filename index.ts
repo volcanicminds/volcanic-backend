@@ -370,6 +370,7 @@ export {
   ConfiguredRoute,
   UserManagement,
   TokenManagement,
+  DataBaseManagement,
   JobSchedule
 } from './types/global'
 

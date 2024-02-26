@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "codename": "turin",
   "license": "MIT",
   "description": "The volcanic (minds) backend",
@@ -46,7 +46,7 @@
     "dev": "nodemon --exec \"ts-node\" server.ts",
     "test": "yarn test:full",
     "test:full": "cross-env PORT=2231 NODE_ENV=memory BROWSER=false mocha ./test/index.spec.ts -t 100000",
-    "reset": "yarn && yarn upgrade && yarn compile",
+    "reset": "yarn && yarn up && yarn compile",
     "upgrade-deps": "yarn upgrade-interactive",
     "upgrade-pkg": "yarn npm-upgrade"
   },
@@ -103,5 +103,6 @@
   "directories": {
     "lib": "lib",
     "test": "test"
-  }
+  },
+  "packageManager": "yarn@4.1.0"
 }
