@@ -19,7 +19,8 @@ export const email = /^\w+([\.+-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/
  * password must contain 1 non-alpha number
  * password is 8-64 characters with no space
  */
-export const password = /^(?=.*\d)(?=.*[A-Z])(?=.*[a-z])(?=.*[^\w\d\s:])([^\s]){8,64}$/
+export const password =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%&*()-_=+\[\]\{\}\\|;:\'",.<>?\^])[A-Za-z\d!@#$%&*()-_=+\[\]\{\}\\|;:\'",.<>?\^]{8,}$/
 export const zipCode = /(^\d{5}$)|(^\d{5}-\d{4}$)/
 export const taxCodePersona =
   /^[a-zA-Z]{6}[0-9]{2}[abcdehlmprstABCDEHLMPRST]{1}[0-9]{2}([a-zA-Z]{1}[0-9]{3})[a-zA-Z]{1}$/
