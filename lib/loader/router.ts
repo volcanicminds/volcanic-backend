@@ -68,7 +68,8 @@ export function load(): ConfiguredRoute[] {
           params,
           body,
           response,
-          consumes
+          consumes,
+          rawBody = false
         } = config || {}
 
         // adjust something
@@ -145,6 +146,7 @@ export function load(): ConfiguredRoute[] {
             middlewares,
             roles: requiredRoles,
             enable,
+            rawBody,
             base,
             file: path.join(base, defaultConfig.controller || 'controller', handlerParts[0]),
             func: handlerParts[1],
@@ -208,7 +210,7 @@ async function loadMiddlewares(base: string, middlewares: string[] = []) {
 export function apply(server: any, routes: ConfiguredRoute[]): void {
   log.t && log.trace(`Apply ${routes.length} routes to server with pid ${process.pid}`)
 
-  routes.forEach(async ({ handler, method, path, middlewares, roles, enable, base, file, func, doc }) => {
+  routes.forEach(async ({ handler, method, path, middlewares, roles, enable, rawBody, base, file, func, doc }) => {
     if (enable) {
       log.t && log.trace(`* Add path ${method} ${path} on handle ${handler}`)
       const midds = await loadMiddlewares(base, middlewares)
@@ -219,7 +221,8 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
         schema: doc,
         ...midds,
         config: {
-          requiredRoles: roles || []
+          requiredRoles: roles || [],
+          rawBody: rawBody || false
         },
         handler: function (req: FastifyRequest, reply: FastifyReply) {
           try {
