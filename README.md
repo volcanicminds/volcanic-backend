@@ -192,8 +192,29 @@ module.exports = [
     name: 'compress',
     enable: false,
     options: {}
+  },
+  {
+    name: 'multipart',
+    enable: false,
+    options: {}
+  },
+  {
+    name: 'rawBody',
+    enable: false,
+    options: {}
   }
 ]
+```
+
+Here the plugins used:
+
+```js
+import cors from '@fastify/cors'
+import helmet from '@fastify/helmet'
+import compress from '@fastify/compress'
+import rateLimit from '@fastify/rate-limit'
+import multipart from '@fastify/multipart'
+import rawBody from 'fastify-raw-body'
 ```
 
 ## Routes
@@ -542,3 +563,65 @@ Other properties common to both types of jobs are:
 
 - The **async** property, if true, indicates that a task will be executed as an async function.
 - The **preventOverrun** property, if true, prevents the second instance of a task from being started while the first one is still running.
+
+## Raw Body
+
+Sometiomes, it’s useful to have the original raw body of the incoming request. For this purpose, the `rawBody` plugin is available out-of-the-box.
+
+Under `config/plugins.ts`, modify your plugin configuration as follows to activate it:
+
+```js
+  {
+    name: 'rawBody',
+    enable: true,
+    options: {}
+  }
+```
+
+Fot the options refers to (fastify-raw-body - github)[https://github.com/Eomm/fastify-raw-body] but for common use, you can configure it in this way:
+
+```js
+{
+  name: 'rawBody',
+  enable: true,
+  options: {
+    global: false, // adds the rawBody to every request. **Default is true**. If false, you need to enable it for specific routes.
+    runFirst: true, // get the body before any preParsing hook change/uncompress it. **Default false**
+  }
+}
+```
+
+Normally, it's a good choice set **global** to `false`and **runFirst** to `true`.
+
+Please, do not change the `field` value in the options above. The default is `rawBody`, and this field name will be used in each request.
+
+### Warning
+
+Setting `global: false` and then the route configuration { config: { rawBody: true } } will _save memory_ and _imporove perfromance_ of your server since the rawBody is a copy of the body and it will double the memory usage.
+So use it only for the routes that you need to.
+
+## rawBody on specific route
+
+If you set **global** to `false`, you can enable the rawBody for a specific route (common use, hooks to validate Stripe signature). Alternatively, if you set **global** to `true` or leave global not specified/undefined, it will enable rawBody on all routes, and you can disable it for single route in the following way.
+
+A simple note: in the example below, you can see rawBody enabled on the `/example` endpoint. You can also disable rawBody by setting it to `false` instead of `true`.
+
+```js
+// f.e. /api/example/routes.ts
+
+ {
+      method: 'GET',
+      path: '/',
+      roles: [],
+      handler: 'example.test',
+      middlewares: [],
+      config: {
+        title: 'How to use req.rawBody',
+        description: 'How to use req.rawBody',
+        rawBody: true,
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    }
+```
