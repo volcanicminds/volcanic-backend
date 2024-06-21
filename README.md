@@ -608,20 +608,19 @@ A simple note: in the example below, you can see rawBody enabled on the `/exampl
 
 ```js
 // f.e. /api/example/routes.ts
-
- {
-      method: 'GET',
-      path: '/',
-      roles: [],
-      handler: 'example.test',
-      middlewares: [],
-      config: {
-        title: 'How to use req.rawBody',
-        description: 'How to use req.rawBody',
-        rawBody: true,
-        response: {
-          200: { $ref: 'defaultResponse#' }
-        }
-      }
+{
+  method: 'GET',
+  path: '/',
+  roles: [],
+  handler: 'example.test',
+  middlewares: [],
+  config: {
+    title: 'How to use req.rawBody',
+    description: 'How to use req.rawBody',
+    rawBody: true,
+    response: {
+      200: { $ref: 'defaultResponse#' }
     }
+  }
+}
 ```
