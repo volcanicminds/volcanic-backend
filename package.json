@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "codename": "turin",
   "license": "MIT",
   "description": "The volcanic (minds) backend",
@@ -66,6 +66,7 @@
     "dayjs": "^1.11.10",
     "dotenv": "^16.4.5",
     "fastify": "^4.26.1",
+    "fastify-raw-body": "^4.3.0",
     "glob": "^10.3.10",
     "graphql": "^16.8.1",
     "i18n": "^0.15.1",

@@ -28,6 +28,7 @@ import helmet from '@fastify/helmet'
 import compress from '@fastify/compress'
 import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
+import rawBody from 'fastify-raw-body'
 
 import { ApolloServer } from '@apollo/server'
 import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastify'
@@ -178,6 +179,7 @@ const start = async (decorators) => {
   const plugins = loaderPlugins.load()
 
   // Helmet is not usable with Apollo Server
+  plugins?.rawBody && (await server.register(rawBody, plugins.rawBody || {}))
   !loadApollo && plugins?.helmet && (await server.register(helmet, plugins.helmet || {}))
   plugins?.rateLimit && (await server.register(rateLimit, plugins.rateLimit || {}))
   plugins?.multipart && (await server.register(multipart, plugins.multipart || {}))

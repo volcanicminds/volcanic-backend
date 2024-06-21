@@ -58,5 +58,10 @@ module.exports = [
     name: 'multipart',
     enable: false,
     options: {}
+  },
+  {
+    name: 'rawBody',
+    enable: false,
+    options: {}
   }
 ]

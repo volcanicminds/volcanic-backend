@@ -40,6 +40,7 @@ export interface RouteConfig {
   body?: any
   response?: any
   consumes?: any
+  rawBody?: boolean
 }
 
 export interface Route {
@@ -86,6 +87,7 @@ export interface ConfiguredRoute {
   method: any
   path: string
   handler: any
+  rawBody: boolean
   file: string
   func: any
   base: string
