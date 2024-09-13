@@ -48,8 +48,9 @@ export interface Route {
   path: string
   handler: string
   roles: Role[]
-  config?: RouteConfig
   middlewares: string[]
+  config?: RouteConfig
+  rateLimit?: any
 }
 
 export interface GeneralConfig {
@@ -58,6 +59,7 @@ export interface GeneralConfig {
   options: {
     reset_external_id_on_login: boolean
     scheduler: boolean
+    embedded_auth: boolean
   }
 }
 
@@ -88,6 +90,7 @@ export interface ConfiguredRoute {
   path: string
   handler: any
   rawBody: boolean
+  rateLimit: any
   file: string
   func: any
   base: string

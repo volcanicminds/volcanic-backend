@@ -10,6 +10,6 @@ module.exports = async (req, reply) => {
     extraMessage += `[${reqSize}${replySize} bytes]`
   }
 
-  const message: string = `${req.method} ${req.url} ${reply.statusCode} ${extraMessage}`
-  reply.statusCode < 300 ? log.info(message) : reply.statusCode < 400 ? log.warn(message) : log.error(message)
+  const message = () => `${req.method} ${req.url} ${reply.statusCode} ${extraMessage}`.trim()
+  reply.statusCode < 300 ? log.info(message()) : reply.statusCode < 400 ? log.warn(message()) : log.error(message())
 }

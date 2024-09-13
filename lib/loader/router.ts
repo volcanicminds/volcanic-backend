@@ -31,9 +31,10 @@ export function load(): ConfiguredRoute[] {
           method: methodCase,
           path: pathName = '/',
           handler,
+          roles: rs = [],
           config = {} as RouteConfig,
           middlewares = [],
-          roles: rs = []
+          rateLimit
         } = route
 
         const rsp = !rs.length ? [roles.public] : rs
@@ -147,6 +148,7 @@ export function load(): ConfiguredRoute[] {
             roles: requiredRoles,
             enable,
             rawBody,
+            rateLimit,
             base,
             file: path.join(base, defaultConfig.controller || 'controller', handlerParts[0]),
             func: handlerParts[1],
@@ -210,8 +212,10 @@ async function loadMiddlewares(base: string, middlewares: string[] = []) {
 export function apply(server: any, routes: ConfiguredRoute[]): void {
   log.t && log.trace(`Apply ${routes.length} routes to server with pid ${process.pid}`)
 
-  routes.forEach(async ({ handler, method, path, middlewares, roles, enable, rawBody, base, file, func, doc }) => {
-    if (enable) {
+  routes.forEach(async (route) => {
+    if (route?.enable) {
+      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc } = route
+
       log.t && log.trace(`* Add path ${method} ${path} on handle ${handler}`)
       const midds = await loadMiddlewares(base, middlewares)
 
@@ -222,11 +226,13 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
         ...midds,
         config: {
           requiredRoles: roles || [],
-          rawBody: rawBody || false
+          rawBody: rawBody || false,
+          rateLimit: rateLimit || undefined
         },
-        handler: function (req: FastifyRequest, reply: FastifyReply) {
+        handler: async function (req: FastifyRequest, reply: FastifyReply) {
           try {
-            return require(file)[func](req, reply)
+            const module = await import(file)
+            return await module[func](req, reply)
           } catch (err) {
             log.e && log.error(`Cannot find ${file} or method ${func}: ${err}`)
             return reply.code(500).send(`Invalid handler ${handler}`)

@@ -566,7 +566,7 @@ Other properties common to both types of jobs are:
 
 ## Raw Body
 
-Sometiomes, it’s useful to have the original raw body of the incoming request. For this purpose, the `rawBody` plugin is available out-of-the-box.
+Sometimes, it’s useful to have the original raw body of the incoming request. For this purpose, the `rawBody` plugin is available out-of-the-box.
 
 Under `config/plugins.ts`, modify your plugin configuration as follows to activate it:
 
@@ -599,6 +599,53 @@ Please, do not change the `field` value in the options above. The default is `ra
 
 Setting `global: false` and then the route configuration { config: { rawBody: true } } will _save memory_ and _imporove perfromance_ of your server since the rawBody is a copy of the body and it will double the memory usage.
 So use it only for the routes that you need to.
+
+## Rate Limit
+
+It is possible to enable rate limiting either globally or at the individual route level. All configuration and functionality are managed by the [Fastify Rate Limit](https://github.com/fastify/fastify-rate-limit) plugin.
+
+At the global configuration level, you can set something like:
+
+```js
+// config/plugin.ts
+{
+    name: 'rateLimit',
+    enable: true,
+    options: {
+      global: true, // default true
+      max: 40, // default 1000
+      timeWindow: 3000, // default 1000 * 60
+      cache: 10000, // default 5000
+      nameSpace: 'your-application-ratelimit-', // default is 'fastify-rate-limit-'
+      skipOnError: true // default false
+    }
+  },
+```
+
+While at the route level, if necessary, you can redefine or set different rate limits:
+
+```js
+// f.e. /api/example/routes.ts
+{
+      method: 'GET',
+      path: '/test',
+      roles: [],
+      handler: 'example.test',
+      middlewares: [],
+      rateLimit: {
+        max: 10,
+        timeWindows: 20000 // milliseconds
+      },
+      config: {
+        title: 'Rate limit example',
+        description: 'Rate limit example',
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    }
+
+```
 
 ## rawBody on specific route
 

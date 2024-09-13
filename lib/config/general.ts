@@ -5,6 +5,7 @@ module.exports = {
   enable: true,
   options: {
     reset_external_id_on_login: false,
-    scheduler: false
+    scheduler: false,
+    embedded_auth: true
   }
 }

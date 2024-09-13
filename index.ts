@@ -181,7 +181,22 @@ const start = async (decorators) => {
   // Helmet is not usable with Apollo Server
   plugins?.rawBody && (await server.register(rawBody, plugins.rawBody || {}))
   !loadApollo && plugins?.helmet && (await server.register(helmet, plugins.helmet || {}))
-  plugins?.rateLimit && (await server.register(rateLimit, plugins.rateLimit || {}))
+
+  if (plugins?.rateLimit) {
+    await server.register(rateLimit, plugins.rateLimit || {})
+    server.setNotFoundHandler(
+      {
+        preHandler: server.rateLimit({
+          max: 30,
+          timeWindow: 30000
+        })
+      },
+      function (req, reply) {
+        reply.code(404).send()
+      }
+    )
+  }
+
   plugins?.multipart && (await server.register(multipart, plugins.multipart || {}))
   plugins?.cors && (await server.register(cors, plugins.cors || {}))
   plugins?.compress && (await server.register(compress, plugins.compress || {}))
