@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "codename": "turin",
   "license": "MIT",
   "description": "The volcanic (minds) backend",
@@ -62,7 +62,7 @@
     "@fastify/schedule": "^4.1.1",
     "@fastify/swagger": "^8.15.0",
     "@fastify/swagger-ui": "^3.1.0",
-    "@types/node": "^20.16.2",
+    "@types/node": "^20.17.0",
     "dayjs": "^1.11.13",
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
@@ -73,21 +73,21 @@
     "lodash": "^4.17.21",
     "nanoid": "^5.0.7",
     "object-sizeof": "^2.6.5",
-    "pino": "^9.3.2",
-    "pino-pretty": "^11.2.2",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
     "root-require": "^0.3.1",
     "semver": "^7.6.3",
     "toad-scheduler": "^3.0.1"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.7",
+    "@types/mocha": "^10.0.9",
     "cross-env": "^7.0.3",
     "expect": "^29.7.0",
     "mocha": "^10.7.3",
-    "nodemon": "^3.1.4",
+    "nodemon": "^3.1.7",
     "npm-upgrade": "^3.1.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.4"
+    "typescript": "^5.6.3"
   },
   "repository": {
     "type": "git",
