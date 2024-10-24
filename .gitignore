@@ -47,8 +47,9 @@ typings/
 # TypeScript cache
 *.tsbuildinfo
 
-# Optional npm cache directory
+# Optional npm
 .npm
+.npmrc
 
 # Optional eslint cache
 .eslintcache
@@ -103,6 +104,9 @@ esm
 
 # TernJS port file
 .tern-port
+
+# Auto uploaded data for the container
+data
 
 # yarn new version
 .yarn/*
