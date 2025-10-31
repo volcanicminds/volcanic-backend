@@ -116,3 +116,5 @@ data
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+OUTPUT.md

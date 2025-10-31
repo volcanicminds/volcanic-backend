@@ -268,11 +268,11 @@ module.exports = {
         version: false, // swagger
         response: {
           200: {
-            description: 'Successful response',
+            $description: 'Successful response',
             type: 'object',
             properties: {
               id: { type: 'number' }
-            }
+            }$
           }
         } // swagger
       }

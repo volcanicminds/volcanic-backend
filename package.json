@@ -48,7 +48,8 @@
     "test:full": "cross-env PORT=2231 NODE_ENV=memory BROWSER=false mocha ./test/index.spec.ts -t 100000",
     "reset": "yarn && yarn up && yarn compile",
     "upgrade-deps": "yarn upgrade-interactive",
-    "upgrade-pkg": "yarn npm-upgrade"
+    "upgrade-pkg": "yarn npm-upgrade",
+    "combine": "node combine.js"
   },
   "dependencies": {
     "@apollo/server": "^4.11.0",
