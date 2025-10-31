@@ -124,7 +124,7 @@ async function addFastifySwagger(server: FastifyInstance) {
     })
 
     await server.register(swaggerUI, {
-      routePrefix: SWAGGER_PREFIX_URL || '/documentation',
+      routePrefix: SWAGGER_PREFIX_URL || '/api-docs',
       uiConfig: {
         docExpansion: 'list',
         deepLinking: true,
@@ -363,7 +363,7 @@ const start = async (decorators) => {
       log.info(`Server ready 🚀 at ${address}`)
 
       const loadSwagger = yn(process.env.SWAGGER, false)
-      loadSwagger && log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/documentation'}`)
+      loadSwagger && log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/api-docs'}`)
     })
 
   global.server = server
