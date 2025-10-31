@@ -5,24 +5,136 @@
 
 # volcanic-backend
 
+A Node.js framework based on Fastify to build robust APIs quickly, featuring an automatic routing system, integrated authentication, and a powerful data access layer.
+
 ## Based on
 
-Based on [Fastify](https://www.fastify.io) ([GitHub](https://github.com/fastify/fastify)).
+**Volcanic Backend** is a powerful, opinionated, and extensible Node.js framework for creating robust and scalable RESTful and GraphQL APIs. It's built on modern, high-performance libraries like [Fastify](https://www.fastify.io) and can be optionally paired with [Apollo Server](https://www.apollographql.com).
 
-Based on [Apollo Server](https://www.apollographql.com) ([GitHub](https://github.com/apollographql/apollo-server)).
+The framework provides a comprehensive set of built-in features including a filesystem-based router, JWT authentication, role-based access control, task scheduling, and seamless database integration, allowing developers to focus on business logic rather than boilerplate.
 
 And, what you see in [package.json](package.json).
 
-## How to install
+## Core Philosophy
 
-```ts
+- **Convention over Configuration**: A clear and consistent project structure for APIs, controllers, and routes simplifies development and reduces boilerplate.
+- **Extensibility**: Easily extendable with custom plugins, hooks, and middleware to fit any project's needs.
+- **Database Agnostic**: Designed to work seamlessly with `@volcanicminds/typeorm`, supporting both SQL (e.g., PostgreSQL) and NoSQL (e.g., MongoDB) databases.
+- **Feature-Rich**: Out-of-the-box support for JWT authentication, role-based access control (RBAC), automatic Swagger/OpenAPI documentation, and much more.
+
+## Quick Start
+
+### Installation
+
+```sh
 yarn add @volcanicminds/backend
 ```
+
+For database interactions, it is highly recommended to also install the companion package:
+
+```sh
+yarn add @volcanicminds/typeorm
+```
+
+### Minimal Working Example
+
+This example demonstrates how to set up a basic server with a single endpoint.
+
+**1. Create your server entrypoint (`index.ts`):**
+
+```typescript
+// index.ts
+import { start } from '@volcanicminds/backend'
+import { start as startDatabase, userManager } from '@volcanicminds/typeorm'
+import { myDbConfig } from './src/config/database' // Assume you have a db config file
+
+async function main() {
+  // 1. Initialize the database connection (optional but recommended)
+  await startDatabase(myDbConfig)
+
+  // 2. Start the Volcanic Backend server
+  // We pass the 'userManager' from the typeorm package to enable authentication
+  await start({ userManager })
+}
+
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})
+```
+
+**2. Define a route (`src/api/hello/routes.ts`):**
+
+```typescript
+// src/api/hello/routes.ts
+module.exports = {
+  routes: [
+    {
+      method: 'GET',
+      path: '/',
+      handler: 'world.sayHello'
+    }
+  ]
+}
+```
+
+**3. Create the controller (`src/api/hello/controller/world.ts`):**
+
+```typescript
+// src/api/hello/controller/world.ts
+import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
+
+export function sayHello(req: FastifyRequest, reply: FastifyReply) {
+  reply.send({ message: 'Hello, World!' })
+}
+```
+
+**4. Run your server:**
+
+```sh
+yarn dev
+```
+
+Now you can visit `http://localhost:2230/hello` and you will see `{"message":"Hello, World!"}`.
 
 ## How to upgrade packages
 
 ```ts
 yarn upgrade-deps
+```
+
+## Project Structure
+
+A typical project using `volcanic-backend` follows a convention-based structure to keep your code organized and predictable.
+
+```
+.
+├── src/
+│   ├── api/
+│   │   └── products/                  # A feature or resource module
+│   │       ├── controller/
+│   │       │   └── product.ts         # Business logic for products
+│   │       └── routes.ts              # Route definitions for products
+│   │
+│   ├── config/
+│   │   ├── database.ts                # Database connection settings
+│   │   ├── plugins.ts                 # Configuration for Fastify plugins (CORS, Helmet, etc.)
+│   │   └── roles.ts                   # Custom role definitions
+│   │
+│   ├── entities/
+│   │   └── product.e.ts               # TypeORM entity definitions
+│   │
+│   ├── hooks/
+│   │   └── onRequest.ts               # Custom logic for the 'onRequest' lifecycle hook
+│   │
+│   ├── middleware/
+│   │   └── myMiddleware.ts            # Custom middleware functions
+│   │
+│   └── schemas/
+│       └── product.ts                 # JSON schemas for validation and Swagger
+│
+├── .env                               # Environment variables
+└── index.ts                           # Server entrypoint
 ```
 
 ## Environment (example)
@@ -217,7 +329,13 @@ import multipart from '@fastify/multipart'
 import rawBody from 'fastify-raw-body'
 ```
 
+## Core Concepts: Routes and Controllers
+
+The routing system is one of the core strengths of the framework. It's file-system based, meaning the framework automatically discovers and registers any `routes.ts` file within the `src/api/` directory.
+
 ## Routes
+
+At its simplest, a route needs only a `method`, `path`, and `handler`. The handler is a string that points to a function in a controller file.
 
 Minimal setup (routes.ts):
 
@@ -281,7 +399,56 @@ module.exports = {
 }
 ```
 
+**Securing a Route with Roles:**
+You can easily protect routes using Role-Based Access Control (RBAC). The framework includes built-in roles (`public`, `admin`) and allows you to define your own.
+
+```typescript
+{
+  method: 'POST',
+  path: '/',
+  handler: 'product.create',
+  roles: [roles.admin] // Only users with the 'admin' role can access this
+}
+```
+
+**Adding Middleware:**
+Apply custom logic before your controller is executed using middleware. The framework comes with `global.isAuthenticated` to ensure a user is logged in.
+
+```typescript
+{
+  method: 'GET',
+  path: '/:id',
+  handler: 'product.findOne',
+  middlewares: ['global.isAuthenticated'] // Requires a valid JWT, accessible to any role
+}
+```
+
+**Documenting with Swagger (`config`):**
+The `config` object allows you to enrich your route with information for the automatically generated Swagger/OpenAPI documentation.
+
+```typescript
+{
+  method: 'GET',
+  path: '/:id',
+  handler: 'product.findOne',
+  middlewares: ['global.isAuthenticated'],
+  config: {
+    title: 'Find a Product',
+    description: 'Retrieves a single product by its unique ID.',
+    params: { $ref: 'onlyIdSchema#' }, // References a JSON schema for validation
+    response: {
+      200: {
+        description: 'Successful response',
+        $ref: 'productSchema#'
+      }
+    }
+  }
+}
+```
+
 ## Controllers
+
+Controllers contain the functions that handle requests. The `req` object is enriched with helpers to simplify data access.
 
 ```ts
 // src/api/example/controller/demo.ts
@@ -299,6 +466,57 @@ Useful methods / objects:
 - `req.parameters()` to grab **params** data.
 - `req.roles()` to grab **Roles** (as `string[]`) from `req.user` if compiled.
 - `req.hasRole(role:Role)` to check if the **Role** is appliable for `req.user`.
+
+### Advanced Data Access with `req.data()` and `@volcanicminds/typeorm`
+
+The real power is unlocked when combining `req.data()` with `@volcanicminds/typeorm`.
+
+```typescript
+// src/api/products/controller/product.ts
+import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
+import { executeFindQuery } from '@volcanicminds/typeorm'
+
+// The 'repository' global is populated by @volcanicminds/typeorm
+declare var repository: any
+
+export async function find(req: FastifyRequest, reply: FastifyReply) {
+  // req.data() automatically gets all query string (or body!) parameters
+  // executeFindQuery translates them into a full TypeORM query with pagination, sorting, and filtering
+  const { headers, records } = await executeFindQuery(
+    repository.products, // The TypeORM repository for the 'Product' entity
+    { category: true }, // Eagerly load the 'category' relation
+    req.data()
+  )
+
+  // The 'headers' object contains pagination metadata (v-total, v-pageCount, etc.)
+  return reply.headers(headers).send(records)
+}
+```
+
+This single controller function can handle a wide variety of requests without any additional code, such as:
+
+- `GET /products?pageSize=10`
+- `GET /products?sort=price:desc`
+- `GET /products?name:containsi=widget&category.name:eq=Tools`
+
+**Database Synergy with `@volcanicminds/typeorm`**
+
+While `volcanic-backend` can be used with any data layer, it is designed for seamless integration with its companion package, `@volcanicminds/typeorm`. This combination provides a powerful, query-string-driven API out-of-the-box.
+
+**How it Works:**
+
+1.  **Client Request**: A client sends a request with query parameters for filtering, sorting, and pagination.
+    `GET /api/products?page=1&sort=name:asc&price:gt=100`
+
+2.  **`volcanic-backend` Controller**: The controller uses the `req.data()` helper to grab all query parameters.
+
+3.  **`volcanic-typeorm` Translation**: The `executeFindQuery` function from `@volcanicminds/typeorm` receives these parameters and uses its internal `applyQuery` engine to translate them into a rich TypeORM query object, including `where`, `order`, `skip`, and `take` clauses. It automatically handles the syntax for different databases (e.g., `ILIKE` for PostgreSQL, `$regex` for MongoDB).
+
+4.  **Database Execution**: TypeORM executes the optimized query against the database.
+
+5.  **Response with Headers**: `executeFindQuery` returns the records and a set of custom pagination headers (`v-total`, `v-pageCount`, etc.), which the controller then sends back to the client.
+
+This powerful synergy allows you to build complex, high-performance data endpoints with minimal effort. Please refer to the `@volcanicminds/typeorm` `README.md` for a complete guide on its advanced query syntax.
 
 ## Roles
 
