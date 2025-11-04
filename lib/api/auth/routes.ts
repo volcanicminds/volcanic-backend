@@ -59,7 +59,7 @@ module.exports = {
       path: '/change-password',
       roles: [],
       handler: 'auth.changePassword',
-      middlewares: [],
+      middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Change password',
         description: 'Change password for an existing user',

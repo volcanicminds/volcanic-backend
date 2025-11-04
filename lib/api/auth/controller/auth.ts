@@ -222,6 +222,10 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   }
 
   let user = await req.server['userManager'].retrieveUserByPassword(email, password)
+  if (!user) {
+    return reply.status(403).send(new Error('Wrong credentials'))
+  }
+
   const isValid = await req.server['userManager'].isValidUser(user)
   // const user = { confirmed: true, blocked: false, externalId: 123456, roles: [{ code: 'admin' }] }
   // const isValid = true

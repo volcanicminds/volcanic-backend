@@ -1,7 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { AuthenticatedUser } from '../../../../types/global'
 
-export function user(req: FastifyRequest, reply: FastifyReply) {
+export function currentUser(req: FastifyRequest, reply: FastifyReply) {
   const user: AuthenticatedUser | undefined = req.user
   reply.send(user ? { ...user, roles: req.roles() } : {})
 }
