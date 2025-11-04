@@ -4,29 +4,66 @@ const glob = require('glob')
 const path = require('path')
 
 export function apply(server: any): void {
-  const patterns = normalizePatterns(['..', 'schemas', '*.{ts,js}'], ['src', 'schemas', '*.{ts,js}'])
+  const [baseSchemaPath, customSchemaPath] = normalizePatterns(
+    ['..', 'schemas', '*.{ts,js}'],
+    ['src', 'schemas', '*.{ts,js}']
+  )
 
+  const customSchemas: any[] = []
+  const customSchemaIds = new Set()
   let schemaCount = 0
-  patterns.forEach((pattern) => {
-    log.t && log.trace('Looking for ' + pattern)
-    glob.sync(pattern).forEach((f: string) => {
+
+  log.t && log.trace('Looking for custom schemas in ' + customSchemaPath)
+  glob.sync(customSchemaPath).forEach((f: string) => {
+    try {
+      const schemaClass = require(f)
+      const schemaNames = Object.keys(schemaClass)
+
+      schemaNames.forEach((name) => {
+        const schema = schemaClass[name]
+        if (schema?.$id) {
+          customSchemas.push(schema)
+          customSchemaIds.add(schema.$id)
+        }
+      })
+    } catch (e) {
+      log.w && log.warn(`Could not load custom schema file: ${f}`, e)
+    }
+  })
+
+  customSchemas.forEach((schema) => {
+    log.trace(`* Registering custom schema [${schema.$id}]`)
+    server.addSchema(schema)
+    schemaCount++
+  })
+
+  log.t && log.trace('Looking for base schemas in ' + baseSchemaPath)
+  glob.sync(baseSchemaPath).forEach((f: string) => {
+    try {
       const schemaFileName = path.basename(f)
       const schemaClass = require(f)
       const schemaNames = Object.keys(schemaClass)
 
-      schemaNames.map((name) => {
+      schemaNames.forEach((name) => {
         const schema = schemaClass[name]
-        if (schema != null) {
-          if (schema?.$id) {
-            log.trace(`* Schema [${schema.$id}] loaded from ${schemaFileName}`)
+        if (schema?.$id) {
+          if (customSchemaIds.has(schema.$id)) {
+            log.w &&
+              log.warn(
+                `* Base schema [${schema.$id}] from ${schemaFileName} is overridden by a custom schema and will be ignored.`
+              )
+          } else {
+            log.trace(`* Registering base schema [${schema.$id}] from ${schemaFileName}`)
             server.addSchema(schema)
             schemaCount++
-          } else {
-            log.warn(`* Schema [${schema.$id}] not loaded from ${schemaFileName}`)
           }
+        } else {
+          log.w && log.warn(`* Schema with no $id found in ${schemaFileName}, cannot be registered.`)
         }
       })
-    })
+    } catch (e) {
+      log.w && log.warn(`Could not load base schema file: ${f}`, e)
+    }
   })
 
   log.d && log.debug(`Schemas loaded: ${schemaCount} referenceable by $ref`)
