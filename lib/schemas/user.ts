@@ -1,3 +1,19 @@
+export const userBodySchema = {
+  $id: 'userBodySchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    username: { type: 'string' },
+    email: { type: 'string' },
+    blocked: { type: 'boolean' },
+    blockedReason: { type: 'string' },
+    blockedAt: { type: 'string' },
+    confirmed: { type: 'boolean' },
+    confirmedAt: { type: 'string' },
+    roles: { type: 'array', items: { type: 'string' } }
+  }
+}
+
 export const userSchema = {
   $id: 'userSchema',
   type: 'object',

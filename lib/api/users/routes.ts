@@ -9,6 +9,115 @@ module.exports = {
   routes: [
     {
       method: 'GET',
+      path: '/',
+      roles: [roles.admin],
+      handler: 'user.find',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Find users',
+        description: 'Get users',
+        query: { $ref: 'getQueryParamsSchema' },
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'array',
+            items: { $ref: 'userSchema#' }
+          }
+        }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/count',
+      roles: [roles.admin],
+      handler: 'user.count',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Count users',
+        description: 'Count users',
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'number'
+          }
+        }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/:id',
+      roles: [],
+      handler: 'user.findOne',
+      middlewares: [],
+      config: {
+        title: 'Find user',
+        description: 'Get user by id',
+        params: { $ref: 'globalParamsSchema#' },
+        response: {
+          200: {
+            description: 'Default response',
+            $ref: 'userSchema#'
+          }
+        }
+      }
+    },
+    {
+      method: 'PUT',
+      path: '/:id',
+      roles: [],
+      handler: 'user.update',
+      middlewares: [],
+      config: {
+        title: 'Update user',
+        description: 'Updates a user by id',
+        params: { $ref: 'globalParamsSchema#' },
+        body: { $ref: 'userBodySchema#' },
+        response: {
+          200: {
+            description: 'Default response',
+            $ref: 'userSchema#'
+          }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/',
+      roles: [],
+      handler: 'user.create',
+      middlewares: [],
+      config: {
+        title: 'Create a user',
+        description: 'Creates a new user',
+        body: { $ref: 'userBodySchema#' },
+        response: {
+          200: {
+            description: 'Default response',
+            $ref: 'userSchema#'
+          }
+        }
+      }
+    },
+    {
+      method: 'DELETE',
+      path: '/:id',
+      roles: [],
+      handler: 'user.remove',
+      middlewares: [],
+      config: {
+        title: 'Delete user',
+        description: 'Deletes user by id',
+        params: { $ref: 'globalParamsSchema#' },
+        response: {
+          200: {
+            description: 'Default response',
+            $ref: 'userSchema#'
+          }
+        }
+      }
+    },
+    {
+      method: 'GET',
       path: '/me',
       roles: [],
       handler: 'user.currentUser',

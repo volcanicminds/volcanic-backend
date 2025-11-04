@@ -132,6 +132,7 @@ export interface UserManagement {
   isImplemented(): boolean
   isValidUser(data: any): boolean
   createUser(data: any): any | null
+  deleteUser(data: any): any | null
   resetExternalId(data: any): any | null
   updateUserById(id: string, user: any): any | null
   retrieveUserById(id: string): any | null

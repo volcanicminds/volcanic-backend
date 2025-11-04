@@ -236,6 +236,9 @@ const start = async (decorators) => {
       createUser(data: any) {
         throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
+      deleteUser(data: any) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
       resetExternalId(data: any) {
         throw new Error('Not implemented. You need to define the specific decorator (manager).')
       },
