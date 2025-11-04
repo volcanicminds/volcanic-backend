@@ -164,6 +164,7 @@ const start = async (decorators) => {
 
   const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: { development: logger } } : { logger: true }
   const server: FastifyInstance = fastify()
+  global.server = server
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
   const {
@@ -368,8 +369,6 @@ const start = async (decorators) => {
       const loadSwagger = yn(process.env.SWAGGER, false)
       loadSwagger && log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/api-docs'}`)
     })
-
-  global.server = server
 
   // Ok, it's time to start the scheduler jobs
   await loaderSchedules.start(server, schedules)
