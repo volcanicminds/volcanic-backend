@@ -11,7 +11,7 @@ A Node.js framework based on Fastify to build robust APIs quickly, featuring an 
 
 - Change package manager from yarn to npm.
 - Updated all dependencies to their latest versions.
-- Increase minimum Node.js version to 18.x.
+- Increase minimum Node.js version to 24.x.
 
 ## Based on
 
@@ -33,13 +33,13 @@ And, what you see in [package.json](package.json).
 ### Installation
 
 ```sh
-yarn add @volcanicminds/backend
+npm install @volcanicminds/backend
 ```
 
 For database interactions, it is highly recommended to also install the companion package:
 
 ```sh
-yarn add @volcanicminds/typeorm
+npm install @volcanicminds/typeorm
 ```
 
 ### Minimal Working Example
@@ -98,7 +98,7 @@ export function sayHello(req: FastifyRequest, reply: FastifyReply) {
 **4. Run your server:**
 
 ```sh
-yarn dev
+npm run dev
 ```
 
 Now you can visit `http://localhost:2230/hello` and you will see `{"message":"Hello, World!"}`.
@@ -106,7 +106,7 @@ Now you can visit `http://localhost:2230/hello` and you will see `{"message":"He
 ## How to upgrade packages
 
 ```ts
-yarn upgrade-deps
+npm run upgrade-deps
 ```
 
 ## Project Structure
@@ -178,18 +178,18 @@ For docker may be useful set HOST as 0.0.0.0 (instead 127.0.0.1).
 ## How to run
 
 ```ts
-yarn dev
-yarn start
-yarn prod
+npm run dev
+npm run start
+npm run prod
 ```
 
-When you execute `yarn dev` the server is restarted whenever a .js/.ts file is changed (thanks to [nodemon](https://www.npmjs.com/package/nodemon))
+When you execute `npm run dev` the server is restarted whenever a .js/.ts file is changed (thanks to [nodemon](https://www.npmjs.com/package/nodemon))
 
 ## How to test (logic)
 
 ```ts
-yarn test
-yarn test -t 'Logging'
+npm run test
+npm run test -t 'Logging'
 ```
 
 Refer to jest for more options.
@@ -589,7 +589,7 @@ roles: [roles.admin, roles.public]
 Use package [`@volcaniminds/typeorm`](https://github.com/volcanicminds/volcanic-database-typeorm) ([npm](https://www.npmjs.com/package/@volcanicminds/typeorm))
 
 ```ts
-yarn add @volcanicminds/typeorm
+npm install @volcanicminds/typeorm
 ```
 
 ## Hooks

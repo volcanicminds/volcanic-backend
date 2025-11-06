@@ -29,9 +29,6 @@
   ],
   "main": "dist/index",
   "typings": "dist/index",
-  "engines": {
-    "node": ">=18"
-  },
   "scripts": {
     "clean": "rm -rf dist esm",
     "prebuild": "npm run clean",
@@ -104,5 +101,8 @@
   "directories": {
     "lib": "lib",
     "test": "test"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

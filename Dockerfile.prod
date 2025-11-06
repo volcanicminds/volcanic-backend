@@ -4,19 +4,19 @@ FROM --platform=linux/amd64 node:18-alpine AS builder
 WORKDIR /usr/src/app
 
 # Install app dependencies
-COPY package*.json yarn.lock ./
+COPY package*.json ./
 COPY lib lib/
 
-RUN yarn install \
+RUN npm install \
         --prefer-offline \
         --non-interactive
 
 # Bundle app source
 COPY . .
 
-RUN yarn compile && \
+RUN npm run compile && \
     rm -rf node_modules && \
-    yarn install \
+    npm install \
         --prefer-offline \
         --non-interactive \
         --production
@@ -30,4 +30,4 @@ WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app .
 
 EXPOSE 2230
-CMD [ "yarn", "server" ]
+CMD [ "npm", "run server" ]

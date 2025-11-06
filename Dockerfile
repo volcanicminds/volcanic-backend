@@ -4,10 +4,10 @@ FROM --platform=linux/amd64 node:18-alpine AS builder
 WORKDIR /usr/src/app
 
 # Install app dependencies
-COPY package*.json yarn.lock ./
+COPY package*.json ./
 COPY lib lib/
 
-RUN yarn install
+RUN npm install
 
 # Bundle app source
 COPY . .
@@ -21,4 +21,4 @@ WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app .
 
 EXPOSE 2230
-CMD [ "yarn", "start" ]
+CMD [ "npm", "run start" ]

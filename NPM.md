@@ -14,11 +14,11 @@ npm publish --access public
 ## local linking
 
 ```ruby
-yarn link
-yarn link "@volcanicminds/backend"
+npm link
+npm link "@volcanicminds/backend"
 ```
 
 ```ruby
-yarn unlink
-yarn unlink "@volcanicminds/backend"
+npm unlink
+npm unlink "@volcanicminds/backend"
 ```
