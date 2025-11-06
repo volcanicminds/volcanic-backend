@@ -43,3 +43,14 @@ export const isAdminSchema = {
     isAdmin: { type: 'boolean' }
   }
 }
+
+export const roleSchema = {
+  $id: 'roleSchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    code: { type: 'string' },
+    name: { type: 'string' },
+    description: { type: 'string' }
+  }
+}

@@ -11,6 +11,11 @@ export function isAdmin(req: FastifyRequest, reply: FastifyReply) {
   reply.send({ isAdmin: user?.getId() && req.hasRole(roles.admin) })
 }
 
+export function getRoles(req: FastifyRequest, reply: FastifyReply) {
+  const allRoles = Object.keys(roles).map((key) => roles[key])
+  reply.send(allRoles)
+}
+
 export async function count(req: FastifyRequest, reply: FastifyReply) {
   return req.server['userManager'].countQuery(req.data())
 }

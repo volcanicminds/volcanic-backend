@@ -45,6 +45,24 @@ module.exports = {
     },
     {
       method: 'GET',
+      path: '/roles',
+      roles: [roles.admin],
+      handler: 'user.getRoles',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Get all roles',
+        description: 'Get all roles',
+        response: {
+          200: {
+            description: 'Default response',
+            type: 'array',
+            items: { $ref: 'roleSchema#' }
+          }
+        }
+      }
+    },
+    {
+      method: 'GET',
       path: '/:id',
       roles: [],
       handler: 'user.findOne',
