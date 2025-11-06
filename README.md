@@ -7,6 +7,12 @@
 
 A Node.js framework based on Fastify to build robust APIs quickly, featuring an automatic routing system, integrated authentication, and a powerful data access layer.
 
+## ⚠️ Breaking Changes in v2.x
+
+- Change package manager from yarn to npm.
+- Updated all dependencies to their latest versions.
+- Increase minimum Node.js version to 18.x.
+
 ## Based on
 
 **Volcanic Backend** is a powerful, opinionated, and extensible Node.js framework for creating robust and scalable RESTful and GraphQL APIs. It's built on modern, high-performance libraries like [Fastify](https://www.fastify.io) and can be optionally paired with [Apollo Server](https://www.apollographql.com).
