@@ -680,6 +680,23 @@ module.exports = {
 }
 ```
 
+## Disable embedded authorization
+
+Out-of-the-box, the framework automatically secures all routes by checking for a valid (Bearer) JWT token if roles are defined for that route. However, if you want to disable this automatic authorization check and handle it manually within your controllers or middleware, you can do so by setting the `embedded_auth` option to `false`.
+
+```ts
+// src/config/general.ts
+'use strict'
+
+module.exports = {
+  name: 'general',
+  enable: true,
+  options: {
+    embedded_auth: false
+  }
+}
+```
+
 ## Job Scheduler
 
 It's possible to add a job scheduler. For more information, go to [Fastify Schedule](https://github.com/fastify/fastify-schedule). To enable this feature, it's necessary to add or change the property `scheduler` to `true` (the default is `false`).
