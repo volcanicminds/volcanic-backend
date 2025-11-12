@@ -64,9 +64,9 @@ module.exports = {
     {
       method: 'GET',
       path: '/:id',
-      roles: [],
+      roles: [roles.admin],
       handler: 'user.findOne',
-      middlewares: [],
+      middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Find user',
         description: 'Get user by id',
@@ -82,9 +82,9 @@ module.exports = {
     {
       method: 'PUT',
       path: '/:id',
-      roles: [],
+      roles: [roles.admin],
       handler: 'user.update',
-      middlewares: [],
+      middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Update user',
         description: 'Updates a user by id',
@@ -101,9 +101,9 @@ module.exports = {
     {
       method: 'POST',
       path: '/',
-      roles: [],
+      roles: [roles.admin],
       handler: 'user.create',
-      middlewares: [],
+      middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Create a user',
         description: 'Creates a new user',
@@ -119,9 +119,9 @@ module.exports = {
     {
       method: 'DELETE',
       path: '/:id',
-      roles: [],
+      roles: [roles.admin],
       handler: 'user.remove',
-      middlewares: [],
+      middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Delete user',
         description: 'Deletes user by id',
@@ -138,13 +138,31 @@ module.exports = {
       method: 'GET',
       path: '/me',
       roles: [],
-      handler: 'user.currentUser',
+      handler: 'user.getCurrentUser',
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Get current user',
         description: 'Get current user',
         response: {
           200: { $ref: 'userSchema#' }
+        }
+      }
+    },
+    {
+      method: 'PUT',
+      path: '/me',
+      roles: [],
+      handler: 'user.updateCurrentUser',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Update current user',
+        description: 'Update current user',
+        body: { $ref: 'currentUserBodySchema#' },
+        response: {
+          200: {
+            description: 'Default response',
+            $ref: 'userSchema#'
+          }
         }
       }
     },

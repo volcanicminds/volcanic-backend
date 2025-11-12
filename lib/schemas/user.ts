@@ -1,3 +1,12 @@
+export const currentUserBodySchema = {
+  $id: 'currentUserBodySchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    username: { type: 'string' }
+  }
+}
+
 export const userBodySchema = {
   $id: 'userBodySchema',
   type: 'object',

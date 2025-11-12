@@ -57,6 +57,7 @@ export interface GeneralConfig {
   name: string
   enable: boolean
   options: {
+    allow_multiple_admin: boolean
     reset_external_id_on_login: boolean
     scheduler: boolean
     embedded_auth: boolean
