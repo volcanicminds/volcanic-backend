@@ -240,9 +240,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
 
   const isPasswordToBeChanged = req.server['userManager'].isPasswordToBeChanged(user)
   if (isPasswordToBeChanged) {
-    return reply
-      .status(403)
-      .send({ statusCode: 403, code: 'PASSWORD_TO_BE_CHANGED', message: 'The password is expired' })
+    return reply.status(403).send({ statusCode: 403, code: 'PASSWORD_TO_BE_CHANGED', message: 'Password is expired' })
   }
 
   if (user.blocked) {
