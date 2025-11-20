@@ -28,6 +28,10 @@ And, what you see in [package.json](package.json).
 - **Database Agnostic**: Designed to work seamlessly with `@volcanicminds/typeorm`, supporting both SQL (e.g., PostgreSQL) and NoSQL (e.g., MongoDB) databases.
 - **Feature-Rich**: Out-of-the-box support for JWT authentication, role-based access control (RBAC), automatic Swagger/OpenAPI documentation, and much more.
 
+## Project sample
+
+[Volcanic Backend Sample - GitHub](https://github.com/volcanicminds/volcanic-backend-sample)
+
 ## Quick Start
 
 ### Installation
