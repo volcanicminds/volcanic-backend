@@ -46,7 +46,7 @@ module.exports = {
     {
       method: 'GET',
       path: '/roles',
-      roles: [roles.admin],
+      roles: [],
       handler: 'user.getRoles',
       middlewares: ['global.isAuthenticated'],
       config: {
