@@ -27,7 +27,8 @@ export const onlyIdSchema = {
   nullable: true,
   properties: {
     id: { type: 'string', description: 'Entity id' }
-  }
+  },
+  required: ['id']
 }
 
 export const onlyCodeSchema = {
@@ -36,7 +37,8 @@ export const onlyCodeSchema = {
   nullable: true,
   properties: {
     code: { type: 'string', description: 'Code' }
-  }
+  },
+  required: ['code']
 }
 
 export const onlyPasswordSchema = {
@@ -45,7 +47,8 @@ export const onlyPasswordSchema = {
   nullable: true,
   properties: {
     password: { type: 'string', description: 'Password' }
-  }
+  },
+  required: ['password']
 }
 
 export const blockBodySchema = {
