@@ -39,11 +39,12 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function update(req: FastifyRequest, reply: FastifyReply) {
-  const { id, ...userData } = req.data()
+  const { id } = req.parameters()
   if (!id) {
     return reply.status(400).send('Missing required id parameter')
   }
 
+  const { id: _id, ...userData } = req.data()
   return await req.server['userManager'].updateUserById(id, userData)
 }
 
