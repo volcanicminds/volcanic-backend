@@ -12,7 +12,7 @@
 // log.trace('test log test log test log')
 
 import pino from 'pino'
-import yn from './yn'
+import yn from './yn.js'
 
 const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace']
 

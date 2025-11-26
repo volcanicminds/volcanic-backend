@@ -1,4 +1,4 @@
-const { customAlphabet } = require('nanoid')
+import { customAlphabet } from 'nanoid'
 const nanoid = customAlphabet('AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz0123456789')
 
 export function newAuthCode() {

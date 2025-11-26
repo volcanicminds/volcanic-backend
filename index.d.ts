@@ -13,4 +13,4 @@ export {
   UserManagement,
   TokenManagement,
   JobSchedule
-} from './types/global'
+} from './types/global.js'

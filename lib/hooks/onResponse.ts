@@ -1,4 +1,4 @@
-module.exports = async (req, reply) => {
+export default async (req, reply) => {
   let extraMessage: string = ''
   if (log.i && req.startedAt) {
     const elapsed: number = new Date().getTime() - req.startedAt.getTime()

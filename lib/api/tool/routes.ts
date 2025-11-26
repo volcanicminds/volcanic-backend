@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   config: {
     title: 'Tool functions',
     description: 'Tool functions',

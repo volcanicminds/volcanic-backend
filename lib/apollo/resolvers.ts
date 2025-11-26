@@ -1,6 +1,6 @@
 'use strict'
 
-import { MyContext } from './context'
+import { MyContext } from './context.js'
 
 const resolvers = {
   Query: {

@@ -12,6 +12,7 @@ A Node.js framework based on Fastify to build robust APIs quickly, featuring an 
 - Change package manager from yarn to npm.
 - Updated all dependencies to their latest versions.
 - Increase minimum Node.js version to 24.x.
+- Switched to pure ECMAScript Modules (`NodeNext`). CommonJS/`require` is no longer supported.
 
 ## Based on
 
@@ -77,7 +78,7 @@ main().catch((err) => {
 
 ```typescript
 // src/api/hello/routes.ts
-module.exports = {
+export default {
   routes: [
     {
       method: 'GET',
@@ -325,7 +326,7 @@ Under the folder `src/config` is possible add a file `plugin.ts` where you can a
 
 ```ts
 // src/config/plugins.ts
-module.exports = [
+export default [
   {
     name: 'cors',
     enable: false,
@@ -381,7 +382,7 @@ At its simplest, a route needs only a `method`, `path`, and `handler`. The handl
 Minimal setup (routes.ts):
 
 ```ts
-module.exports = {
+export default {
   routes: [
     {
       method: 'GET',
@@ -401,7 +402,7 @@ Some notes:
 
 ```ts
 // src/api/example/routes.ts
-module.exports = {
+export default {
   config: {
     title: 'Example of routes.ts',
     description: 'Example of routes.ts',
@@ -675,7 +676,7 @@ It's possible to specify that all JWT tokens belonging to the user who logs in a
 // src/config/general.ts
 'use strict'
 
-module.exports = {
+export default {
   name: 'general',
   enable: true,
   options: {
@@ -692,7 +693,7 @@ Out-of-the-box, the framework automatically secures all routes by checking for a
 // src/config/general.ts
 'use strict'
 
-module.exports = {
+export default {
   name: 'general',
   enable: true,
   options: {
@@ -709,7 +710,7 @@ It's possible to add a job scheduler. For more information, go to [Fastify Sched
 // src/config/general.ts
 'use strict'
 
-module.exports = {
+export default {
   name: 'general',
   enable: true,
   options: {

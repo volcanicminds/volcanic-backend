@@ -1,5 +1,5 @@
-import * as tracking from '../util/tracker'
+import * as tracking from '../util/tracker.js'
 
-module.exports = async (req, reply) => {
+export default async (req, reply) => {
   tracking.initialize(req, reply)
 }

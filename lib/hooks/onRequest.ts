@@ -1,5 +1,5 @@
-import { getParams, getData } from '../util/common'
-import { AuthenticatedUser, AuthenticatedToken, Role } from '../../types/global'
+import { getParams, getData } from '../util/common.js'
+import type { AuthenticatedUser, AuthenticatedToken, Role } from '../../types/global.js'
 
 const { embedded_auth = true } = global.config?.options || {}
 
@@ -22,7 +22,7 @@ const normalizeRoles = (rolesArray: any[] | undefined): string[] => {
   return [roles.public.code]
 }
 
-module.exports = async (req, reply) => {
+export default async (req, reply) => {
   log.i && (req.startedAt = new Date())
 
   // Request enrichment
@@ -88,9 +88,11 @@ module.exports = async (req, reply) => {
       } catch (error) {
         const isRoutePublic = (cfg.requiredRoles || []).some((role: Role) => role.code === roles.public.code)
         if (!isRoutePublic) {
-          return reply
-            .status(401)
-            .send({ statusCode: 401, code: 'UNAUTHORIZED', message: error.message || 'Invalid or expired token' })
+          return reply.status(401).send({
+            statusCode: 401,
+            code: 'UNAUTHORIZED',
+            message: (error as any)?.message || 'Invalid or expired token'
+          })
         }
       }
     }

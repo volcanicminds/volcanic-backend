@@ -3,19 +3,19 @@
 import dotenv from 'dotenv'
 dotenv.config()
 
-import yn from './lib/util/yn'
-import logger from './lib/util/logger'
-import * as mark from './lib/util/mark'
-import { TranslatedError } from './lib/util/errors'
-import * as loaderPlugins from './lib/loader/plugins'
-import * as loaderRoles from './lib/loader/roles'
-import * as loaderRouter from './lib/loader/router'
-import * as loaderHooks from './lib/loader/hooks'
-import * as loaderSchemas from './lib/loader/schemas'
-import * as loaderTracking from './lib/loader/tracking'
-import * as loaderTranslation from './lib/loader/translation'
-import * as loaderConfig from './lib/loader/general'
-import * as loaderSchedules from './lib/loader/schedules'
+import yn from './lib/util/yn.js'
+import logger from './lib/util/logger.js'
+import * as mark from './lib/util/mark.js'
+import { TranslatedError } from './lib/util/errors.js'
+import * as loaderPlugins from './lib/loader/plugins.js'
+import * as loaderRoles from './lib/loader/roles.js'
+import * as loaderRouter from './lib/loader/router.js'
+import * as loaderHooks from './lib/loader/hooks.js'
+import * as loaderSchemas from './lib/loader/schemas.js'
+import * as loaderTracking from './lib/loader/tracking.js'
+import * as loaderTranslation from './lib/loader/translation.js'
+import * as loaderConfig from './lib/loader/general.js'
+import * as loaderSchedules from './lib/loader/schedules.js'
 
 import fastify, { FastifyInstance } from 'fastify'
 import jwtValidator from '@fastify/jwt'
@@ -32,10 +32,12 @@ import rawBody from 'fastify-raw-body'
 
 import { ApolloServer } from '@apollo/server'
 import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastify'
-import { myContextFunction, MyContext } from './lib/apollo/context'
-import resolvers from './lib/apollo/resolvers'
-import typeDefs from './lib/apollo/type-defs'
-import { UserManagement, TokenManagement, DataBaseManagement } from './types/global'
+import { myContextFunction, MyContext } from './lib/apollo/context.js'
+import resolvers from './lib/apollo/resolvers.js'
+import typeDefs from './lib/apollo/type-defs.js'
+import require from './lib/util/require.js'
+
+import type { UserManagement, TokenManagement, DataBaseManagement } from './types/global.js'
 
 global.log = logger
 
@@ -58,14 +60,6 @@ async function addApolloRouting(server: FastifyInstance, apollo: ApolloServer<My
     await server.register(fastifyApollo(apollo), {
       context: myContextFunction
     })
-
-    // // OR
-    // server.post(
-    //   '/graphql-alt',
-    //   fastifyApolloHandler(apollo, {
-    //     context: myContextFunction
-    //   })
-    // )
   }
 }
 
@@ -87,7 +81,15 @@ async function addFastifySwagger(server: FastifyInstance) {
     log.trace('Add swagger plugin')
 
     const fs = require('fs')
-    const contents = fs.readFileSync('logo-dark.png', { encoding: 'base64' })
+    const path = require('path')
+    const logoPath = path.resolve(process.cwd(), 'logo-dark.png')
+
+    let content = ''
+    try {
+      content = fs.readFileSync(logoPath, { encoding: 'base64' })
+    } catch (e) {
+      log.w && log.warn('Swagger logo not found at ' + logoPath)
+    }
 
     await server.register(swagger, {
       swagger: {
@@ -132,7 +134,7 @@ async function addFastifySwagger(server: FastifyInstance) {
       },
       logo: {
         type: 'image/png',
-        content: Buffer.from(contents, 'base64')
+        content: Buffer.from(content, 'base64')
       },
       theme: {
         title: SWAGGER_TITLE
@@ -150,15 +152,15 @@ async function addFastifySchedule(server: FastifyInstance) {
   }
 }
 
-const start = async (decorators) => {
+const start = async (decorators = {}) => {
   const begin = new Date().getTime()
   mark.print(logger)
 
-  global.config = loaderConfig.load()
-  global.roles = loaderRoles.load()
+  global.config = await loaderConfig.load()
+  global.roles = await loaderRoles.load()
   global.t = loaderTranslation.load()
 
-  const { tracking, trackingConfig } = loaderTracking.load()
+  const { tracking, trackingConfig } = await loaderTracking.load()
   global.tracking = tracking
   global.trackingConfig = trackingConfig
 
@@ -177,9 +179,8 @@ const start = async (decorators) => {
 
   const loadRefreshJWT = yn(JWT_REFRESH, true)
   const loadApollo = yn(GRAPHQL, false)
-  const plugins = loaderPlugins.load()
+  const plugins = await loaderPlugins.load()
 
-  // Helmet is not usable with Apollo Server
   plugins?.rawBody && (await server.register(rawBody, plugins.rawBody || {}))
   !loadApollo && plugins?.helmet && (await server.register(helmet, plugins.helmet || {}))
 
@@ -202,7 +203,6 @@ const start = async (decorators) => {
   plugins?.cors && (await server.register(cors, plugins.cors || {}))
   plugins?.compress && (await server.register(compress, plugins.compress || {}))
 
-  // JWT Validator
   log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
   await server.register(jwtValidator, {
     secret: JWT_SECRET,
@@ -225,7 +225,6 @@ const start = async (decorators) => {
 
   const schedules = loaderSchedules.load()
 
-  // defaults
   decorators = {
     userManager: {
       isImplemented() {
@@ -370,12 +369,11 @@ const start = async (decorators) => {
       loadSwagger && log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/api-docs'}`)
     })
 
-  // Ok, it's time to start the scheduler jobs
   await loaderSchedules.start(server, schedules)
   return server
 }
 
-export {
+export type {
   global,
   FastifyReply,
   FastifyRequest,
@@ -391,20 +389,6 @@ export {
   TokenManagement,
   DataBaseManagement,
   JobSchedule
-} from './types/global'
+} from './types/global.js'
 
-/**
- * These export configurations enable JS and TS developers
- * to consumer BE in whatever way best suits their needs.
- * Some examples of supported import syntax includes:
- * - `const server = require('@volcanicminds/backend')`
- * - `const { server } = require('@volcanicminds/backend')`
- * - `import * as Server from '@volcanicminds/backend'`
- * - `import { server, TSC_definition } from '@volcanicminds/backend'`
- * - `import server from '@volcanicminds/backend'`
- * - `import server, { TSC_definition } from '@volcanicminds/backend'`
- */
 export { yn, start, TranslatedError }
-module.exports = { yn, start, TranslatedError }
-module.exports.server = { yn, start, TranslatedError }
-module.exports.default = { yn, start, TranslatedError }

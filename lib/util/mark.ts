@@ -1,3 +1,4 @@
+import require from './require.js'
 const pkg = require('root-require')('package.json')
 
 /**

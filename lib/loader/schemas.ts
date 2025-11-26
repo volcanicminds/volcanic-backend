@@ -1,7 +1,7 @@
-import { normalizePatterns } from '../util/path'
-
-const glob = require('glob')
-const path = require('path')
+import { normalizePatterns } from '../util/path.js'
+import { globSync } from 'glob'
+import path from 'path'
+import require from '../util/require.js'
 
 export function apply(server: any): void {
   const [baseSchemaPath, customSchemaPath] = normalizePatterns(
@@ -14,7 +14,7 @@ export function apply(server: any): void {
   let schemaCount = 0
 
   log.t && log.trace('Looking for custom schemas in ' + customSchemaPath)
-  glob.sync(customSchemaPath).forEach((f: string) => {
+  globSync(customSchemaPath, { windowsPathsNoEscape: true }).forEach((f: string) => {
     try {
       const schemaClass = require(f)
       const schemaNames = Object.keys(schemaClass)
@@ -38,7 +38,7 @@ export function apply(server: any): void {
   })
 
   log.t && log.trace('Looking for base schemas in ' + baseSchemaPath)
-  glob.sync(baseSchemaPath).forEach((f: string) => {
+  globSync(baseSchemaPath, { windowsPathsNoEscape: true }).forEach((f: string) => {
     try {
       const schemaFileName = path.basename(f)
       const schemaClass = require(f)

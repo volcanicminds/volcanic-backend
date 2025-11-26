@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   config: {
     title: 'User functions',
     description: 'User functions',

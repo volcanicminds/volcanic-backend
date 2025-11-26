@@ -1,5 +1,5 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
-import * as regExp from '../../../util/regexp'
+import * as regExp from '../../../util/regexp.js'
 
 export async function register(req: FastifyRequest, reply: FastifyReply) {
   const { password1: password, password2, ...data } = req.data()

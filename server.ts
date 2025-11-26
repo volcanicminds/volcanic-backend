@@ -1,5 +1,6 @@
-'use strict'
+import { start } from './index.js'
 
-global.npmDebugServerStarted = true // internal debug purpose
-const { start } = require('./index')
+// internal debug purpose
+;(global as any).npmDebugServerStarted = true
+
 start()

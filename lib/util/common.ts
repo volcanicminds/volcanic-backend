@@ -1,5 +1,5 @@
 import { FastifyRequest } from 'fastify'
-import { Data } from '../../types/global'
+import type { Data } from '../../types/global.js'
 
 export function getData(req: FastifyRequest): Data {
   if (!req) return {}

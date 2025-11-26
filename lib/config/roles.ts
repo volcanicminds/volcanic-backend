@@ -1,4 +1,4 @@
-module.exports = [
+export default [
   {
     code: 'public',
     name: 'Public',

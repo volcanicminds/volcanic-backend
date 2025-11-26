@@ -1,5 +1,5 @@
 import dayjs from 'dayjs'
-import { FastifyRequest, FastifyReply } from '../../types/global'
+import type { FastifyRequest, FastifyReply } from '../../types/global.js'
 
 export async function initialize(req: FastifyRequest, reply: FastifyReply) {
   if (req.server['dataBaseManager'].isImplemented()) {

@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   config: {
     title: 'Integration token functions',
     description: 'Integration token functions',

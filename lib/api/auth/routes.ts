@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   config: {
     title: 'Authentication functions',
     description: 'Authentication functions',

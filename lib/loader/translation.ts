@@ -1,8 +1,11 @@
-const path = require('path')
-const glob = require('glob')
-const { I18n } = require('i18n')
+import path from 'path'
+import { globSync } from 'glob'
+import { I18n } from 'i18n'
+import { fileURLToPath } from 'url'
+import require from '../util/require.js'
 
-// import { normalizePatterns } from '../util/path'
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 export function load(): any {
   const i18n = new I18n({
@@ -25,7 +28,7 @@ export function load(): any {
 
   const basePath = path.join(__dirname, '..', 'locales', '*.json').replaceAll('\\', '/')
 
-  glob.sync(basePath).forEach((f: string) => {
+  globSync(basePath, { windowsPathsNoEscape: true }).forEach((f: string) => {
     log.info('* Loading base dictionary %s', path.parse(f).base)
     try {
       const content = require(f)
@@ -37,7 +40,7 @@ export function load(): any {
 
   const addPath = path.join(process.cwd(), 'src', 'locales', '*.json').replaceAll('\\', '/')
 
-  glob.sync(addPath).forEach((f: string) => {
+  globSync(addPath, { windowsPathsNoEscape: true }).forEach((f: string) => {
     log.info('* Loading additional dictionary %s', path.parse(f).base)
     try {
       const content = require(f)
@@ -48,14 +51,6 @@ export function load(): any {
   })
 
   i18n.setLocale(i18n.defaultLocale || 'en')
-  //   let test1 = i18n.__('greeting.formal')
-  //   let test2 = i18n.__('hello')
-  //   let test3 = i18n.__('greeting.placeholder.formal', 'UGO')
-  //   let test4 = i18n.__('greeting.placeholder.formalize:Buondì %s', 'UGO')
-  //   let test5 = i18n.__('greeting.formal')
-  //   let test6 = i18n.__({ phrase: 'greeting.formal', locale: 'it' })
-  //   let test7 = i18n.__({ phrase: 'greeting.placeholder.formal', locale: 'it' }, 'UGO')
-  //   i18n.setLocale(i18n.defaultLocale || 'en')
   return i18n
 }
 

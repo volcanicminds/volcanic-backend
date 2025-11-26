@@ -1,10 +1,11 @@
-import yn from '../util/yn'
-import { Role, Route, ConfiguredRoute, RouteConfig } from '../../types/global'
+import yn from '../util/yn.js'
+import type { Role, Route, ConfiguredRoute, RouteConfig } from '../../types/global.js'
 import { FastifyReply, FastifyRequest } from 'fastify'
-import { normalizePatterns } from '../util/path'
+import { normalizePatterns } from '../util/path.js'
+import { globSync } from 'glob'
+import path from 'path'
+import require from '../util/require.js'
 
-const glob = require('glob')
-const path = require('path')
 const methods = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'PATCH', 'OPTIONS']
 
 export function load(): ConfiguredRoute[] {
@@ -14,7 +15,7 @@ export function load(): ConfiguredRoute[] {
 
   patterns.forEach((pattern) => {
     log.t && log.trace('Looking for ' + pattern)
-    glob.sync(pattern).forEach((f: string, index: number, values: string[]) => {
+    globSync(pattern, { windowsPathsNoEscape: true }).forEach((f: string, index: number, values: string[]) => {
       const base = path.dirname(f)
       const dir = path.basename(base)
       const file = path.join(dir, path.basename(f))

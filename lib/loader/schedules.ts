@@ -1,10 +1,10 @@
 import _ from 'lodash'
-import { JobSchedule } from '../../types/global'
-import { normalizePatterns } from '../util/path'
+import type { JobSchedule } from '../../types/global.js'
+import { normalizePatterns } from '../util/path.js'
 import { CronJob, SimpleIntervalJob, Task, AsyncTask } from 'toad-scheduler'
-
-const glob = require('glob')
-const path = require('path')
+import { globSync } from 'glob'
+import path from 'path'
+import require from '../util/require.js'
 
 export function load(): any[] {
   const patterns = normalizePatterns(['..', 'schedules', '*.job.{ts,js}'], ['src', 'schedules', '*.job.{ts,js}'])
@@ -33,7 +33,7 @@ export function load(): any[] {
 
   patterns.forEach((pattern) => {
     log.t && log.trace('Looking for ' + pattern)
-    glob.sync(pattern).forEach((f: string) => {
+    globSync(pattern, { windowsPathsNoEscape: true }).forEach((f: string) => {
       log.t && log.trace(`* Add job schedule from ${f}`)
 
       const jobName = path.basename(f, path.extname(f))

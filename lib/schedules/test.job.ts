@@ -1,4 +1,4 @@
-import { JobSchedule } from '../../types/global'
+import type { JobSchedule } from '../../types/global.js'
 
 export const schedule: JobSchedule = {
   active: false,

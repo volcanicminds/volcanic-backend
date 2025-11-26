@@ -1,4 +1,7 @@
-import { normalizePatterns } from '../util/path'
+import { normalizePatterns } from '../util/path.js'
+import { globSync } from 'glob'
+import path from 'path'
+import require from '../util/require.js'
 
 const hooks = [
   'onRequest',
@@ -16,16 +19,13 @@ const hooks = [
   'preHandler'
 ]
 
-const glob = require('glob')
-const path = require('path')
-
 export function apply(server: any): void {
   const patterns = normalizePatterns(['..', 'hooks', '*.{ts,js}'], ['src', 'hooks', '*.{ts,js}'])
   const allHooks: any = hooks.reduce((acc, v) => ({ ...acc, [v]: [] as Function[] }), {})
 
   patterns.forEach((pattern) => {
     log.t && log.trace('Looking for ' + pattern)
-    glob.sync(pattern).forEach((f: string) => {
+    globSync(pattern, { windowsPathsNoEscape: true }).forEach((f: string) => {
       const hookName = path.basename(f, path.extname(f))
       const fn = require(f)
 

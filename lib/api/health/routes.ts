@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   config: {
     title: 'Health functions',
     description: 'Health functions',

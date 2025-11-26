@@ -1,18 +1,23 @@
-import { TrackChanges, TrackChangesList, Data } from '../../types/global'
-import { normalizePatterns } from '../util/path'
-const glob = require('glob')
+import type { TrackChanges, TrackChangesList, Data } from '../../types/global.js'
+import { normalizePatterns } from '../util/path.js'
+import { globSync } from 'glob'
 
 const METHODS = ['POST', 'PUT', 'DELETE']
 
-export function load() {
+export async function load() {
   const trackChangesList: TrackChangesList = {}
   let trackConfig: Data = {}
 
   const patterns = normalizePatterns(['..', 'config', 'tracking.{ts,js}'], ['src', 'config', 'tracking.{ts,js}'])
-  patterns.forEach((pattern) => {
+
+  for (const pattern of patterns) {
     log.t && log.trace('Looking for ' + pattern)
-    glob.sync(pattern).forEach((f: string) => {
-      const configTracking = require(f)
+    const files = globSync(pattern, { windowsPathsNoEscape: true })
+
+    for (const f of files) {
+      const module = await import(f)
+      const configTracking = module.default || module
+
       const { config, changes } = configTracking || {}
       const { enableAll = true, primaryKey = 'id', changeEntity = 'Change' } = config || {}
 
@@ -30,8 +35,8 @@ export function load() {
             trackChangesList[code] = tc
           }
         })
-    })
-  })
+    }
+  }
 
   const keys = Object.keys(trackChangesList) || []
   log.d && log.debug(`Tracking changes loaded: ${keys?.length || 0}`)

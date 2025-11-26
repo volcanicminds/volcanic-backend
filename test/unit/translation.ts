@@ -1,7 +1,7 @@
 import { expect } from 'expect'
 import { TranslatedError } from '../../lib/util/errors'
 
-module.exports = () => {
+export default () => {
   describe('Translation', () => {
     it('should translate various messages', () => {
       try {

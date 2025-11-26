@@ -1,6 +1,6 @@
 import { expect } from 'expect'
 
-module.exports = () => {
+export default () => {
   describe('Semver', () => {
     it('should test semver library', () => {
       const semver = require('semver')

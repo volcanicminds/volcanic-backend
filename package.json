@@ -1,6 +1,7 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "2.0.4",
+  "version": "2.1.0",
+  "type": "module",
   "codename": "rome",
   "license": "MIT",
   "description": "The volcanic (minds) backend",
@@ -27,23 +28,32 @@
     "rate limit",
     "jest"
   ],
-  "main": "dist/index",
-  "typings": "dist/index",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "lib"
+  ],
   "scripts": {
-    "clean": "rm -rf dist esm",
+    "clean": "rm -rf dist",
     "prebuild": "npm run clean",
-    "build:esm": "tsc --target es2018 --outDir esm",
-    "build:cjs": "tsc --target es2015 --module commonjs --outDir dist",
-    "build": "npm run build:esm && npm run build:cjs",
-    "compile": "npm run build",
+    "build": "tsc",
     "preprod": "npm run build",
     "prod": "cd dist && node server.js",
-    "server": "cd dist && node server.js",
-    "start": "ts-node server.ts",
-    "dev": "nodemon --exec \"ts-node\" server.ts",
+    "start": "tsx server.ts",
+    "dev": "node --import tsx/esm --watch server.ts",
     "test": "npm run test:full",
-    "test:full": "cross-env PORT=2231 NODE_ENV=memory BROWSER=false mocha ./test/index.spec.ts -t 100000",
-    "reset": "npm install && npm update && npm run compile",
+    "test:full": "cross-env PORT=2231 NODE_ENV=memory BROWSER=false mocha --loader=tsx ./test/index.spec.ts -t 100000",
+    "reset": "npm install && npm update && npm run build",
     "upgrade-deps": "npx npm-check-updates -u",
     "combine": "node combine.js"
   },
@@ -81,9 +91,8 @@
     "cross-env": "^10.1.0",
     "expect": "^30.2.0",
     "mocha": "^11.7.5",
-    "nodemon": "^3.1.10",
     "npm-upgrade": "^3.1.2",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.9.3"
   },
   "repository": {

@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   config: {
     enableAll: false, // optional, default true
     changeEntity: 'Change', // optional, default 'Change'

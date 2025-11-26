@@ -1,10 +1,11 @@
-const fs = require('fs')
-const path = require('path')
+import * as fs from 'fs'
+import * as path from 'path'
 
 const MAIN_DIRECTORY = './'
-const INCLUDE_FILES = ['package.json', 'tsconfig.json', 'README.md', '.nvmrc', 'index.ts', 'index.d.ts']
+const INCLUDE_FILES = ['package.json', 'tsconfig.json', 'README.md', '.nvmrc', 'index.ts', 'server.ts', 'index.d.ts']
 const SUB_DIRECTORIES = ['lib', 'types']
 const OUTPUT_FILE = 'OUTPUT.md'
+const CUSTOM_TITLE = 'Volcanic Backend'
 
 /**
  * Recursively collects .js and .ts files from a given directory.
@@ -73,7 +74,7 @@ async function generateMarkdown() {
   const currentISOString = new Date().toISOString()
 
   const markdownLines = []
-  markdownLines.push('# Full Project - Updated At ' + currentISOString, '')
+  markdownLines.push(`# ${CUSTOM_TITLE || 'Full Project'} - Updated At ${currentISOString}`, '')
   markdownLines.push('Below are all the files, materials and documentation of the project to analyze.', '')
   markdownLines.push('```bash')
   markdownLines.push('./')
@@ -99,7 +100,7 @@ async function generateMarkdown() {
   allFiles.forEach((file) => {
     const filePath = file.relativePath
 
-    const slug = filePath.replace(/[\/.]/g, '-')
+    const slug = filePath.replace(/[/.]/g, '-')
     markdownLines.push(`- [${filePath}](#file-${slug})`)
   })
   markdownLines.push('')

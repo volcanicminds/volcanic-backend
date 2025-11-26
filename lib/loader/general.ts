@@ -1,8 +1,8 @@
-import { GeneralConfig } from '../../types/global'
-import { normalizePatterns } from '../util/path'
-const glob = require('glob')
+import type { GeneralConfig } from '../../types/global.js'
+import { normalizePatterns } from '../util/path.js'
+import { globSync } from 'glob'
 
-export function load() {
+export async function load() {
   const generalConfig: GeneralConfig = {
     name: 'general',
     enable: true,
@@ -15,10 +15,14 @@ export function load() {
   }
 
   const patterns = normalizePatterns(['..', 'config', 'general.{ts,js}'], ['src', 'config', 'general.{ts,js}'])
-  patterns.forEach((pattern) => {
+
+  for (const pattern of patterns) {
     log.t && log.trace('Looking for ' + pattern)
-    glob.sync(pattern).forEach((f: string) => {
-      const config: GeneralConfig = require(f)
+    const files = globSync(pattern, { windowsPathsNoEscape: true })
+
+    for (const f of files) {
+      const module = await import(f)
+      const config: GeneralConfig = module.default || module
 
       if (config.name === generalConfig.name) {
         generalConfig.enable = config.enable
@@ -27,8 +31,8 @@ export function load() {
           ...(config.options || {})
         }
       }
-    })
-  })
+    }
+  }
 
   log.d && log.debug('General configuration loaded')
   return generalConfig

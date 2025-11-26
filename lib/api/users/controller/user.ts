@@ -1,11 +1,11 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
-import { AuthenticatedUser } from '../../../../types/global'
+import type { AuthenticatedUser } from '../../../../types/global.js'
 
 export async function getRoles(req: FastifyRequest, reply: FastifyReply) {
   const allRoles = Object.keys(roles).map((key) => roles[key])
   return reply.send(allRoles)
 }
-
+// ... resto del file invariato ...
 export async function count(req: FastifyRequest, reply: FastifyReply) {
   return req.server['userManager'].countQuery(req.data())
 }
