@@ -230,11 +230,8 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
           rateLimit: rateLimit || undefined
         },
         handler: async function (req: FastifyRequest, reply: FastifyReply) {
+          let module
           try {
-            // Import dinamico del controller
-            // Dobbiamo assicurarci che 'file' abbia l'estensione corretta o che il resolver la trovi
-            // In ESM strict, meglio provare ad aggiungere .js se manca, o lasciare che Node risolva se è un path assoluto
-            let module
             try {
               module = await import(file + '.js')
             } catch {
