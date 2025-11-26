@@ -66,11 +66,9 @@ async function addApolloRouting(server: FastifyInstance, apollo: ApolloServer<My
 async function addFastifyRouting(server: FastifyInstance) {
   log.trace('Add server routes')
 
-  loaderHooks.apply(server)
-  loaderSchemas.apply(server)
-
-  const routes = loaderRouter.load()
-  routes && loaderRouter.apply(server, routes)
+  await loaderHooks.apply(server)
+  await loaderSchemas.apply(server)
+  await loaderRouter.apply(server)
 }
 
 async function addFastifySwagger(server: FastifyInstance) {

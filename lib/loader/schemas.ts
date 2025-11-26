@@ -1,9 +1,8 @@
 import { normalizePatterns } from '../util/path.js'
 import { globSync } from 'glob'
 import path from 'path'
-import require from '../util/require.js'
 
-export function apply(server: any): void {
+export async function apply(server: any): Promise<void> {
   const [baseSchemaPath, customSchemaPath] = normalizePatterns(
     ['..', 'schemas', '*.{ts,js}'],
     ['src', 'schemas', '*.{ts,js}']
@@ -14,14 +13,19 @@ export function apply(server: any): void {
   let schemaCount = 0
 
   log.t && log.trace('Looking for custom schemas in ' + customSchemaPath)
-  globSync(customSchemaPath, { windowsPathsNoEscape: true }).forEach((f: string) => {
+  const customFiles = globSync(customSchemaPath, { windowsPathsNoEscape: true })
+
+  for (const f of customFiles) {
+    if (f.endsWith('.d.ts')) continue
+
     try {
-      const schemaClass = require(f)
-      const schemaNames = Object.keys(schemaClass)
+      const schemaModule = await import(f)
+      const schemaClass = schemaModule.default || schemaModule
+      const schemaNames = Object.keys(schemaModule)
 
       schemaNames.forEach((name) => {
-        const schema = schemaClass[name]
-        if (schema?.$id) {
+        const schema = schemaModule[name]
+        if (schema && typeof schema === 'object' && schema.$id) {
           customSchemas.push(schema)
           customSchemaIds.add(schema.$id)
         }
@@ -29,7 +33,7 @@ export function apply(server: any): void {
     } catch (e) {
       log.w && log.warn(`Could not load custom schema file: ${f}`, e)
     }
-  })
+  }
 
   customSchemas.forEach((schema) => {
     log.trace(`* Registering custom schema [${schema.$id}]`)
@@ -38,15 +42,19 @@ export function apply(server: any): void {
   })
 
   log.t && log.trace('Looking for base schemas in ' + baseSchemaPath)
-  globSync(baseSchemaPath, { windowsPathsNoEscape: true }).forEach((f: string) => {
+  const baseFiles = globSync(baseSchemaPath, { windowsPathsNoEscape: true })
+
+  for (const f of baseFiles) {
+    if (f.endsWith('.d.ts')) continue
+
     try {
       const schemaFileName = path.basename(f)
-      const schemaClass = require(f)
-      const schemaNames = Object.keys(schemaClass)
+      const schemaModule = await import(f)
+      const schemaNames = Object.keys(schemaModule)
 
       schemaNames.forEach((name) => {
-        const schema = schemaClass[name]
-        if (schema?.$id) {
+        const schema = schemaModule[name]
+        if (schema && typeof schema === 'object' && schema.$id) {
           if (customSchemaIds.has(schema.$id)) {
             log.w &&
               log.warn(
@@ -57,14 +65,14 @@ export function apply(server: any): void {
             server.addSchema(schema)
             schemaCount++
           }
-        } else {
-          log.w && log.warn(`* Schema with no $id found in ${schemaFileName}, cannot be registered.`)
+        } else if (name !== 'default') {
+          log.w && log.warn(`* Schema with no $id found in ${schemaFileName} (export ${name}), cannot be registered.`)
         }
       })
     } catch (e) {
       log.w && log.warn(`Could not load base schema file: ${f}`, e)
     }
-  })
+  }
 
   log.d && log.debug(`Schemas loaded: ${schemaCount} referenceable by $ref`)
 }

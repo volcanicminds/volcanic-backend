@@ -4,24 +4,86 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import { normalizePatterns } from '../util/path.js'
 import { globSync } from 'glob'
 import path from 'path'
+import { fileURLToPath } from 'url'
 import require from '../util/require.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const methods = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'PATCH', 'OPTIONS']
 
-export function load(): ConfiguredRoute[] {
+async function tryToLoadFile(fileName: string) {
+  try {
+    const module = await import(fileName)
+    return module.default || module
+  } catch (err) {
+    return null
+  }
+}
+
+async function loadMiddleware(base: string, middleware: string = '') {
+  const key = 'global.'
+  const isGlobal = middleware.indexOf(key) > -1
+  let loadedModule: any = null
+
+  if (isGlobal) {
+    const name = middleware.substring(key.length)
+    // Prova path locali (es. src/middleware/auth.ts)
+    const localPath = path.resolve(process.cwd() + '/src/middleware/' + name + '.ts') // Prova TS
+    const localPathJs = path.resolve(process.cwd() + '/src/middleware/' + name + '.js') // Prova JS (dist)
+
+    loadedModule = await tryToLoadFile(localPath)
+    if (!loadedModule) loadedModule = await tryToLoadFile(localPathJs)
+
+    // Se non trova locale, prova interno alla lib
+    if (!loadedModule) {
+      const libPath = path.resolve(__dirname + '/../middleware/' + name + '.js')
+      loadedModule = await tryToLoadFile(libPath)
+    }
+  } else {
+    // Middleware locale alla route
+    const routeMiddPath = path.resolve(base + '/middleware/' + middleware)
+    // Qui è difficile indovinare l'estensione se non fornita, assumiamo che il loader sappia cosa fa o proviamo entrambe
+    loadedModule = await tryToLoadFile(routeMiddPath + '.ts')
+    if (!loadedModule) loadedModule = await tryToLoadFile(routeMiddPath + '.js')
+    if (!loadedModule) loadedModule = await tryToLoadFile(routeMiddPath) // Magari ha già estensione
+  }
+
+  if (!loadedModule) {
+    log.error(`Middleware ${middleware} not loaded`)
+    throw new Error(`Middleware ${middleware} not loaded`)
+  }
+  return loadedModule
+}
+
+async function loadMiddlewares(base: string, middlewares: string[] = []) {
+  const midds = {}
+  for (const m of middlewares) {
+    const middleware = await loadMiddleware(base, m)
+    // I middleware possono esportare più funzioni (preHandler, preSerialization, ecc.)
+    Object.keys(middleware).map((name) => (midds[name] = [...(midds[name] || []), middleware[name]]))
+  }
+  return midds
+}
+
+async function load(): Promise<ConfiguredRoute[]> {
   const validRoutes: ConfiguredRoute[] = []
   const patterns = normalizePatterns(['..', 'api', '**', 'routes.{ts,js}'], ['src', 'api', '**', 'routes.{ts,js}'])
   const authMiddlewares = ['global.isAuthenticated', 'global.isAdmin']
 
-  patterns.forEach((pattern) => {
+  for (const pattern of patterns) {
     log.t && log.trace('Looking for ' + pattern)
-    globSync(pattern, { windowsPathsNoEscape: true }).forEach((f: string, index: number, values: string[]) => {
+    const files = globSync(pattern, { windowsPathsNoEscape: true })
+
+    for (const f of files) {
+      if (f.endsWith('.d.ts')) continue
+
       const base = path.dirname(f)
       const dir = path.basename(base)
       const file = path.join(dir, path.basename(f))
 
-      // allow array or structure
-      const routesjs = require(f)
+      const module = await import(f)
+      const routesjs = module.default || module
       const { routes = [], config: defaultConfig = {} } = routesjs || {}
 
       log.t && log.trace(`* Add ${routes.length} routes from ${file}`)
@@ -42,7 +104,7 @@ export function load(): ConfiguredRoute[] {
         let requiredRoles: Role[] = []
 
         try {
-          requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin] // admin is always present
+          requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin]
         } catch (err) {
           log.e && log.error(`Error in loading roles for ${methodCase} ${pathName} (${handler})`)
           log.t && log.trace(err)
@@ -57,7 +119,6 @@ export function load(): ConfiguredRoute[] {
           config.security = 'bearer'
         }
 
-        // specific route config
         const {
           title = '',
           description = '',
@@ -74,24 +135,15 @@ export function load(): ConfiguredRoute[] {
           rawBody = false
         } = config || {}
 
-        // adjust something
         const endpoint = `${dir}${pathName.replace(/\/+$/, '')}`
         const method = methodCase.toUpperCase()
         const num = index + 1
         const handlerParts = handler.split('.')
 
         if (enable) {
-          if (!pathName.startsWith('/')) {
-            errors.push(`Error in [${file}] bad path [${pathName}] at route n. ${num}`)
-          }
-
-          if (!methods.includes(method)) {
-            errors.push(`Error in [${file}] bad method [${method}] at route n. ${num}`)
-          }
-
-          if (handlerParts.length !== 2) {
-            errors.push(`Error in [${file}] bad handler [${handler}] at route n. ${num}`)
-          }
+          if (!pathName.startsWith('/')) errors.push(`Error in [${file}] bad path [${pathName}] at route n. ${num}`)
+          if (!methods.includes(method)) errors.push(`Error in [${file}] bad method [${method}] at route n. ${num}`)
+          if (handlerParts.length !== 2) errors.push(`Error in [${file}] bad handler [${handler}] at route n. ${num}`)
 
           const key = method + endpoint + version
           if (validRoutes.some((r) => `${r.method}${r.path}${r.doc?.version}` === key)) {
@@ -122,19 +174,7 @@ export function load(): ConfiguredRoute[] {
             version,
             security: security === 'bearer' ? [{ Bearer: [] }] : security,
             response
-          } as {
-            summary: string
-            description: string
-            deprecated: boolean
-            tags: string[]
-            version: string
-            security: any
-            response: any
-            querystring: any | undefined
-            params: any | undefined
-            body: any | undefined
-            consumes: any | undefined
-          }
+          } as any
 
           if (query) doc.querystring = query
           if (params) doc.params = params
@@ -153,67 +193,26 @@ export function load(): ConfiguredRoute[] {
             base,
             file: path.join(base, defaultConfig.controller || 'controller', handlerParts[0]),
             func: handlerParts[1],
-            doc: doc // swagger & schema validation
+            doc: doc
           })
         }
       })
-    })
-  })
+    }
+  }
 
   log.d && log.debug(`Routes loaded: ${validRoutes.length}`)
   return validRoutes
 }
 
-async function tryToLoadFile(fileName: string) {
-  return new Promise((resolve, reject) => {
-    try {
-      const required = fileName ? require(fileName) : null
-      resolve(required)
-    } catch (err) {
-      reject(err)
-    }
-  })
-}
-
-async function loadMiddleware(base: string, middleware: string = '') {
-  const key = 'global.'
-  const isGlobal = middleware.indexOf(key) > -1
-  let required: any = null
-
-  if (isGlobal) {
-    const name = middleware.substring(key.length)
-    required = await tryToLoadFile(path.resolve(process.cwd() + '/src/middleware/' + name)).catch(async () => {
-      return await tryToLoadFile(path.resolve(__dirname + '/../middleware/' + name))
-    })
-  } else {
-    required = await tryToLoadFile(path.resolve(base + '/middleware/' + middleware))
+async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void> {
+  if (!routes || routes.length === 0) {
+    log.w && log.warn('No routes to apply to server')
+    return
   }
 
-  if (!required) {
-    log.error(`Middleware ${middleware} not loaded`)
-    throw new Error(`Middleware ${middleware} not loaded`)
-  }
-  return required
-}
-
-async function loadMiddlewares(base: string, middlewares: string[] = []) {
-  const midds = {}
-  await Promise.all(
-    middlewares.map(async (m) => {
-      const middleware = await loadMiddleware(base, m)
-      Object.keys(middleware).map((name) => (midds[name] = [...(midds[name] || []), middleware[name]]))
-    })
-  )
-  // log.debug(base + ' middleware ' + middlewares.length + ' -> ' + Object.keys(midds))
-  return midds
-}
-
-// preParsing, preValidation, preHandler, preSerialization, ..
-
-export function apply(server: any, routes: ConfiguredRoute[]): void {
   log.t && log.trace(`Apply ${routes.length} routes to server with pid ${process.pid}`)
 
-  routes.forEach(async (route) => {
+  for (const route of routes) {
     if (route?.enable) {
       const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc } = route
 
@@ -232,7 +231,20 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
         },
         handler: async function (req: FastifyRequest, reply: FastifyReply) {
           try {
-            const module = await import(file)
+            // Import dinamico del controller
+            // Dobbiamo assicurarci che 'file' abbia l'estensione corretta o che il resolver la trovi
+            // In ESM strict, meglio provare ad aggiungere .js se manca, o lasciare che Node risolva se è un path assoluto
+            let module
+            try {
+              module = await import(file + '.js')
+            } catch {
+              try {
+                module = await import(file + '.ts')
+              } catch {
+                module = await import(file)
+              }
+            }
+
             return await module[func](req, reply)
           } catch (err) {
             log.e && log.error(`Cannot find ${file} or method ${func}: ${err}`)
@@ -241,5 +253,10 @@ export function apply(server: any, routes: ConfiguredRoute[]): void {
         }
       })
     }
-  })
+  }
+}
+
+export async function apply(server: any): Promise<void> {
+  const routes = await load()
+  return await applyRoutes(server, routes)
 }
