@@ -244,12 +244,17 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
                 module = await import(file)
               }
             }
-
-            return await module[func](req, reply)
           } catch (err) {
-            log.e && log.error(`Cannot find ${file} or method ${func}: ${err}`)
-            return reply.code(500).send(`Invalid handler ${handler}`)
+            log.e && log.error(`Cannot load module ${file}: ${err}`)
+            return reply.code(500).send(`Invalid handler module ${handler}`)
           }
+
+          if (!module || typeof module[func] !== 'function') {
+            log.e && log.error(`Method ${func} not found in ${file}`)
+            return reply.code(500).send(`Invalid handler method ${handler}`)
+          }
+
+          return await module[func](req, reply)
         }
       })
     }
