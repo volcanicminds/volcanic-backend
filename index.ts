@@ -290,6 +290,18 @@ const start = async (decorators = {}) => {
       },
       disableUserById(id: string) {
         throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
+      generateMfaSetup(userId: string) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
+      enableMfa(userId: string, secret: string, token: string) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
+      verifyMfa(userId: string, token: string) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
+      },
+      disableMfa(userId: string) {
+        throw new Error('Not implemented. You need to define the specific decorator (manager).')
       }
     } as UserManagement,
     tokenManager: {

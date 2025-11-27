@@ -227,8 +227,6 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const isValid = await req.server['userManager'].isValidUser(user)
-  // const user = { confirmed: true, blocked: false, externalId: 123456, roles: [{ code: 'admin' }] }
-  // const isValid = true
 
   if (!isValid) {
     return reply.status(403).send(new Error('Wrong credentials'))
@@ -245,6 +243,15 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
 
   if (user.blocked) {
     return reply.status(403).send(new Error('User blocked'))
+  }
+
+  // MFA Logic Interception
+  if (user.mfaEnabled) {
+    const tempToken = await reply.jwtSign({ sub: user.externalId, role: 'pre-auth-mfa' }, { expiresIn: '5m' })
+    return {
+      mfaRequired: true,
+      tempToken: tempToken
+    }
   }
 
   if (config.enable && config.options.reset_external_id_on_login) {
@@ -286,8 +293,6 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
 
   const user = await req.server['userManager'].retrieveUserByExternalId(tokenData.sub)
   const isValid = await req.server['userManager'].isValidUser(user)
-  // const user = { confirmed: true, blocked: false, externalId: 123456, roles: [{ code: 'admin' }] }
-  // const isValid = true
 
   if (!isValid) {
     return reply.status(403).send(new Error('Wrong refresh token'))
@@ -341,4 +346,94 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
   const { id: userId } = req.parameters()
   const user = await req.server['userManager'].unblockUserById(userId)
   return { ok: !!user.getId() }
+}
+
+// MFA Controller functions
+
+export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
+  const user = req.user
+  if (!user) return reply.status(401).send(new Error('Unauthorized'))
+
+  try {
+    const setupData = await req.server['userManager'].generateMfaSetup(user.getId())
+    return setupData
+  } catch (error) {
+    req.log.error(error)
+    return reply.status(500).send(new Error('Failed to generate MFA setup'))
+  }
+}
+
+export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
+  const user = req.user
+  const { secret, token } = req.data()
+  if (!user || !secret || !token) return reply.status(400).send(new Error('Missing parameters'))
+
+  try {
+    const success = await req.server['userManager'].enableMfa(user.getId(), secret, token)
+    if (!success) {
+      return reply.status(400).send(new Error('Invalid token'))
+    }
+    return { ok: true }
+  } catch (error) {
+    req.log.error(error)
+    return reply.status(500).send(new Error('Failed to enable MFA'))
+  }
+}
+
+export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
+  const authHeader = req.headers.authorization
+  if (!authHeader) return reply.status(401).send(new Error('Missing authorization'))
+
+  const tokenStr = authHeader.split(' ')[1]
+  let decoded: any
+  try {
+    decoded = req.server.jwt.verify(tokenStr)
+  } catch (e) {
+    return reply.status(401).send(new Error('Invalid token'))
+  }
+
+  // Allow either pre-auth-mfa token OR fully authenticated user (e.g. for re-verification)
+  if (decoded.role !== 'pre-auth-mfa' && (!req.user || !req.user.getId())) {
+    return reply.status(403).send(new Error('Invalid token scope'))
+  }
+
+  const subjectId = decoded.sub
+  const { token } = req.data()
+  if (!token) return reply.status(400).send(new Error('Missing token'))
+
+  const user = await req.server['userManager'].retrieveUserByExternalId(subjectId)
+  if (!user) return reply.status(404).send(new Error('User not found'))
+
+  const isValid = await req.server['userManager'].verifyMfa(user.getId(), token)
+  if (!isValid) return reply.status(403).send(new Error('Invalid MFA token'))
+
+  // Generate final full tokens
+  if (config.enable && config.options.reset_external_id_on_login) {
+    await req.server['userManager'].resetExternalId(user.getId())
+  }
+
+  const finalToken = await reply.jwtSign({ sub: user.externalId })
+  const refreshToken = reply.server.jwt['refreshToken']
+    ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId })
+    : undefined
+
+  return {
+    ...user,
+    roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
+    token: finalToken,
+    refreshToken
+  }
+}
+
+export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
+  const user = req.user
+  if (!user) return reply.status(401).send(new Error('Unauthorized'))
+
+  try {
+    await req.server['userManager'].disableMfa(user.getId())
+    return { ok: true }
+  } catch (error) {
+    req.log.error(error)
+    return reply.status(500).send(new Error('Failed to disable MFA'))
+  }
 }

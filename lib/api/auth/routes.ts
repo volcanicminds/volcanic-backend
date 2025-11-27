@@ -188,6 +188,64 @@ export default {
           200: { $ref: 'defaultResponse#' }
         }
       }
+    },
+    {
+      method: 'POST',
+      path: '/mfa/setup',
+      roles: [],
+      handler: 'auth.mfaSetup',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Setup MFA',
+        description: 'Generate secret and QR code for MFA setup',
+        response: {
+          200: { $ref: 'authMfaSetupResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/mfa/enable',
+      roles: [],
+      handler: 'auth.mfaEnable',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Enable MFA',
+        description: 'Enable MFA by verifying a token against the generated secret',
+        body: { $ref: 'authMfaEnableBodySchema#' },
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/mfa/verify',
+      roles: [], // Open, validation via temp token manually in controller
+      handler: 'auth.mfaVerify',
+      middlewares: [],
+      config: {
+        title: 'Verify MFA',
+        description: 'Verify MFA token during login to obtain final JWT',
+        body: { $ref: 'authMfaVerifyBodySchema#' },
+        response: {
+          200: { $ref: 'authLoginResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/mfa/disable',
+      roles: [],
+      handler: 'auth.mfaDisable',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Disable MFA',
+        description: 'Disable MFA for the current user',
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
     }
   ]
 }

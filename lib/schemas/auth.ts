@@ -43,7 +43,9 @@ export const authLoginResponseSchema = {
     email: { type: 'string' },
     roles: { type: 'array', items: { type: 'string' } },
     token: { type: 'string' },
-    refreshToken: { type: 'string' }
+    refreshToken: { type: 'string' },
+    mfaRequired: { type: 'boolean' },
+    tempToken: { type: 'string' }
   }
 }
 
@@ -101,5 +103,37 @@ export const resetPasswordBodySchema = {
     code: { type: 'string' },
     newPassword1: { type: 'string' },
     newPassword2: { type: 'string' }
+  }
+}
+
+export const authMfaSetupResponseSchema = {
+  $id: 'authMfaSetupResponseSchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    secret: { type: 'string' },
+    uri: { type: 'string' },
+    qrCode: { type: 'string' }
+  }
+}
+
+export const authMfaEnableBodySchema = {
+  $id: 'authMfaEnableBodySchema',
+  type: 'object',
+  nullable: true,
+  required: ['secret', 'token'],
+  properties: {
+    secret: { type: 'string' },
+    token: { type: 'string' }
+  }
+}
+
+export const authMfaVerifyBodySchema = {
+  $id: 'authMfaVerifyBodySchema',
+  type: 'object',
+  nullable: true,
+  required: ['token'],
+  properties: {
+    token: { type: 'string' }
   }
 }

@@ -5,6 +5,7 @@ export interface AuthenticatedUser {
   username: string
   email: string
   roles: Role[]
+  mfaEnabled?: boolean
 }
 
 export interface AuthenticatedToken {
@@ -151,6 +152,13 @@ export interface UserManagement {
   unblockUserById(id: string): any | null
   countQuery(data: any): any | null
   findQuery(data: any): any | null
+  disableUserById(id: string): any | null
+
+  // MFA Methods
+  generateMfaSetup(userId: string): Promise<{ secret: string; uri: string; qrCode: string }>
+  enableMfa(userId: string, secret: string, token: string): Promise<boolean>
+  verifyMfa(userId: string, token: string): Promise<boolean>
+  disableMfa(userId: string): Promise<boolean>
 }
 
 export interface TokenManagement {
