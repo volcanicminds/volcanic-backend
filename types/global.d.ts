@@ -155,9 +155,9 @@ export interface UserManagement {
   disableUserById(id: string): any | null
 
   // MFA Methods
-  generateMfaSetup(userId: string): Promise<{ secret: string; uri: string; qrCode: string }>
-  enableMfa(userId: string, secret: string, token: string): Promise<boolean>
-  verifyMfa(userId: string, token: string): Promise<boolean>
+  saveMfaSecret(userId: string, secret: string): Promise<boolean>
+  retrieveMfaSecret(userId: string): Promise<string | null>
+  enableMfa(userId: string): Promise<boolean>
   disableMfa(userId: string): Promise<boolean>
 }
 
@@ -181,6 +181,12 @@ export interface DataBaseManagement {
   synchronizeSchemas(): any | null
   retrieveBy(entityName, entityId): any | null
   addChange(entityName, entityId, status, userId, contents, changeEntity): any | null
+}
+
+// Interface injected by the main application (e.g. Gerico Backend)
+export interface MfaManagement {
+  generateSetup(appName: string, email: string): Promise<{ secret: string; uri: string; qrCode: string }>
+  verify(token: string, secret: string): boolean
 }
 
 declare module 'fastify' {

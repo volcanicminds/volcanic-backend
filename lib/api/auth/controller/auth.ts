@@ -348,17 +348,17 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
   return { ok: !!user.getId() }
 }
 
-// MFA Controller functions
-
 export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
   if (!user) return reply.status(401).send(new Error('Unauthorized'))
 
   try {
-    const setupData = await req.server['userManager'].generateMfaSetup(user.getId())
+    // Use mfaManager (injected) for logic
+    const appName = process.env.MFA_APP_NAME || 'VolcanicApp'
+    const setupData = await req.server['mfaManager'].generateSetup(appName, user.email)
     return setupData
-  } catch (error) {
-    req.log.error(error)
+  } catch (error: any) {
+    req.log.error({ err: error }, 'MFA Setup failed')
     return reply.status(500).send(new Error('Failed to generate MFA setup'))
   }
 }
@@ -369,13 +369,19 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   if (!user || !secret || !token) return reply.status(400).send(new Error('Missing parameters'))
 
   try {
-    const success = await req.server['userManager'].enableMfa(user.getId(), secret, token)
-    if (!success) {
+    // 1. Verify using mfaManager (tools)
+    const isValid = req.server['mfaManager'].verify(token, secret)
+    if (!isValid) {
       return reply.status(400).send(new Error('Invalid token'))
     }
+
+    // 2. Save using userManager (typeorm)
+    await req.server['userManager'].saveMfaSecret(user.getId(), secret)
+    await req.server['userManager'].enableMfa(user.getId())
+
     return { ok: true }
-  } catch (error) {
-    req.log.error(error)
+  } catch (error: any) {
+    req.log.error({ err: error }, 'MFA Enable failed')
     return reply.status(500).send(new Error('Failed to enable MFA'))
   }
 }
@@ -392,7 +398,6 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(401).send(new Error('Invalid token'))
   }
 
-  // Allow either pre-auth-mfa token OR fully authenticated user (e.g. for re-verification)
   if (decoded.role !== 'pre-auth-mfa' && (!req.user || !req.user.getId())) {
     return reply.status(403).send(new Error('Invalid token scope'))
   }
@@ -401,13 +406,17 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   const { token } = req.data()
   if (!token) return reply.status(400).send(new Error('Missing token'))
 
+  // 1. Retrieve secret via userManager
   const user = await req.server['userManager'].retrieveUserByExternalId(subjectId)
   if (!user) return reply.status(404).send(new Error('User not found'))
 
-  const isValid = await req.server['userManager'].verifyMfa(user.getId(), token)
+  const secret = await req.server['userManager'].retrieveMfaSecret(user.getId())
+  if (!secret) return reply.status(403).send(new Error('MFA not configured for user'))
+
+  // 2. Verify via mfaManager
+  const isValid = req.server['mfaManager'].verify(token, secret)
   if (!isValid) return reply.status(403).send(new Error('Invalid MFA token'))
 
-  // Generate final full tokens
   if (config.enable && config.options.reset_external_id_on_login) {
     await req.server['userManager'].resetExternalId(user.getId())
   }
@@ -432,8 +441,28 @@ export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
   try {
     await req.server['userManager'].disableMfa(user.getId())
     return { ok: true }
-  } catch (error) {
-    req.log.error(error)
+  } catch (error: any) {
+    req.log.error({ err: error }, 'MFA Disable failed')
     return reply.status(500).send(new Error('Failed to disable MFA'))
+  }
+}
+
+export async function resetMfa(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.parameters()
+
+  if (!req.hasRole(roles.admin)) {
+    return reply.status(403).send(new Error('Only admins can reset MFA'))
+  }
+
+  if (!id) {
+    return reply.status(400).send(new Error('Missing user id'))
+  }
+
+  try {
+    await req.server['userManager'].disableMfa(id)
+    return { ok: true }
+  } catch (error: any) {
+    req.log.error({ err: error }, 'MFA Reset failed')
+    return reply.status(500).send(new Error('Failed to reset MFA'))
   }
 }
