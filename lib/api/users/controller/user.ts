@@ -5,7 +5,7 @@ export async function getRoles(req: FastifyRequest, reply: FastifyReply) {
   const allRoles = Object.keys(roles).map((key) => roles[key])
   return reply.send(allRoles)
 }
-// ... resto del file invariato ...
+
 export async function count(req: FastifyRequest, reply: FastifyReply) {
   return req.server['userManager'].countQuery(req.data())
 }
@@ -75,4 +75,24 @@ export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply
 export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
   const user: AuthenticatedUser | undefined = req.user
   return reply.send({ isAdmin: user?.getId() && req.hasRole(roles.admin) })
+}
+
+export async function resetMfa(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.parameters()
+
+  if (!req.hasRole(roles.admin)) {
+    return reply.status(403).send(new Error('Only admins can reset MFA'))
+  }
+
+  if (!id) {
+    return reply.status(400).send(new Error('Missing user id'))
+  }
+
+  try {
+    await req.server['userManager'].disableMfa(id)
+    return { ok: true }
+  } catch (error) {
+    req.log.error(error)
+    return reply.status(500).send(new Error('Failed to reset MFA'))
+  }
 }

@@ -179,6 +179,21 @@ export default {
           200: { $ref: 'isAdminSchema#' }
         }
       }
+    },
+    {
+      method: 'POST',
+      path: '/:id/mfa/reset',
+      roles: [roles.admin],
+      handler: 'user.resetMfa',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Reset MFA for user',
+        description: 'Disable MFA for a specific user (Admin only)',
+        params: { $ref: 'globalParamsSchema#' },
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
     }
   ]
 }
