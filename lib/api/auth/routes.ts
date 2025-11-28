@@ -122,7 +122,7 @@ export default {
       middlewares: ['global.preAuth', 'global.postAuth'],
       config: {
         title: 'Login',
-        description: 'Basic login authentication',
+        description: 'Login authentication',
         body: { $ref: 'authLoginBodySchema#' },
         response: {
           200: { $ref: 'authLoginResponseSchema#' }
