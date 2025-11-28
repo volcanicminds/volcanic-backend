@@ -43,7 +43,15 @@ export const authLoginResponseSchema = {
     email: { type: 'string' },
     roles: { type: 'array', items: { type: 'string' } },
     token: { type: 'string' },
-    refreshToken: { type: 'string' },
+    refreshToken: { type: 'string' }
+  }
+}
+
+export const authMfaChallengeSchema = {
+  $id: 'authMfaChallengeSchema',
+  type: 'object',
+  nullable: true,
+  properties: {
     mfaRequired: { type: 'boolean' },
     tempToken: { type: 'string' }
   }

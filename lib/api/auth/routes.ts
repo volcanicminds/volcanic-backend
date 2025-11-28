@@ -229,7 +229,8 @@ export default {
         description: 'Verify MFA token during login to obtain final JWT',
         body: { $ref: 'authMfaVerifyBodySchema#' },
         response: {
-          200: { $ref: 'authLoginResponseSchema#' }
+          200: { $ref: 'authLoginResponseSchema#' },
+          202: { $ref: 'authMfaChallengeSchema#' }
         }
       }
     },

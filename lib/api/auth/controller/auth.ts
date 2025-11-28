@@ -33,7 +33,6 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     }
   }
 
-  // public is the default
   const publicRole = global.roles?.public?.code || 'public'
   data.roles = (data.requiredRoles || []).map((r) => global.roles[r]?.code).filter((r) => !!r)
   if (!data.roles.includes(publicRole)) {
@@ -248,22 +247,23 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   // MFA Logic Interception
   if (user.mfaEnabled) {
     const tempToken = await reply.jwtSign({ sub: user.externalId, role: 'pre-auth-mfa' }, { expiresIn: '5m' })
-    return {
+    // Use 202 Accepted to bypass 200 OK strict schema filtering
+    return reply.status(202).send({
       mfaRequired: true,
       tempToken: tempToken
-    }
+    })
   }
 
   if (config.enable && config.options.reset_external_id_on_login) {
     user = await req.server['userManager'].resetExternalId(user.getId())
   }
 
-  // https://www.iana.org/assignments/jwt/jwt.xhtml
   const token = await reply.jwtSign({ sub: user.externalId })
   const refreshToken = reply.server.jwt['refreshToken']
     ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId })
     : undefined
 
+  // Standard 200 OK
   return {
     ...user,
     roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
