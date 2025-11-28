@@ -65,15 +65,16 @@ export async function apply(server: any): Promise<void> {
                 customSchema.required = mergedRequired
               }
 
-              log.d && log.debug(`* Schema [${baseSchema.$id}] deeply merged with core definition.`)
+              log.d && log.debug(`* Schema [${baseSchema.$id}] deeply merged with core definition`)
+              log.w && log.warn(`* Schema [${baseSchema.$id}] overrided with custom definition`)
             }
           } else {
-            log.trace(`* Registering base schema [${baseSchema.$id}] from ${schemaFileName}`)
+            log.trace(`* Schema [${baseSchema.$id}] from ${schemaFileName} registeerd`)
             server.addSchema(baseSchema)
             schemaCount++
           }
         } else if (name !== 'default') {
-          log.w && log.warn(`* Schema with no $id found in ${schemaFileName} (export ${name}), cannot be registered.`)
+          log.w && log.warn(`* Schema with no $id found in ${schemaFileName} (export ${name}), cannot be registered`)
         }
       })
     } catch (e) {
@@ -82,7 +83,7 @@ export async function apply(server: any): Promise<void> {
   }
 
   customSchemas.forEach((schema) => {
-    log.trace(`* Registering custom schema [${schema.$id}]`)
+    log.trace(`* Custom schema [${schema.$id}] registered`)
     try {
       server.addSchema(schema)
       schemaCount++
