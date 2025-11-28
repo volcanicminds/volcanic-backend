@@ -40,7 +40,8 @@ export const userSchema = {
     roles: { type: 'array', items: { type: 'string' } },
     createdAt: { type: 'string' },
     version: { type: 'number' },
-    updatedAt: { type: 'string' }
+    updatedAt: { type: 'string' },
+    mfaEnabled: { type: 'boolean' }
   }
 }
 
