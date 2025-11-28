@@ -1,12 +1,13 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import type { AuthenticatedUser } from '../../../../types/global.js'
+import { MfaPolicy } from '../../../../types/global.js'
 
-export async function getRoles(req: FastifyRequest, reply: FastifyReply) {
+export async function getRoles(_req: FastifyRequest, reply: FastifyReply) {
   const allRoles = Object.keys(roles).map((key) => roles[key])
   return reply.send(allRoles)
 }
 
-export async function count(req: FastifyRequest, reply: FastifyReply) {
+export async function count(req: FastifyRequest, _reply: FastifyReply) {
   return req.server['userManager'].countQuery(req.data())
 }
 
@@ -26,7 +27,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(Error('Only admins can create users'))
   }
 
-  const { id, ...data } = req.data()
+  const { id: _id, ...data } = req.data()
 
   if (data.roles && data.roles.includes(roles.admin)) {
     if (!config.enable || config.options?.allow_multiple_admin !== true) {
@@ -58,7 +59,19 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
 
 export async function getCurrentUser(req: FastifyRequest, reply: FastifyReply) {
   const user: AuthenticatedUser | undefined = req.user
-  return reply.send(user ? { ...user, roles: req.roles() } : {})
+  const mfaPolicy = global.config.options?.mfa_policy || MfaPolicy.OPTIONAL
+
+  return reply.send(
+    user
+      ? {
+          ...user,
+          roles: req.roles(),
+          securityPolicy: {
+            mfaPolicy
+          }
+        }
+      : {}
+  )
 }
 
 export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply) {

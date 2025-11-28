@@ -1,20 +1,26 @@
-import { startUp, tearDown, buildTasks } from './common/bootstrap'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { startUp, uploadData, tearDown, buildTasks } from './common/bootstrap.js'
+import { createRequire } from 'module'
 
-import demo from './demo'
-import unit from './unit'
-import e2e from './e2e'
+import demo from './demo/index.js'
+import unit from './unit/index.js'
+import e2e from './e2e/index.js'
 
+const require = createRequire(import.meta.url)
 const pkg = require('../package.json')
 
-const beforeAll = global.beforeAll || global.before
-const afterAll = global.afterAll || global.after
+const beforeAll = (global as any).beforeAll || global.before
+const afterAll = (global as any).afterAll || global.after
 
-beforeAll(async () => await startUp())
+beforeAll(async () => {
+  await startUp()
+  await uploadData()
+})
 afterAll(async () => await tearDown())
 
 describe(`Test: ${pkg.name}@${pkg.version} on node@${process.version}`, async () => {
   const tasks = buildTasks()
-  tasks.e2e && (await e2e())
-  tasks.unit && (await unit())
-  tasks.demo && (await demo())
+  if (tasks.e2e) await e2e()
+  if (tasks.unit) await unit()
+  if (tasks.demo) await demo()
 })

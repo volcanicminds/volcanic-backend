@@ -39,7 +39,7 @@ const loggerConfig = {
   }
 }
 
-let logger = pino(loggerConfig)
+const logger = pino(loggerConfig)
 const logLevel = logger.levels.values[loggerConfig.level]
 
 // Level:	trace	debug	info	warn	error	fatal	silent

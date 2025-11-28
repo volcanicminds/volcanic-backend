@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { FastifyReply, FastifyRequest } from 'fastify'
 import * as regExp from '../../../util/regexp.js'
+import { MfaPolicy } from '../../../../types/global.js'
 
 export async function register(req: FastifyRequest, reply: FastifyReply) {
   const { password1: password, password2, ...data } = req.data()
@@ -33,6 +35,7 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     }
   }
 
+  // public is the default
   const publicRole = global.roles?.public?.code || 'public'
   data.roles = (data.requiredRoles || []).map((r) => global.roles[r]?.code).filter((r) => !!r)
   if (!data.roles.includes(publicRole)) {
@@ -208,6 +211,7 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
 
 export async function login(req: FastifyRequest, reply: FastifyReply) {
   const { email, password } = req.data()
+  const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
 
   if (!req.server['userManager'].isImplemented()) {
     throw new Error('Not implemented')
@@ -245,11 +249,15 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   }
 
   // MFA Logic Interception
-  if (user.mfaEnabled) {
+  const isMfaEnabled = user.mfaEnabled
+  const isMandatory = mfa_policy === MfaPolicy.MANDATORY
+
+  if (isMfaEnabled || isMandatory) {
     const tempToken = await reply.jwtSign({ sub: user.externalId, role: 'pre-auth-mfa' }, { expiresIn: '5m' })
     // Use 202 Accepted to bypass 200 OK strict schema filtering
     return reply.status(202).send({
-      mfaRequired: true,
+      mfaRequired: isMfaEnabled, // If enabled, verify. If not enabled but mandatory, setup.
+      mfaSetupRequired: isMandatory && !isMfaEnabled,
       tempToken: tempToken
     })
   }
@@ -258,6 +266,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     user = await req.server['userManager'].resetExternalId(user.getId())
   }
 
+  // https://www.iana.org/assignments/jwt/jwt.xhtml
   const token = await reply.jwtSign({ sub: user.externalId })
   const refreshToken = reply.server.jwt['refreshToken']
     ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId })
@@ -379,7 +388,25 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     await req.server['userManager'].saveMfaSecret(user.getId(), secret)
     await req.server['userManager'].enableMfa(user.getId())
 
-    return { ok: true }
+    // IMPORTANT: Return full tokens upon enablement if user was in pending state
+    // BUT usually user is already logged in via temp token or full token.
+    // If user is setting up from "Forced Setup", they need tokens now.
+
+    const finalToken = await reply.jwtSign({ sub: user.externalId })
+    const refreshToken = reply.server.jwt['refreshToken']
+      ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId })
+      : undefined
+
+    return {
+      ok: true,
+      token: finalToken,
+      refreshToken: refreshToken,
+      user: {
+        ...user,
+        mfaEnabled: true,
+        roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r)
+      }
+    }
   } catch (error: any) {
     req.log.error({ err: error }, 'MFA Enable failed')
     return reply.status(500).send(new Error('Failed to enable MFA'))
@@ -394,7 +421,7 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   let decoded: any
   try {
     decoded = req.server.jwt.verify(tokenStr)
-  } catch (e) {
+  } catch (_e) {
     return reply.status(401).send(new Error('Invalid token'))
   }
 
@@ -437,6 +464,11 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
 export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
   if (!user) return reply.status(401).send(new Error('Unauthorized'))
+
+  const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
+  if (mfa_policy === MfaPolicy.MANDATORY || mfa_policy === MfaPolicy.ONE_WAY) {
+    return reply.status(403).send(new Error('MFA disable is not allowed by security policy'))
+  }
 
   try {
     await req.server['userManager'].disableMfa(user.getId())

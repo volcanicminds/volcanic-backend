@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import _ from 'lodash'
 import { normalizePatterns } from '../util/path.js'
 import { globSync } from 'glob'
@@ -13,7 +14,7 @@ export async function apply(server: any): Promise<void> {
   const customSchemaIds = new Set()
   let schemaCount = 0
 
-  log.t && log.trace('Looking for custom schemas in ' + customSchemaPath)
+  if (log.t) log.trace('Looking for custom schemas in ' + customSchemaPath)
   const customFiles = globSync(customSchemaPath, { windowsPathsNoEscape: true })
 
   for (const f of customFiles) {
@@ -31,11 +32,11 @@ export async function apply(server: any): Promise<void> {
         }
       })
     } catch (e) {
-      log.w && log.warn(`Could not load custom schema file: ${f}`, e)
+      if (log.w) log.warn(`Could not load custom schema file: ${f}`, e)
     }
   }
 
-  log.t && log.trace('Looking for base schemas in ' + baseSchemaPath)
+  if (log.t) log.trace('Looking for base schemas in ' + baseSchemaPath)
   const baseFiles = globSync(baseSchemaPath, { windowsPathsNoEscape: true })
 
   for (const f of baseFiles) {
@@ -65,8 +66,8 @@ export async function apply(server: any): Promise<void> {
                 customSchema.required = mergedRequired
               }
 
-              log.d && log.debug(`* Schema [${baseSchema.$id}] deeply merged with core definition`)
-              log.w && log.warn(`* Schema [${baseSchema.$id}] overrided with custom definition`)
+              if (log.d) log.debug(`* Schema [${baseSchema.$id}] deeply merged with core definition`)
+              if (log.w) log.warn(`* Schema [${baseSchema.$id}] overrided with custom definition`)
             }
           } else {
             log.trace(`* Schema [${baseSchema.$id}] from ${schemaFileName} registeerd`)
@@ -74,11 +75,11 @@ export async function apply(server: any): Promise<void> {
             schemaCount++
           }
         } else if (name !== 'default') {
-          log.w && log.warn(`* Schema with no $id found in ${schemaFileName} (export ${name}), cannot be registered`)
+          if (log.w) log.warn(`* Schema with no $id found in ${schemaFileName} (export ${name}), cannot be registered`)
         }
       })
     } catch (e) {
-      log.w && log.warn(`Could not load base schema file: ${f}`, e)
+      if (log.w) log.warn(`Could not load base schema file: ${f}`, e)
     }
   }
 
@@ -88,9 +89,9 @@ export async function apply(server: any): Promise<void> {
       server.addSchema(schema)
       schemaCount++
     } catch (e: any) {
-      log.e && log.error(`Error registering schema ${schema.$id}: ${e.message}`)
+      if (log.e) log.error(`Error registering schema ${schema.$id}: ${e.message}`)
     }
   })
 
-  log.d && log.debug(`Schemas loaded: ${schemaCount} referenceable by $ref`)
+  if (log.d) log.debug(`Schemas loaded: ${schemaCount} referenceable by $ref`)
 }

@@ -3,7 +3,7 @@ import * as path from 'path'
 
 const MAIN_DIRECTORY = './'
 const INCLUDE_FILES = ['package.json', 'tsconfig.json', 'README.md', '.nvmrc', 'index.ts', 'server.ts', 'index.d.ts']
-const SUB_DIRECTORIES = ['lib', 'types']
+const SUB_DIRECTORIES = ['lib', 'types', 'test']
 const OUTPUT_FILE = 'OUTPUT.md'
 const CUSTOM_TITLE = 'Volcanic Backend'
 

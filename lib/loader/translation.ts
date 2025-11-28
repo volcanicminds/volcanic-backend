@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable prefer-const */
 import path from 'path'
 import { globSync } from 'glob'
 import { I18n } from 'i18n'

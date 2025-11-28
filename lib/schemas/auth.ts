@@ -54,6 +54,7 @@ export const authMfaChallengeSchema = {
   nullable: true,
   properties: {
     mfaRequired: { type: 'boolean' },
+    mfaSetupRequired: { type: 'boolean' },
     tempToken: { type: 'string' }
   }
 }

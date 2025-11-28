@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export class TranslatedError extends Error {
   locale: string
   status: number

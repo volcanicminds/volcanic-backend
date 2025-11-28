@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { FastifyRequest, FastifyReply } from 'fastify'
 
-export default async (req: FastifyRequest, reply: FastifyReply, error: any) => {
-  log.e && log.error(`${error?.message || error}`)
-  log.t && log.trace(error)
+export default async (_req: FastifyRequest, reply: FastifyReply, error: any) => {
+  if (log.e) log.error(`${error?.message || error}`)
+  if (log.t) log.trace(error)
 
   if (error.statusCode && error.statusCode >= 400) {
     return reply.code(error.statusCode).send(error)

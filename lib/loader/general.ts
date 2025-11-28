@@ -17,7 +17,7 @@ export async function load() {
   const patterns = normalizePatterns(['..', 'config', 'general.{ts,js}'], ['src', 'config', 'general.{ts,js}'])
 
   for (const pattern of patterns) {
-    log.t && log.trace('Looking for ' + pattern)
+    if (log.t) log.trace('Looking for ' + pattern)
     const files = globSync(pattern, { windowsPathsNoEscape: true })
 
     for (const f of files) {
@@ -34,6 +34,6 @@ export async function load() {
     }
   }
 
-  log.d && log.debug('General configuration loaded')
+  if (log.d) log.debug('General configuration loaded')
   return generalConfig
 }

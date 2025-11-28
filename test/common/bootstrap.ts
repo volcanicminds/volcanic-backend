@@ -1,4 +1,7 @@
-const { start: startServer } = require('../../index')
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { start as startServer } from '@volcanicminds/backend'
+import { start as startDatabase, DataSource, userManager } from '@volcanicminds/typeorm'
 
 export const DEFAULT_ADMIN_EMAIL = 'admin@user.com'
 export const DEFAULT_ADMIN_PASSWORD = '71iD$k%3X#m4'
@@ -7,18 +10,29 @@ export const COMPANY2_SUPERUSER_PASSWORD = '44O$^yWqn@R4'
 
 let server: any
 
+const startStuffServer = true
+
 export async function startUp() {
   try {
-    global.log.level = 'warn'
-    server = await startServer()
+    log.level = 'trace'
+
+    if (startStuffServer) {
+      server = await startServer({ userManager: userManager })
+    }
   } catch (err) {
     console.log(err)
     throw err
   }
 }
 
+export async function uploadData() {
+  // logic removed
+}
+
 export async function tearDown() {
-  await server.close()
+  if (startStuffServer) {
+    await server.close()
+  }
   process.exit(0)
 }
 

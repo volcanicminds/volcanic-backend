@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { FastifyRequest } from 'fastify'
 import type { Data } from '../../types/global.js'
 

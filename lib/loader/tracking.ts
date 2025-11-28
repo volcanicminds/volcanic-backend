@@ -11,7 +11,7 @@ export async function load() {
   const patterns = normalizePatterns(['..', 'config', 'tracking.{ts,js}'], ['src', 'config', 'tracking.{ts,js}'])
 
   for (const pattern of patterns) {
-    log.t && log.trace('Looking for ' + pattern)
+    if (log.t) log.trace('Looking for ' + pattern)
     const files = globSync(pattern, { windowsPathsNoEscape: true })
 
     for (const f of files) {
@@ -23,7 +23,7 @@ export async function load() {
 
       trackConfig = { ...trackConfig, ...config }
 
-      enableAll &&
+      if (enableAll) {
         changes.forEach((change) => {
           const tc: TrackChanges = { primaryKey: primaryKey, changeEntity: changeEntity, ...change } as TrackChanges
           const code = getCodeBy(tc.method, tc.path)
@@ -35,11 +35,12 @@ export async function load() {
             trackChangesList[code] = tc
           }
         })
+      }
     }
   }
 
   const keys = Object.keys(trackChangesList) || []
-  log.d && log.debug(`Tracking changes loaded: ${keys?.length || 0}`)
+  if (log.d) log.debug(`Tracking changes loaded: ${keys?.length || 0}`)
   return { tracking: trackChangesList, trackingConfig: trackConfig }
 }
 

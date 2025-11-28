@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import _ from 'lodash'
 import type { JobSchedule } from '../../types/global.js'
 import { normalizePatterns } from '../util/path.js'
@@ -11,55 +12,50 @@ export function load(): any[] {
   const jobs: any = []
 
   const jobScheduleDefaults: JobSchedule = {
-    active: false, // boolean (required)
-    type: 'interval', // cron|interval, default: interval
-    async: true, // boolean, default: true
-    preventOverrun: true, // boolean, default: true
+    active: false,
+    type: 'interval',
+    async: true,
+    preventOverrun: true,
 
-    cron: {
-      // expression: null // required if type = 'cron', use cron syntax (if not specified cron will be disabled)
-      // timezone: null // optional, like "Europe/Rome" (to test)
-    },
+    cron: {},
 
     interval: {
-      days: 0, // number, default 0
-      hours: 0, // number, default 0
-      minutes: 0, // number, default 0
-      seconds: 0, // number, default 0
-      milliseconds: 0, // number, default 0
-      runImmediately: false // boolean, default: false
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+      milliseconds: 0,
+      runImmediately: false
     }
   }
 
   patterns.forEach((pattern) => {
-    log.t && log.trace('Looking for ' + pattern)
+    if (log.t) log.trace('Looking for ' + pattern)
     globSync(pattern, { windowsPathsNoEscape: true }).forEach((f: string) => {
-      log.t && log.trace(`* Add job schedule from ${f}`)
+      if (log.t) log.trace(`* Add job schedule from ${f}`)
 
       const jobName = path.basename(f, path.extname(f))
-      let { job, schedule: s } = require(f)
+      const { job, schedule: s } = require(f)
 
       let isLoadedAndEnabled = false
       if (s && s.active) {
         isLoadedAndEnabled = true
 
-        // apply defaults
-
         let schedule = _.cloneDeep(jobScheduleDefaults)
         schedule = _.merge(schedule, s)
 
         if (!job || typeof job !== 'function') {
-          log.t && log.error(`* Job ${jobName} `)
+          if (log.t) log.error(`* Job ${jobName} `)
           isLoadedAndEnabled = false
         }
 
         if (!schedule.type || !['cron', 'interval'].includes(schedule.type)) {
-          log.t && log.error(`* Job ${jobName}: schedule.type must be cron or interval`)
+          if (log.t) log.error(`* Job ${jobName}: schedule.type must be cron or interval`)
           isLoadedAndEnabled = false
         }
 
         if (schedule.type === 'cron' && !schedule.cron?.expression) {
-          log.t && log.error(`* Job ${jobName}: schedule.cron.expression not defined`)
+          if (log.t) log.error(`* Job ${jobName}: schedule.cron.expression not defined`)
           isLoadedAndEnabled = false
         }
 
@@ -68,24 +64,25 @@ export function load(): any[] {
           const totalIntervalMs = milliseconds + 1000 * (seconds + 60 * (minutes + 60 * (hours + 24 * days)))
 
           if (totalIntervalMs < 1000) {
-            log.t && log.error(`* Job ${jobName}: schedule.interval must have a total greater or equal to 1s`)
+            if (log.t) log.error(`* Job ${jobName}: schedule.interval must have a total greater or equal to 1s`)
             isLoadedAndEnabled = false
           }
         }
 
-        isLoadedAndEnabled &&
+        if (isLoadedAndEnabled) {
           jobs.push({
             jobName,
             schedule,
             job
           })
+        }
       }
 
-      log.t && log.trace(`* Job schedule ${jobName} ${isLoadedAndEnabled ? 'enabled' : 'disabled'}`)
+      if (log.t) log.trace(`* Job schedule ${jobName} ${isLoadedAndEnabled ? 'enabled' : 'disabled'}`)
     })
   })
 
-  log.d && log.debug(`Schedule Jobs loaded: ${jobs?.length || 0}`)
+  if (log.d) log.debug(`Schedule Jobs loaded: ${jobs?.length || 0}`)
   return jobs
 }
 

@@ -1,36 +1,32 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { getParams, getData } from '../util/common.js'
 import type { AuthenticatedUser, AuthenticatedToken, Role } from '../../types/global.js'
 
 const { embedded_auth = true } = global.config?.options || {}
 
+const MFA_SETUP_WHITELIST = ['/auth/mfa/setup', '/auth/mfa/enable', '/auth/mfa/verify', '/auth/logout']
+
 const normalizeRoles = (rolesArray: any[] | undefined): string[] => {
   if (!rolesArray || rolesArray.length === 0) {
     return [roles.public.code]
   }
-
-  // Check the type of the first element to determine the array's structure
   const firstElement = rolesArray[0]
   if (typeof firstElement === 'string') {
     return rolesArray as string[]
   }
-
   if (typeof firstElement === 'object' && firstElement !== null && 'code' in firstElement) {
     return rolesArray.map((role: Role) => role.code)
   }
-
-  // Fallback for unexpected formats
   return [roles.public.code]
 }
 
 export default async (req, reply) => {
-  log.i && (req.startedAt = new Date())
+  if (log.i) req.startedAt = new Date()
 
-  // Request enrichment
   req.data = () => getData(req)
   req.parameters = () => getParams(req)
 
   if (embedded_auth) {
-    // Initialize role helpers with a default 'public' role
     req.roles = () => [roles.public.code]
     req.hasRole = (r: Role) => req.roles().includes(r?.code)
 
@@ -41,6 +37,22 @@ export default async (req, reply) => {
     if (prefix === 'Bearer' && bearerToken != null) {
       try {
         const tokenData = reply.server.jwt.verify(bearerToken)
+
+        // --- MFA GATEKEEPER ---
+        if (tokenData.role === 'pre-auth-mfa') {
+          const currentUrl = req.routeOptions.url || req.raw.url
+          const isAllowed = MFA_SETUP_WHITELIST.some((url) => currentUrl.endsWith(url))
+
+          if (!isAllowed) {
+            if (log.w) log.warn(`Security Block: User attempted to access ${currentUrl} with pre-auth MFA token`)
+            return reply.status(403).send({
+              statusCode: 403,
+              code: 'MFA_REQUIRED',
+              message: 'MFA verification or setup required to access this resource'
+            })
+          }
+        }
+
         const subjectId = tokenData?.sub
 
         if (!subjectId) {
@@ -50,7 +62,6 @@ export default async (req, reply) => {
         let user: null | AuthenticatedUser = null
         let token: null | AuthenticatedToken = null
 
-        // Attempt to retrieve user only if userManager is implemented
         if (req.server['userManager']?.isImplemented()) {
           user = await req.server['userManager'].retrieveUserByExternalId(subjectId)
           if (user) {
@@ -64,7 +75,6 @@ export default async (req, reply) => {
           }
         }
 
-        // Attempt to retrieve token if user was not found and tokenManager is implemented
         if (!user && req.server['tokenManager']?.isImplemented()) {
           token = await req.server['tokenManager'].retrieveTokenByExternalId(subjectId)
           if (token) {
@@ -82,7 +92,6 @@ export default async (req, reply) => {
           return reply.status(404).send({ statusCode: 404, code: 'SUBJECT_NOT_FOUND', message: 'Subject not found' })
         }
 
-        // Re-normalize roles now that req.user or req.token is populated
         const freshNormalizedRoles = normalizeRoles(req.user?.roles || req.token?.roles)
         req.roles = () => freshNormalizedRoles
       } catch (error) {
@@ -97,15 +106,13 @@ export default async (req, reply) => {
       }
     }
 
-    // Role-Based Access Control (RBAC) check
     if (cfg.requiredRoles?.length > 0) {
       const { method = '', url = '', requiredRoles } = cfg
       const authorizedRoles: string[] = req.roles()
-
       const hasPermission = requiredRoles.some((r) => authorizedRoles.includes(r.code))
 
       if (!hasPermission) {
-        log.w && log.warn(`Forbidden: ${req.user?.email || 'anonymous'} cannot call ${method.toUpperCase()} ${url}`)
+        if (log.w) log.warn(`Forbidden: ${req.user?.email || 'anonymous'} cannot call ${method.toUpperCase()} ${url}`)
         return reply.status(403).send({ statusCode: 403, code: 'FORBIDDEN', message: 'Authorization denied' })
       }
     }

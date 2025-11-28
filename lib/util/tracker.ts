@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import dayjs from 'dayjs'
 import type { FastifyRequest, FastifyReply } from '../../types/global.js'
 
-export async function initialize(req: FastifyRequest, reply: FastifyReply) {
+export async function initialize(req: FastifyRequest, _reply: FastifyReply) {
   if (req.server['dataBaseManager'].isImplemented()) {
     const tc = getTrackingConfigIfEnabled(req)
     const allData = { ...req.parameters(), ...req.data() }
@@ -11,7 +12,8 @@ export async function initialize(req: FastifyRequest, reply: FastifyReply) {
         if (allData && tc.entity && tc.primaryKey && tc.primaryKey in allData) {
           const key = allData[tc.primaryKey]
           req.trackingData = await req.server['dataBaseManager'].retrieveBy(tc.entity, key)
-          log.trace(`Tracking changes: found id ${req.trackingData ? req.trackingData[tc.primaryKey] : null}`)
+          if (log.t)
+            log.trace(`Tracking changes: found id ${req.trackingData ? req.trackingData[tc.primaryKey] : null}`)
         }
       } catch (error) {
         log.error(`Tracking changes: error on ${tc.code}`)
@@ -21,7 +23,7 @@ export async function initialize(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
-export async function track(req: FastifyRequest, reply: FastifyReply, payload: any) {
+export async function track(req: FastifyRequest, _reply: FastifyReply, payload: any) {
   if (req.server['dataBaseManager'].isImplemented()) {
     const tc = getTrackingConfigIfEnabled(req)
     if (tc) {
@@ -66,7 +68,7 @@ export async function track(req: FastifyRequest, reply: FastifyReply, payload: a
         }
 
         if (addChange) {
-          log.trace(`Tracking changes: add ${changeEntity} for ${entity}, ${id}, ${userId}, ${status}`)
+          if (log.t) log.trace(`Tracking changes: add ${changeEntity} for ${entity}, ${id}, ${userId}, ${status}`)
           await req.server['dataBaseManager'].addChange(entity, id, status, userId, contents, changeEntity)
         }
       } catch (error) {

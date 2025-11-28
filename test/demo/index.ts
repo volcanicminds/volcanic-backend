@@ -1,14 +1,17 @@
-export default function load() {
-  describe('demo', async () => {
-    const fs = require('fs')
-    const files = fs.readdirSync(__dirname).filter((file) => !['index.ts'].includes(file))
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { createRequire } from 'module'
+import { fileURLToPath } from 'url'
+import path from 'path'
 
-    await files.forEach(async (file) => {
-      try {
-        await require(`./${file}`)()
-      } catch (err) {
-        global.log.error(err)
-      }
-    })
+const require = createRequire(import.meta.url)
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+export default function load() {
+  const fs = require('fs')
+  const files = fs.readdirSync(__dirname).filter((file: any) => !['index.ts'].includes(file))
+
+  describe('Demo', () => {
+    files.forEach((file: any) => require(`./${file}`))
   })
 }

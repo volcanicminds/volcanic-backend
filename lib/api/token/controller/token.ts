@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 
-export async function count(req: FastifyRequest, reply: FastifyReply) {
+export async function count(req: FastifyRequest, _reply: FastifyReply) {
   return await req.server['tokenManager'].countQuery(req.data())
 }
 
@@ -87,8 +87,9 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   const { id: userId } = req.parameters()
   const { reason } = req.data()
 
-  const user = await req.server['tokenManager'].blockTokenById(userId, reason)
-  return { ok: !!user.getId() }
+  await req.server['tokenManager'].blockTokenById(userId, reason)
+  const token = await req.server['tokenManager'].retrieveTokenById(userId)
+  return { ok: !!token.getId() }
 }
 
 export async function unblock(req: FastifyRequest, reply: FastifyReply) {
@@ -99,6 +100,7 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const { id: userId } = req.parameters()
-  const user = await req.server['tokenManager'].unblockTokenById(userId)
-  return { ok: !!user.getId() }
+  await req.server['tokenManager'].unblockTokenById(userId)
+  const token = await req.server['tokenManager'].retrieveTokenById(userId)
+  return { ok: !!token.getId() }
 }

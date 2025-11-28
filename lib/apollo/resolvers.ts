@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use strict'
 
 import { MyContext } from './context.js'
 
 const resolvers = {
   Query: {
-    helloWorld: (parent: any, args: any, context: MyContext, info: any) => context.greeting
+    helloWorld: (_parent: any, _args: any, context: MyContext, _info: any) => context.greeting
   }
 }
 

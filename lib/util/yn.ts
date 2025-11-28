@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use strict'
 
 export default function yn(value: any, defaultValue: boolean): boolean {

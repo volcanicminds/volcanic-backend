@@ -3,6 +3,7 @@
 import dotenv from 'dotenv'
 dotenv.config()
 
+import dayjs from 'dayjs'
 import yn from './lib/util/yn.js'
 import logger from './lib/util/logger.js'
 import * as mark from './lib/util/mark.js'
@@ -85,8 +86,8 @@ async function addFastifySwagger(server: FastifyInstance) {
     let content = ''
     try {
       content = fs.readFileSync(logoPath, { encoding: 'base64' })
-    } catch (e) {
-      log.w && log.warn('Swagger logo not found at ' + logoPath)
+    } catch (_e) {
+      if (log.w) log.warn('Swagger logo not found at ' + logoPath)
     }
 
     await server.register(swagger, {
@@ -137,7 +138,7 @@ async function addFastifySwagger(server: FastifyInstance) {
       theme: {
         title: SWAGGER_TITLE
       }
-    } as any)
+    })
   }
 }
 
@@ -162,7 +163,7 @@ const start = async (decorators = {}) => {
   global.tracking = tracking
   global.trackingConfig = trackingConfig
 
-  const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: { development: logger } } : { logger: true }
+  // const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: { development: logger } } : { logger: true }
   const server: FastifyInstance = fastify()
   global.server = server
 
@@ -179,8 +180,8 @@ const start = async (decorators = {}) => {
   const loadApollo = yn(GRAPHQL, false)
   const plugins = await loaderPlugins.load()
 
-  plugins?.rawBody && (await server.register(rawBody, plugins.rawBody || {}))
-  !loadApollo && plugins?.helmet && (await server.register(helmet, plugins.helmet || {}))
+  if (plugins?.rawBody) await server.register(rawBody, plugins.rawBody || {})
+  if (!loadApollo && plugins?.helmet) await server.register(helmet, plugins.helmet || {})
 
   if (plugins?.rateLimit) {
     await server.register(rateLimit, plugins.rateLimit || {})
@@ -191,17 +192,17 @@ const start = async (decorators = {}) => {
           timeWindow: 30000
         })
       },
-      function (req, reply) {
+      function (_req, reply) {
         reply.code(404).send()
       }
     )
   }
 
-  plugins?.multipart && (await server.register(multipart, plugins.multipart || {}))
-  plugins?.cors && (await server.register(cors, plugins.cors || {}))
-  plugins?.compress && (await server.register(compress, plugins.compress || {}))
+  if (plugins?.multipart) await server.register(multipart, plugins.multipart || {})
+  if (plugins?.cors) await server.register(cors, plugins.cors || {})
+  if (plugins?.compress) await server.register(compress, plugins.compress || {})
 
-  log.t && log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
+  if (log.t) log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
   await server.register(jwtValidator, {
     secret: JWT_SECRET,
     sign: { expiresIn: JWT_EXPIRES_IN }
@@ -228,79 +229,82 @@ const start = async (decorators = {}) => {
       isImplemented() {
         return false
       },
-      isValidUser(data: any) {
+      isValidUser(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      createUser(data: any) {
+      createUser(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      deleteUser(data: any) {
+      deleteUser(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      resetExternalId(data: any) {
+      resetExternalId(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      updateUserById(id: string, user: any) {
+      updateUserById(_id: string, _user: unknown) {
         throw new Error('Not implemented.')
       },
-      retrieveUserById(id: string) {
+      retrieveUserById(_id: string) {
         throw new Error('Not implemented.')
       },
-      retrieveUserByEmail(email: string) {
+      retrieveUserByEmail(_email: string) {
         throw new Error('Not implemented.')
       },
-      retrieveUserByConfirmationToken(code: string) {
+      retrieveUserByConfirmationToken(_code: string) {
         throw new Error('Not implemented.')
       },
-      retrieveUserByResetPasswordToken(code: string) {
+      retrieveUserByResetPasswordToken(_code: string) {
         throw new Error('Not implemented.')
       },
-      retrieveUserByUsername(username: string) {
+      retrieveUserByUsername(_username: string) {
         throw new Error('Not implemented.')
       },
-      retrieveUserByExternalId(externalId: string) {
+      retrieveUserByExternalId(_externalId: string) {
         throw new Error('Not implemented.')
       },
-      retrieveUserByPassword(email: string, password: string) {
+      retrieveUserByPassword(_email: string, _password: string) {
         throw new Error('Not implemented.')
       },
-      changePassword(email: string, password: string, oldPassword: string) {
+      changePassword(_email: string, _password: string, _oldPassword: string) {
         throw new Error('Not implemented.')
       },
-      forgotPassword(email: string) {
+      forgotPassword(_email: string) {
         throw new Error('Not implemented.')
       },
-      userConfirmation(user: any) {
+      userConfirmation(_user: unknown) {
         throw new Error('Not implemented.')
       },
-      resetPassword(user: any, password: string) {
+      resetPassword(_user: unknown, _password: string) {
         throw new Error('Not implemented.')
       },
-      blockUserById(id: string, reason: string) {
+      blockUserById(_id: string, _reason: string) {
         throw new Error('Not implemented.')
       },
-      unblockUserById(data: any) {
+      unblockUserById(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      countQuery(data: any) {
+      countQuery(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      findQuery(data: any) {
+      findQuery(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      disableUserById(id: string) {
+      disableUserById(_id: string) {
         throw new Error('Not implemented.')
       },
-      saveMfaSecret(userId: string, secret: string) {
+      saveMfaSecret(_userId: string, _secret: string) {
         throw new Error('Not implemented.')
       },
-      retrieveMfaSecret(userId: string) {
+      retrieveMfaSecret(_userId: string) {
         throw new Error('Not implemented.')
       },
-      enableMfa(userId: string) {
+      enableMfa(_userId: string) {
         throw new Error('Not implemented.')
       },
-      disableMfa(userId: string) {
+      disableMfa(_userId: string) {
+        throw new Error('Not implemented.')
+      },
+      forceDisableMfaForAdmin(_email: string) {
         throw new Error('Not implemented.')
       }
     } as UserManagement,
@@ -308,37 +312,37 @@ const start = async (decorators = {}) => {
       isImplemented() {
         return false
       },
-      isValidToken(data: any) {
+      isValidToken(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      createToken(data: any) {
+      createToken(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      resetExternalId(id: string) {
+      resetExternalId(_id: string) {
         throw new Error('Not implemented.')
       },
-      updateTokenById(id: string, token: any) {
+      updateTokenById(_id: string, _token: unknown) {
         throw new Error('Not implemented.')
       },
-      retrieveTokenById(id: string) {
+      retrieveTokenById(_id: string) {
         throw new Error('Not implemented.')
       },
-      retrieveTokenByExternalId(id: string) {
+      retrieveTokenByExternalId(_id: string) {
         throw new Error('Not implemented.')
       },
-      blockTokenById(id: string, reason: string) {
+      blockTokenById(_id: string, _reason: string) {
         throw new Error('Not implemented.')
       },
-      unblockTokenById(id: string) {
+      unblockTokenById(_id: string) {
         throw new Error('Not implemented.')
       },
-      countQuery(data: any) {
+      countQuery(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      findQuery(data: any) {
+      findQuery(_data: unknown) {
         throw new Error('Not implemented.')
       },
-      removeTokenById(id: string) {
+      removeTokenById(_id: string) {
         throw new Error('Not implemented.')
       }
     } as TokenManagement,
@@ -349,18 +353,18 @@ const start = async (decorators = {}) => {
       synchronizeSchemas() {
         throw new Error('Not implemented.')
       },
-      retrieveBy(entityName, entityId) {
+      retrieveBy(_entityName, _entityId) {
         throw new Error('Not implemented.')
       },
-      addChange(entityName, entityId, status, userId, contents, changeEntity) {
+      addChange(_entityName, _entityId, _status, _userId, _contents, _changeEntity) {
         throw new Error('Not implemented.')
       }
     } as DataBaseManagement,
     mfaManager: {
-      generateSetup(appName: string, email: string) {
+      generateSetup(_appName: string, _email: string) {
         throw new Error('Not implemented.')
       },
-      verify(token: string, secret: string) {
+      verify(_token: string, _secret: string) {
         throw new Error('Not implemented.')
       }
     } as MfaManagement,
@@ -373,6 +377,44 @@ const start = async (decorators = {}) => {
     })
   )
 
+  // --- STARTUP CHECKS (Admin MFA Reset) ---
+  const resetEmail = global.config.options.mfa_admin_forced_reset_email
+  const resetUntil = global.config.options.mfa_admin_forced_reset_until
+
+  if (resetEmail && resetUntil) {
+    const now = dayjs()
+    const untilDate = dayjs(resetUntil)
+
+    if (untilDate.isValid()) {
+      const diffMinutes = untilDate.diff(now, 'minute')
+
+      if (diffMinutes < 0) {
+        if (log.i) log.info('Startup: MFA Admin Reset window expired. Ignoring.')
+      } else if (diffMinutes > 10) {
+        if (log.f)
+          log.fatal(
+            `Startup Error: MFA_ADMIN_FORCED_RESET_UNTIL is too far in the future (>10 min). Fix configuration.`
+          )
+        process.exit(1)
+      } else {
+        if (log.w) log.warn(`Startup: executing FORCE MFA RESET for admin ${resetEmail}`)
+        try {
+          // Use the decorator directly if userManager is injected
+          if (server['userManager'] && server['userManager'].isImplemented()) {
+            await server['userManager'].forceDisableMfaForAdmin(resetEmail)
+            if (log.w) log.warn(`Startup: MFA RESET SUCCESSFUL for ${resetEmail}`)
+          } else {
+            if (log.e) log.error('Startup: userManager not found or not implemented, cannot reset MFA')
+          }
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e)
+          if (log.e) log.error(`Startup: MFA RESET FAILED: ${message}`)
+        }
+      }
+    }
+  }
+  // -------------------------------------------------
+
   await server
     .listen({
       port: Number(port),
@@ -384,7 +426,7 @@ const start = async (decorators = {}) => {
       log.info(`Server ready 🚀 at ${address}`)
 
       const loadSwagger = yn(process.env.SWAGGER, false)
-      loadSwagger && log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/api-docs'}`)
+      if (loadSwagger) log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/api-docs'}`)
     })
 
   await loaderSchedules.start(server, schedules)

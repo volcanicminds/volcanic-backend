@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-function-type */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { normalizePatterns } from '../util/path.js'
 import { globSync } from 'glob'
 import path from 'path'
@@ -23,7 +25,7 @@ export async function apply(server: any): Promise<void> {
   const allHooks: any = hooks.reduce((acc, v) => ({ ...acc, [v]: [] as Function[] }), {})
 
   for (const pattern of patterns) {
-    log.t && log.trace('Looking for ' + pattern)
+    if (log.t) log.trace('Looking for ' + pattern)
     const files = globSync(pattern, { windowsPathsNoEscape: true })
 
     for (const f of files) {
@@ -44,9 +46,9 @@ export async function apply(server: any): Promise<void> {
 
   hooks.map((hookName) => {
     const fns: Function[] = allHooks[hookName]
-    log.t && log.trace(`* Add ${fns?.length || 0} hooks for ${hookName}`)
-    fns?.length > 0 && fns.map((fn) => server.addHook(hookName, fn as Function))
+    if (log.t) log.trace(`* Add ${fns?.length || 0} hooks for ${hookName}`)
+    if (fns?.length > 0) fns.map((fn) => server.addHook(hookName, fn as Function))
   })
 
-  log.d && log.debug(`Hooks loaded: ${hooks?.length || 0}`)
+  if (log.d) log.debug(`Hooks loaded: ${hooks?.length || 0}`)
 }

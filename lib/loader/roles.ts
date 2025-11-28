@@ -8,7 +8,7 @@ export async function load() {
   const patterns = normalizePatterns(['..', 'config', 'roles.{ts,js}'], ['src', 'config', 'roles.{ts,js}'])
 
   for (const pattern of patterns) {
-    log.t && log.trace('Looking for ' + pattern)
+    if (log.t) log.trace('Looking for ' + pattern)
     const files = globSync(pattern, { windowsPathsNoEscape: true })
 
     for (const f of files) {
@@ -21,6 +21,6 @@ export async function load() {
     }
   }
 
-  log.d && log.debug('Roles loaded: ' + Object.keys(roles).join(', '))
+  if (log.d) log.debug('Roles loaded: ' + Object.keys(roles).join(', '))
   return roles
 }

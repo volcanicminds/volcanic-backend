@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import yn from '../util/yn.js'
 import type { Role, Route, ConfiguredRoute, RouteConfig } from '../../types/global.js'
 import { FastifyReply, FastifyRequest } from 'fastify'
@@ -5,7 +6,6 @@ import { normalizePatterns } from '../util/path.js'
 import { globSync } from 'glob'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import require from '../util/require.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -16,7 +16,7 @@ async function tryToLoadFile(fileName: string) {
   try {
     const module = await import(fileName)
     return module.default || module
-  } catch (err) {
+  } catch (_err) {
     return null
   }
 }
@@ -28,25 +28,21 @@ async function loadMiddleware(base: string, middleware: string = '') {
 
   if (isGlobal) {
     const name = middleware.substring(key.length)
-    // Prova path locali (es. src/middleware/auth.ts)
-    const localPath = path.resolve(process.cwd() + '/src/middleware/' + name + '.ts') // Prova TS
-    const localPathJs = path.resolve(process.cwd() + '/src/middleware/' + name + '.js') // Prova JS (dist)
+    const localPath = path.resolve(process.cwd() + '/src/middleware/' + name + '.ts')
+    const localPathJs = path.resolve(process.cwd() + '/src/middleware/' + name + '.js')
 
     loadedModule = await tryToLoadFile(localPath)
     if (!loadedModule) loadedModule = await tryToLoadFile(localPathJs)
 
-    // Se non trova locale, prova interno alla lib
     if (!loadedModule) {
       const libPath = path.resolve(__dirname + '/../middleware/' + name + '.js')
       loadedModule = await tryToLoadFile(libPath)
     }
   } else {
-    // Middleware locale alla route
     const routeMiddPath = path.resolve(base + '/middleware/' + middleware)
-    // Qui è difficile indovinare l'estensione se non fornita, assumiamo che il loader sappia cosa fa o proviamo entrambe
     loadedModule = await tryToLoadFile(routeMiddPath + '.ts')
     if (!loadedModule) loadedModule = await tryToLoadFile(routeMiddPath + '.js')
-    if (!loadedModule) loadedModule = await tryToLoadFile(routeMiddPath) // Magari ha già estensione
+    if (!loadedModule) loadedModule = await tryToLoadFile(routeMiddPath)
   }
 
   if (!loadedModule) {
@@ -60,7 +56,6 @@ async function loadMiddlewares(base: string, middlewares: string[] = []) {
   const midds = {}
   for (const m of middlewares) {
     const middleware = await loadMiddleware(base, m)
-    // I middleware possono esportare più funzioni (preHandler, preSerialization, ecc.)
     Object.keys(middleware).map((name) => (midds[name] = [...(midds[name] || []), middleware[name]]))
   }
   return midds
@@ -72,7 +67,7 @@ async function load(): Promise<ConfiguredRoute[]> {
   const authMiddlewares = ['global.isAuthenticated', 'global.isAdmin']
 
   for (const pattern of patterns) {
-    log.t && log.trace('Looking for ' + pattern)
+    if (log.t) log.trace('Looking for ' + pattern)
     const files = globSync(pattern, { windowsPathsNoEscape: true })
 
     for (const f of files) {
@@ -86,7 +81,7 @@ async function load(): Promise<ConfiguredRoute[]> {
       const routesjs = module.default || module
       const { routes = [], config: defaultConfig = {} } = routesjs || {}
 
-      log.t && log.trace(`* Add ${routes.length} routes from ${file}`)
+      if (log.t) log.trace(`* Add ${routes.length} routes from ${file}`)
 
       routes.forEach((route: Route, index: number) => {
         const errors: string[] = []
@@ -106,8 +101,8 @@ async function load(): Promise<ConfiguredRoute[]> {
         try {
           requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin]
         } catch (err) {
-          log.e && log.error(`Error in loading roles for ${methodCase} ${pathName} (${handler})`)
-          log.t && log.trace(err)
+          if (log.e) log.error(`Error in loading roles for ${methodCase} ${pathName} (${handler})`)
+          if (log.t) log.trace(err)
           config.enable = false
         }
 
@@ -151,19 +146,21 @@ async function load(): Promise<ConfiguredRoute[]> {
           }
 
           if (errors.length > 0) {
-            log.e && errors.forEach((error) => log.error(error))
+            if (log.e) errors.forEach((error) => log.error(error))
           }
         }
 
         const toAdd = enable && errors.length === 0
-        toAdd
-          ? log.t &&
+        if (toAdd) {
+          if (log.t)
             log.trace(
               `* Method [${method}] path ${endpoint} handler ${handler} enabled with ${
                 middlewares?.length || 0
               } middlewares`
             )
-          : log.w && log.warn(`* Method [${method}] path ${endpoint} handler ${handler} disabled. Skip.`)
+        } else {
+          if (log.w) log.warn(`* Method [${method}] path ${endpoint} handler ${handler} disabled. Skip.`)
+        }
 
         if (toAdd) {
           const doc = {
@@ -200,23 +197,23 @@ async function load(): Promise<ConfiguredRoute[]> {
     }
   }
 
-  log.d && log.debug(`Routes loaded: ${validRoutes.length}`)
+  if (log.d) log.debug(`Routes loaded: ${validRoutes.length}`)
   return validRoutes
 }
 
 async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void> {
   if (!routes || routes.length === 0) {
-    log.w && log.warn('No routes to apply to server')
+    if (log.w) log.warn('No routes to apply to server')
     return
   }
 
-  log.t && log.trace(`Apply ${routes.length} routes to server with pid ${process.pid}`)
+  if (log.t) log.trace(`Apply ${routes.length} routes to server with pid ${process.pid}`)
 
   for (const route of routes) {
     if (route?.enable) {
       const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc } = route
 
-      log.t && log.trace(`* Add path ${method} ${path} on handle ${handler}`)
+      if (log.t) log.trace(`* Add path ${method} ${path} on handle ${handler}`)
       const midds = await loadMiddlewares(base, middlewares)
 
       server.route({
@@ -242,12 +239,12 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
               }
             }
           } catch (err) {
-            log.e && log.error(`Cannot load module ${file}: ${err}`)
+            if (log.e) log.error(`Cannot load module ${file}: ${err}`)
             return reply.code(500).send(`Invalid handler module ${handler}`)
           }
 
           if (!module || typeof module[func] !== 'function') {
-            log.e && log.error(`Method ${func} not found in ${file}`)
+            if (log.e) log.error(`Method ${func} not found in ${file}`)
             return reply.code(500).send(`Invalid handler method ${handler}`)
           }
 

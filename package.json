@@ -55,6 +55,10 @@
     "test:full": "cross-env PORT=2231 NODE_ENV=memory BROWSER=false mocha --loader=tsx ./test/index.spec.ts -t 100000",
     "reset": "npm install && npm update && npm run build",
     "upgrade-deps": "npx npm-check-updates -u",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "type-check": "tsc --noEmit",
+    "check-all": "npm run lint && npm run type-check",
     "combine": "node combine.js"
   },
   "dependencies": {
@@ -87,13 +91,18 @@
     "toad-scheduler": "^3.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@types/mocha": "^10.0.10",
+    "@types/semver": "^7.7.1",
     "cross-env": "^10.1.0",
+    "eslint": "^9.39.1",
     "expect": "^30.2.0",
+    "globals": "^16.5.0",
     "mocha": "^11.7.5",
     "npm-upgrade": "^3.1.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.0"
   },
   "repository": {
     "type": "git",

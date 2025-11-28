@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { FastifyRequest, FastifyReply } from 'fastify'
 
 export interface AuthenticatedUser {
@@ -5,7 +7,14 @@ export interface AuthenticatedUser {
   username: string
   email: string
   roles: Role[]
+  externalId: string // Added missing property for Auth Controller
   mfaEnabled?: boolean
+}
+
+export enum MfaPolicy {
+  OPTIONAL = 'OPTIONAL',
+  MANDATORY = 'MANDATORY',
+  ONE_WAY = 'ONE_WAY'
 }
 
 export interface AuthenticatedToken {
@@ -62,6 +71,10 @@ export interface GeneralConfig {
     reset_external_id_on_login: boolean
     scheduler: boolean
     embedded_auth: boolean
+    // MFA Configs
+    mfa_policy?: MfaPolicy
+    mfa_admin_forced_reset_email?: string
+    mfa_admin_forced_reset_until?: string
   }
 }
 
@@ -154,11 +167,14 @@ export interface UserManagement {
   findQuery(data: any): any | null
   disableUserById(id: string): any | null
 
-  // MFA Methods
+  // MFA Persistence Methods
   saveMfaSecret(userId: string, secret: string): Promise<boolean>
   retrieveMfaSecret(userId: string): Promise<string | null>
   enableMfa(userId: string): Promise<boolean>
   disableMfa(userId: string): Promise<boolean>
+
+  // Emergency Reset
+  forceDisableMfaForAdmin(email: string): Promise<boolean>
 }
 
 export interface TokenManagement {
