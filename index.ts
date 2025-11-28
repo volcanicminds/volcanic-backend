@@ -378,8 +378,9 @@ const start = async (decorators = {}) => {
   )
 
   // --- STARTUP CHECKS (Admin MFA Reset) ---
-  const resetEmail = global.config.options.mfa_admin_forced_reset_email
-  const resetUntil = global.config.options.mfa_admin_forced_reset_until
+  // Read directly from Environment Variables for security/emergency overrides
+  const resetEmail = process.env.MFA_ADMIN_FORCED_RESET_EMAIL
+  const resetUntil = process.env.MFA_ADMIN_FORCED_RESET_UNTIL
 
   if (resetEmail && resetUntil) {
     const now = dayjs()

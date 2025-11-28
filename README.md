@@ -41,6 +41,8 @@ And, what you see in [package.json](package.json).
 npm install @volcanicminds/backend
 ```
 
+````
+
 For database interactions, it is highly recommended to also install the companion package:
 
 ```sh
@@ -176,6 +178,9 @@ SWAGGER_HOST=myawesome.backend.com
 SWAGGER_TITLE=API Documentation
 SWAGGER_DESCRIPTION=List of available APIs and schemas to use
 SWAGGER_VERSION=0.1.0
+
+# MFA
+MFA_POLICY=OPTIONAL
 ```
 
 For docker may be useful set HOST as 0.0.0.0 (instead 127.0.0.1).
@@ -205,28 +210,31 @@ Refer to jest for more options.
 
 The framework is configured via `.env` variables. Below is a comprehensive list:
 
-| Variable                 | Description                                                             | Required | Default             |
-| ------------------------ | ----------------------------------------------------------------------- | :------: | ------------------- |
-| `NODE_ENV`               | The application environment.                                            |    No    | `development`       |
-| `HOST`                   | The host address for the server to listen on. Use `0.0.0.0` for Docker. |    No    | `0.0.0.0`           |
-| `PORT`                   | The port for the server to listen on.                                   |    No    | `2230`              |
-| `JWT_SECRET`             | Secret key for signing JWTs.                                            | **Yes**  |                     |
-| `JWT_EXPIRES_IN`         | Expiration time for JWTs (e.g., `5d`, `12h`).                           |    No    | `5d`                |
-| `JWT_REFRESH`            | Enable refresh tokens.                                                  |    No    | `true`              |
-| `JWT_REFRESH_SECRET`     | Secret key for signing refresh tokens.                                  | **Yes**¹ |                     |
-| `JWT_REFRESH_EXPIRES_IN` | Expiration time for refresh tokens.                                     |    No    | `180d`              |
-| `LOG_LEVEL`              | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`). |    No    | `info`              |
-| `LOG_COLORIZE`           | Enable colorized log output.                                            |    No    | `true`              |
-| `LOG_TIMESTAMP`          | Enable timestamps in logs.                                              |    No    | `true`              |
-| `LOG_TIMESTAMP_READABLE` | Use a human-readable timestamp format.                                  |    No    | `true`              |
-| `LOG_FASTIFY`            | Enable Fastify's built-in logger.                                       |    No    | `false`             |
-| `GRAPHQL`                | Enable the Apollo Server for GraphQL.                                   |    No    | `false`             |
-| `SWAGGER`                | Enable Swagger/OpenAPI documentation.                                   |    No    | `true`              |
-| `SWAGGER_HOST`           | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
-| `SWAGGER_TITLE`          | The title of the API documentation.                                     |    No    | `API Documentation` |
-| `SWAGGER_DESCRIPTION`    | The description for the API documentation.                              |    No    |                     |
-| `SWAGGER_VERSION`        | The version of the API.                                                 |    No    | `0.1.0`             |
-| `SWAGGER_PREFIX_URL`     | The path where Swagger UI is available.                                 |    No    | `/api-docs`         |
+| Variable                       | Description                                                             | Required | Default             |
+| ------------------------------ | ----------------------------------------------------------------------- | :------: | ------------------- |
+| `NODE_ENV`                     | The application environment.                                            |    No    | `development`       |
+| `HOST`                         | The host address for the server to listen on. Use `0.0.0.0` for Docker. |    No    | `0.0.0.0`           |
+| `PORT`                         | The port for the server to listen on.                                   |    No    | `2230`              |
+| `JWT_SECRET`                   | Secret key for signing JWTs.                                            | **Yes**  |                     |
+| `JWT_EXPIRES_IN`               | Expiration time for JWTs (e.g., `5d`, `12h`).                           |    No    | `5d`                |
+| `JWT_REFRESH`                  | Enable refresh tokens.                                                  |    No    | `true`              |
+| `JWT_REFRESH_SECRET`           | Secret key for signing refresh tokens.                                  | **Yes**¹ |                     |
+| `JWT_REFRESH_EXPIRES_IN`       | Expiration time for refresh tokens.                                     |    No    | `180d`              |
+| `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`). |    No    | `info`              |
+| `LOG_COLORIZE`                 | Enable colorized log output.                                            |    No    | `true`              |
+| `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
+| `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format.                                  |    No    | `true`              |
+| `LOG_FASTIFY`                  | Enable Fastify's built-in logger.                                       |    No    | `false`             |
+| `GRAPHQL`                      | Enable the Apollo Server for GraphQL.                                   |    No    | `false`             |
+| `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `true`              |
+| `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
+| `SWAGGER_TITLE`                | The title of the API documentation.                                     |    No    | `API Documentation` |
+| `SWAGGER_DESCRIPTION`          | The description for the API documentation.                              |    No    |                     |
+| `SWAGGER_VERSION`              | The version of the API.                                                 |    No    | `0.1.0`             |
+| `SWAGGER_PREFIX_URL`           | The path where Swagger UI is available.                                 |    No    | `/api-docs`         |
+| `MFA_POLICY`                   | MFA Security Policy (`OPTIONAL`, `MANDATORY`, `ONE_WAY`)                |    No    | `OPTIONAL`          |
+| `MFA_ADMIN_FORCED_RESET_EMAIL` | Admin email for emergency MFA reset                                     |    No    |                     |
+| `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
 
 ¹ Required if `JWT_REFRESH` is enabled.
 
@@ -685,6 +693,60 @@ export default {
 }
 ```
 
+## Multi-Factor Authentication (MFA)
+
+The framework provides a robust, built-in Multi-Factor Authentication system based on TOTP (Time-Based One-Time Password). It is designed with a "Gatekeeper" architecture that isolates pending verifications using temporary tokens.
+
+### Configuration
+
+MFA behavior is controlled via Environment Variables or `src/config/general.ts`:
+
+```ts
+// src/config/general.ts
+export default {
+  name: 'general',
+  enable: true,
+  options: {
+    // ...
+    mfa_policy: process.env.MFA_POLICY || 'OPTIONAL' // 'OPTIONAL' | 'MANDATORY' | 'ONE_WAY'
+  }
+}
+```
+
+### MFA Policies
+
+- **OPTIONAL** (Default): Users can choose to enable or disable MFA from their profile.
+- **MANDATORY**: MFA is enforced for all users.
+  - If a user has not set up MFA yet, upon login, they receive a `202 Accepted` response with a temporary token and must complete the setup to proceed.
+  - Users cannot disable MFA.
+- **ONE_WAY**: MFA is optional to start with, but once enabled, the user cannot disable it themselves. Only an admin can reset it.
+
+### Security Architecture
+
+When MFA is required (either because it's enabled for the user or the policy is MANDATORY), the login endpoint does **not** return a standard access token.
+
+1.  **Temporary Token**: Returns a JWT with a specific role: `pre-auth-mfa`.
+2.  **Gatekeeper**: Middleware automatically blocks any request made with a `pre-auth-mfa` token, **except** for specific whitelisted routes:
+    - `/auth/mfa/setup`
+    - `/auth/mfa/enable`
+    - `/auth/mfa/verify`
+    - `/auth/logout`
+3.  **Verification**: Only after successfully calling `/auth/mfa/verify` (or `enable` during setup) does the server issue the final, fully privileged Access Token.
+
+### Emergency Admin Reset
+
+If an administrator loses their MFA device and cannot log in, a filesystem/env-based emergency reset mechanism is available. This configuration is **only** available via Environment Variables to ensure security and easy rotation in production environments.
+
+1.  Set the environment variables in your server configuration (e.g., `.env` or Docker config):
+    ```bash
+    MFA_ADMIN_FORCED_RESET_EMAIL=admin@company.com
+    MFA_ADMIN_FORCED_RESET_UNTIL=2025-12-31T18:30:00.000Z  # A timestamp slightly in the future
+    ```
+2.  Restart the server.
+
+On startup, the server will check these variables. If the email matches an existing user and the current time is before the `UNTIL` timestamp, it will forcibly disable MFA for that specific user, allowing a standard login.
+**Important:** Remove these variables after the reset is complete to avoid security risks.
+
 ## Disable embedded authorization
 
 Out-of-the-box, the framework automatically secures all routes by checking for a valid (Bearer) JWT token if roles are defined for that route. However, if you want to disable this automatic authorization check and handle it manually within your controllers or middleware, you can do so by setting the `embedded_auth` option to `false`.
@@ -948,3 +1010,4 @@ A simple note: in the example below, you can see rawBody enabled on the `/exampl
   }
 }
 ```
+````

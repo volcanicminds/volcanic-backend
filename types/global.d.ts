@@ -72,9 +72,7 @@ export interface GeneralConfig {
     scheduler: boolean
     embedded_auth: boolean
     // MFA Configs
-    mfa_policy?: MfaPolicy
-    mfa_admin_forced_reset_email?: string
-    mfa_admin_forced_reset_until?: string
+    mfa_policy?: string | MfaPolicy
   }
 }
 
