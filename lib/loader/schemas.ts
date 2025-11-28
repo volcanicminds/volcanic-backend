@@ -1,3 +1,4 @@
+import _ from 'lodash'
 import { normalizePatterns } from '../util/path.js'
 import { globSync } from 'glob'
 import path from 'path'
@@ -20,7 +21,6 @@ export async function apply(server: any): Promise<void> {
 
     try {
       const schemaModule = await import(f)
-      const schemaClass = schemaModule.default || schemaModule
       const schemaNames = Object.keys(schemaModule)
 
       schemaNames.forEach((name) => {
@@ -35,12 +35,6 @@ export async function apply(server: any): Promise<void> {
     }
   }
 
-  customSchemas.forEach((schema) => {
-    log.trace(`* Registering custom schema [${schema.$id}]`)
-    server.addSchema(schema)
-    schemaCount++
-  })
-
   log.t && log.trace('Looking for base schemas in ' + baseSchemaPath)
   const baseFiles = globSync(baseSchemaPath, { windowsPathsNoEscape: true })
 
@@ -53,16 +47,29 @@ export async function apply(server: any): Promise<void> {
       const schemaNames = Object.keys(schemaModule)
 
       schemaNames.forEach((name) => {
-        const schema = schemaModule[name]
-        if (schema && typeof schema === 'object' && schema.$id) {
-          if (customSchemaIds.has(schema.$id)) {
-            log.w &&
-              log.warn(
-                `* Base schema [${schema.$id}] from ${schemaFileName} is overridden by a custom schema and will be ignored.`
-              )
+        const baseSchema = schemaModule[name]
+
+        if (baseSchema && typeof baseSchema === 'object' && baseSchema.$id) {
+          if (customSchemaIds.has(baseSchema.$id)) {
+            // SMART DEEP MERGE
+            const customSchema = customSchemas.find((s) => s.$id === baseSchema.$id)
+
+            if (customSchema) {
+              const customRequired = Array.isArray(customSchema.required) ? customSchema.required : []
+              const baseRequired = Array.isArray(baseSchema.required) ? baseSchema.required : []
+              const mergedRequired = [...new Set([...customRequired, ...baseRequired])]
+
+              _.defaultsDeep(customSchema, baseSchema)
+
+              if (mergedRequired.length > 0) {
+                customSchema.required = mergedRequired
+              }
+
+              log.d && log.debug(`* Schema [${baseSchema.$id}] deeply merged with core definition.`)
+            }
           } else {
-            log.trace(`* Registering base schema [${schema.$id}] from ${schemaFileName}`)
-            server.addSchema(schema)
+            log.trace(`* Registering base schema [${baseSchema.$id}] from ${schemaFileName}`)
+            server.addSchema(baseSchema)
             schemaCount++
           }
         } else if (name !== 'default') {
@@ -73,6 +80,16 @@ export async function apply(server: any): Promise<void> {
       log.w && log.warn(`Could not load base schema file: ${f}`, e)
     }
   }
+
+  customSchemas.forEach((schema) => {
+    log.trace(`* Registering custom schema [${schema.$id}]`)
+    try {
+      server.addSchema(schema)
+      schemaCount++
+    } catch (e: any) {
+      log.e && log.error(`Error registering schema ${schema.$id}: ${e.message}`)
+    }
+  })
 
   log.d && log.debug(`Schemas loaded: ${schemaCount} referenceable by $ref`)
 }
