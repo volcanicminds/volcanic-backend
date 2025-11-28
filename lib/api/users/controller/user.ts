@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import type { AuthenticatedUser } from '../../../../types/global.js'
-import { MfaPolicy } from '../../../../types/global.js'
+import { MfaPolicy } from '../../../config/constants.js'
 
 export async function getRoles(_req: FastifyRequest, reply: FastifyReply) {
   const allRoles = Object.keys(roles).map((key) => roles[key])

@@ -1,20 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { FastifyRequest, FastifyReply } from 'fastify'
+import { MfaPolicy } from '../lib/config/constants.js'
+
+export { MfaPolicy }
 
 export interface AuthenticatedUser {
   getId(): any
   username: string
   email: string
   roles: Role[]
-  externalId: string // Added missing property for Auth Controller
+  externalId: string
   mfaEnabled?: boolean
-}
-
-export enum MfaPolicy {
-  OPTIONAL = 'OPTIONAL',
-  MANDATORY = 'MANDATORY',
-  ONE_WAY = 'ONE_WAY'
 }
 
 export interface AuthenticatedToken {
@@ -72,7 +69,9 @@ export interface GeneralConfig {
     scheduler: boolean
     embedded_auth: boolean
     // MFA Configs
-    mfa_policy?: string | MfaPolicy
+    mfa_policy?: MfaPolicy | string
+    mfa_admin_forced_reset_email?: string
+    mfa_admin_forced_reset_until?: string
   }
 }
 

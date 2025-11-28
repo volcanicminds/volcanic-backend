@@ -453,4 +453,6 @@ export type {
   JobSchedule
 } from './types/global.js'
 
+export { MfaPolicy } from './lib/config/constants.js'
+
 export { yn, start, TranslatedError }
