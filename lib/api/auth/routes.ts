@@ -211,10 +211,10 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Enable MFA',
-        description: 'Enable MFA by verifying a token against the generated secret',
+        description: 'Enable MFA by verifying a token against the generated secret. Returns tokens on success.',
         body: { $ref: 'authMfaEnableBodySchema#' },
         response: {
-          200: { $ref: 'defaultResponse#' }
+          200: { $ref: 'authLoginResponseSchema#' }
         }
       }
     },

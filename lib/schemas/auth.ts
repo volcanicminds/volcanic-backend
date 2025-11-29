@@ -44,7 +44,14 @@ export const authLoginResponseSchema = {
     roles: { type: 'array', items: { type: 'string' } },
     token: { type: 'string' },
     refreshToken: { type: 'string' },
-    mfaEnabled: { type: 'boolean' }
+    mfaEnabled: { type: 'boolean' },
+    securityPolicy: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        mfaPolicy: { type: 'string' }
+      }
+    }
   }
 }
 

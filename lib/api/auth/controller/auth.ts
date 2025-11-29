@@ -277,7 +277,10 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     ...user,
     roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
     token: token,
-    refreshToken
+    refreshToken,
+    securityPolicy: {
+      mfaPolicy: mfa_policy
+    }
   }
 }
 
@@ -375,6 +378,8 @@ export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
 export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
   const { secret, token } = req.data()
+  const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
+
   if (!user || !secret || !token) return reply.status(400).send(new Error('Missing parameters'))
 
   try {
@@ -398,13 +403,13 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
       : undefined
 
     return {
-      ok: true,
+      ...user,
+      mfaEnabled: true,
+      roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
       token: finalToken,
       refreshToken: refreshToken,
-      user: {
-        ...user,
-        mfaEnabled: true,
-        roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r)
+      securityPolicy: {
+        mfaPolicy: mfa_policy
       }
     }
   } catch (error: any) {
@@ -415,6 +420,8 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
 
 export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   const authHeader = req.headers.authorization
+  const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
+
   if (!authHeader) return reply.status(401).send(new Error('Missing authorization'))
 
   const tokenStr = authHeader.split(' ')[1]
@@ -457,7 +464,10 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
     ...user,
     roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
     token: finalToken,
-    refreshToken
+    refreshToken: refreshToken,
+    securityPolicy: {
+      mfaPolicy: mfa_policy
+    }
   }
 }
 
