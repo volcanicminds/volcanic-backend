@@ -423,6 +423,11 @@ const start = async (decorators = {}) => {
       host: host
     })
     .then((address) => {
+      if (log.i) {
+        const elapsed = (new Date().getTime() - begin) / 100
+        log.info(`All stuff loaded 🟢 in ${elapsed}s`)
+      }
+
       if (log.w && general.options.mfa_policy !== 'OPTIONAL') {
         log.warn(`Security MFA 🔑 enforced to ${general.options.mfa_policy}`)
       } else if (log.i) {
@@ -436,9 +441,6 @@ const start = async (decorators = {}) => {
         if (loadSwagger) {
           log.info(`Swagger ✨ available at ${address}${process.env.SWAGGER_PREFIX_URL || '/api-docs'}`)
         }
-
-        const elapsed = (new Date().getTime() - begin) / 100
-        log.info(`All stuff loaded 🟢 in ${elapsed}s`)
       }
     })
 
