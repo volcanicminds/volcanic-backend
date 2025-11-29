@@ -78,11 +78,11 @@ export function load(): any[] {
         }
       }
 
-      if (log.t) log.trace(`* Job schedule ${jobName} ${isLoadedAndEnabled ? 'enabled' : 'disabled'}`)
+      if (log.d) log.debug(`* Job schedule ${jobName} ${isLoadedAndEnabled ? 'enabled' : 'disabled'}`)
     })
   })
 
-  if (log.d) log.debug(`Schedule Jobs loaded: ${jobs?.length || 0}`)
+  if (log.i) log.info(`Scheduled Jobs loaded: ${jobs?.length || 0}`)
   return jobs
 }
 

@@ -21,6 +21,6 @@ export async function load() {
     }
   }
 
-  if (log.d) log.debug('Roles loaded: ' + Object.keys(roles).join(', '))
+  if (log.i) log.info('Roles loaded: ' + Object.keys(roles).join(', '))
   return roles
 }

@@ -70,7 +70,7 @@ export async function apply(server: any): Promise<void> {
               if (log.w) log.warn(`* Schema [${baseSchema.$id}] overrided with custom definition`)
             }
           } else {
-            log.trace(`* Schema [${baseSchema.$id}] from ${schemaFileName} registeerd`)
+            if (log.d) log.debug(`* Schema [${baseSchema.$id}] from ${schemaFileName} registeerd`)
             server.addSchema(baseSchema)
             schemaCount++
           }
@@ -84,7 +84,7 @@ export async function apply(server: any): Promise<void> {
   }
 
   customSchemas.forEach((schema) => {
-    log.trace(`* Custom schema [${schema.$id}] registered`)
+    if (log.d) log.debug(`* Custom schema [${schema.$id}] registered`)
     try {
       server.addSchema(schema)
       schemaCount++
@@ -93,5 +93,5 @@ export async function apply(server: any): Promise<void> {
     }
   })
 
-  if (log.d) log.debug(`Schemas loaded: ${schemaCount} referenceable by $ref`)
+  if (log.i) log.info(`Schemas loaded: ${schemaCount} referenceable by $ref`)
 }

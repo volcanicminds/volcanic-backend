@@ -19,9 +19,9 @@ export function print(logg: any = log): void {
   if (logg.i) logg.info(`Version ${pkg.version}`)
   if (logg.i) logg.info(`Codename ${pkg.codename}`)
   if (logg.i) logg.info(`Environment ${process.env.NODE_ENV}`)
-  if (logg.t) logg.trace(`Platform ${process.platform} ${process.arch}`)
+  if (logg.d) logg.debug(`Platform ${process.platform} ${process.arch}`)
   if (logg.t) logg.trace(`Root path ${process.cwd()}`)
-  if (logg.t) logg.trace(`Node ${process.version}`)
+  if (logg.d) logg.debug(`Node ${process.version}`)
   if (logg.t) logg.trace(`Release ${JSON.stringify(process.release)}`)
   if (logg.t) logg.trace(`Versions ${JSON.stringify(process.versions)}`)
 }

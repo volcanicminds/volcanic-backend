@@ -17,12 +17,12 @@ export async function load() {
 
       configPlugins.forEach((plugin) => {
         plugins[plugin.name] = plugin.enable ? plugin.options : false
-        if (log.t) log.trace(`* Plugin ${plugin.name} ${plugin.enable ? 'enabled' : 'disabled'}`)
+        if (log.d) log.debug(`* Plugin ${plugin.name} ${plugin.enable ? 'enabled' : 'disabled'}`)
       })
     }
   }
 
   const enabledPulgins = Object.keys(plugins).filter((p) => !!plugins[p])
-  if (log.d) log.debug(`Plugins loaded: ${enabledPulgins.length > 0 ? enabledPulgins.join(', ') : 0}`)
+  if (log.i) log.info(`Plugins loaded: ${enabledPulgins.length > 0 ? enabledPulgins.join(', ') : 0}`)
   return plugins
 }

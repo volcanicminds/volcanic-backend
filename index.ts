@@ -39,6 +39,7 @@ import typeDefs from './lib/apollo/type-defs.js'
 import require from './lib/util/require.js'
 
 import type { UserManagement, TokenManagement, DataBaseManagement, MfaManagement } from './types/global.js'
+import general from './lib/config/general.js'
 
 global.log = logger
 
@@ -156,8 +157,8 @@ const start = async (decorators = {}) => {
   mark.print(logger)
 
   global.config = await loaderConfig.load()
-  global.roles = await loaderRoles.load()
   global.t = loaderTranslation.load()
+  global.roles = await loaderRoles.load()
 
   const { tracking, trackingConfig } = await loaderTracking.load()
   global.tracking = tracking
@@ -422,12 +423,23 @@ const start = async (decorators = {}) => {
       host: host
     })
     .then((address) => {
-      const elapsed = (new Date().getTime() - begin) / 100
-      log.info(`All stuff loaded in ${elapsed} sec`)
-      log.info(`Server ready 🚀 at ${address}`)
+      if (log.w && general.options.mfa_policy !== 'OPTIONAL') {
+        log.warn(`Security MFA 🔑 enforced to ${general.options.mfa_policy}`)
+      } else if (log.i) {
+        log.info(`Security MFA 🔑 set to ${general.options.mfa_policy}`)
+      }
 
-      const loadSwagger = yn(process.env.SWAGGER, false)
-      if (loadSwagger) log.info(`Swagger ready ✨ at ${address}${process.env.SWAGGER_PREFIX_URL || '/api-docs'}`)
+      if (log.i) {
+        log.info(`Server up 🚀 at ${address}`)
+
+        const loadSwagger = yn(process.env.SWAGGER, false)
+        if (loadSwagger) {
+          log.info(`Swagger ✨ available at ${address}${process.env.SWAGGER_PREFIX_URL || '/api-docs'}`)
+        }
+
+        const elapsed = (new Date().getTime() - begin) / 100
+        log.info(`All stuff loaded 🟢 in ${elapsed}s`)
+      }
     })
 
   await loaderSchedules.start(server, schedules)

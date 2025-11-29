@@ -197,7 +197,6 @@ async function load(): Promise<ConfiguredRoute[]> {
     }
   }
 
-  if (log.d) log.debug(`Routes loaded: ${validRoutes.length}`)
   return validRoutes
 }
 
@@ -209,11 +208,12 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
 
   if (log.t) log.trace(`Apply ${routes.length} routes to server with pid ${process.pid}`)
 
+  let countRoutes = 0
   for (const route of routes) {
     if (route?.enable) {
       const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc } = route
 
-      if (log.t) log.trace(`* Add path ${method} ${path} on handle ${handler}`)
+      if (log.d) log.debug(`* Add path ${method} ${path} on handle ${handler}`)
       const midds = await loadMiddlewares(base, middlewares)
 
       server.route({
@@ -251,8 +251,12 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
           return await module[func](req, reply)
         }
       })
+
+      countRoutes++
     }
   }
+
+  if (log.i) log.info(`Routes loaded: ${countRoutes}`)
 }
 
 export async function apply(server: any): Promise<void> {

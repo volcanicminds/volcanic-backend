@@ -23,18 +23,20 @@ export function load(): any {
     // mustacheConfig: { disable: false },
     // directory: './src/locales',
 
-    logDebugFn: (msg) => log.debug(msg),
+    logDebugFn: (msg) => log.trace(msg),
     logWarnFn: (msg) => log.warn(msg),
     logErrorFn: (msg) => log.error(msg)
   })
 
   const basePath = path.join(__dirname, '..', 'locales', '*.json').replaceAll('\\', '/')
 
+  const languages = {}
   globSync(basePath, { windowsPathsNoEscape: true }).forEach((f: string) => {
-    log.info('* Loading base dictionary %s', path.parse(f).base)
+    if (log.d) log.debug('* Loading base dictionary %s', path.parse(f).base)
     try {
       const content = require(f)
       addLocaleFile(i18n, path.parse(f).name, content)
+      languages[path.parse(f).name] = true
     } catch (err) {
       log.error(err)
     }
@@ -43,15 +45,17 @@ export function load(): any {
   const addPath = path.join(process.cwd(), 'src', 'locales', '*.json').replaceAll('\\', '/')
 
   globSync(addPath, { windowsPathsNoEscape: true }).forEach((f: string) => {
-    log.info('* Loading additional dictionary %s', path.parse(f).base)
+    if (log.d) log.debug('* Loading additional dictionary %s', path.parse(f).base)
     try {
       const content = require(f)
       addLocaleFile(i18n, path.parse(f).name, content)
+      languages[path.parse(f).name] = true
     } catch (err) {
       log.error(err)
     }
   })
 
+  if (log.i) log.info('Loaded languages: %s', Object.keys(languages).join(', '))
   i18n.setLocale(i18n.defaultLocale || 'en')
   return i18n
 }

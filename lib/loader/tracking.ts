@@ -40,7 +40,7 @@ export async function load() {
   }
 
   const keys = Object.keys(trackChangesList) || []
-  if (log.d) log.debug(`Tracking changes loaded: ${keys?.length || 0}`)
+  if (log.i) log.info(`Tracking changes loaded: ${keys?.length || 0}`)
   return { tracking: trackChangesList, trackingConfig: trackConfig }
 }
 

@@ -46,9 +46,9 @@ export async function apply(server: any): Promise<void> {
 
   hooks.map((hookName) => {
     const fns: Function[] = allHooks[hookName]
-    if (log.t) log.trace(`* Add ${fns?.length || 0} hooks for ${hookName}`)
+    if (log.d) log.debug(`* Add ${fns?.length || 0} hooks for ${hookName}`)
     if (fns?.length > 0) fns.map((fn) => server.addHook(hookName, fn as Function))
   })
 
-  if (log.d) log.debug(`Hooks loaded: ${hooks?.length || 0}`)
+  if (log.i) log.info(`Hooks loaded: ${hooks?.length || 0}`)
 }
