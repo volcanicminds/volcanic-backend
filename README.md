@@ -138,9 +138,11 @@ A typical project using `volcanic-backend` follows a convention-based structure 
 │   │       └── routes.ts              # Route definitions for products
 │   │
 │   ├── config/
+│   │   ├── general.ts                 # General configuration settings
 │   │   ├── database.ts                # Database connection settings
 │   │   ├── plugins.ts                 # Configuration for Fastify plugins (CORS, Helmet, etc.)
-│   │   └── roles.ts                   # Custom role definitions
+│   │   ├── roles.ts                   # Custom role definitions
+│   │   └── tracking.ts                # Auto tracking changes configuration (sperimental)
 │   │
 │   ├── entities/
 │   │   └── product.e.ts               # TypeORM entity definitions
@@ -150,6 +152,9 @@ A typical project using `volcanic-backend` follows a convention-based structure 
 │   │
 │   ├── middleware/
 │   │   └── myMiddleware.ts            # Custom middleware functions
+│   │
+│   ├── schedules/
+│   │   └── example.job.ts             # Custom Job schedules (cron, interval)
 │   │
 │   └── schemas/
 │       └── product.ts                 # JSON schemas for validation and Swagger
