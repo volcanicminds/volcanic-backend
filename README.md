@@ -41,8 +41,6 @@ And, what you see in [package.json](package.json).
 npm install @volcanicminds/backend
 ```
 
-````
-
 For database interactions, it is highly recommended to also install the companion package:
 
 ```sh
@@ -721,6 +719,8 @@ export default {
   - Users cannot disable MFA.
 - **ONE_WAY**: MFA is optional to start with, but once enabled, the user cannot disable it themselves. Only an admin can reset it.
 
+**_Note_**: In all cases, an administrator **can** force an MFA reset for a user.
+
 ### Security Architecture
 
 When MFA is required (either because it's enabled for the user or the policy is MANDATORY), the login endpoint does **not** return a standard access token.
@@ -1010,4 +1010,3 @@ A simple note: in the example below, you can see rawBody enabled on the `/exampl
   }
 }
 ```
-````
