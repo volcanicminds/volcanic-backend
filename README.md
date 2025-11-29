@@ -14,6 +14,16 @@ A Node.js framework based on Fastify to build robust APIs quickly, featuring an 
 - Increase minimum Node.js version to 24.x.
 - Switched to pure ECMAScript Modules (`NodeNext`). CommonJS/`require` is no longer supported.
 
+## Documentation & Guides
+
+For advanced usage and enterprise architecture patterns, please refer to the detailed documentation:
+
+- **[Advanced Architecture](docs/ADVANCED_ARCHITECTURE.md)**: Service Layer pattern, BaseService abstraction, and dependency injection.
+- **[Data Layer Magic](docs/DATA_LAYER_MAGIC.md)**: How `req.data()` works and how to turn URLs into complex SQL queries with `@volcanicminds/typeorm`.
+- **[Schema Customization](docs/SCHEMA_OVERRIDING.md)**: How to extend core schemas (like Login Response) without forking the framework.
+- **[Security & MFA](docs/SECURITY_MFA.md)**: Deep dive into Multi-Factor Authentication policies, Gatekeeper flow, and emergency resets.
+- **[TypeScript Guide](docs/TYPESCRIPT_GUIDE.md)**: How to properly extend Request types, global scopes, and inject User Contexts.
+
 ## Based on
 
 **Volcanic Backend** is a powerful, opinionated, and extensible Node.js framework for creating robust and scalable RESTful and GraphQL APIs. It's built on modern, high-performance libraries like [Fastify](https://www.fastify.io) and can be optionally paired with [Apollo Server](https://www.apollographql.com).
@@ -57,7 +67,7 @@ This example demonstrates how to set up a basic server with a single endpoint.
 // index.ts
 import { start } from '@volcanicminds/backend'
 import { start as startDatabase, userManager } from '@volcanicminds/typeorm'
-import { myDbConfig } from './src/config/database' // Assume you have a db config file
+import { myDbConfig } from './src/config/database.js' // Assume you have a db config file
 
 async function main() {
   // 1. Initialize the database connection (optional but recommended)
@@ -693,23 +703,11 @@ export default {
 
 ## Multi-Factor Authentication (MFA)
 
-The framework provides a robust, built-in Multi-Factor Authentication system based on TOTP (Time-Based One-Time Password). It is designed with a "Gatekeeper" architecture that isolates pending verifications using temporary tokens.
+The framework provides a robust, built-in Multi-Factor Authentication system based on TOTP (Time-Based One-Time Password).
 
-### Configuration
+For detailed configuration, security policies, and setup flows, please refer to the **[Security & MFA Guide](docs/SECURITY_MFA.md)**.
 
-MFA behavior is controlled via Environment Variables or `src/config/general.ts`:
-
-```ts
-// src/config/general.ts
-export default {
-  name: 'general',
-  enable: true,
-  options: {
-    // ...
-    mfa_policy: process.env.MFA_POLICY || 'OPTIONAL' // 'OPTIONAL' | 'MANDATORY' | 'ONE_WAY'
-  }
-}
-```
+MFA behavior is controlled globally via environment variables (`MFA_POLICY`) or the configuration file `src/config/general.ts`.
 
 ### MFA Policies
 
@@ -720,32 +718,6 @@ export default {
 - **ONE_WAY**: MFA is optional to start with, but once enabled, the user cannot disable it themselves. Only an admin can reset it.
 
 **_Note_**: In all cases, an administrator **can** force an MFA reset for a user.
-
-### Security Architecture
-
-When MFA is required (either because it's enabled for the user or the policy is MANDATORY), the login endpoint does **not** return a standard access token.
-
-1.  **Temporary Token**: Returns a JWT with a specific role: `pre-auth-mfa`.
-2.  **Gatekeeper**: Middleware automatically blocks any request made with a `pre-auth-mfa` token, **except** for specific whitelisted routes:
-    - `/auth/mfa/setup`
-    - `/auth/mfa/enable`
-    - `/auth/mfa/verify`
-    - `/auth/logout`
-3.  **Verification**: Only after successfully calling `/auth/mfa/verify` (or `enable` during setup) does the server issue the final, fully privileged Access Token.
-
-### Emergency Admin Reset
-
-If an administrator loses their MFA device and cannot log in, a filesystem/env-based emergency reset mechanism is available. This configuration is **only** available via Environment Variables to ensure security and easy rotation in production environments.
-
-1.  Set the environment variables in your server configuration (e.g., `.env` or Docker config):
-    ```bash
-    MFA_ADMIN_FORCED_RESET_EMAIL=admin@company.com
-    MFA_ADMIN_FORCED_RESET_UNTIL=2025-12-31T18:30:00.000Z  # A timestamp slightly in the future
-    ```
-2.  Restart the server.
-
-On startup, the server will check these variables. If the email matches an existing user and the current time is before the `UNTIL` timestamp, it will forcibly disable MFA for that specific user, allowing a standard login.
-**Important:** Remove these variables after the reset is complete to avoid security risks.
 
 ## Disable embedded authorization
 
