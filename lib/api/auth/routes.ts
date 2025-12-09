@@ -74,7 +74,7 @@ export default {
       path: '/forgot-password',
       roles: [],
       handler: 'auth.forgotPassword',
-      middlewares: ['global.preForgotPasswordHandler', 'global.dispatchForgotPasswordLink'],
+      middlewares: ['global.preForgotPassword', 'global.postForgotPassword'],
       config: {
         title: 'Forgot password',
         description: 'Forgot password for an existing user given the email or username',
