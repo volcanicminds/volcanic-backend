@@ -115,7 +115,7 @@ export function start(server: any, jobs: any[]) {
             preventOverrun: schedule.preventOverrun
           }
         )
-        server.schedule.addCronJob(taskJob)
+        server.scheduler.addCronJob(taskJob)
       } else {
         const taskJob = new SimpleIntervalJob(
           {
