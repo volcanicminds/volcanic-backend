@@ -196,7 +196,7 @@ export interface DataBaseManagement {
   addChange(entityName, entityId, status, userId, contents, changeEntity): any | null
 }
 
-// Interface injected by the main application (e.g. Gerico Backend)
+// Interface injected by the main application
 export interface MfaManagement {
   generateSetup(appName: string, email: string): Promise<{ secret: string; uri: string; qrCode: string }>
   verify(token: string, secret: string): boolean

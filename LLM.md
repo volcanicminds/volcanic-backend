@@ -400,13 +400,13 @@ Per far funzionare la configurazione di cui sopra, il file `.env` deve essere po
 NODE_ENV=production
 HOST=0.0.0.0
 PORT=2230
-APP_NAME=gerico-backend
+APP_NAME=volcanic-backend-sample
 
 # --- Database Connection ---
 START_DB=true
 DB_HOST=10.0.0.5
 DB_PORT=5432
-DB_NAME=gerico_prod
+DB_NAME=volcanic_backend_sample_prod
 DB_USERNAME=admin
 DB_PASSWORD=secret_complex_password
 
@@ -656,7 +656,7 @@ Le entità non devono essere solo DTO anemici. Possono calcolare valori derivati
 
 Metodo eseguito automaticamente dopo che TypeORM ha idratato l'oggetto dal DB.
 
-**Esempio Reale (tratto da Gerico): Calcolo Ore**
+**Esempio Reale: Calcolo Ore**
 Un'attività (`Activity`) ha delle ore pianificate (`expectedHours`) e delle ore fatte (`timesheets`).
 
 ```typescript
@@ -691,7 +691,7 @@ export class Activity extends BaseEntity {
 }
 ```
 
-> **Nota Tecnica**: Quando si usa `executeFindQuery` o `QueryBuilder`, le _Virtual Properties_ non vengono popolate automaticamente se dipendono da dati non caricati. Spesso i Service usano `addSelect` per iniettare valori calcolati via SQL direttamente in queste proprietà virtuali (vedi `ActivityService` in Gerico).
+> **Nota Tecnica**: Quando si usa `executeFindQuery` o `QueryBuilder`, le _Virtual Properties_ non vengono popolate automaticamente se dipendono da dati non caricati. Spesso i Service usano `addSelect` per iniettare valori calcolati via SQL direttamente in queste proprietà virtuali.
 
 ---
 
@@ -1996,7 +1996,7 @@ sudo systemctl status nginx
 
 Nginx non serve solo a girare le richieste. Agisce come **WAF (Web Application Firewall)** di base, terminatore SSL e gestore del Rate Limiting.
 
-### Configurazione (`/etc/nginx/sites-available/gerico`)
+### Configurazione (`/etc/nginx/sites-available/volcanic-backend-sample`)
 
 ```nginx
 # --- 1. RATE LIMITING (Protezione DDoS/Bruteforce) ---
@@ -2066,7 +2066,7 @@ server {
 ### Attivazione
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/gerico /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/volcanic-backend-sample /etc/nginx/sites-enabled/
 sudo rm /etc/nginx/sites-enabled/default 2>/dev/null # Rimuovi default
 sudo nginx -t # Verifica sintassi
 sudo systemctl restart nginx
@@ -2129,22 +2129,22 @@ LOG_TIMESTAMP=true
 
 ```bash
 # 1. Build
-docker build --network=host -t gerico-backend .
+docker build --network=host -t volcanic-backend-sample .
 
 # 2. Stop & Remove
-docker stop gerico-backend || true && docker rm gerico-backend || true
+docker stop volcanic-backend-sample || true && docker rm volcanic-backend-sample || true
 
 # 3. Run
 # Nota su --add-host: Risolve problemi DNS interni in alcune infrastrutture Cloud (es. OVH Managed DB)
 # dove il DNS del container non risolve l'hostname del DB privato.
 docker run -d \
-  --name gerico-backend \
+  --name volcanic-backend-sample \
   --restart always \
   -p 127.0.0.1:2230:2230 \
   --add-host <DB_HOSTNAME>:<DB_PRIVATE_IP> \
-  -v /home/ubuntu/gerico/certs:/app/certs \
-  --env-file /home/ubuntu/gerico/gerico-backend/.env.prod \
-  gerico-backend
+  -v /home/ubuntu/certs:/app/certs \
+  --env-file /home/ubuntu/volcanic-backend-sample/.env.prod \
+  volcanic-backend-sample
 ```
 
 ---
@@ -2159,8 +2159,8 @@ Per progetti che non usano Kubernetes/Jenkins, un semplice script bash in cronta
 #!/bin/bash
 
 # Configurazione
-LOG_FILE="/home/ubuntu/gerico/deploy.log"
-DIR_BE="/home/ubuntu/gerico/gerico-backend"
+LOG_FILE="/home/ubuntu/deploy.log"
+DIR_BE="/home/ubuntu/volcanic-backend-sample"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
@@ -2182,21 +2182,21 @@ if [ "$LOCAL" != "$REMOTE" ]; then
 
     # 2. Build Docker
     log "Building Docker Image..."
-    docker build --network=host -t gerico-backend .
+    docker build --network=host -t volcanic-backend-sample .
 
     if [ $? -eq 0 ]; then
         # 3. Restart Container (Solo se la build ha successo)
         log "Restarting Container..."
-        docker stop gerico-backend || true && docker rm gerico-backend || true
+        docker stop volcanic-backend-sample || true && docker rm volcanic-backend-sample || true
 
         # Esegui comando di run (vedi sopra per parametri completi)
         docker run -d \
-          --name gerico-backend \
+          --name volcanic-backend-sample \
           --restart always \
           -p 127.0.0.1:2230:2230 \
-          -v /home/ubuntu/gerico/certs:/app/certs \
-          --env-file /home/ubuntu/gerico/gerico-backend/.env.prod \
-          gerico-backend
+          -v /home/ubuntu/certs:/app/certs \
+          --env-file /home/ubuntu/volcanic-backend-sample/.env.prod \
+          volcanic-backend-sample
 
         log "✅ Backend updated successfully."
 
@@ -2215,7 +2215,7 @@ Esegue il controllo ogni 30 minuti.
 
 ```bash
 # crontab -e
-0,30 * * * * /home/ubuntu/gerico/deploy.sh >> /home/ubuntu/cron_output.log 2>&1
+0,30 * * * * /home/ubuntu/deploy.sh >> /home/ubuntu/cron_output.log 2>&1
 ```
 
 ---
@@ -2272,7 +2272,7 @@ htop
 docker stats --no-stream
 
 # Verifica limiti di memoria applicati
-docker inspect gerico-backend --format='Memory: {{.HostConfig.Memory}}'
+docker inspect volcanic-backend-sample --format='Memory: {{.HostConfig.Memory}}'
 # Se restituisce 0, il container può usare tutta la RAM dell'host (PERICOLOSO)
 ```
 
@@ -2280,10 +2280,10 @@ docker inspect gerico-backend --format='Memory: {{.HostConfig.Memory}}'
 
 ```bash
 # Log in tempo reale (follow)
-docker logs gerico-backend --tail 100 -f
+docker logs volcanic-backend-sample --tail 100 -f
 
 # Grep errori specifici nei log passati
-docker logs gerico-backend 2>&1 | grep "Error"
+docker logs volcanic-backend-sample 2>&1 | grep "Error"
 ```
 
 ### Network Check
@@ -2293,5 +2293,5 @@ docker logs gerico-backend 2>&1 | grep "Error"
 sudo netstat -tulpn | grep 2230
 
 # Verifica connettività dal container verso il DB
-docker exec -it gerico-backend nc -zv <DB_HOST> <DB_PORT>
+docker exec -it volcanic-backend-sample nc -zv <DB_HOST> <DB_PORT>
 ```

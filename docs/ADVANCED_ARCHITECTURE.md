@@ -2,7 +2,7 @@
 
 While `@volcanicminds/backend` allows for simple route-to-controller logic, building enterprise-grade applications requires a more robust architecture to handle complexity, security, and maintainability.
 
-This guide details the recommended architecture used in complex projects (like `gerico-backend`), focusing on the **Service Layer Pattern** and the **BaseService abstraction**.
+This guide details the recommended architecture used in complex projects (like `volcanic-backend-sample`), focusing on the **Service Layer Pattern** and the **BaseService abstraction**.
 
 ## The Layered Approach
 
