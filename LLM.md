@@ -2,179 +2,190 @@
 
 1.  **[Parte 1: Fondamenta e Infrastruttura](#parte-1-fondamenta-e-infrastruttura)**
 
-    - **1.1 Introduzione e Filosofia**
-      - Panoramica dello Stack (`@volcanicminds/backend`, `typeorm`, `tools`)
-      - Principi Architetturali: Thin Controllers, Fat Services, Secure by Default
+    - **1.1 Introduzione e Filosofia dello Stack**
+      - I Tre Pilastri (`backend`, `typeorm`, `tools`)
+      - Principi Architetturali (Thin Controllers, Fat Services)
+      - Il Pattern "Globals"
     - **1.2 Struttura del Progetto**
-      - Anatomia delle Cartelle (`src/api`, `src/services`, `src/entities`, ecc.)
-      - Bootstrapping (`index.ts`)
-    - **1.3 Configurazione Database (Production Grade)**
-      - Driver PostgreSQL e Naming Strategy
-      - Configurazione Pool e Timeout (Connection, Statement, Idle)
-      - Gestione SSL Condizionale
-      - Query Result Cache
+      - Anatomia delle Cartelle e Autodiscovery
+    - **1.3 Bootstrapping (`index.ts`)**
+      - Orchestrazione avvio DB e Server
+    - **1.4 Configurazione Database (Production Grade)**
+      - Naming Strategy Custom
+      - Gestione SSL e Connection Pool (`pg` driver)
+    - **1.5 Variabili d'Ambiente (Reference)**
 
 2.  **[Parte 2: Deep Dive Data Modeling & Entities](#parte-2-deep-dive-data-modeling--entities)**
 
     - **2.1 Anatomia di un'Entità Volcanic**
-      - Estensione di `BaseEntity`
-      - Decoratori Primari (`@Entity`, `@Unique`, `@Index`)
-      - Tipi di Colonna PostgreSQL (`jsonb`, `array`, `enum`, `uuid`)
-    - **2.2 Gestione Avanzata delle Relazioni**
-      - **One-to-One**: Owner side, `@JoinColumn`, e casi d'uso (es. `User` <-> `Professional`).
-      - **Many-to-One / One-to-Many**: La spina dorsale del grafo. Configurazione del lato inverso, gestione delle _Circular Dependencies_ (uso delle stringhe `'Order'` vs classi).
-      - **Many-to-Many**: Tabelle di giunzione implicite vs esplicite.
-    - **2.3 Opzioni delle Relazioni**
-      - `eager: true` vs `lazy: true` vs caricamento manuale (Best practices).
-      - `cascade`: Quando usare insert/update/remove.
-      - `onDelete`: Gestione dell'integrità referenziale (`CASCADE`, `SET NULL`).
-    - **2.4 Logica nelle Entità: Computed Fields & Hooks**
-      - Il decoratore `@AfterLoad`: Calcolare proprietà a runtime (es. `doneHours`, `delta`).
-      - Virtual Properties: Campi che esistono nel modello ma non nel DB.
-    - **2.5 Viste SQL e `@ViewEntity`**
-      - Quando usarle (Reportistica, Aggregazioni complesse).
-      - Mapping su classi per l'uso nei Service.
+      - Active Record (`BaseEntity`) e Decoratori
+      - Accesso Globale (`global.entity`)
+    - **2.2 Gestione Tipi ed Enum**
+      - Enum TypeScript vs Enum Postgres
+    - **2.3 Gestione Avanzata delle Relazioni**
+      - One-to-One, Many-to-One, One-to-Many
+      - Evitare Circular Dependencies (uso delle stringhe)
+    - **2.4 Opzioni delle Relazioni: Performance Tuning**
+      - Strategie `eager` vs `lazy`
+      - Integrità referenziale (`onDelete: CASCADE`)
+    - **2.5 Logica nelle Entità: Computed Fields & Hooks**
+      - Campi virtuali e decoratore `@AfterLoad`
+    - **2.6 Viste SQL e `@ViewEntity`**
+      - Reportistica complessa e aggregazioni
+    - **2.7 Best Practices di Modeling**
 
 3.  **[Parte 3: Magic Queries & Data Access](#parte-3-magic-queries--data-access)**
 
     - **3.1 Translation Layer: URL to SQL**
-      - Come funziona `executeFindQuery`.
-      - Tabella completa Operatori (`:eq`, `:gt`, `:in`, `:likei`, `:null`, ecc.).
-    - **3.2 Filtri Relazionali (Deep Filtering)**
-      - Filtraggio tramite Dot Notation (es. `order.client.name:eq=Acme`).
-    - **3.3 Advanced Boolean Logic**
-      - Utilizzo del parametro `_logic` per query complesse `(A OR B) AND C`.
-    - **3.4 Paginazione e Ordinamento**
-      - Standardizzazione parametri `page`, `pageSize`, `sort`.
-      - Header di risposta (`v-total`, `v-count`, ecc.).
+      - Flusso di traduzione e utilizzo (`executeFindQuery`)
+    - **3.2 Reference Operatori di Filtro**
+      - Tabella completa (`:eq`, `:gt`, `:like`, `:in`, `:null`, ecc.)
+    - **3.3 Deep Filtering (Filtri Relazionali)**
+      - Dot Notation su relazioni (es. `client.name`)
+    - **3.4 Advanced Boolean Logic (`_logic`)**
+      - Costruzione query complesse `(A OR B) AND C`
+    - **3.5 Paginazione e Ordinamento**
+      - Parametri Input e Header di Risposta (`v-total`)
+    - **3.6 Customizing QueryBuilder (Global Search)**
 
 4.  **[Parte 4: API Layer (Routing & Controllers)](#parte-4-api-layer-routing--controllers)**
 
     - **4.1 Autodiscovery delle Rotte**
-      - Il loader automatico (`loader/router.ts`).
+      - Regole di matching dei file
     - **4.2 Configurazione `routes.ts`**
-      - Definizione Endpoint, Handler e Middleware.
-      - Configurazione Swagger/OpenAPI automatica.
+      - Struttura e configurazione Swagger
     - **4.3 Controllers: Best Practices**
-      - Normalizzazione input (`req.data()`).
-      - Normalizzazione Relazioni per il salvataggio (trasformazione stringa ID -> Oggetto).
-      - Gestione Errori e Status Code.
+      - Normalizzazione Input (`req.data`) e Relazioni
+      - Accesso al Contesto (`req.userContext`)
+    - **4.4 Pattern di Implementazione: Dal Controller al Service**
+      - Esempio pratico completo
+    - **4.5 Middleware: Globali vs Locali**
+      - Configurazione mista in `routes.ts`
+    - **4.6 JSON Schemas & Validazione**
 
 5.  **[Parte 5: Service Layer Architecture](#parte-5-service-layer-architecture)**
 
     - **5.1 Il Pattern `BaseService`**
-      - Astrazione del Repository TypeORM.
-      - Metodi core: `findAll`, `findOne`, `create`, `update`, `delete`.
-    - **5.2 Security Context & RLS**
-      - Iniezione di `UserContext` (Ruolo, Company, ID).
-      - Implementazione di `applyPermissions` per il filtraggio obbligatorio dei dati.
+      - Astrazione CRUD e Hooks
+    - **5.2 Security Context & RLS (Row Level Security)**
+      - Implementazione di `applyPermissions`
     - **5.3 QueryBuilder Avanzato**
-      - Metodo `addRelations` per join automatiche e sicure.
-      - Sub-queries e Select calcolate (es. somma ore dai timesheet).
+      - Join automatiche (`addRelations`) e campi calcolati
+    - **5.4 Gestione delle Transazioni (Complex Writes)**
+      - Uso di `QueryRunner` manuale
+    - **5.5 Globals vs Dependency Injection**
+      - Pattern Singleton e accesso ai Repository
+    - **5.6 Caching**
 
 6.  **[Parte 6: Autenticazione e Sicurezza](#parte-6-autenticazione-e-sicurezza)**
 
-    - **6.1 Stack Auth**
-      - JWT Lifecycle (Access & Refresh Tokens).
-      - Configurazione `src/config/roles.ts`.
+    - **6.1 Stack Auth & JWT Lifecycle**
+      - Access Token, Refresh Token e Revoca (`externalId`)
     - **6.2 Multi-Factor Authentication (MFA)**
-      - Policy di sicurezza (`OPTIONAL`, `MANDATORY`, `ONE_WAY`).
-      - Flusso Gatekeeper (Token "Pre-Auth").
-      - Implementazione con `@volcanicminds/tools`.
-    - **6.3 TypeScript Augmentation**
-      - Estensione tipi globali in `types/index.d.ts`.
+      - Policy e Flusso "Gatekeeper" (Pre-Auth Token)
+      - Adapter e Tools
+    - **6.3 Role Based Access Control (RBAC)**
+      - Definizione Ruoli e Gatekeeper sulle rotte
+    - **6.4 Context Injection & TypeScript**
+      - Estensione tipi e Hook `preHandler`
+    - **6.5 Emergency Admin Reset**
 
-7.  **[# Parte 7: Validazione, Utilities, Scheduler e Testing](#parte-7-validazione-utilities-scheduler-e-testing)**
+7.  **[Parte 7: Validazione, Utilities, Scheduler e Testing](#parte-7-validazione-utilities-scheduler-e-testing)**
 
-    - **7.1 Validazione JSON Schema**
-      - Override degli schemi core (es. Login Response custom).
+    - **7.1 Validazione JSON Schema e Schema Overriding**
+      - Estensione schemi core (es. Login Response)
     - **7.2 Utilities Core (`@volcanicminds/tools`)**
-      - Logging e Mailer.
-    - **7.3 Job Scheduler e Tracking**
-      - Task ricorrenti e Audit Log automatico.
-    - **7.4 Testing**
-      - Strategie Unit e E2E.
+      - Logging Strutturato (Pino) e Mailer
+    - **7.3 Job Scheduler**
+      - Configurazione Cron/Interval Jobs
+    - **7.4 Audit Tracking (Tracciamento Modifiche)**
+      - Configurazione automatica Change Data Capture
+    - **7.5 Strategie di Testing**
+      - Setup, E2E e Unit Test
 
 8.  **[Parte 8: System Administration e Deployment](#parte-8-system-administration-e-deployment)**
-    - **8.1 Hardening del Server (Ubuntu)**
-      - Configurazione Firewall (UFW): Strategia "Deny by Default".
-      - Installazione Stack Base (Nginx, Certbot).
+
+    - **8.1 Hardening del Server (Ubuntu/Linux)**
+      - Firewall UFW e Stack Base
     - **8.2 Nginx: Reverse Proxy & Security Gateway**
-      - Configurazione Rate Limiting (Protezione DDoS/Bruteforce).
-      - Terminazione SSL e Reindirizzamento HTTPS.
-      - Hardening (Security Headers, `X-Frame-Options`, `X-XSS-Protection`).
-      - Proxy Pass e gestione IP Reale.
+      - Rate Limiting, SSL, Header di Sicurezza
     - **8.3 Docker Deployment Strategy**
-      - Configurazione `.env.prod`: Memory Limit, Pool DB, SSL Tuning.
-      - Comando di avvio robusto (`--restart always`, `--add-host`, volumi SSL).
+      - Configurazione Env Produzione e comandi Run
     - **8.4 Continuous Deployment ("Poor Man's CI/CD")**
-      - Script `deploy.sh`: Auto-update basato su Git Hash check.
-      - Automazione via Crontab e gestione cleanup immagini.
+      - Script di auto-update e Crontab
     - **8.5 Database Operations**
-      - Estensioni obbligatorie (`uuid-ossp`).
-      - Script SQL per Data Wipe (Reset pulito rispettando FK).
-      - Seeding iniziale.
+      - Estensioni, Wipe e Seeding sicuro
     - **8.6 Diagnostica e Monitoraggio**
-      - Strumenti live: `htop`, `docker stats`.
-      - Analisi Log e Network Check (`netstat`, `nc`).
 
----
+9.  **[Parte 9: Integrazione GraphQL & Apollo](#parte-9-integrazione-graphql--apollo)**
 
-# The Volcanic Stack: Guida Tecnica Definitiva
+    - **9.1 Attivazione e Configurazione**
+    - **9.2 Autenticazione e UserContext**
+      - Adattamento Context per GraphQL
+    - **9.3 Schema First: TypeDefs e Resolvers**
+      - Mapping Resolvers su Service esistenti
+    - **9.4 Advanced Pattern: GraphQL to Magic Query Bridge**
+    - **9.5 Performance: Il Problema N+1**
+    - **9.6 Riassunto Integrazione**
 
-**Versione: 1.0 - PostgreSQL Edition**
-
-Questa documentazione serve come riferimento assoluto per la costruzione di applicazioni backend enterprise utilizzando l'ecosistema `@volcanicminds`. È progettata per essere ingerita da LLM e utilizzata da Senior Architects per garantire standardizzazione, sicurezza e performance.
-
----
+10. **[Parte 10: Pattern Avanzati e Troubleshooting](#parte-10-pattern-avanzati-e-troubleshooting)**
+    - **10.1 Data Seeding & Maintenance**
+      - Approccio API-driven (`src/api/tools`)
+    - **10.2 Gestione Enum e Costanti**
+      - Centralizzazione definizioni
+    - **10.3 Troubleshooting: Errori Comuni e Soluzioni**
+      - Circular Dependency, Relation Not Found, Access Denied
+    - **10.4 Checklist per il Rilascio in Produzione**
 
 # Parte 1: Fondamenta e Infrastruttura
 
-In questa sezione costruiremo le basi dell'applicazione. Non si tratta solo di "far partire il server", ma di predisporre un ambiente capace di scalare, gestire pool di connessioni complessi, negoziare SSL sicuri e organizzare il codice per l'autodiscovery.
+Questa sezione copre le basi essenziali per comprendere come il framework orchestra il server, il database e le dipendenze globali. Non si tratta solo di avviare un processo Node.js, ma di predisporre un'architettura scalabile, sicura e fortemente tipizzata.
 
 ## 1.1 Introduzione e Filosofia dello Stack
 
-Il framework non è una semplice libreria, ma un **framework opinionato**. Questo significa che impone decisioni architetturali precise per rimuovere il carico cognitivo su questioni banali (routing, auth, connessione db) e concentrare lo sviluppo sulla logica di business.
+Il framework è un sistema **opinionator** composto da tre pacchetti modulari che lavorano in sinergia per eliminare il _boilerplate code_.
 
 ### I Tre Pilastri
 
 1.  **`@volcanicminds/backend` (Server Core)**
     - Wrapper di **Fastify**.
-    - Gestisce il ciclo di vita HTTP, i Middleware, gli Hooks e il caricamento automatico delle risorse.
-    - Fornisce il sistema di Autenticazione (JWT + Refresh Token) e Sicurezza (MFA, RBAC) out-of-the-box.
+    - Gestisce il ciclo di vita HTTP, il caricamento automatico delle rotte (`Auto-Discovery`), la validazione degli Schema JSON e il sistema di Hook globali.
+    - Integra nativamente il sistema di Autenticazione (JWT, Refresh Token) e Sicurezza (MFA Gatekeeper).
 2.  **`@volcanicminds/typeorm` (Data Layer)**
     - Wrapper di **TypeORM**.
-    - Introduce il concetto di **"Magic Query"**: trasforma automaticamente payload JSON/URL in query SQL ottimizzate.
-    - Gestisce la connessione al database e fornisce i repository tipizzati globalmente.
+    - Introduce le **"Magic Queries"**: un motore di traduzione che converte automaticamente query string complesse (filtri, sort, paginazione, logica booleana) in SQL ottimizzato.
+    - Gestisce la connessione al database e l'inizializzazione delle Entità.
 3.  **`@volcanicminds/tools` (Utilities)**
-    - Libreria di supporto tree-shakeable.
-    - Include: Logger (Pino), Mailer (Nodemailer wrapper), MFA (OTP generation/verification), Utils comuni.
+    - Libreria di supporto _tree-shakeable_.
+    - Fornisce strumenti standardizzati per Logger, Mailer e generazione codici MFA/OTP.
 
-### Principi Architetturali Vincolanti
+### Principi Architetturali
 
-Per mantenere la manutenibilità, ogni sviluppatore (o LLM) deve aderire a questi principi:
+Ogni riga di codice nel progetto deve aderire a questi principi:
 
-- **Thin Controllers**: I controller sono "stupidi". Non devono MAI contenere logica di business o query dirette al DB. Il loro unico scopo è:
-  1.  Ricevere la `FastifyRequest`.
-  2.  Estrarre e normalizzare i dati (`req.data()`).
-  3.  Invocare un metodo del **Service Layer**.
-  4.  Restituire la risposta al client.
-- **Fat Services**: Tutta la logica, le transazioni DB e le validazioni complesse risiedono nei Service. I Service sono agnostici rispetto all'HTTP (non conoscono `req` o `res`).
-- **Context-Driven Security**: Ogni operazione del Service Layer deve ricevere un `UserContext`. La sicurezza non è solo sull'endpoint (guardia alla porta), ma sui dati (Row Level Security applicativa).
-- **Convention over Configuration**: Il nome dei file e la loro posizione nel filesystem determinano automaticamente URL, Iniezioni e Configurazioni.
+- **Thin Controllers ("Adattatori"):** I controller non contengono logica di business. Il loro unico compito è normalizzare l'input (`req.data()`), estrarre il contesto utente (`req.userContext`), chiamare un Service e restituire la risposta.
+- **Fat Services ("Business Logic"):** Tutta la logica, le transazioni e i controlli di sicurezza sui dati risiedono qui. I Service non conoscono `req` o `res`.
+- **Secure by Default:** L'accesso ai dati non è mai diretto. Passa sempre attraverso metodi che richiedono un `UserContext` per applicare filtri di sicurezza (Row Level Security).
+
+### Il Pattern "Globals"
+
+A differenza di architetture che usano Dependency Injection esplicita ovunque, il Volcanic Stack inietta alcune utility chiave nel `global scope` di Node.js durante il bootstrap. Questo riduce drasticamente gli import circolari e velocizza lo sviluppo.
+
+- **`log`**: Istanza di Pino Logger. Disponibile ovunque.
+- **`entity.[PascalCase]`**: Accesso diretto alla classe dell'Entità (es. `entity.User`). Utile per metodi statici come `.create()`.
+- **`repository.[camelCasePlural]`**: Istanza del Repository TypeORM connesso (es. `repository.users`). Pluralizzato automaticamente.
+- **`config`**: Configurazione caricata all'avvio.
 
 ---
 
-## 1.2 Struttura del Progetto e Bootstrapping
+## 1.2 Struttura del Progetto
 
-Il framework utilizza un sistema di **autodiscovery** basato su `glob` patterns. Deviare dalla struttura standard comporterà il mancato caricamento di rotte, entità o configurazioni.
-
-### Anatomia delle Cartelle (Project Root)
+Il framework utilizza un sistema di **autodiscovery** basato su pattern `glob`. Rispettare la struttura delle cartelle è obbligatorio affinché rotte, entità e configurazioni vengano caricate.
 
 ```bash
 ./
-├── .env                    # Configurazioni segrete (NON committare)
-├── package.json            # type: "module", engines: node >= 24
+├── .env                    # Variabili d'ambiente (SEGRETI)
+├── package.json            # type: "module" (ESM), engines: node >= 24
 ├── tsconfig.json           # target: "ES2022", module: "NodeNext"
 ├── index.ts                # Entry Point (Bootstrap)
 ├── types                   # Definizioni TypeScript custom
@@ -182,37 +193,37 @@ Il framework utilizza un sistema di **autodiscovery** basato su `glob` patterns.
 └── src
     ├── api                 # MODULI FUNZIONALI (Domain Driven)
     │   └── [domain_name]   # es. "orders", "users"
-    │       ├── controller  # Logica di controllo
+    │       ├── controller  # Logica di controllo (HTTP handling)
     │       │   └── [name].ts
-    │       └── routes.ts   # Definizione endpoint e config Swagger
+    │       └── routes.ts   # Definizione endpoint, Swagger e Middleware
     ├── config              # CONFIGURAZIONI GLOBALI
-    │   ├── constants.ts    # Costanti (es. Cache TTL, Regex)
-    │   ├── database.ts     # Configurazione complessa TypeORM
+    │   ├── database.ts     # Configurazione TypeORM e Pool
     │   ├── general.ts      # Configurazione Framework (MFA, Scheduler)
     │   ├── plugins.ts      # Plugin Fastify (CORS, Helmet, RateLimit)
-    │   ├── roles.ts        # Definizione Ruoli RBAC
-    │   └── tracking.ts     # Configurazione Audit Log
+    │   ├── roles.ts        # Definizione statica Ruoli RBAC
+    │   └── tracking.ts     # Configurazione Audit Log automatico
     ├── entities            # MODELLI DATI (TypeORM .e.ts)
     ├── services            # BUSINESS LOGIC (Service Layer)
-    ├── schemas             # JSON SCHEMAS (Validazione & Swagger)
-    ├── hooks               # HOOKS GLOBALI (onRequest, preHandler)
+    ├── schemas             # JSON SCHEMAS (Validazione & Swagger Override)
+    ├── hooks               # HOOKS GLOBALI (es. preHandler per UserContext)
     ├── schedules           # CRON JOBS (*.job.ts)
     └── utils               # Helper functions
 ```
 
-### Il Bootstrapping (`index.ts`)
+---
 
-Il file `index.ts` è il punto di ingresso. Deve orchestrare l'avvio del database prima di quello del server, iniettando le dipendenze necessarie per l'autenticazione.
+## 1.3 Bootstrapping (`index.ts`)
 
-**Codice Standard di `index.ts`:**
+Il file `index.ts` è il punto di ingresso. Orchestra l'avvio del database prima del server e inietta le dipendenze critiche per il funzionamento dell'auth integrata nel core.
 
 ```typescript
 'use strict'
 
 import { start as startServer, yn } from '@volcanicminds/backend'
 import { start as startDatabase, userManager, DataSource } from '@volcanicminds/typeorm'
-// Importiamo l'adapter MFA dai tools (se necessario per logiche custom)
+// Importiamo l'adapter MFA dai tools (implementazione concreta)
 import { mfaAdapter } from './src/services/mfa.adapter.js'
+// Importiamo la configurazione DB
 import { database } from './src/config/database.js'
 
 const start = async () => {
@@ -221,20 +232,24 @@ const start = async () => {
   // 1. Avvio Database (Condizionale o Obbligatorio a seconda dell'ENV)
   if (yn(process.env.START_DB, true)) {
     const options = database?.default || {}
+    // startDatabase inizializza TypeORM e popola global.repository / global.entity
     db = await startDatabase(options)
 
     if (db && log.i) {
       const opts = db.options as any
       log.info(`Database attached at ${opts.host}:${opts.port} (${opts.database})`)
     }
+  } else {
+    if (log.w) log.warn('Database not loaded, check START_DB property on environment')
   }
 
   // 2. Avvio Server
   // È CRUCIALE passare 'userManager' (da typeorm) e 'mfaManager' (adapter)
-  // per abilitare il sistema di autenticazione integrato nel backend.
+  // Questo permette al framework backend di gestire le rotte /auth/* (login, refresh, mfa)
+  // usando la logica del tuo DB senza che il framework conosca le tue entità a priori.
   await startServer({
-    userManager: userManager,
-    mfaManager: mfaAdapter
+    userManager: userManager, // Gestisce CRUD utente e validazione password
+    mfaManager: mfaAdapter // Gestisce generazione/verifica OTP
   })
 }
 
@@ -246,21 +261,21 @@ start().catch((err) => {
 
 ---
 
-## 1.3 Configurazione Database (Production Grade)
-
-Questa è la sezione più critica per la stabilità. Una configurazione errata qui porta a timeout, connessioni cadute ("hanging queries") e problemi di SSL in ambienti cloud (AWS, Azure, OVH).
+## 1.4 Configurazione Database (Production Grade)
 
 File di riferimento: `src/config/database.ts`.
 
+Questa configurazione è ottimizzata per ambienti di produzione (PostgreSQL) e gestisce pooling, timeout e SSL condizionale.
+
 ### 1. Naming Strategy Custom
 
-PostgreSQL utilizza standard `snake_case` per tabelle e colonne, mentre TypeScript utilizza `camelCase`. TypeORM tenta di gestirlo, ma per avere un controllo preciso sui nomi delle colonne (evitando doppie virgolette o nomi generati strani), implementiamo una strategia esplicita.
+PostgreSQL usa `snake_case`, TypeScript usa `camelCase`. Questa strategia forza una conversione prevedibile.
 
 ```typescript
 import { DefaultNamingStrategy, NamingStrategyInterface } from 'typeorm'
 
 class CustomNamingStrategy extends DefaultNamingStrategy implements NamingStrategyInterface {
-  // Converte myPropertyName in my_property_name
+  // Converte "firstName" in "first_name"
   columnName(propertyName: string, customName: string, embeddedPrefixes: string[]): string {
     return embeddedPrefixes
       .concat(customName || propertyName)
@@ -270,120 +285,80 @@ class CustomNamingStrategy extends DefaultNamingStrategy implements NamingStrate
 }
 ```
 
-### 2. Gestione SSL (Certificati CA)
+### 2. Gestione SSL e Configurazione Completa
 
-In sviluppo locale (`localhost`), SSL è disabilitato. In produzione, molti provider (es. OVH, AWS RDS) richiedono SSL e spesso un certificato CA specifico per prevenire MITM attacks.
-
-```typescript
-import fs from 'node:fs'
-
-const getSslConfig = () => {
-  // Se DB_SSL è falso o non settato, niente SSL
-  if (process.env.DB_SSL !== 'true') return false
-
-  // Se abbiamo un percorso al certificato CA, lo leggiamo e forziamo la verifica
-  if (process.env.DB_SSL_CA_PATH) {
-    try {
-      return {
-        rejectUnauthorized: true, // Sicurezza Massima: verifica che il server sia chi dice di essere
-        ca: fs.readFileSync(process.env.DB_SSL_CA_PATH).toString()
-      }
-    } catch (e) {
-      console.error('CRITICAL: Could not read SSL CA file:', e)
-      // In caso di errore file, fallback sicuro (o lanciare errore bloccante)
-      throw new Error('SSL Configuration Failed')
-    }
-  }
-
-  // Fallback: SSL attivo ma senza verifica del certificato (Meno sicuro, accettabile in staging)
-  return { rejectUnauthorized: false }
-}
-```
-
-### 3. Configurazione Completa ed Esaustiva
-
-Ecco l'oggetto `database` completo. Nota l'uso della proprietà `extra` per passare configurazioni native al driver `node-postgres` (`pg`), essenziali per il **Connection Pooling** e i **Timeout**.
+L'oggetto `extra` passa parametri diretti al driver `node-postgres` (`pg`), essenziali per stabilità di rete.
 
 ```typescript
 import { Database } from '@volcanicminds/typeorm'
 import { GLOBAL_CACHE_TTL } from './constants.js'
+import fs from 'node:fs'
 
-// Helper per parsing booleani da env
 const isTrue = (val: string | undefined, defaultVal: boolean) => {
   if (val === undefined) return defaultVal
   return val === 'true' || val === '1'
 }
 
+// Logica per certificati SSL (es. per AWS RDS o OVH)
+const getSslConfig = () => {
+  if (process.env.DB_SSL !== 'true') return false
+  if (process.env.DB_SSL_CA_PATH) {
+    try {
+      return {
+        rejectUnauthorized: true,
+        ca: fs.readFileSync(process.env.DB_SSL_CA_PATH).toString()
+      }
+    } catch (e) {
+      console.error('SSL CA Load Error:', e)
+      return { rejectUnauthorized: false } // Fallback
+    }
+  }
+  return { rejectUnauthorized: false }
+}
+
 export const database: Database = {
   default: {
-    // --- TypeORM Core Settings ---
-    type: 'postgres', // Forziamo Postgres per questa guida
+    type: 'postgres',
     host: process.env.DB_HOST || '127.0.0.1',
     port: Number(process.env.DB_PORT) || 5432,
-    username: process.env.DB_USERNAME || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres',
-    database: process.env.DB_NAME || 'myapp',
+    username: process.env.DB_USERNAME,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
 
-    // Schema Sync: MAI 'true' in produzione. Rischio perdita dati.
-    synchronize: isTrue(process.env.DB_SYNCHRONIZE, false),
-
-    logging: isTrue(process.env.DB_LOGGING, true), // 'all', 'query', 'error'
+    // MAI usare synchronize: true in produzione (rischio perdita dati)
+    synchronize: false,
+    logging: isTrue(process.env.DB_LOGGING, true),
     namingStrategy: new CustomNamingStrategy(),
 
-    // Nome applicazione visibile nelle tabelle di monitoraggio PG (pg_stat_activity)
-    applicationName: process.env.APP_NAME || 'volcanic-backend',
-
-    // --- Pool Settings (TypeORM Level) ---
-    // Tempo massimo per ottenere una connessione dal pool prima di un errore
-    connectTimeoutMS: Number(process.env.DB_CONNECTION_TIMEOUT) || 30000,
-    // Dimensione pool (ridondante con extra.max, ma buona pratica settarlo)
+    // Pool Settings (TypeORM level)
+    connectTimeoutMS: Number(process.env.DB_CONNECTION_TIMEOUT) || 60000,
     poolSize: Number(process.env.DB_MAX_CONNECTING) || 50,
 
-    // --- Driver Settings (Native 'pg' driver) ---
-    // Queste opzioni vanno direttamente al driver sottostante
+    // Native Driver Settings (pg)
     extra: {
-      application_name: process.env.APP_NAME || 'volcanic-backend',
+      application_name: process.env.APP_NAME || 'volcanic-sample-backend',
 
-      // 1. Connection Pool Tuning
-      // Numero massimo di client nel pool.
-      // Calcolo empirico: (Core * 2) + Spool effettivo. 50 è un buon default per server medi.
+      // Connection Pool Tuning
       max: Number(process.env.DB_MAX_CONNECTING) || 50,
-
-      // Numero minimo di client da mantenere aperti (idle). Evita il "cold start" delle connessioni.
       min: Number(process.env.DB_MIN_CONNECTING) || 5,
-
-      // 2. Timeouts & KeepAlive
-      // Tempo massimo (ms) che un client può rimanere inattivo nel pool prima di essere chiuso
       idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT) || 30000,
 
-      // Tempo massimo (ms) per completare l'handshake di connessione TCP
-      connectionTimeoutMillis: Number(process.env.DB_CONNECTION_TIMEOUT) || 30000,
-
-      // TCP KeepAlive: Fondamentale in Azure/AWS per evitare che il load balancer tagli la connessione silenziosamente
+      // Network Stability (KeepAlive previene taglio connessioni idle da Load Balancer)
       keepAlive: isTrue(process.env.DB_KEEP_ALIVE, true),
-      keepAliveInitialDelayMillis: Number(process.env.DB_KEEP_ALIVE_INITIAL_DELAY) || 10000,
+      keepAliveInitialDelayMillis: 10000,
 
-      // 3. Safety Guardrails (Prevengono query zombie)
-      // Termina qualsiasi query che impiega più di X ms lato server PG
+      // Safety Timeouts (prevenzione query zombie)
       statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT) || 60000,
-
-      // Termina la query lato client se non risponde entro X ms (deve essere > statement_timeout)
-      query_timeout: Number(process.env.DB_QUERY_TIMEOUT) || 65000,
-
-      // Termina transazioni rimaste aperte ma inattive (es. dimenticato commit/rollback)
-      idle_in_transaction_session_timeout: Number(process.env.DB_IDLE_TRANSACTION_TIMEOUT) || 30000
+      query_timeout: Number(process.env.DB_QUERY_TIMEOUT) || 65000
     },
 
-    // --- SSL Config ---
     ssl: getSslConfig(),
 
-    // --- Caching Strategy ---
-    // Abilita la cache dei risultati delle query su tabella DB dedicata.
-    // Richiede la creazione della tabella 'query_result_cache'.
+    // Caching delle query su tabella DB dedicata
     cache: {
       type: 'database',
       tableName: 'query_result_cache',
-      duration: GLOBAL_CACHE_TTL || 60000 // Default 1 minuto se non specificato nella query
+      duration: GLOBAL_CACHE_TTL || 60000
     }
   }
 }
@@ -391,86 +366,82 @@ export const database: Database = {
 
 ---
 
-## 1.4 Variabili d'Ambiente (Reference)
+## 1.5 Variabili d'Ambiente (Reference)
 
-Per far funzionare la configurazione di cui sopra, il file `.env` deve essere popolato correttamente. Ecco un template di riferimento per un ambiente di produzione.
+Un esempio di `.env` per produzione.
 
 ```properties
-# --- Server Basics ---
+# --- Server ---
 NODE_ENV=production
 HOST=0.0.0.0
 PORT=2230
-APP_NAME=volcanic-backend-sample
+APP_NAME=volcanic-sample-backend
 
-# --- Database Connection ---
+# --- Database ---
 START_DB=true
 DB_HOST=10.0.0.5
 DB_PORT=5432
-DB_NAME=volcanic_backend_sample_prod
+DB_NAME=db_prod
 DB_USERNAME=admin
-DB_PASSWORD=secret_complex_password
-
-# --- Database Tuning (Advanced) ---
+DB_PASSWORD=secret_password
 DB_SSL=true
-DB_SSL_CA_PATH=/usr/src/app/certs/ca-certificate.crt
-DB_SYNCHRONIZE=false
-DB_LOGGING=false
+DB_SSL_CA_PATH=/usr/src/app/certs/ca.pem
 
-# Pool sizing: Regolare in base alla CPU del DB e al numero di istanze del backend
-# Se hai 2 istanze backend e il DB regge 100 conn, metti MAX=45 per istanza.
+# --- Pool & Timeouts ---
 DB_MAX_CONNECTING=50
 DB_MIN_CONNECTING=5
-
-# Timeouts (in ms)
-DB_CONNECTION_TIMEOUT=10000
-DB_IDLE_TIMEOUT=30000
 DB_STATEMENT_TIMEOUT=60000
-DB_QUERY_TIMEOUT=65000
-DB_LOCK_TIMEOUT=10000
-DB_IDLE_TRANSACTION_TIMEOUT=30000
 
-# KeepAlive
-DB_KEEP_ALIVE=true
-DB_KEEP_ALIVE_INITIAL_DELAY=10000
+# --- Auth & Security ---
+# Generare con: openssl rand -base64 64
+JWT_SECRET=super_secret_key_change_me
+JWT_EXPIRES_IN=1h
+JWT_REFRESH=true
+JWT_REFRESH_SECRET=super_secret_refresh_key_change_me
+JWT_REFRESH_EXPIRES_IN=30d
+
+# --- Logging ---
+LOG_LEVEL=info
+LOG_COLORIZE=false
 ```
 
 ---
 
 # Parte 2: Deep Dive Data Modeling & Entities
 
-In `@volcanicminds/typeorm`, il Data Layer non è solo un mappatore di tabelle, ma il motore che abilita le "Magic Queries". Le entità devono essere definite seguendo pattern precisi per garantire che l'autodiscovery, la sicurezza e le performance funzionino correttamente.
+In `@volcanicminds/typeorm`, il Data Layer non è un semplice mappatore di tabelle (ORM), ma il motore che abilita le funzionalità di "Magic Query" e "Auto-Discovery".
+
+Le entità in questo stack seguono il pattern **Active Record** (estendendo `BaseEntity`), il che significa che l'entità stessa possiede metodi per il salvataggio e la ricerca (`User.save()`, `User.findOne()`).
 
 ## 2.1 Anatomia di un'Entità Volcanic
 
-Tutte le entità **devono** estendere `BaseEntity` di TypeORM. Questo abilita il pattern **Active Record**, permettendo operazioni dirette come `User.save()` o `User.findOne()`, che sono fondamentali per la pulizia del codice nei Service.
+Ogni file di entità deve risiedere in `src/entities/` e avere l'estensione `.e.ts` (es. `user.e.ts`). Questo è fondamentale per il loader automatico.
 
-### Struttura Base e Tipi PostgreSQL
+### Struttura Base Standard
 
-Utilizziamo UUID v4 come chiave primaria standard per evitare enumerazione sequenziale e conflitti di merge in ambienti distribuiti.
+Ogni entità deve estendere `BaseEntity` e definire una Primary Key (preferibilmente UUID) e i campi di audit (`createdAt`, `updatedAt`).
+
+**Esempio: `src/entities/client.e.ts`**
 
 ```typescript
 import {
   Entity,
-  BaseEntity,
-  PrimaryGeneratedColumn, // Generazione automatica (UUID, Serial)
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  DeleteDateColumn, // Per Soft Delete
+  Unique,
   Index,
-  Unique
+  BaseEntity,
+  Column,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn
 } from 'typeorm'
 
-// Enum Typescript esportato per riuso
-export enum UserRole {
-  ADMIN = 'admin',
-  USER = 'user'
-}
+// Importiamo il tipo per la relazione (usando 'import type' per evitare cicli runtime)
+import type { Order } from './order.e.js'
 
-@Entity() // Nome tabella derivato dalla classe (snake_case via NamingStrategy)
-@Unique(['email']) // Vincolo di unicità a livello DB
-@Index(['username', 'role']) // Indice composito per performance su query frequenti
-export class User extends BaseEntity {
+@Entity() // Nome tabella: 'client' (snake_case automatico)
+@Unique(['code']) // Vincolo DB: il codice cliente deve essere univoco
+export class Client extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string
 
@@ -480,184 +451,165 @@ export class User extends BaseEntity {
   @UpdateDateColumn()
   updatedAt: Date
 
-  // Soft Delete: se presente, .delete() imposterà questa data invece di rimuovere il record
-  @DeleteDateColumn()
-  deletedAt: Date
-
-  // --- Tipi di Colonna ---
-
-  @Column({ type: 'varchar', length: 255, nullable: false })
-  username: string
-
-  @Column({ type: 'text', nullable: true }) // 'text' in PG non ha limiti di lunghezza
-  bio: string
-
-  @Column({ type: 'boolean', default: false })
-  isActive: boolean
-
-  @Column({ type: 'int', default: 0 })
-  loginCount: number
-
-  // --- Tipi Avanzati PostgreSQL ---
-
-  // JSONB: Permette query performanti dentro il JSON (indicizzabile)
-  @Column({ type: 'jsonb', nullable: true, default: {} })
-  settings: Record<string, any>
-
-  // Array nativi di Postgres
-  @Column('text', { array: true, default: [] })
-  tags: string[]
-
-  // Enum nativo (mappato su stringa lato DB per flessibilità o enum PG)
-  // Best Practice Volcanic: Usare 'varchar' o 'enum' controllando i valori via TS o Check Constraint
-  @Column({
-    type: 'enum',
-    enum: UserRole,
-    default: UserRole.USER
-  })
-  role: UserRole
-}
-```
-
----
-
-## 2.2 Gestione Avanzata delle Relazioni
-
-La gestione delle relazioni è dove molti progetti falliscono (Circular Dependency).
-**Regola Aurea Volcanic:** Usare sempre le **stringhe** per riferirsi alle altre classi entità all'interno dei decoratori, mai la classe importata direttamente, a meno che non si usino `import type` per evitare cicli a runtime.
-
-### One-to-One (`@OneToOne`)
-
-Relazione 1:1. Una tabella deve possedere la chiave esterna (Owner Side).
-
-**Esempio:** `User` (Identity) <-> `Professional` (Profile).
-Vogliamo che `User` abbia un riferimento a `Professional`.
-
-```typescript
-// entities/user.e.ts
-@Entity()
-export class User extends BaseEntity {
-  // ...
-
-  // EAGER: TRUE => Carica sempre il professional quando carico lo user
-  @OneToOne('Professional', { eager: true, nullable: true, cascade: true })
-  @JoinColumn() // NECESSARIO sull'owner side (crea professional_id su user)
-  professional: Professional
-}
-
-// entities/professional.e.ts
-@Entity()
-export class Professional extends BaseEntity {
-  // ...
-
-  // Lato inverso (opzionale, ma utile per navigare al contrario)
-  @OneToOne('User', (user: User) => user.professional)
-  user: User
-}
-```
-
-### Many-to-One / One-to-Many
-
-La relazione più comune. `ManyToOne` è il lato che "possiede" la chiave esterna.
-
-**Esempio:** `Order` (Molti) -> `Client` (Uno).
-
-```typescript
-// entities/order.e.ts
-@Entity()
-export class Order extends BaseEntity {
-  // ...
-
-  // INDEX: Fondamentale sulle foreign key per performance di join
+  // INDEX: Fondamentale per le performance di ricerca e join
   @Index()
-  @ManyToOne('Client', (client: Client) => client.orders, {
-    nullable: false,
-    onDelete: 'CASCADE' // Se il cliente viene cancellato, cancella gli ordini (DB Level)
-  })
-  @JoinColumn({ name: 'clientId' }) // Opzionale: forza il nome colonna
-  client: Client
-}
+  @Column({ nullable: false, type: 'varchar' })
+  code: string
 
-// entities/client.e.ts
-@Entity()
-export class Client extends BaseEntity {
-  // ...
+  @Column({ nullable: false, type: 'varchar' })
+  name: string
 
-  // LAZY: TRUE => Restituisce una Promise.
-  // Non carica gli ordini a meno che non vengano richiesti esplicitamente o acceduti.
+  // Array nativo di Postgres (molto performante per liste semplici)
+  @Column('text', { array: true, default: [] })
+  companies: string[]
+
+  // Relazione OneToMany (Lazy di default in questo progetto)
+  // Nota: Usiamo la stringa 'Order' per riferirci all'altra entità
   @OneToMany('Order', (order: Order) => order.client, { lazy: true })
   orders: Promise<Order[]>
 }
 ```
 
-### Many-to-Many
+### Accesso Globale (`global.entity`)
 
-**Approccio Volcanic:** Preferire **sempre** una tabella di giunzione esplicita (Entity intermedia) rispetto alla `@ManyToMany` implicita, specialmente in progetti enterprise. Questo permette di aggiungere colonne alla relazione (es. `assignedAt`, `role`).
+Al bootstrap, il framework popola l'oggetto globale `entity`.
+Sebbene sia preferibile importare la classe per la Type Safety, `entity` è utile in script di seeding o contesti dinamici.
 
-**Esempio Esplicito:** `User` <-> `UserGroup` (tramite `GroupMembership`).
+- `import { Client } from ...` -> Uso standard.
+- `entity.Client` -> Istanza runtime caricata (utile in `src/utils/initialData.ts`).
+
+---
+
+## 2.2 Gestione Tipi ed Enum
+
+In `volcanic-sample-backend`, gli Enum sono centralizzati in `src/entities/all.enums.ts`. Questo evita duplicazioni e magic strings.
+
+**Esempio: Gestione Enum (`UserLanguage`)**
 
 ```typescript
-// entities/groupMembership.e.ts
+// src/entities/all.enums.ts
+export enum UserLanguage {
+  EN = 'en',
+  IT = 'it'
+}
+```
+
+**Utilizzo nell'Entità (`src/entities/user.e.ts`)**
+
+```typescript
+@Column({
+  type: 'enum', // Tipo nativo Postgres ENUM
+  enum: UserLanguage,
+  default: UserLanguage.EN,
+  nullable: false
+})
+language: UserLanguage
+```
+
+> **Best Practice**: Se si prevede che i valori dell'enum cambino spesso, è meglio usare `type: 'varchar'` e gestire la validazione via codice/schema per evitare migrazioni DB complesse (DROP TYPE enum).
+
+---
+
+## 2.3 Gestione Avanzata delle Relazioni
+
+La gestione delle relazioni è il punto dove si verificano più errori (Circular Dependency).
+**Regola Aurea:** Usare sempre le **stringhe** (es. `'Order'`, `'Client'`) nei decoratori, mai la classe importata direttamente come valore.
+
+### One-to-One (`User` <-> `Professional`)
+
+Questa relazione è critica: collega l'account di accesso (`User`) al profilo anagrafico (`Professional`).
+
+```typescript
+// src/entities/user.e.ts (Lato Proprietario)
 @Entity()
-export class GroupMembership extends BaseEntity {
-  @PrimaryGeneratedColumn('uuid')
-  id: string
+export class User extends UserEx {
+  // ...
 
-  @ManyToOne('User', 'memberships')
-  user: User
+  // EAGER: TRUE -> Carica sempre il profilo quando leggo l'utente
+  // NULLABLE: TRUE -> Un utente (es. admin puro) potrebbe non avere un profilo professionale
+  @OneToOne('Professional', { eager: true, nullable: true })
+  @JoinColumn() // Crea la colonna physical 'professionalId'
+  professional: Professional
+}
 
-  @ManyToOne('UserGroup', 'members')
-  group: UserGroup
+// src/entities/professional.e.ts (Lato Inverso)
+@Entity()
+export class Professional extends BaseEntity {
+  // ...
 
-  @CreateDateColumn()
-  joinedAt: Date // Colonna extra impossibile con ManyToMany implicito
+  // Lato inverso per navigazione
+  @OneToOne('User', (user: User) => user.professional, { lazy: true })
+  user: Promise<User>
+}
+```
+
+### Many-to-One / One-to-Many (`Order` <-> `WorkOrder`)
+
+Gerarchia classica Padre-Figlio.
+
+```typescript
+// src/entities/workOrder.e.ts (Figlio)
+@Entity()
+export class WorkOrder extends BaseEntity {
+  // ...
+
+  // ManyToOne è il lato che possiede la Foreign Key ('orderId')
+  // INDEX: Essenziale per filtrare work orders di un ordine
+  @Index()
+  @ManyToOne('Order', { eager: false, nullable: false })
+  @JoinColumn()
+  order: Order
+}
+
+// src/entities/order.e.ts (Padre)
+@Entity()
+export class Order extends BaseEntity {
+  // ...
+
+  // LAZY: TRUE -> Fondamentale per non scaricare migliaia di WO leggendo un Ordine
+  @OneToMany('WorkOrder', (workOrder: WorkOrder) => workOrder.order, { lazy: true })
+  workOrders: Promise<WorkOrder[]>
 }
 ```
 
 ---
 
-## 2.3 Opzioni delle Relazioni: Tuning Performance
+## 2.4 Opzioni delle Relazioni: Performance Tuning
 
-Le opzioni passate ai decoratori determinano drasticamente le performance.
+Le opzioni passate ai decoratori determinano la strategia di caricamento e l'integrità referenziale.
 
-### `eager: true` vs `lazy: true`
+### 1. `eager` vs `lazy`
 
-- **`eager: true`**: Esegue una `LEFT JOIN` automatica ogni volta che l'entità principale viene caricata.
-  - _Pro_: Dati pronti subito.
-  - _Contro_: Se usato a catena, scarica l'intero database.
-  - _Best Practice_: Usare solo per relazioni 1:1 o Many:1 critiche (es. `Order.Type`). **MAI** su `OneToMany` (es. `Client.Orders` eager ucciderebbe il server).
-- **`lazy: true`**: Restituisce una `Promise`. TypeORM esegue una query separata quando si accede alla proprietà.
-  - _Pro_: Entity leggera.
-  - _Contro_: Problema N+1 se iterata in un ciclo.
-  - _Best Practice_: Usare per le collezioni (`OneToMany`).
+- **`eager: true`**: TypeORM esegue una `LEFT JOIN` automatica.
+  - _Dove usarlo:_ Relazioni 1:1 critiche (`User.professional`) o tabelle di lookup piccole (`Order.state`, `Order.type`).
+  - _Dove evitarlo:_ Relazioni 1:N o entità pesanti.
+- **`lazy: true`**: Restituisce una `Promise`. I dati vengono caricati solo se richiesti.
+  - _Dove usarlo:_ Collezioni (`Client.orders`, `Order.workOrders`).
 
-### `cascade`
+### 2. `onDelete: 'CASCADE'`
 
-Definisce se le operazioni di persistenza (`save`, `remove`) si propagano.
+Definisce il comportamento del DB quando il record padre viene eliminato.
 
-- `cascade: ['insert', 'update']`: Se salvo un `Order` con nuovi `WorkOrder` dentro, salva tutto in una transazione.
-- `cascade: true`: Abilita tutto (incluso remove).
+**Esempio: `src/entities/orderCommentRead.e.ts`**
+Se un commento viene cancellato, le flag di "lettura" associate devono sparire automaticamente.
 
-### `onDelete`
-
-Definisce il comportamento a livello di Database (Foreign Key constraint).
-
-- `CASCADE`: Cancella i figli se il padre muore. (es. Order -> OrderItems).
-- `SET NULL`: Imposta a null (es. User -> Manager).
-- `RESTRICT`: (Default) Impedisce la cancellazione del padre se ha figli.
+```typescript
+@ManyToOne('OrderComment', (comment: OrderComment) => comment.reads, {
+  nullable: false,
+  onDelete: 'CASCADE' // DB Constraint: ON DELETE CASCADE
+})
+@JoinColumn()
+comment: OrderComment
+```
 
 ---
 
-## 2.4 Logica nelle Entità: Computed Fields & Hooks
+## 2.5 Logica nelle Entità: Computed Fields & Hooks
 
-Le entità non devono essere solo DTO anemici. Possono calcolare valori derivati che servono al frontend ma non esistono nel DB.
+Le entità non sono solo contenitori di dati. Possono avere proprietà virtuali calcolate dopo il caricamento.
 
-### Decoratore `@AfterLoad`
-
-Metodo eseguito automaticamente dopo che TypeORM ha idratato l'oggetto dal DB.
-
-**Esempio Reale: Calcolo Ore**
-Un'attività (`Activity`) ha delle ore pianificate (`expectedHours`) e delle ore fatte (`timesheets`).
+**Esempio Reale: `Activity.e.ts`**
+Un'attività deve mostrare quante ore sono state lavorate (`doneHours`), ma questo dato è la somma dei `Timesheet`.
 
 ```typescript
 import { AfterLoad, OneToMany } from 'typeorm'
@@ -667,492 +619,666 @@ export class Activity extends BaseEntity {
   @Column({ type: 'float' })
   expectedHours: number
 
-  // Relazione OneToMany con Timesheet
-  @OneToMany('Timesheet', (ts: Timesheet) => ts.activity)
-  timesheets: Promise<Timesheet[]> // o Timesheet[] se caricato via query builder
+  @OneToMany('Timesheet', (timesheet: Timesheet) => timesheet.activity)
+  timesheets: Promise<Timesheet[]>
 
-  // --- Virtual Properties (Non @Column) ---
+  // --- Virtual Properties (Non esistono nel DB) ---
   doneHours: number = 0
   deltaHours: number = 0
-  status: 'safe' | 'overburn' = 'safe'
+  remainingToWork: number = 0
 
+  // Hook eseguito dopo find/findOne
   @AfterLoad()
-  calculateMetrics() {
-    // Nota: this.timesheets è disponibile solo se la relazione è stata caricata (join)
-    // Spesso 'doneHours' viene calcolato via subquery nel Service e assegnato qui.
-
-    // Logica di calcolo
-    this.deltaHours = (this.doneHours || 0) - (this.expectedHours || 0)
-
-    if (this.doneHours > this.expectedHours) {
-      this.status = 'overburn'
+  load() {
+    // Caso 1: I timesheet sono stati caricati (join)
+    if (Array.isArray(this.timesheets)) {
+      const sheets = this.timesheets as unknown as { logTime: number }[]
+      this.doneHours = sheets.reduce((acc, t) => acc + (Number(t.logTime) || 0), 0)
     }
+    // Caso 2: 'doneHours' è stato popolato tramite addSelect() nel Service (pattern più comune per performance)
+
+    // Calcolo delle derivate
+    const expected = Number(this.expectedHours ?? 0)
+    const done = Number(this.doneHours ?? 0)
+
+    this.deltaHours = done - expected
+    this.remainingToWork = expected - done
   }
 }
 ```
 
-> **Nota Tecnica**: Quando si usa `executeFindQuery` o `QueryBuilder`, le _Virtual Properties_ non vengono popolate automaticamente se dipendono da dati non caricati. Spesso i Service usano `addSelect` per iniettare valori calcolati via SQL direttamente in queste proprietà virtuali.
-
 ---
 
-## 2.5 Viste SQL e `@ViewEntity`
+## 2.6 Viste SQL e `@ViewEntity`
 
-Per report, dashboard o aggregazioni complesse che richiederebbero troppe join o logiche SQL avanzate (Window Functions, Group By), utilizzare le Viste. `@volcanicminds/typeorm` tratta le viste esattamente come tabelle (read-only), permettendo di usare paginazione e filtri magici su di esse.
+Per reportistica complessa, dashboard o aggregazioni che richiederebbero troppe join nel codice, si utilizzano le Viste. `@volcanicminds/typeorm` tratta le viste come entità in sola lettura, permettendo di usare filtri, paginazione e ordinamento standard.
 
-### 1. Creazione della Vista (Migration o SQL diretto)
-
-Creare la vista sul DB:
-
-```sql
-CREATE VIEW planning_view AS
-SELECT
-  p.id as planning_id,
-  a.id as activity_id,
-  u.username as professional_name,
-  (p.month_1 + p.month_2 + ...) as total_planned
-FROM planning p
-JOIN activity a ON p.activity_id = a.id
-JOIN professional prof ON a.professional_id = prof.id
-JOIN "user" u ON prof.user_id = u.id;
-```
-
-### 2. Definizione Entity
+**Esempio: `src/entities/planningView.e.ts`**
+Questa vista aggrega dati da 8 tabelle diverse per fornire una "flat table" performante per il report di pianificazione.
 
 ```typescript
-import { ViewEntity, ViewColumn, BaseEntity } from 'typeorm'
+import { ViewEntity, ViewColumn } from 'typeorm'
 
-// expression: opzionale, utile se si vuole che TypeORM sincronizzi la vista (sconsigliato in prod complessa)
 @ViewEntity({
-  name: 'planning_view',
-  expression: `...SQL Definition...`
+  expression: `
+    SELECT
+      "ac"."id" AS "activityId",
+      "ac"."expectedHours" AS "expectedHours",
+      (SELECT COALESCE(SUM("ts"."logTime"), 0) FROM "timesheet" "ts" WHERE "ts"."activityId" = "ac"."id") AS "doneHours",
+      "prof"."id" AS "professionalId",
+      "prof"."firstName" AS "professionalFirstName",
+      "wo"."code" AS "workOrderCode",
+      "o"."name" AS "orderName",
+      "cl"."name" AS "clientName",
+      "pl"."month_1", "pl"."month_2" -- ... altri mesi
+    FROM "activity" "ac"
+    LEFT JOIN "planning" "pl" ON "ac"."id" = "pl"."activityId"
+    LEFT JOIN "professional" "prof" ON "ac"."professionalId" = "prof"."id"
+    LEFT JOIN "work_order" "wo" ON "ac"."workOrderId" = "wo"."id"
+    LEFT JOIN "order" "o" ON "wo"."orderId" = "o"."id"
+    LEFT JOIN "client" "cl" ON "o"."clientId" = "cl"."id"
+  `
 })
-export class PlanningView extends BaseEntity {
-  @ViewColumn()
-  planningId: string
-
+export class PlanningView {
+  // Mappatura colonne vista -> proprietà classe
   @ViewColumn()
   activityId: string
 
   @ViewColumn()
-  professionalName: string
+  doneHours: number // Calcolato via SQL
 
   @ViewColumn()
-  totalPlanned: number
+  clientName: string
+
+  // ... altri campi
 }
 ```
 
-### 3. Utilizzo
+Utilizzo nel Service (`PlanningService`):
 
-Questa vista ora supporta nativamente le query API:
-`GET /api/plannings/view?professionalName:contains=Mario&totalPlanned:gt=100&sort=totalPlanned:desc`
+```typescript
+const { records } = await executeFindView(entity.PlanningView, req.data())
+```
+
+---
+
+## 2.7 Best Practices di Modeling
+
+1.  **UUID**: Usare sempre `id: uuid` come chiave primaria. Evita enumeration attacks e conflitti di merge.
+2.  **Date UTC**: TypeORM e Postgres gestiscono le date. Assicurarsi che l'applicazione salvi in UTC.
+3.  **Naming Relazioni**:
+    - Lato singolo: `order` (oggetto), `orderId` (colonna fisica generata).
+    - Lato collezione: `orders` (array).
+4.  **Avoid Circular Imports**:
+    - **Errato**: `import { Order } from './order.e.js'` usato dentro `@ManyToOne(() => Order)`
+    - **Corretto**: `@ManyToOne('Order')` (stringa) + `import type { Order } ...` (solo tipo).
 
 ---
 
 # Parte 3: Magic Queries & Data Access
 
-In un'architettura backend tradizionale, lo sviluppatore deve scrivere controller o repository che manualmente estraggono parametri (`req.query.search`), costruiscono condizioni (`WHERE name LIKE...`) e gestiscono paginazione/ordinamento.
+In un'architettura backend tradizionale, lo sviluppatore spende il 30-40% del tempo a scrivere codice "boilerplate" per parsare filtri, gestire la paginazione e ordinare i risultati.
 
-Volcanic elimina questo strato. Il metodo `executeFindQuery` (e il sottostante `applyQuery`) funge da **traduttore universale** tra il linguaggio dell'API (URL/JSON) e il linguaggio del Database (SQL/TypeORM FindOptions).
-
----
+Il Volcanic Stack elimina questo strato. Il pacchetto `@volcanicminds/typeorm` fornisce un motore di traduzione che permette al client (Frontend o API Consumer) di definire esattamente quali dati vuole, come li vuole ordinati e filtrati, senza scrivere una riga di SQL o logica nel controller.
 
 ## 3.1 Translation Layer: URL to SQL
 
-Il cuore del sistema è la capacità di parsare le chiavi degli oggetti di input (query string o body) alla ricerca di **operatori suffissi**.
+Il flusso di una richiesta di lettura (`find` o `count`) è il seguente:
 
-### Come funziona `executeFindQuery`
+1.  **Input**: Il client chiama `GET /orders?status:eq=active&amount:gt=100`.
+2.  **Normalization**: Il controller usa `req.data()` per unificare query string e body.
+3.  **Application**: Il Service (via `BaseService` o `executeFindQuery`) applica i permessi (RLS).
+4.  **Translation**: Il motore analizza le chiavi dell'oggetto dati alla ricerca di **operatori suffissi** (es. `:eq`, `:gt`) e manipola il `QueryBuilder` di TypeORM.
+5.  **Execution**: Viene generato ed eseguito l'SQL.
+
+### Utilizzo nel Codice
+
+Esistono due modi per invocare questo motore:
+
+**Modo 1: Uso Diretto (per endpoint semplici)**
 
 ```typescript
 import { executeFindQuery } from '@volcanicminds/typeorm'
 
-// Esempio tipico dentro un Service o Controller
-const result = await executeFindQuery(
-  repository.users, // 1. Repository target
-  { company: true, profile: true }, // 2. Relazioni (Join) da caricare
-  req.data(), // 3. Input Data (contiene filtri, paginazione, sort)
-  { isActive: true } // 4. Extra Where (filtri forzati/hardcoded)
-)
+// Controller
+export async function find(req, reply) {
+  // Traduce req.data() in SQL, esegue e formatta la risposta
+  const { headers, records } = await executeFindQuery(
+    repository.orders,
+    { client: true }, // Relazioni
+    req.data()
+  )
+  return reply.headers(headers).send(records)
+}
 ```
 
-Il flusso interno è:
+**Modo 2: Via `BaseService` (Architettura Enterprise)**
+In `volcanic-sample-backend`, la logica è incapsulata in `BaseService.findAll`. Questo permette di iniettare la sicurezza (`applyPermissions`) prima che i filtri magici vengano applicati.
 
-1.  **Parsing**: Analizza `req.data()` separando i parametri riservati (`page`, `pageSize`, `sort`, `_logic`) dai filtri.
-2.  **Mapping**: Trasforma ogni chiave filtro (es. `age:gt`) in un operatore TypeORM (es. `MoreThan(valore)`).
-3.  **Validation**: Assicura che i campi esistano (se l'entità è tipizzata rigorosamente, altrimenti è permissivo).
-4.  **Execution**: Esegue `findAndCount()` sul repository.
-5.  **Formatting**: Restituisce `{ records: [], headers: { ... } }`.
-
-### Tabella Completa degli Operatori
-
-Questa tabella è il riferimento definitivo per costruire query dal frontend.
-
-| Operatore     | Tipo Dato    | SQL (PostgreSQL) | Esempio URL                        | Esempio JSON Body               | Descrizione                                         |
-| :------------ | :----------- | :--------------- | :--------------------------------- | :------------------------------ | :-------------------------------------------------- |
-| **(nessuno)** | Any          | `=`              | `status=active`                    | `{ "status": "active" }`        | Uguaglianza esatta (Default).                       |
-| `:eq`         | Any          | `=`              | `status:eq=active`                 | `{ "status:eq": "active" }`     | Esplicito per uguaglianza.                          |
-| `:neq`        | Any          | `!=`             | `type:neq=guest`                   | `{ "type:neq": "guest" }`       | Diverso da.                                         |
-| `:gt`         | Number/Date  | `>`              | `price:gt=100`                     | `{ "price:gt": 100 }`           | Maggiore di.                                        |
-| `:ge`         | Number/Date  | `>=`             | `age:ge=18`                        | `{ "age:ge": 18 }`              | Maggiore o uguale.                                  |
-| `:lt`         | Number/Date  | `<`              | `qty:lt=10`                        | `{ "qty:lt": 10 }`              | Minore di.                                          |
-| `:le`         | Number/Date  | `<=`             | `qty:le=10`                        | `{ "qty:le": 10 }`              | Minore o uguale.                                    |
-| `:like`       | String       | `LIKE`           | `code:like=A-%`                    | `{ "code:like": "A-%" }`        | Pattern matching Case Sensitive. Richiede `%`.      |
-| `:likei`      | String       | `ILIKE`          | `email:likei=%@gmail%`             | `{ "email:likei": "%@gmail%" }` | Pattern matching Case Insensitive (PG only).        |
-| `:contains`   | String       | `LIKE '%v%'`     | `name:contains=Rossi`              | `{ "name:contains": "Rossi" }`  | Contiene (Case Sensitive). Aggiunge `%` autom.      |
-| `:containsi`  | String       | `ILIKE '%v%'`    | `desc:containsi=err`               | `{ "desc:containsi": "err" }`   | Contiene (Case Insensitive). Aggiunge `%` autom.    |
-| `:starts`     | String       | `LIKE 'v%'`      | `sku:starts=XY`                    | `{ "sku:starts": "XY" }`        | Inizia con.                                         |
-| `:startsi`    | String       | `ILIKE 'v%'`     | `user:startsi=adm`                 | `{ "user:startsi": "adm" }`     | Inizia con (Case Insensitive).                      |
-| `:ends`       | String       | `LIKE '%v'`      | `file:ends=.pdf`                   | `{ "file:ends": ".pdf" }`       | Finisce con.                                        |
-| `:endsi`      | String       | `ILIKE '%v'`     | `file:endsi=.PDF`                  | `{ "file:endsi": ".PDF" }`      | Finisce con (Case Insensitive).                     |
-| `:in`         | Array/String | `IN (...)`       | `id:in=1,2,3`                      | `{ "id:in": [1, 2, 3] }`        | Incluso nella lista. URL: stringa CSV. Body: Array. |
-| `:nin`        | Array/String | `NOT IN (...)`   | `role:nin=admin`                   | `{ "role:nin": ["admin"] }`     | Escluso dalla lista.                                |
-| `:between`    | String       | `BETWEEN`        | `dt:between=2024-01-01:2024-02-01` | N/A                             | Range inclusivo. Separatore `:` obbligatorio.       |
-| `:null`       | Boolean      | `IS NULL`        | `deleted:null=true`                | `{ "deleted:null": true }`      | `true` -> IS NULL. `false` -> IS NOT NULL.          |
-| `:notNull`    | Boolean      | `IS NOT NULL`    | `uuid:notNull=true`                | `{ "uuid:notNull": true }`      | Alias per leggibilità.                              |
-
-> **Nota Tecnica**: L'operatore `:raw` esiste ma è disabilitato di default o fortemente sconsigliato per prevenire SQL Injection dirette, a meno che l'input non sia sanitizzato lato server.
+```typescript
+// Service
+const { headers, records } = await orderService.findAll(req.userContext, req.data())
+```
 
 ---
 
-## 3.2 Filtri Relazionali (Deep Filtering)
+## 3.2 Reference Operatori di Filtro
 
-TypeORM permette di filtrare basandosi sulle colonne delle tabelle unite (Join). Volcanic espone questa capacità tramite la **Dot Notation**.
+Questa tabella è la "Stele di Rosetta" per il frontend developer. Ogni chiave nel payload JSON o nella Query String può avere un suffisso che determina l'operatore SQL.
 
-**Requisito Fondamentale**: La relazione deve essere caricata. Se si filtra per `client.name`, il service deve aver fatto `leftJoinAndSelect('order.client', 'client')` o passato `{ client: true }` a `executeFindQuery`.
+**Sintassi:** `campo:operatore=valore`
 
-### Esempi Pratici
+### Operatori di Uguaglianza e Logici Base
 
-1.  **Filtro semplice su relazione diretta (ManyToOne)**
+| Operatore     | Tipo    | SQL                       | Descrizione                                                      |
+| :------------ | :------ | :------------------------ | :--------------------------------------------------------------- |
+| **(nessuno)** | Any     | `=`                       | Uguaglianza implicita. `status=active` → `status = 'active'`     |
+| `:eq`         | Any     | `=`                       | Uguaglianza esplicita. `id:eq=123`                               |
+| `:neq`        | Any     | `!=`                      | Diverso da. `type:neq=guest`                                     |
+| `:null`       | Boolean | `IS NULL` / `IS NOT NULL` | `deleted:null=true` (è null) / `deleted:null=false` (non è null) |
+| `:notNull`    | Boolean | `IS NOT NULL`             | `code:notNull=true` (alias di leggibilità)                       |
 
-    - _Scenario_: Trova tutti gli Ordini del cliente "Acme Corp".
-    - _URL_: `GET /orders?client.name:eq=Acme Corp`
-    - _SQL_: `SELECT ... FROM order LEFT JOIN client ON ... WHERE client.name = 'Acme Corp'`
+### Operatori Numerici e Date
 
-2.  **Filtro profondo (Nested Relations)**
+| Operatore  | Tipo        | SQL       | Descrizione                                                                       |
+| :--------- | :---------- | :-------- | :-------------------------------------------------------------------------------- |
+| `:gt`      | Number/Date | `>`       | Greater Than. `price:gt=100`                                                      |
+| `:ge`      | Number/Date | `>=`      | Greater or Equal. `created:ge=2024-01-01`                                         |
+| `:lt`      | Number/Date | `<`       | Less Than. `qty:lt=10`                                                            |
+| `:le`      | Number/Date | `<=`      | Less or Equal. `qty:le=10`                                                        |
+| `:between` | String      | `BETWEEN` | Range inclusivo. Sintassi `min:max`. <br>Es: `date:between=2024-01-01:2024-01-31` |
 
-    - _Scenario_: Trova le Attività fatte da Professionisti che lavorano per l'azienda "TechSolutions".
-    - _Struttura_: Activity -> Professional -> Company (campo stringa su Professional).
-    - _URL_: `GET /activities?professional.company:eq=TechSolutions`
+### Operatori Stringa (Pattern Matching)
 
-3.  **Filtro su collezioni (OneToMany) - ATTENZIONE**
-    - _Scenario_: Trova Clienti che hanno almeno un Ordine "Attivo".
-    - _URL_: `GET /clients?orders.state:eq=active`
-    - _Comportamento_: Questo funziona e genererà una `DISTINCT` implicita se gestita da TypeORM, ma su grandi volumi di dati può essere lento perché moltiplica le righe prima del filtro.
-    - _Best Practice_: Per filtri "EXISTS" complessi su collezioni, preferire i Custom Filters nel Service (`qb.andWhere(subQuery)`).
+> **Nota:** Gli operatori che finiscono con `i` (es. `:likei`) sono **Case Insensitive** (usano `ILIKE` in Postgres).
+
+| Operatore                    | SQL              | Descrizione                                                                                |
+| :--------------------------- | :--------------- | :----------------------------------------------------------------------------------------- |
+| `:like` / `:likei`           | `LIKE` / `ILIKE` | Pattern manuale. Richiede caratteri jolly `%`. <br>Es: `code:like=A-%`                     |
+| `:contains` / `:containsi`   | `LIKE` / `ILIKE` | Contiene. Aggiunge `%` automaticamente ai lati. <br>Es: `name:containsi=rossi` → `%rossi%` |
+| `:ncontains` / `:ncontainsi` | `NOT LIKE`       | Non contiene. <br>Es: `tag:ncontainsi=deprecated`                                          |
+| `:starts` / `:startsi`       | `LIKE`           | Inizia con. Aggiunge `%` alla fine. <br>Es: `sku:starts=ABC` → `ABC%`                      |
+| `:ends` / `:endsi`           | `LIKE`           | Finisce con. Aggiunge `%` all'inizio. <br>Es: `file:ends=.pdf` → `%.pdf`                   |
+
+### Operatori di Lista (Array)
+
+| Operatore | SQL            | Descrizione                                                                                            |
+| :-------- | :------------- | :----------------------------------------------------------------------------------------------------- |
+| `:in`     | `IN (...)`     | Incluso nella lista. <br>URL: `status:in=open,pending` (CSV)<br>Body: `status:in: ["open", "pending"]` |
+| `:nin`    | `NOT IN (...)` | Escluso dalla lista. `role:nin=admin,root`                                                             |
 
 ---
 
-## 3.3 Advanced Boolean Logic (`_logic`)
+## 3.3 Deep Filtering (Filtri Relazionali)
 
-Di default, tutti i parametri nella query string sono combinati con l'operatore **AND**.
-Esempio: `?status=active&type=vip` -> `WHERE status = 'active' AND type = 'vip'`.
+TypeORM permette di filtrare basandosi sulle colonne delle tabelle unite (Join). Il framework espone questa capacità tramite la **Dot Notation**.
 
-Per logiche **OR** o raggruppamenti misti, si usa il parametro speciale `_logic`.
+**Requisito:** La relazione deve essere stata caricata nel Service tramite `addRelations` (o `executeFindQuery`).
+
+### Esempi
+
+1.  **Filtrare Ordini per nome Cliente:**
+
+    - Query: `GET /orders?client.name:containsi=Acme`
+    - Prerequisito nel Service: `qb.leftJoinAndSelect('order.client', 'client')` (l'alias 'client' deve coincidere con la prima parte del filtro).
+    - SQL Generato: `... AND client.name ILIKE '%Acme%'`
+
+2.  **Filtrare Attività per Azienda del Professionista:**
+
+    - Query: `GET /activities?professional.company:eq=volcanicminds`
+    - Struttura: `Activity` -> `Professional` -> `company`.
+
+3.  **Ordinamento Relazionale:**
+    - Query: `GET /orders?sort=client.name:asc` (Ordina gli ordini alfabeticamente per cliente).
+
+> **Attenzione:** Se si tenta di filtrare su una relazione non caricata (non joinata), la query SQL fallirà con un errore "missing FROM-clause entry for table".
+
+---
+
+## 3.4 Advanced Boolean Logic (`_logic`)
+
+Di default, tutti i parametri nella query string sono combinati in **AND**.
+`?status=active&type=vip` → `WHERE status='active' AND type='vip'`.
+
+Per scenari complessi (OR, gruppi annidati), si usa il parametro speciale `_logic` combinato con gli **Alias di Filtro**.
 
 ### Sintassi
 
-1.  **Definizione Filtri con Alias**: Aggiungere `[alias]` alla fine della chiave filtro. L'alias deve essere alfanumerico univoco nella richiesta.
-2.  **Costruzione Logica**: Scrivere l'espressione booleana nel parametro `_logic` usando gli alias, `AND`, `OR` e parentesi `()`.
+1.  **Definizione Filtri con Alias:** Aggiungere `[alias]` alla fine della chiave del filtro.
+    - Sintassi: `chiave:operatore[alias]=valore`
+2.  **Composizione Logica:** Definire la stringa booleana in `_logic` usando gli alias.
 
-### Caso d'Uso Complesso: Dashboard di Monitoraggio
+### Esempio Reale: Dashboard "Alerts"
 
-Immaginiamo una dashboard che deve mostrare:
+Vogliamo trovare gli Ordini che sono:
 
-- Ordini **Urgenti** (Priority > 8)
-- **OPPURE** Ordini **Scaduti** (DueDate < Oggi e Status != Closed)
+1.  **Urgenti** (priority > 8)
+2.  **OPPURE** (**In Ritardo** E **Non Chiusi**)
 
-**Costruzione della Request:**
+**Costruzione Request:**
 
-1.  Filtro Urgente: `priority:gt[urgent]=8`
-2.  Filtro Scaduto (Data): `dueDate:lt[late]=2023-12-31`
-3.  Filtro Scaduto (Stato): `status:neq[open]=closed`
-4.  Logica: `_logic=urgent OR (late AND open)`
+- Condizione Urgente: `priority:gt[urgent]=8`
+- Condizione Ritardo: `dueDate:lt[late]=2025-01-01` (data passata)
+- Condizione Non Chiuso: `status:neq[open]=closed`
 
 **URL Finale:**
 
 ```
-GET /orders?priority:gt[urgent]=8&dueDate:lt[late]=2023-12-31&status:neq[open]=closed&_logic=urgent OR (late AND open)
+GET /orders?priority:gt[urgent]=8&dueDate:lt[late]=2025-01-01&status:neq[open]=closed&_logic=urgent OR (late AND open)
 ```
 
-**SQL Generato (Concettuale):**
+**SQL Resultante:**
 
 ```sql
-WHERE
-  (order.priority > 8)
-  OR
-  (order.due_date < '2023-12-31' AND order.status != 'closed')
+WHERE (priority > 8) OR (due_date < '2025-01-01' AND status != 'closed')
 ```
 
 ---
 
-## 3.4 Paginazione e Ordinamento
+## 3.5 Paginazione e Ordinamento
 
-Volcanic impone standard rigidi per garantire che ogni endpoint di lista si comporti allo stesso modo.
+Gli standard per la paginazione sono rigidi per garantire la compatibilità con le tabelle frontend (es. React Table, AG Grid).
 
-### Input Parameters
+### Parametri di Input
 
-- **`page`** (number):
-  - Indice della pagina, base 1.
-  - `page=1` restituisce i primi N record.
-  - Se omesso, default a 1.
-- **`pageSize`** (number):
-  - Numero di record per pagina.
-  - Default framework: 25.
-  - Se `pageSize=0` o negativo (se permesso dalla config), potrebbe tentare di scaricare tutto (sconsigliato).
+- **`page`** (number, default: 1): Pagina richiesta (1-based).
+- **`pageSize`** (number, default: 25): Righe per pagina.
 - **`sort`** (string | array):
-  - Sintassi: `campo` (ascendente implicito), `campo:asc`, `campo:desc`.
-  - Esempio Multiplo: `?sort=priority:desc&sort=createdAt:asc`.
-  - Ordinamento Relazionale: `?sort=client.name:asc` (Ordina per nome cliente).
+  - `campo` (ascendente)
+  - `campo:asc`
+  - `campo:desc`
+  - Multiplo: `?sort=priority:desc&sort=createdAt:asc`
 
-### Response Headers (Output)
+### Response Headers
 
-Per mantenere il body pulito (solo array dati), i metadati sono negli header HTTP. Il frontend deve leggerli per costruire la UI di paginazione.
+Il payload JSON contiene solo l'array dei record (`data`). I metadati di paginazione sono negli **Header HTTP** per mantenere il payload pulito.
 
-- **`v-page`**: La pagina attuale (es. "1").
-- **`v-pageSize`**: Il limite applicato (es. "25").
-- **`v-count`**: Il numero di record in _questa_ pagina (es. "25" o meno se ultima pagina).
-- **`v-total`**: Il conteggio totale dei record che soddisfano i filtri (es. "1450"). Fondamentale per calcolare il numero di pagine.
-- **`v-pageCount`**: Numero totale pagine (Math.ceil(total / pageSize)).
+- `v-page`: Pagina corrente.
+- `v-pageSize`: Dimensione pagina applicata.
+- `v-count`: Numero record restituiti in questa request.
+- **`v-total`**: Numero TOTALE di record nel DB che soddisfano i filtri (senza paginazione).
+- `v-pageCount`: Numero totale di pagine.
 
-### Esempio JSON Response (Controller)
+---
 
-```json
-// GET /users?page=1&pageSize=2
-// Headers: v-total: 50, v-page: 1 ...
+## 3.6 Customizing QueryBuilder (Global Search)
 
-[
-  { "id": "uuid-1", "username": "mario" },
-  { "id": "uuid-2", "username": "luigi" }
-]
+A volte gli operatori standard non bastano. Il metodo `applyCustomFilters` nel `BaseService` permette di intercettare parametri speciali.
+
+**Esempio: Implementazione "Global Search" (`q`)**
+
+Se vogliamo un campo di ricerca unico che cerchi su Code, Name e Client Name.
+
+```typescript
+// src/services/order.service.ts
+
+protected applyCustomFilters(qb: SelectQueryBuilder<Order>, params: any, alias: string): any {
+
+  // Se c'è il parametro 'q', costruiamo una condizione OR complessa
+  if (params.q) {
+    const term = `%${params.q}%`;
+
+    qb.andWhere(new Brackets(sqb => {
+      sqb.where(`${alias}.code ILIKE :term`, { term })
+         .orWhere(`${alias}.name ILIKE :term`, { term })
+         // Nota: richiede che la relazione 'client' sia già joinata in addRelations
+         .orWhere(`client.name ILIKE :term`, { term });
+    }));
+
+    // Rimuoviamo 'q' dai params per evitare che il parser standard cerchi una colonna 'q'
+    delete params.q;
+  }
+
+  return params;
+}
 ```
-
-### Nota sulle Performance (`count`)
-
-Calcolare `v-total` richiede una query `COUNT(*)` separata. Su tabelle con milioni di righe e filtri complessi, questo può essere lento.
-
-- **Ottimizzazione**: Se il frontend non ha bisogno del totale esatto (es. infinite scroll), si può implementare una versione "light" di `executeFindQuery` che non esegue il count, o usare una stima. Nel framework standard, il count è sempre eseguito per coerenza.
 
 ---
 
 # Parte 4: API Layer (Routing & Controllers)
 
-In Volcanic Backend, l'API Layer è progettato per essere estremamente dichiarativo. Non si scrivono manualmente `server.get('/path', ...)` in un unico file gigante. Invece, si definiscono moduli funzionali dove il routing è dedotto dalla struttura dei file e dalla configurazione.
+Il layer API è il punto di ingresso dell'applicazione. La sua responsabilità è strettamente limitata a:
 
----
+1.  **Ricevere** la richiesta HTTP.
+2.  **Validare** l'input (tramite JSON Schema).
+3.  **Verificare** l'autorizzazione (tramite Middleware/Ruoli).
+4.  **Delegare** l'elaborazione al Service Layer.
+5.  **Rispondere** al client.
 
 ## 4.1 Autodiscovery delle Rotte
 
-Il sistema di caricamento (`loader/router.ts`) scansiona la cartella `src/api` all'avvio.
+Il framework utilizza un **Loader automatico** (`lib/loader/router.ts`) che scansiona la cartella `src/api` all'avvio del server. Non esiste un file centrale `app.ts` dove si registrano le rotte manualmente.
 
 ### La Regola del Matching
 
-Il loader cerca pattern del tipo: `src/api/[module_name]/routes.ts`.
-Il nome della cartella (`[module_name]`) diventa il prefisso dell'URL per tutte le rotte definite in quel file.
+Il loader cerca file che corrispondono al pattern: `src/api/**/routes.ts`.
+La struttura delle cartelle determina il prefisso dell'URL, a meno che non sia sovrascritto nella configurazione.
 
-**Esempio:**
+**Esempi di Mapping:**
 
-- File: `src/api/users/routes.ts`
-- Rotta definita: `path: '/details'`
-- URL Risultante: `/users/details`
-
-- File: `src/api/orders/v2/routes.ts` (Nidificato)
-- Rotta definita: `path: '/'`
-- URL Risultante: `/orders/v2/`
+| File Path                     | Configurazione | URL Risultante |
+| :---------------------------- | :------------- | :------------- |
+| `src/api/users/routes.ts`     | `path: '/'`    | `/users/`      |
+| `src/api/users/routes.ts`     | `path: '/:id'` | `/users/:id`   |
+| `src/api/orders/v2/routes.ts` | `path: '/'`    | `/orders/v2/`  |
 
 ---
 
 ## 4.2 Configurazione `routes.ts`
 
-Ogni modulo API deve esporre un oggetto di default conforme all'interfaccia `RouteConfig`. Questo file è la "Single Source of Truth" per il comportamento dell'endpoint, la sicurezza e la documentazione.
+Ogni modulo funzionale (es. `orders`, `auth`) deve avere un file `routes.ts`. Questo file è la "Single Source of Truth" per il comportamento degli endpoint e per la generazione della documentazione Swagger/OpenAPI.
 
 ### Struttura del File
 
+Ecco un esempio completo e commentato basato su `src/api/orders/routes.ts`:
+
 ```typescript
-import { roles } from '../../config/roles.js' // Import dei ruoli
+import { roles } from '../../config/roles.js' // Import dei ruoli definiti
 
 export default {
-  // Configurazione Globale del Modulo (applicata a tutte le rotte se non sovrascritta)
+  // 1. Configurazione Globale del Modulo
   config: {
-    title: 'Orders API', // Swagger Tag Group
-    description: 'Gestione degli ordini',
-    controller: 'controller', // Cartella dove cercare i file controller (default: 'controller')
+    title: 'Orders API', // Nome del gruppo in Swagger
+    description: 'Gestione degli ordini e delle commesse',
+    controller: 'controller', // Sottocartella dove cercare i file handler (default: 'controller')
     tags: ['orders'], // Tag per raggruppamento Swagger
-    enable: true // Master switch per disabilitare intero modulo
+    enable: true // Switch per abilitare/disabilitare l'intero modulo
   },
 
-  // Array delle Rotte
+  // 2. Definizione delle Rotte
   routes: [
     {
-      method: 'GET', // HTTP Verb: GET, POST, PUT, DELETE, PATCH
-      path: '/:id', // Path relativo (diventa /orders/:id)
+      method: 'GET', // Verbi: GET, POST, PUT, DELETE, PATCH
+      path: '/:id', // Path relativo al modulo (diventa /orders/:id)
 
-      // Security Layer
-      roles: [roles.admin, roles.manager], // RBAC: Solo Admin o Manager
-      middlewares: ['global.isAuthenticated'], // Hooks pre-handler (es. check JWT)
+      // --- Security Layer ---
+      // RBAC: Solo Admin e Manager possono chiamare questa rotta.
+      // Se l'array è vuoto [], la rotta è pubblica (se non bloccata da middleware).
+      roles: [roles.admin, roles.manager],
 
-      // Mapping Handler
-      // Sintassi: 'filename.functionName'
-      // Cerca in src/api/orders/controller/order.ts la funzione findOne
+      // Middleware Chain: Eseguiti in ordine prima dell'handler.
+      middlewares: ['global.isAuthenticated'],
+
+      // --- Handler Mapping ---
+      // Sintassi Magica: 'filename.functionName'
+      // Il framework cercherà il file 'order.ts' nella cartella 'controller'
+      // ed eseguirà la funzione esportata 'findOne'.
       handler: 'order.findOne',
 
-      // Configurazione Specifica e Swagger Doc
+      // --- Swagger & Validation ---
       config: {
-        title: 'Get Order Detail', // Swagger Summary
-        description: 'Recupera un ordine per ID',
+        title: 'Find Order',
+        description: 'Recupera il dettaglio di un ordine',
 
-        // JSON Schema References (Validazione Fastify + Swagger)
-        // I nomi con # si riferiscono a schemi caricati globalmente
-        params: { $ref: 'globalParamsSchema#' },
+        // JSON Schema References (Validazione Automatica Fastify)
+        // I nomi con # si riferiscono a schemi caricati globalmente in src/schemas
+        params: { $ref: 'globalParamsSchema#' }, // Valida che :id sia presente
         response: {
           200: {
             description: 'Success',
-            $ref: 'orderSchema#'
+            $ref: 'orderSchema#' // Serializza la risposta usando questo schema
           },
-          404: { description: 'Not Found' }
+          404: { description: 'Order not found' }
+        }
+      }
+    },
+
+    // Esempio Rotta di Creazione
+    {
+      method: 'POST',
+      path: '/',
+      roles: [roles.admin],
+      handler: 'order.create',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Create Order',
+        // Validazione del Body
+        body: { $ref: 'orderBodySchema#' },
+        response: {
+          200: { $ref: 'orderSchema#' }
         }
       }
     }
-    // ... altre rotte
   ]
 }
 ```
-
-### Parametri Chiave
-
-- **`handler`**: La stringa magica `'file.metodo'`. Il framework cercherà il file `.ts` (o `.js`) nella cartella `controller` del modulo corrente.
-- **`roles`**: Array di ruoli ammessi. Se l'utente non ha uno di questi ruoli, riceve `403 Forbidden` automatico. Se l'array è vuoto `[]`, la rotta è pubblica (a meno che non ci siano middleware che forzano auth).
-- **`middlewares`**: Stringhe che puntano a funzioni in `src/middleware` o `lib/middleware`.
-  - `global.isAuthenticated`: Verifica la presenza e validità del JWT.
-  - `global.isAdmin`: Shortcut per verificare ruolo admin.
-- **`rateLimit`**: (Opzionale) Sovrascrive i limiti globali per questa rotta specifica.
-  ```typescript
-  rateLimit: {
-    max: 5,
-    timeWindow: '1 minute'
-  }
-  ```
 
 ---
 
 ## 4.3 Controllers: Best Practices
 
-I controller in Volcanic sono adattatori. Non devono contenere logica di business.
+I controller in questo stack devono essere **Thin** (sottili). Non devono contenere query SQL, logica di business o chiamate a servizi esterni.
 
 ### La Firma Standard
 
-Ogni handler deve essere una funzione asincrona che accetta `FastifyRequest` e `FastifyReply`.
+Ogni handler è una funzione asincrona:
 
 ```typescript
 import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
-import { orderService } from '../../../services/order.service.js'
 
-export async function findOne(req: FastifyRequest, reply: FastifyReply) {
-  // ... implementation
+export async function myHandler(req: FastifyRequest, reply: FastifyReply) {
+  // ...
 }
 ```
 
 ### 1. Normalizzazione Input (`req.data()`)
 
-Non accedere mai direttamente a `req.body` o `req.query` se non per casi specifici (es. upload file raw).
-Usa `req.data()` che unifica entrambi, dando priorità al body se presente.
+Fastify separa `req.body` (POST/PUT) da `req.query` (GET).
+Il framework fornisce l'helper `req.data()` che unifica entrambi in un unico oggetto, permettendo di scrivere codice agnostico rispetto al metodo HTTP.
 
 ```typescript
-const data = req.data() // { id: '...', status: 'active', ... }
+// Invece di: const data = req.body || req.query
+const data = req.data()
 ```
 
 ### 2. Parametri di Percorso (`req.parameters()`)
 
-Per accedere ai parametri definiti nell'URL (es. `/:id`), usa l'helper:
+Per accedere ai parametri URL (es. `/orders/:id`), usare l'helper:
 
 ```typescript
+// Invece di: req.params
 const { id } = req.parameters()
 ```
 
-### 3. Normalizzazione Relazioni (Il Pattern "Id-to-Object")
+### 3. Accesso al Contesto (`req.userContext`)
 
-Quando si crea o aggiorna un'entità che ha relazioni (es. `Order` ha un `Client`), il frontend spesso invia solo l'ID stringa (`clientId: "uuid"`). TypeORM però si aspetta un oggetto parziale `{ id: "uuid" }` per fare il link correttamente senza query aggiuntive.
-
-**Best Practice nel Controller (Create/Update):**
+Grazie all'hook globale `preHandler`, ogni richiesta autenticata possiede un contesto utente tipizzato. Questo oggetto è fondamentale per la **Row Level Security** nei Service.
 
 ```typescript
-export async function create(req: FastifyRequest, reply: FastifyReply) {
-  // 1. Estrai dati
-  const { id: _ignore, ...payload } = req.data()
+// Definito in types/index.d.ts
+const ctx = req.userContext
+// { userId: '...', role: 'manager', company: 'volcanicminds', ... }
+```
 
-  // 2. Normalizza Relazioni (String -> Object)
-  // Questo permette a TypeORM di salvare la FK 'client_id' direttamente
-  if (payload.client && typeof payload.client === 'string') {
-    payload.client = { id: payload.client }
+### 4. Normalizzazione Relazioni (Pattern Id-to-Object)
+
+Quando si crea o aggiorna un'entità con relazioni (es. assegnare un `Order` a un `Client`), il frontend invia l'ID come stringa. TypeORM preferisce un oggetto parziale per gestire la Foreign Key senza query extra.
+
+**Best Practice nel Controller:**
+
+```typescript
+// Esempio da src/api/orders/controller/order.ts
+export async function update(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.parameters()
+  const data = req.data()
+
+  // Trasformazione: "client": "uuid-123" -> "client": { id: "uuid-123" }
+  if (data.client && typeof data.client === 'string') {
+    data.client = { id: data.client }
   }
 
-  if (payload.category && typeof payload.category === 'string') {
-    payload.category = { code: payload.category }
+  if (data.type && typeof data.type === 'string') {
+    data.type = { code: data.type } // Se la PK è un codice
   }
 
-  // 3. Passa al Service (Context + Payload pulito)
-  const result = await orderService.create(req.userContext, payload)
-
-  // 4. Risposta
-  return result
+  // Passaggio al Service
+  return await orderService.update(req.userContext, id, data)
 }
 ```
 
-### 4. Gestione Errori e Status Code
+---
 
-Non usare `try-catch` per ogni cosa. Lascia che gli errori "bubblino" su. Il framework ha un error handler globale che cattura le eccezioni e formatta la risposta JSON.
+## 4.4 Pattern di Implementazione: Dal Controller al Service
 
-- Per errori di validazione input -> `reply.status(400).send(...)`
-- Per record non trovati -> `reply.status(404).send()`
-- Per permessi negati logici -> `reply.status(403).send(...)`
+Ecco un esempio completo di come implementare un endpoint complesso (es. `create`) rispettando l'architettura.
+
+### Il Controller (`src/api/orders/controller/order.ts`)
 
 ```typescript
-export async function update(req: FastifyRequest, reply: FastifyReply) {
-  const { id } = req.parameters()
-  if (!id) return reply.status(400).send('Missing ID')
+import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
+import { orderService } from '../../../services/order.service.js'
+
+export async function create(req: FastifyRequest, reply: FastifyReply) {
+  // 1. Estrazione Dati
+  const { id: _ignore, ...payload } = req.data()
+
+  // 2. Validazione Logica Rapida (opzionale se c'è JSON Schema)
+  if (!payload.code) {
+    return reply.status(400).send(new Error('Missing order code'))
+  }
+
+  // 3. Normalizzazione
+  if (payload.client && typeof payload.client === 'string') payload.client = { id: payload.client }
+  if (payload.category && typeof payload.category === 'string') payload.category = { code: payload.category }
 
   try {
-    const updated = await orderService.update(req.userContext, id, req.data())
-    return updated
+    // 4. Delega al Service (Business Logic & Security)
+    const result = await orderService.create(req.userContext, payload)
+
+    // 5. Risposta
+    // Se result è nullo o ci sono errori, il service avrà lanciato un'eccezione
+    return reply.code(201).send(result)
   } catch (err) {
-    // Gestione specifica se necessario, altrimenti throw
-    if (err.message === 'Access denied') {
-      return reply.status(403).send(err.message)
+    // Gestione Errori Custom
+    if (err.message.includes('Access denied')) {
+      return reply.status(403).send({ message: err.message })
     }
+    // Rilancia per l'handler globale (500)
     throw err
   }
 }
 ```
 
-### 5. Accesso al Contesto Utente
+### Il Service (`src/services/order.service.ts`)
 
-Il middleware di auth popola `req.userContext`. Questo è l'oggetto fondamentale da passare al Service.
+Il service estende `BaseService` per ereditare il CRUD standard, ma può sovrascrivere metodi o aggiungerne di nuovi.
 
 ```typescript
-// types/index.d.ts definisce questa struttura
-interface UserContext {
-  userId: string
-  role: 'admin' | 'manager' | 'user'
-  company?: string
-  professionalId?: string
-}
+// (Vedi Parte 5 per i dettagli completi sul Service Layer)
+export class OrderService extends BaseService<Order> {
+  // ...
+  async create(ctx: UserContext, data: any) {
+    // Security Check: Un Manager può creare ordini solo per la sua azienda
+    if (ctx.role === 'manager') {
+      data.company = ctx.company
+    }
 
-// Controller
-const ctx = req.userContext
-await service.doSomething(ctx, data)
+    // Validazione Business: Unicità Codice
+    const exists = await this.repository.findOne({ where: { code: data.code } })
+    if (exists) throw new Error('Order code already exists')
+
+    // Persistenza
+    const order = entity.Order.create(data)
+    return await entity.Order.save(order)
+  }
+}
 ```
+
+---
+
+## 4.5 Middleware: Globali vs Locali
+
+I middleware sono funzioni eseguite _prima_ dell'handler. In `@volcanicminds/backend`, la configurazione dei middleware avviene tramite stringhe nel file `routes.ts`.
+
+### 1. Middleware Globali (`global.*`)
+
+Se la stringa inizia con `global.`, il framework cerca il file in due posizioni:
+
+1.  `src/middleware/` (Middleware custom dell'applicazione).
+2.  `lib/middleware/` (Middleware nativi del framework, es. `isAuthenticated`).
+
+**Middleware Nativi Comuni:**
+
+- `global.isAuthenticated`: Verifica JWT, scadenza, e inietta `req.user`.
+- `global.isAdmin`: Verifica se l'utente ha ruolo admin (shortcut).
+
+### 2. Middleware Locali
+
+Se la stringa non ha prefissi, il framework cerca nella cartella `middleware` _relativa_ al file `routes.ts`. Utile per logiche specifiche di un modulo.
+
+**Esempio Configurazione Mista:**
+
+```typescript
+// src/api/special/routes.ts
+routes: [
+  {
+    path: '/action',
+    handler: 'special.action',
+    middlewares: [
+      'global.isAuthenticated', // Globale: check token
+      'checkBusinessHours' // Locale: src/api/special/middleware/checkBusinessHours.ts
+    ]
+  }
+]
+```
+
+---
+
+## 4.6 JSON Schemas & Validazione
+
+Fastify usa JSON Schema per validare input e serializzare output. Questo offre prestazioni elevatissime e documentazione automatica.
+
+### Definizione (`src/schemas/*.ts`)
+
+Ogni schema deve avere un `$id` univoco.
+
+```typescript
+// src/schemas/order.ts
+export const orderBodySchema = {
+  $id: 'orderBodySchema',
+  type: 'object',
+  required: ['code', 'name'],
+  properties: {
+    code: { type: 'string', minLength: 3 },
+    name: { type: 'string' },
+    year: { type: 'number' }
+  },
+  additionalProperties: false // Best Practice: Rifiuta campi sconosciuti
+}
+```
+
+### Registrazione
+
+Il framework carica automaticamente tutti i file in `src/schemas`.
+In `routes.ts`, si fa riferimento allo schema usando `$ref: 'ID_SCHEMA#'`.
+
+**Nota su `#`**: Il carattere `#` alla fine del `$ref` è obbligatorio nella sintassi Fastify per indicare la root dello schema referenziato.
+
+### Schema Overriding
+
+Se si definisce uno schema con lo stesso `$id` di uno schema nativo del framework (es. `authLoginResponseSchema`), il loader effettuerà un **Deep Merge**. Questo permette di aggiungere campi custom (es. `companyId` nel login) senza forkare la libreria.
 
 ---
 
 # Parte 5: Service Layer Architecture
 
-In Volcanic, il Service Layer non è solo una collezione di funzioni. È un layer strutturato che **deve** implementare la sicurezza a livello di riga (Row Level Security - RLS) e astrarre la complessità del database.
+Il Service Layer è dove risiede la "verità" dell'applicazione. Mentre i Controller si occupano di HTTP, i Service si occupano dei dati.
+
+In questo stack, i Service devono rispettare tre regole fondamentali:
+
+1.  **Agnostici**: Non conoscono `req` o `res`. Accettano `UserContext` e DTO/Oggetti.
+2.  **Sicuri**: Devono filtrare i dati in base all'utente _prima_ di restituirli (Row Level Security).
+3.  **Singleton**: Vengono istanziati una volta e esportati per l'uso in tutta l'app.
+
+---
 
 ## 5.1 Il Pattern `BaseService`
 
-Per evitare di riscrivere infinite volte `repository.find()`, creiamo una classe astratta `BaseService`. Questa classe funge da wrapper intelligente intorno al Repository TypeORM, iniettando automaticamente la logica di permissioning e le "Magic Queries".
+Per evitare di riscrivere infinite volte la logica di ricerca, paginazione e filtro, tutti i service CRUD estendono una classe astratta `BaseService`. Questa classe funge da wrapper intelligente intorno al `Repository` di TypeORM.
 
-### Implementazione della Classe Astratta
+### Implementazione della Classe Astratta (`src/services/base.service.ts`)
 
-Creare il file `src/services/base.service.ts`.
+Ecco la struttura di riferimento implementata in `volcanic-sample-backend`. Nota come integra le "Magic Queries" viste nella Parte 3.
 
 ```typescript
 import { ObjectLiteral, Repository, SelectQueryBuilder, Brackets } from 'typeorm'
@@ -1168,14 +1294,14 @@ export abstract class BaseService<T extends ObjectLiteral> {
 
   /**
    * SECURITY HOOK (Abstract)
-   * Ogni servizio concreto DEVE implementare questo metodo.
-   * Qui si definiscono le regole "Chi può vedere cosa".
+   * Metodo obbligatorio. Definisce le regole "Chi può vedere cosa".
+   * Viene applicato automaticamente a findAll, findOne, count.
    */
   protected abstract applyPermissions(qb: SelectQueryBuilder<T>, ctx: UserContext, alias: string): SelectQueryBuilder<T>
 
   /**
    * RELATIONS HOOK
-   * Definisce quali join fare di default.
+   * Definisce quali relazioni caricare di default (Eager Loading controllato).
    */
   protected addRelations(qb: SelectQueryBuilder<T>, _alias: string): SelectQueryBuilder<T> {
     return qb
@@ -1183,8 +1309,7 @@ export abstract class BaseService<T extends ObjectLiteral> {
 
   /**
    * CUSTOM FILTERS HOOK
-   * Permette di intercettare parametri custom che non sono campi DB
-   * (es. full-text search complessa).
+   * Permette di gestire parametri che non sono colonne DB (es. 'q' search).
    */
   protected applyCustomFilters(qb: SelectQueryBuilder<T>, queryParams: any, _alias: string): any {
     return queryParams
@@ -1194,49 +1319,44 @@ export abstract class BaseService<T extends ObjectLiteral> {
     return this.repository.createQueryBuilder(alias)
   }
 
-  // --- STANDARD CRUD METHODS ---
+  // --- Metodi CRUD Standard ---
 
-  /**
-   * Trova molti record con filtri, paginazione, sort e permessi.
-   */
   async findAll(ctx: UserContext, queryParams: any = {}): Promise<{ headers: any; records: T[] }> {
     const alias = this.repository.metadata.tableName
     let qb = this.createQueryBuilder(alias)
 
-    // 1. Applica Relazioni (Join)
+    // 1. Setup Query Base
     qb = this.addRelations(qb, alias)
-
-    // 2. Applica Sicurezza (RLS)
     qb = this.applyPermissions(qb, ctx, alias)
 
-    // 3. Applica Filtri Custom e Standard
+    // 2. Custom Filters (es. Global Search)
     const paramsToProcess = this.applyCustomFilters(qb, { ...queryParams }, alias)
 
-    // (Qui viene invocata la logica interna per il parsing degli operatori :eq, :gt ecc.
-    //  che abbiamo visto nella Parte 3, integrata nel BaseService)
+    // 3. Magic Filters (Standard Volcanic: :eq, :gt, :like...)
+    // Nota: applyStandardFilters è un helper interno che mappa params -> where
     this.applyStandardFilters(qb, paramsToProcess, alias)
 
-    // 4. Caching (se abilitato per l'entità)
-    if (this.cacheTTL > 0) {
-      qb.cache(this.cacheTTL)
-    }
+    // 4. Caching
+    if (this.cacheTTL > 0) qb.cache(this.cacheTTL)
 
     // 5. Paginazione & Sort
     if (paramsToProcess.page && paramsToProcess.pageSize) {
-      const page = parseInt(paramsToProcess.page) || 1
+      const page = Math.max(1, parseInt(paramsToProcess.page))
       const pageSize = parseInt(paramsToProcess.pageSize) || 25
       qb.skip((page - 1) * pageSize).take(pageSize)
     }
-    // ... logica sort ...
+
+    // ... gestione sort ...
 
     const [records, total] = await qb.getManyAndCount()
 
-    // 6. Costruzione Headers
+    // 6. Headers Paginazione
     const headers = {
       'v-count': records.length,
       'v-total': total,
-      'v-page': paramsToProcess.page || 1
-      // ...
+      'v-page': paramsToProcess.page || 1,
+      'v-pageSize': paramsToProcess.pageSize || records.length || 1,
+      'v-pageCount': Math.ceil(total / (parseInt(paramsToProcess.pageSize) || 25))
     }
 
     return { headers, records }
@@ -1248,19 +1368,18 @@ export abstract class BaseService<T extends ObjectLiteral> {
 
     qb = this.addRelations(qb, alias)
 
-    // CRUCIALE: Anche la findOne applica i permessi!
-    // Se un utente chiede un ID che esiste ma non è suo, riceverà NULL (404/403 logico).
+    // CRUCIALE: I permessi si applicano anche alla findOne!
+    // Se l'ID esiste ma l'utente non ha diritti, ritorna null (simula 404).
     qb = this.applyPermissions(qb, ctx, alias)
 
     qb.andWhere(`${alias}.id = :id`, { id })
 
+    if (this.cacheTTL > 0) qb.cache(this.cacheTTL)
+
     return qb.getOne()
   }
 
-  // Metodo helper interno per parsing operatori (semplificato per brevità)
-  private applyStandardFilters(qb: SelectQueryBuilder<T>, params: any, alias: string) {
-    // ... logica switch operatori (:eq, :like, etc) ...
-  }
+  // ... metodi interni privati (applyStandardFilters) ...
 }
 ```
 
@@ -1268,17 +1387,24 @@ export abstract class BaseService<T extends ObjectLiteral> {
 
 ## 5.2 Security Context & RLS (Row Level Security)
 
-L'implementazione di `applyPermissions` è il punto più critico per la sicurezza dei dati.
+L'implementazione di `applyPermissions` è il pilastro della sicurezza. Invece di scrivere `if (user.role === 'admin')` in ogni controller, definiamo le regole di visibilità una volta sola per entità.
 
-### Esempio Reale: `OrderService`
+Il `UserContext` (definito in `types/index.d.ts`) contiene:
 
-Immaginiamo un sistema multi-tenant dove:
+- `role`: Ruolo applicativo (`admin`, `manager`, `user`).
+- `company`: Tenant di appartenenza (es. `volcanicminds`).
+- `professionalId`: ID del profilo professionale collegato.
 
-- **Admin**: Vede tutto.
-- **Manager**: Vede solo gli ordini della sua azienda (`company`).
-- **User**: Vede solo gli ordini dove ha lavorato (tramite `Activity`).
+### Esempio Complesso: `OrderService`
+
+Regole di Business:
+
+1.  **Admin**: Vede tutto.
+2.  **Manager**: Vede solo gli ordini della sua azienda.
+3.  **User**: Vede solo gli ordini su cui ha lavorato (verifica esistenza di un'attività nel work order).
 
 ```typescript
+// src/services/order.service.ts
 import { SelectQueryBuilder } from 'typeorm'
 import { BaseService } from './base.service.js'
 import { Order } from '../entities/order.e.js'
@@ -1286,30 +1412,24 @@ import { UserContext } from '../../types/index.js'
 
 export class OrderService extends BaseService<Order> {
   constructor() {
-    // repository.orders è iniettato globalmente all'avvio
+    // repository.orders è globale, iniettato dal loader
     super(repository.orders)
   }
 
-  // Definisce le JOIN standard per evitare N+1 quando si serializza
-  protected addRelations(qb: SelectQueryBuilder<Order>, alias: string): SelectQueryBuilder<Order> {
-    return qb.leftJoinAndSelect(`${alias}.client`, 'client').leftJoinAndSelect(`${alias}.items`, 'items')
-  }
-
-  // IMPLEMENTAZIONE SICUREZZA
   protected applyPermissions(
     qb: SelectQueryBuilder<Order>,
     ctx: UserContext,
     alias: string
   ): SelectQueryBuilder<Order> {
-    // 1. ADMIN: Accesso Totale
+    // 1. ADMIN: Bypass completo
     if (ctx.role === 'admin') {
       return qb
     }
 
-    // 2. MANAGER: Filtro per Company
+    // 2. MANAGER: Tenant Isolation
     if (ctx.role === 'manager') {
       if (!ctx.company) {
-        // Fail-safe: se manager non ha company, non vede nulla
+        // Fail-safe: Manager senza company non vede nulla
         qb.andWhere('1=0')
         return qb
       }
@@ -1317,36 +1437,36 @@ export class OrderService extends BaseService<Order> {
       return qb
     }
 
-    // 3. USER: Filtro per Assegnazione (Complex Join)
+    // 3. USER: Association Check (Query complessa)
     if (ctx.role === 'user') {
-      if (!ctx.professionalId) {
+      if (!ctx.professionalId || !ctx.company) {
         qb.andWhere('1=0')
         return qb
       }
 
-      // Deve appartenere alla company
+      // Check 1: Tenant
       qb.andWhere(`${alias}.company = :company`, { company: ctx.company })
 
-      // E l'utente deve averci lavorato (EXISTS subquery è molto più veloce di una JOIN filtrante)
+      // Check 2: Assegnazione (EXISTS subquery è più performante di JOIN per il filtro)
       qb.andWhere(
-        (subQb) => {
-          const subQuery = subQb
+        (subQuery) => {
+          const sub = subQuery
             .subQuery()
             .select('1')
             .from('work_order', 'wo')
             .innerJoin('activity', 'a', 'a.workOrderId = wo.id')
-            .where(`wo.orderId = ${alias}.id`) // Correlazione con query esterna
-            .andWhere('a.professionalId = :profId')
+            .where(`wo.orderId = ${alias}.id`) // Correlazione con outer query
+            .andWhere('a.professionalId = :pid')
             .getQuery()
-          return `EXISTS ${subQuery}`
+          return `EXISTS ${sub}`
         },
-        { profId: ctx.professionalId }
+        { pid: ctx.professionalId }
       )
 
       return qb
     }
 
-    // Default Deny: Se il ruolo non è riconosciuto, blocca tutto.
+    // Default Deny: Ruolo sconosciuto o public
     qb.andWhere('1=0')
     return qb
   }
@@ -1357,75 +1477,146 @@ export const orderService = new OrderService()
 
 ---
 
-## 5.3 QueryBuilder Avanzato: Sub-queries e Campi Calcolati
+## 5.3 QueryBuilder Avanzato: Relazioni e Campi Calcolati
 
-Spesso le entità hanno bisogno di campi "virtuali" calcolati al volo, come somme o conteggi, che non sono colonne fisiche.
+Il metodo `addRelations` serve a evitare il problema N+1 durante la serializzazione e a preparare il terreno per i filtri profondi.
 
-### Esempio: Calcolare `doneHours` in `Activity`
+### Esempio: `ActivityService` con Campi Calcolati
 
-Un'attività ha molte righe di timesheet. Vogliamo caricare l'attività e, in un solo colpo, sapere la somma delle ore lavorate.
+Un'attività deve riportare quante ore sono state lavorate (`doneHours`), che è la somma dei record nella tabella `Timesheet`.
 
 ```typescript
-// services/activity.service.ts
+// src/services/activity.service.ts
 
 export class ActivityService extends BaseService<Activity> {
   protected addRelations(qb: SelectQueryBuilder<Activity>, alias: string): SelectQueryBuilder<Activity> {
-    // Aggiungiamo una SELECT virtuale
+    // 1. Join Standard
+    qb.leftJoinAndSelect(`${alias}.professional`, 'professional')
+      .leftJoinAndSelect(`${alias}.workOrder`, 'workOrder')
+      .leftJoinAndSelect('workOrder.order', 'order') // Join annidata
+
+    // 2. Campo Calcolato (Virtual Column)
+    // Questo aggiunge una colonna 'doneHours' al result set grezzo.
+    // TypeORM la mapperà sulla proprietà 'doneHours' dell'entità se configurata correttamente
+    // o dovremo farlo manualmente in un hook @AfterLoad o trasformazione.
     qb.addSelect((subQuery) => {
       return subQuery
-        .select('COALESCE(SUM(t.logTime), 0)', 'doneHours') // Somma o 0
+        .select('COALESCE(SUM(t.logTime), 0)', 'doneHours')
         .from('timesheet', 't')
-        .where(`t.activityId = ${alias}.id`) // Correlazione
-    }, 'Activity_doneHours')
-    // Nota: 'Activity_doneHours' è la convenzione TypeORM interna.
-    // TypeORM mapperà questo valore sulla proprietà 'doneHours' dell'entità
-    // SE l'entità ha un campo @Column({ select: false }) o una proprietà virtuale.
+        .where(`t.activityId = ${alias}.id`)
+    }, 'Activity_doneHours') // Naming convention TypeORM: EntityName_PropName
 
     return qb
-      .leftJoinAndSelect(`${alias}.professional`, 'professional')
-      .leftJoinAndSelect(`${alias}.workOrder`, 'workOrder')
   }
-
-  // ... applyPermissions ...
 }
 ```
 
-### Gestione Filtri Custom
+### Gestione Filtri Custom (`applyCustomFilters`)
 
-A volte il frontend invia un parametro che non mappa 1:1 su una colonna, ma richiede logica.
+Se vogliamo implementare una **Global Search** che cerca su più campi contemporaneamente:
 
 ```typescript
 protected applyCustomFilters(qb: SelectQueryBuilder<Order>, queryParams: any, alias: string): any {
+  if (queryParams.q) {
+    const term = `%${queryParams.q}%`
 
-    // Parametro speciale "isOverdue"
-    if (queryParams.isOverdue === 'true') {
-        qb.andWhere(`${alias}.dueDate < NOW()`)
-        qb.andWhere(`${alias}.status != 'CLOSED'`)
+    qb.andWhere(new Brackets(sqb => {
+      sqb.where(`${alias}.code ILIKE :term`, { term })
+         .orWhere(`${alias}.name ILIKE :term`, { term })
+         // Filtro su relazione joinata in addRelations
+         .orWhere(`client.name ILIKE :term`, { term })
+    }))
 
-        // Rimuoviamo il parametro per non farlo processare dal parser standard
-        delete queryParams.isOverdue
-    }
-
-    // Ricerca full-text su più campi (Global Search)
-    if (queryParams.q) {
-        qb.andWhere(new Brackets(sqb => {
-            sqb.where(`${alias}.code ILIKE :q`, { q: `%${queryParams.q}%` })
-               .orWhere(`${alias}.note ILIKE :q`, { q: `%${queryParams.q}%` })
-               // Se la relazione 'client' è joinata:
-               .orWhere(`client.name ILIKE :q`, { q: `%${queryParams.q}%` })
-        }))
-        delete queryParams.q
-    }
-
-    return queryParams
+    // Rimuoviamo 'q' dai params per non confondere il parser standard
+    delete queryParams.q
+  }
+  return queryParams
 }
 ```
 
 ---
 
-## 5.4 Caching (Opzionale ma Potente)
+## 5.4 Gestione delle Transazioni (Complex Writes)
 
-Per dati "lenti a cambiare" (es. Tabelle di configurazione, Tipi Ordine, Stati), il `BaseService` supporta il caching integrato.
+Il `BaseService` copre bene le letture e le scritture semplici (una sola tabella). Quando un'operazione coinvolge più entità (es. creare un Ordine + WorkOrders + Activities), dobbiamo gestire la transazione manualmente per garantire l'integrità dei dati (ACID).
+
+**Pattern: `QueryRunner` manuale**
+
+Esempio tratto da `src/services/fullOrder.service.ts`.
+
+```typescript
+import { connection } from '@volcanicminds/typeorm' // o global.connection
+
+async createFull(ctx: UserContext, data: any) {
+  const { workOrders, activities, ...orderData } = data
+
+  // 1. Inizializza Transazione
+  const queryRunner = connection.createQueryRunner()
+  await queryRunner.connect()
+  await queryRunner.startTransaction()
+
+  try {
+    // 2. Operazioni atomiche usando il manager della transazione
+    // IMPORTANTE: usare queryRunner.manager, NON global.repository o entity.save()
+
+    // Step A: Salva Ordine
+    const order = entity.Order.create(orderData)
+    const savedOrder = await queryRunner.manager.save(order)
+
+    // Step B: Salva WorkOrders
+    for (const wo of workOrders) {
+      wo.order = savedOrder.id
+      const workOrder = entity.WorkOrder.create(wo)
+      await queryRunner.manager.save(workOrder)
+    }
+
+    // 3. Commit se tutto ok
+    await queryRunner.commitTransaction()
+    return savedOrder
+
+  } catch (err) {
+    // 4. Rollback in caso di errore
+    await queryRunner.rollbackTransaction()
+    throw err
+  } finally {
+    // 5. Rilascio connessione al pool
+    await queryRunner.release()
+  }
+}
+```
+
+---
+
+## 5.5 Globals vs Dependency Injection
+
+Come notato nella Parte 1, il framework inietta repository ed entità nel `global scope`.
+
+### Accesso ai Dati
+
+- **`repository.[nomePlurale]`**: Istanza del Repository.
+  - Uso: `repository.orders.find(...)`
+  - Corrisponde a: `DataSource.getRepository(Order)`
+- **`entity.[NomeClasse]`**: Classe Entità.
+  - Uso: `entity.Order.create(...)`
+  - Corrisponde a: `import { Order } from ...`
+
+### Pattern Singleton
+
+I Service stessi sono esportati come **Singleton**. Non si usa `new OrderService()` nei controller, ma si importa l'istanza.
+
+```typescript
+// In service.ts
+export const orderService = new OrderService()
+
+// In controller.ts
+import { orderService } from '../../services/order.service.js'
+```
+
+---
+
+## 5.6 Caching
+
+Per entità "lente a cambiare" (es. `OrderType`, `OrderCategory`), possiamo abilitare la cache delle query per ridurre il carico sul DB.
 
 ```typescript
 import { STATIC_CACHE_TTL } from '../config/constants.js'
@@ -1433,7 +1624,8 @@ import { STATIC_CACHE_TTL } from '../config/constants.js'
 export class OrderTypeService extends BaseService<OrderType> {
   constructor() {
     super(repository.ordertypes)
-    this.cacheTTL = STATIC_CACHE_TTL // es. 15 minuti (in ms)
+    // Abilita cache automatica per findAll e findOne
+    this.cacheTTL = STATIC_CACHE_TTL // es. 15 minuti in ms
   }
 
   // ...
@@ -1442,369 +1634,412 @@ export class OrderTypeService extends BaseService<OrderType> {
 
 Quando `cacheTTL > 0`, TypeORM:
 
-1.  Genera un hash della query SQL + parametri.
-2.  Cerca nella tabella `query_result_cache`.
-3.  Se trova un risultato valido (non scaduto), lo restituisce senza toccare le tabelle reali.
-4.  Altrimenti esegue e salva.
+1.  Genera un hash della query SQL.
+2.  Controlla se esiste nella tabella `query_result_cache` ed è valido.
+3.  Se sì, restituisce il JSON salvato.
+4.  Se no, esegue la query e salva il risultato.
 
-**Attenzione**: L'invalidazione della cache in TypeORM standard è basata sul tempo o manuale. Se i dati cambiano spesso, non usare la cache query.
+**Attenzione**: L'invalidazione in TypeORM è manuale o a tempo. Usare solo per dati di configurazione o storici.
 
 ---
 
 # Parte 6: Autenticazione e Sicurezza
 
-Il framework utilizza un approccio **JWT (JSON Web Token) Stateless**. Questo significa che il server non mantiene sessioni in memoria, rendendo l'architettura scalabile orizzontalmente. Tuttavia, per garantire la sicurezza (revoca dei token, MFA), vengono impiegati meccanismi ibridi come il "Refresh Token" e il controllo di validità sul database (`blocked`, `version`).
+Il framework non delega l'autenticazione a provider esterni (come Auth0 o Cognito) di default, ma fornisce un'implementazione "in-house" robusta e integrata nel ciclo di vita delle richieste.
 
-## 6.1 Stack di Autenticazione (JWT Lifecycle)
+I pilastri della sicurezza sono:
 
-L'autenticazione è gestita dal plugin `@fastify/jwt` integrato nel core di `@volcanicminds/backend`.
-
-### Configurazione Env
-
-Nel file `.env`, le seguenti variabili sono obbligatorie:
-
-```properties
-# Secret per firmare i token di accesso (breve durata, es. 15min - 1h)
-JWT_SECRET=super_long_random_string_at_least_64_bytes
-JWT_EXPIRES_IN=1h
-
-# Refresh Token (lunga durata, es. 30gg - 180gg)
-JWT_REFRESH=true
-# Se non specificato, usa JWT_SECRET, ma è MEGLIO averne uno dedicato
-JWT_REFRESH_SECRET=another_super_long_random_string
-JWT_REFRESH_EXPIRES_IN=30d
-```
-
-### Ciclo di Vita
-
-1.  **Login (`POST /auth/login`)**:
-
-    - L'utente invia `email` e `password`.
-    - Il server valida le credenziali tramite `bcrypt`.
-    - Verifica che l'utente non sia `blocked` o `!confirmed`.
-    - Genera un **Access Token** (breve) e un **Refresh Token** (lungo).
-    - Restituisce entrambi al client.
-
-2.  **Accesso API (`Authorization: Bearer <token>`)**:
-
-    - Il client invia l'Access Token nell'header.
-    - Il middleware `global.isAuthenticated` verifica la firma e la scadenza.
-    - **Controllo Extra**: Opzionalmente, verifica che l'utente esista ancora nel DB e che il suo `externalId` non sia cambiato (vedi Invalidation).
-
-3.  **Refresh (`POST /auth/refresh-token`)**:
-
-    - Quando l'Access Token scade (401), il client invia il Refresh Token.
-    - Il server verifica il Refresh Token.
-    - Se valido, emette un _nuovo_ Access Token.
-
-4.  **Invalidazione (Logout forzato)**:
-    - Poiché i JWT sono stateless, non si possono "distruggere".
-    - **Soluzione Volcanic**: Ogni utente ha un `externalId` (UUID o random string) nel DB. Questo ID è inserito nel payload del token (`sub`).
-    - Per invalidare tutti i token di un utente (es. cambio password, furto account), il server rigenera il suo `externalId` nel database. Tutti i vecchi token, contenenti il vecchio ID, falliranno la verifica al prossimo accesso che richiede il controllo DB.
+1.  **JWT Ibrido**: Token stateless per performance, ma con meccanismo di invalidazione server-side.
+2.  **MFA Gatekeeper**: Un flusso di login a due stadi per l'autenticazione a due fattori.
+3.  **Context Injection**: Trasformazione del token grezzo in un oggetto `UserContext` tipizzato per la business logic.
 
 ---
 
-## 6.2 Role Based Access Control (RBAC)
+## 6.1 Stack Auth & JWT Lifecycle
 
-La gestione dei ruoli è definita staticamente nel codice ma applicata dinamicamente.
+L'autenticazione è gestita internamente da `@volcanicminds/backend`.
 
-### Definizione Ruoli (`src/config/roles.ts`)
+### Configurazione Ambiente (`.env`)
+
+Le seguenti variabili sono obbligatorie per attivare la crittografia dei token.
+
+```properties
+# Secret per firmare i token di accesso (durata breve)
+JWT_SECRET=super_long_random_string_at_least_64_bytes
+JWT_EXPIRES_IN=15m  # Breve durata per sicurezza
+
+# Refresh Token (durata lunga, per UX fluida)
+JWT_REFRESH=true
+JWT_REFRESH_SECRET=another_super_long_random_string_different_from_above
+JWT_REFRESH_EXPIRES_IN=7d
+```
+
+### Il Pattern "External ID" (Token Revocation)
+
+Il problema dei JWT standard è che non possono essere revocati prima della scadenza. Volcanic risolve questo problema disaccoppiando l'ID primario (`uuid`) dall'ID contenuto nel token.
+
+1.  Ogni `User` ha un campo `externalId` (una stringa random o UUID).
+2.  Il JWT contiene `{ sub: user.externalId }`, **non** l'ID primario del database.
+3.  Al login/verifica, il sistema cerca l'utente tramite `externalId`.
+
+**Come funziona l'invalidazione (Logout Globale / Cambio Password):**
+Quando un utente cambia password o clicca "Logout da tutti i dispositivi", il sistema rigenera il suo `externalId` nel database.
+_Risultato:_ Tutti i token (Access e Refresh) emessi precedentemente contengono il vecchio `externalId`, che non corrisponde più a nessun utente. Vengono rifiutati istantaneamente.
+
+---
+
+## 6.2 Multi-Factor Authentication (MFA)
+
+Il framework implementa un sistema TOTP (Time-based One-Time Password) compatibile con Google Authenticator/Microsoft Authenticator.
+
+### Policy di Sicurezza
+
+Configurabile in `src/config/general.ts` (o via ENV `MFA_POLICY`):
+
+- **`OPTIONAL`**: L'utente può abilitarlo dal profilo.
+- **`MANDATORY`**: L'utente è forzato a configurarlo al prossimo login. Non può navigare senza.
+- **`ONE_WAY`**: Una volta abilitato, l'utente non può disabilitarlo da solo (solo l'admin può).
+
+### Il Flusso "Gatekeeper" (Two-Stage Login)
+
+Per garantire sicurezza, il login non rilascia mai un token valido se l'MFA è pendente.
+
+**Fase 1: Login Credentials**
+
+- **Request**: `POST /auth/login` `{ email, password }`
+- **Check**: Credenziali valide. MFA è attivo per l'utente.
+- **Response**: `202 Accepted` (non 200).
+- **Payload**:
+  ```json
+  {
+    "mfaRequired": true,
+    "mfaSetupRequired": false,
+    "tempToken": "eyJ..." // Token temporaneo
+  }
+  ```
+- **Sicurezza**: Il `tempToken` ha ruolo `pre-auth-mfa` e dura 5 minuti.
+
+**Fase 2: The Guard (Middleware)**
+Il middleware globale `hooks/onRequest.ts` ispeziona ogni richiesta. Se il token ha ruolo `pre-auth-mfa`, blocca l'accesso a tutte le rotte eccetto:
+
+- `/auth/mfa/verify`
+- `/auth/mfa/setup`
+- `/auth/mfa/enable`
+
+**Fase 3: Verifica TOTP**
+
+- **Request**: `POST /auth/mfa/verify`
+  - Header: `Authorization: Bearer <tempToken>`
+  - Body: `{ token: "123456" }`
+- **Response**: `200 OK` con i veri `token` e `refreshToken` (ruolo `user/admin`).
+
+### Implementazione Adapter (`src/services/mfa.adapter.ts`)
+
+Per funzionare, il backend deve sapere come generare/verificare i codici. In `volcanic-sample-backend`, questo è delegato a `@volcanicminds/tools`.
 
 ```typescript
-// src/config/roles.ts
+import * as mfaTool from '@volcanicminds/tools/mfa'
+
+export const mfaAdapter = {
+  // Genera secret e QR Code
+  async generateSetup(appName: string, email: string) {
+    return await mfaTool.generateSetupDetails(appName, email)
+  },
+
+  // Verifica il codice 123456 contro il segreto
+  verify(token: string, secret: string) {
+    return mfaTool.verifyToken(token, secret)
+  }
+}
+```
+
+Questo adapter viene passato al server nel file di bootstrap `index.ts`.
+
+---
+
+## 6.3 Role Based Access Control (RBAC)
+
+La gestione dei ruoli è statica ma applicata dinamicamente.
+
+### 1. Definizione Ruoli (`src/config/roles.ts`)
+
+```typescript
 export default [
   {
-    code: 'public', // Ruolo base implicito
+    code: 'public', // Ruolo implicito per non autenticati
     name: 'Public',
-    description: 'Utente non autenticato o base'
+    description: 'Utente non autenticato'
   },
   {
     code: 'admin',
     name: 'Admin',
-    description: 'Super User con accesso completo'
+    description: 'Super User'
   },
   {
     code: 'manager',
     name: 'Manager',
-    description: 'Gestore di una singola Company'
+    description: 'Accesso limitato alla propria Company'
   },
   {
-    code: 'user', // Ruolo standard
+    code: 'user',
     name: 'User',
-    description: 'Operatore standard'
+    description: 'Accesso limitato ai propri dati'
   }
 ]
 ```
 
-### Protezione delle Rotte
-
-Nel file `routes.ts`, l'array `roles` funge da gatekeeper.
+### 2. Protezione delle Rotte (`routes.ts`)
 
 ```typescript
-// Esempio: Solo Admin può cancellare
 {
   method: 'DELETE',
   path: '/:id',
   handler: 'user.remove',
-  roles: [roles.admin], // Gatekeeper
-  middlewares: ['global.isAuthenticated'] // Pre-check validità token
-}
-```
-
-### Logica nel Controller (Granularità Fine)
-
-A volte il ruolo non basta (es. un Manager può modificare solo la _sua_ company). Questo controllo non si fa nelle rotte, ma nel Service (come visto in Parte 5). Tuttavia, il controller può usare helper per logiche UI o flow diversi.
-
-```typescript
-// Controller
-if (req.hasRole(roles.admin)) {
-  // Logica speciale admin
+  // Gatekeeper: Solo Admin può chiamare questo endpoint.
+  // Gli altri riceveranno 403 Forbidden automaticamente.
+  roles: [roles.admin],
+  middlewares: ['global.isAuthenticated']
 }
 ```
 
 ---
 
-## 6.3 Multi-Factor Authentication (MFA)
+## 6.4 Context Injection & TypeScript
 
-Volcanic implementa un sistema MFA nativo (TOTP standard, compatibile con Google Authenticator), senza dipendere da provider esterni (Auth0, Cognito).
+Questa è la parte che collega l'autenticazione alla business logic. Una volta che l'utente è autenticato, dobbiamo trasformare il suo "User ID" in un contesto ricco di informazioni (`UserContext`) da passare ai Service.
 
-### Policy di Sicurezza
+### 1. Definizione dei Tipi (`types/index.d.ts`)
 
-Configurabile in `src/config/general.ts` o via ENV `MFA_POLICY`.
-
-1.  **OPTIONAL** (Default): L'utente decide se abilitarlo.
-2.  **MANDATORY**: L'utente è obbligato a configurarlo al primo login. Fino a quel momento, non può accedere alle altre API.
-3.  **ONE_WAY**: Facoltativo all'inizio, ma una volta abilitato non può essere disabilitato dall'utente (solo dall'admin).
-
-### Il Flusso "Gatekeeper" (Pre-Auth Token)
-
-Per gestire l'MFA in modo sicuro, il login non restituisce subito il token vero se l'MFA è richiesto.
-
-1.  **Login (`POST /auth/login`)**:
-
-    - Credenziali valide? Sì.
-    - MFA attivo per l'utente? Sì.
-    - **Risposta**: `202 Accepted`.
-    - **Payload**: `{ tempToken: "...", mfaRequired: true }`.
-    - **Nota**: Il `tempToken` ha un ruolo speciale `pre-auth-mfa` e dura solo 5 minuti.
-
-2.  **Middleware Guard (`hooks/onRequest.ts`)**:
-
-    - Se il token presentato ha ruolo `pre-auth-mfa`, il framework blocca **qualsiasi** richiesta verso API standard (es. `/users`, `/orders`).
-    - Permette solo le rotte in whitelist: `/auth/mfa/verify`, `/auth/mfa/setup`.
-
-3.  **Verifica (`POST /auth/mfa/verify`)**:
-    - Client invia `tempToken` (header) + Codice TOTP (body).
-    - Server valida TOTP.
-    - **Risposta**: `200 OK` con il vero `accessToken` e `refreshToken` (ruolo `user`/`admin`).
-
-### Implementazione Tecnica
-
-Il modulo `@volcanicminds/tools/mfa` fornisce le primitive crittografiche.
-
-```typescript
-// Esempio logica di verifica (semplificata dal controller auth)
-import { mfa } from '@volcanicminds/tools'
-
-// 1. Recupera segreto cifrato dal DB
-const encryptedSecret = user.mfaSecret
-const secret = decrypt(encryptedSecret) // Decifra (AES-256)
-
-// 2. Verifica token
-const isValid = mfa.verifyToken(inputToken, secret)
-
-if (isValid) {
-  // Emetti token finale
-}
-```
-
-### Emergency Reset (Admin Backdoor)
-
-Se l'admin perde il dispositivo MFA e non può più entrare, il sistema prevede una procedura di emergenza basata su variabili d'ambiente (da usare con estrema cautela).
-
-1.  Impostare ENV:
-    - `MFA_ADMIN_FORCED_RESET_EMAIL=admin@example.com`
-    - `MFA_ADMIN_FORCED_RESET_UNTIL=2025-12-31T12:00:00Z` (Max 10 minuti nel futuro rispetto all'avvio server).
-2.  Riavviare il server.
-3.  All'avvio, il sistema rileva le variabili, verifica il timestamp, e disabilita forzatamente l'MFA per quell'utente.
-4.  L'admin fa login solo con password.
-5.  **IMPORTANTE**: Rimuovere le variabili e riavviare.
-
----
-
-## 6.4 TypeScript Augmentation
-
-Per lavorare con `req.user` o `req.userContext` senza errori di compilazione, è necessario estendere i tipi di Fastify.
-
-File: `types/index.d.ts` (deve essere incluso in `tsconfig.json`).
+Estendiamo l'interfaccia `FastifyRequest` per includere `userContext`.
 
 ```typescript
 import { FastifyRequest as _FastifyRequest } from 'fastify'
 
-// 1. Definiamo la struttura del contesto utente
+// Struttura del contesto applicativo
 export interface UserContext {
   userId: string | null
   role: 'admin' | 'manager' | 'user' | 'public'
-  // Campi custom specifici dell'app
-  company?: string
-  professionalId?: string
+
+  // Campi specifici
+  company?: string // Tenant (es. 'volcanicminds')
+  professionalId?: string // ID del profilo professionale collegato
 }
 
-// 2. Estendiamo l'interfaccia base di Fastify
 declare module 'fastify' {
   export interface FastifyRequest {
-    userContext: UserContext // Iniettato dal hook preHandler
-    // user e token sono già gestiti da @volcanicminds/backend, ma si possono tipizzare meglio qui
+    userContext: UserContext
   }
 }
-
-// 3. Estendiamo il Global Scope per i repository (opzionale ma comodo)
-declare global {
-  // Rende 'log' visibile ovunque senza import
-  var log: any
-  // Rende i repository accessibili globalmente (es. repository.users)
-  var repository: any
-}
-
-export {}
 ```
+
+### 2. Popolamento del Contesto (`src/hooks/preHandler.ts`)
+
+Questo hook viene eseguito _dopo_ l'autenticazione JWT ma _prima_ del controller. È qui che avviene la logica di arricchimento.
+
+```typescript
+import { FastifyRequest, FastifyReply } from '@volcanicminds/backend'
+
+export default async (req: FastifyRequest, _reply: FastifyReply) => {
+  // req.user è popolato dal plugin @fastify/jwt (contiene l'entità User dal DB)
+  const user = req.user as any
+  const roles = user?.roles || []
+
+  // Il profilo professionale è spesso caricato in eager load con l'User
+  const professional = user?.professional
+
+  const context: UserContext = {
+    userId: user?.id || null,
+    role: 'public',
+    company: undefined,
+    professionalId: professional?.id
+  }
+
+  if (user) {
+    // Mapping dei ruoli DB -> Ruolo contesto principale
+    if (roles.includes('admin')) {
+      context.role = 'admin'
+    } else if (roles.includes('manager')) {
+      context.role = 'manager'
+      context.company = professional?.company // Il manager è vincolato alla sua company
+    } else {
+      context.role = 'user'
+      context.company = professional?.company
+    }
+  }
+
+  // Iniezione nella richiesta
+  req.userContext = context
+}
+```
+
+### 3. Utilizzo nel Service
+
+Grazie a questo setup, i service non devono preoccuparsi di _come_ è stato autenticato l'utente, ma solo di _chi_ è.
+
+```typescript
+// src/services/order.service.ts
+async findAll(ctx: UserContext, params: any) {
+    // TypeScript conosce la struttura di ctx grazie a index.d.ts
+    if (ctx.role === 'manager') {
+        // Applica filtro company
+    }
+}
+```
+
+---
+
+## 6.5 Emergency Admin Reset (Backdoor Sicura)
+
+In caso di perdita del dispositivo MFA da parte dell'amministratore, il framework offre una via di recupero basata sul filesystem/env, progettata per essere temporanea.
+
+1.  L'accesso SSH al server è richiesto.
+2.  Modificare `.env` o le variabili del container:
+    - `MFA_ADMIN_FORCED_RESET_EMAIL=admin@test.volcanicminds.com`
+    - `MFA_ADMIN_FORCED_RESET_UNTIL=2025-12-31T15:00:00.000Z` (Deve essere nel futuro prossimo, max 10 min dall'avvio).
+3.  Riavviare il backend.
+4.  All'avvio, `index.ts` del core rileva le variabili. Se il timestamp è valido, **disabilita l'MFA** e cancella i secret per quell'utente specifico.
+5.  L'admin può loggarsi con solo password e riconfigurare l'MFA.
+6.  **Cleanup**: Rimuovere le variabili e riavviare per chiudere la falla di sicurezza.
 
 ---
 
 # Parte 7: Validazione, Utilities, Scheduler e Testing
 
-Un backend enterprise non si limita a salvare dati. Deve garantire che i dati siano validi (Schema Validation), comunicare con l'esterno (Mailer), eseguire operazioni ricorrenti (Scheduler), tracciare chi fa cosa (Audit Log) e dimostrare di funzionare (Testing).
-
----
+Un backend enterprise non si limita a salvare dati nel DB. Deve garantire che i dati in ingresso siano validi, eseguire operazioni in background, tracciare chi ha modificato cosa e garantire stabilità tramite test automatizzati.
 
 ## 7.1 Validazione JSON Schema e Schema Overriding
 
-Il framework utilizza **Fastify** per la validazione, che si basa su **JSON Schema** (draft-7). Questo garantisce prestazioni elevatissime e genera automaticamente la documentazione Swagger.
+Il framework utilizza **Fastify** per la validazione, basata su **JSON Schema** (draft-7). Questo approccio garantisce prestazioni elevatissime (grazie alla compilazione Just-In-Time degli schemi) e genera automaticamente la documentazione Swagger/OpenAPI.
 
 ### Definizione degli Schemi (`src/schemas/*.ts`)
 
-Gli schemi sono definiti in file TypeScript/JavaScript e caricati all'avvio. Ogni schema deve avere un `$id` univoco.
+Ogni file in questa cartella viene caricato automaticamente all'avvio. Ogni schema deve esportare un oggetto con un `$id` univoco.
+
+**Esempio: Validazione Creazione Ordine (`src/schemas/order.ts`)**
 
 ```typescript
-// src/schemas/product.ts
+import { VALID_COMPANIES } from '../entities/all.enums.js'
 
-// Schema per il corpo della richiesta (POST/PUT)
-export const productBodySchema = {
-  $id: 'productBodySchema', // ID Univoco
+export const orderBodySchema = {
+  $id: 'orderBodySchema', // ID Univoco usato nei $ref
   type: 'object',
-  required: ['name', 'sku', 'price'], // Campi obbligatori
+  nullable: true, // Il body può essere null (gestito dal controller)
+  required: ['code', 'name', 'company'], // Campi obbligatori
   properties: {
-    name: { type: 'string', minLength: 3 },
-    sku: { type: 'string', pattern: '^[A-Z0-9-]{5,10}$' }, // Regex validation
-    price: { type: 'number', minimum: 0 },
-    tags: {
-      type: 'array',
-      items: { type: 'string' },
-      maxItems: 10
-    }
-  },
-  additionalProperties: false // Rifiuta campi non definiti (Best Practice sicurezza)
-}
-
-// Schema per la risposta (Output Serialization)
-export const productResponseSchema = {
-  $id: 'productResponseSchema',
-  type: 'object',
-  properties: {
-    id: { type: 'string', format: 'uuid' },
+    code: {
+      type: 'string',
+      minLength: 5,
+      description: 'Codice univoco ordine (es. 2025_GER_CLI)'
+    },
     name: { type: 'string' },
-    // Price non incluso qui? Allora non verrà inviato al client (Field Filtering)
-    createdAt: { type: 'string', format: 'date-time' }
-  }
+    year: { type: 'number', minimum: 2000, maximum: 2100 },
+
+    // Validazione Enum (importati dalle entità per coerenza)
+    company: {
+      type: 'string',
+      enum: VALID_COMPANIES
+    },
+
+    // Relazioni (si aspettano l'ID stringa dal frontend)
+    client: { type: 'string', format: 'uuid' }
+  },
+  additionalProperties: false // Best Practice: Rifiuta campi non definiti per sicurezza
 }
 ```
 
 ### Schema Overriding (Funzionalità Core)
 
-`@volcanicminds/backend` fornisce schemi predefiniti (es. per Login, Registrazione). Spesso è necessario estenderli (es. aggiungere `companyId` alla risposta del login) senza modificare il codice della libreria.
+`@volcanicminds/backend` fornisce schemi nativi per le funzioni core (es. Login, Registrazione). Spesso un'applicazione reale deve estendere questi schemi (es. aggiungere `company` e `firstName` alla risposta del login) senza modificare il codice della libreria.
 
-Il loader degli schemi implementa un **Deep Merge intelligente** basato sull'`$id`.
+Il loader implementa un **Deep Merge intelligente**: se uno schema locale ha lo stesso `$id` di uno schema core, le proprietà vengono fuse.
 
-1.  **Individuare l'ID**: Trovare l'ID dello schema base (es. `authLoginResponseSchema` in `lib/schemas/auth.ts`).
-2.  **Creare l'Override**: Creare un file in `src/schemas/auth_override.ts` con lo stesso `$id`.
-3.  **Definire le Differenze**: Inserire solo i campi nuovi o modificati.
-
-**Esempio Pratico:**
+**Esempio Reale: Estensione Login Response (`src/schemas/user.ts`)**
 
 ```typescript
 // src/schemas/user.ts
 
-// Stesso $id dello schema nativo del framework
+// 1. Definiamo lo schema del profilo professionale
+export const professionalSchema = {
+  $id: 'professionalSchema',
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    firstName: { type: 'string' },
+    lastName: { type: 'string' },
+    company: { type: 'string' }
+  }
+}
+
+// 2. Override dello schema di risposta Login (definito nel core lib/schemas/auth.ts)
 export const authLoginResponseSchema = {
-  $id: 'authLoginResponseSchema',
+  $id: 'authLoginResponseSchema', // STESSO ID del core
   type: 'object',
   nullable: true,
   properties: {
-    // Aggiungiamo campi custom alla risposta del login
+    // Campi ereditati dal core (non serve ripeterli):
+    // - token, refreshToken, username, email, id
+
+    // Campi AGGIUNTI dall'applicazione:
     firstName: { type: 'string' },
     lastName: { type: 'string' },
     company: { type: 'string' },
 
-    // Possiamo anche riferire altri schemi
-    professionalProfile: { $ref: 'professionalSchema#' }
+    // Riferimento a schema custom
+    professional: {
+      $ref: 'professionalSchema#'
+    }
   }
-  // Nota: 'token' e 'refreshToken' sono ereditati dallo schema base
 }
 ```
 
-Al boot, il framework fonderà le due definizioni.
+Al runtime, la risposta `/auth/login` restituirà sia il token JWT che i dati del profilo professionale.
 
 ---
 
 ## 7.2 Utilities Core (`@volcanicminds/tools`)
 
-Il pacchetto tools fornisce utility ottimizzate.
+Il framework espone utility globali per semplificare lo sviluppo.
 
-### Logging Strutturato (Pino Wrapper)
+### Logging Strutturato (Pino)
 
-L'oggetto globale `log` è disponibile ovunque. È configurato per essere performante: controlla il livello di log _prima_ di eseguire l'interpolazione delle stringhe.
+L'oggetto `log` è globale. È configurato per alte prestazioni: utilizza un meccanismo di "short-circuit" basato su getter booleani (`log.i`, `log.e`) per evitare di interpolare stringhe se il livello di log è disattivato.
 
-**Livelli e Utilizzo:**
+**Best Practices:**
 
 ```typescript
-// Uso corretto: Short-circuiting per performance
-// Se il livello 'info' non è attivo, la stringa non viene nemmeno costruita.
-if (log.i) log.info(`Order ${orderId} processed in ${elapsed}ms`)
+// 1. Info: Operazioni di successo, avvio server
+if (log.i) log.info(`Order ${orderId} created successfully`)
 
-// Errori con stack trace
-if (log.e) log.error({ err: errorObject }, 'Critical failure in payment gateway')
+// 2. Warn: Situazioni anomale ma gestite (es. Login fallito, Risorsa non trovata)
+if (log.w) log.warn(`User ${email} failed login attempt (IP: ${ip})`)
 
-// Debug verbose
-if (log.d) log.debug('Payload received:', JSON.stringify(data))
+// 3. Error: Eccezioni, crash, fallimenti servizi esterni
+// Passare sempre l'oggetto errore come primo argomento per lo stack trace
+if (log.e) log.error({ err: errorObject }, 'Payment gateway unreachable')
+
+// 4. Debug/Trace: Payload completi (solo in dev)
+if (log.d) log.debug('Incoming payload:', JSON.stringify(data))
 ```
 
-Configurazione (`.env`):
+### Mailer
 
-- `LOG_LEVEL`: `trace` | `debug` | `info` | `warn` | `error` | `fatal`
-- `LOG_COLORIZE`: `true` (dev) | `false` (prod, per log aggregators come ELK/Datadog).
-
-### Mailer (Nodemailer Wrapper)
-
-Una classe wrapper che semplifica la gestione delle email, gestendo automaticamente la conversione HTML-to-Text se mancante.
+Il wrapper `Mailer` (da `@volcanicminds/tools`) gestisce l'invio email. In `volcanic-sample-backend`, la configurazione SMTP risiede in genere in un service dedicato o inizializzata all'uso.
 
 ```typescript
 import { Mailer } from '@volcanicminds/tools/mailer'
 
-// Configurazione (spesso in un service singleton)
 const mailer = new Mailer({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT),
-  secure: false,
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  defaultFrom: '"No Reply" <noreply@myapp.com>'
+  secure: false
 })
 
-// Utilizzo
+// Genera automaticamente la versione text/plain dall'HTML
 await mailer.send({
-  to: 'user@example.com',
-  subject: 'Welcome!',
-  // Genera automaticamente la versione text plain rimuovendo i tag HTML
-  html: '<h1>Hello</h1><p>Welcome to our platform.</p>'
+  to: 'client@example.com',
+  subject: 'Conferma Ordine',
+  html: '<p>Il tuo ordine <strong>#123</strong> è stato confermato.</p>'
 })
 ```
 
@@ -1812,48 +2047,52 @@ await mailer.send({
 
 ## 7.3 Job Scheduler
 
-Il framework integra un sistema di scheduling (basato su `toad-scheduler`) per eseguire task ricorrenti (pulizia token, invio report, sync dati).
+Il framework integra un sistema di scheduling (basato su `toad-scheduler`) per eseguire task ricorrenti (es. reportistica, pulizia token).
 
-### Abilitazione
+### Configurazione
 
-In `src/config/general.ts`, impostare `scheduler: true`.
+1.  Abilitare lo scheduler in `src/config/general.ts`:
+    ```typescript
+    export default {
+      // ...
+      options: {
+        scheduler: true
+      }
+    }
+    ```
+2.  Creare i job in `src/schedules/*.job.ts`.
 
-### Creazione di un Job (`src/schedules/*.job.ts`)
+### Struttura di un Job
 
-Ogni file in questa cartella viene caricato automaticamente. Deve esportare una configurazione `schedule` e una funzione `job`.
+Ogni file `.job.ts` deve esportare una configurazione `schedule` e una funzione `job`.
 
-**Esempio: Pulizia Log ogni notte**
+**Esempio: Report Mensile Automatico**
 
 ```typescript
 import { JobSchedule } from '@volcanicminds/backend'
 
-// Configurazione
 export const schedule: JobSchedule = {
-  active: true, // Master switch
-  async: true, // Il task è una Promise?
-  preventOverrun: true, // Se il task precedente non è finito, salta il prossimo tick
+  active: true, // Switch ON/OFF
+  async: true, // Il task è asincrono?
+  preventOverrun: true, // Evita sovrapposizioni se il task precedente è lento
 
-  // Modalità 1: CRON (Consigliata per orari precisi)
+  // Tipo CRON (Consigliato per orari precisi)
   type: 'cron',
   cron: {
-    expression: '0 3 * * *', // Ogni notte alle 03:00
+    expression: '0 2 1 * *', // Alle 02:00 del primo giorno di ogni mese
     timezone: 'Europe/Rome'
   }
-
-  /* Modalità 2: INTERVAL (Per task frequenti)
-  type: 'interval',
-  interval: {
-    seconds: 30,
-    runImmediately: true
-  }
-  */
 }
 
-// Logica
 export async function job() {
-  log.info('Starting nightly cleanup...')
-  await repository.logs.delete({ createdAt: LessThan(thirtyDaysAgo) })
-  log.info('Cleanup finished.')
+  log.info('Starting monthly report generation...')
+  try {
+    // Logica di business (es. chiamare un Service)
+    // await reportingService.generateMonthlyStats()
+    log.info('Monthly report generated.')
+  } catch (err) {
+    log.error({ err }, 'Failed to generate monthly report')
+  }
 }
 ```
 
@@ -1861,77 +2100,90 @@ export async function job() {
 
 ## 7.4 Audit Tracking (Tracciamento Modifiche)
 
-Volcanic include un sistema "magico" per tracciare le modifiche alle entità (chi ha cambiato cosa, vecchio valore vs nuovo valore) senza sporcare i controller.
+Volcanic include un sistema "magico" per tracciare le modifiche alle entità (Change Data Capture applicativo) senza sporcare i controller con logica di logging.
 
 ### Configurazione (`src/config/tracking.ts`)
+
+Si definiscono quali rotte e quali entità monitorare.
 
 ```typescript
 export default {
   config: {
-    enableAll: false, // Se true, traccia tutto (sconsigliato per performance)
-    changeEntity: 'Change', // Nome dell'entità dove salvare i log (deve esistere in entities/)
+    enableAll: false,
+    changeEntity: 'Change', // Entità dove salvare i log (src/entities/change.ts)
     primaryKey: 'id'
   },
   changes: [
     {
       enable: true,
-      method: 'PUT', // Traccia solo gli update
-      path: '/users/:id', // Rotta specifica (matching esatto o pattern)
-      entity: 'User', // Entità di riferimento per recuperare i dati vecchi
+      method: 'PUT', // Traccia solo gli aggiornamenti
+      path: '/orders/:id', // Rotta API corrispondente
+      entity: 'Order', // Entità TypeORM da interrogare per lo stato "vecchio"
 
       // Filtri sui campi
       fields: {
-        includes: ['email', 'role', 'status'], // Traccia solo questi
-        excludes: ['updatedAt', 'lastLogin'] // Ignora questi
+        includes: ['status', 'amount', 'deliveryDate'], // Traccia solo questi
+        excludes: ['updatedAt'] // Ignora timestamp tecnici
       }
     }
   ]
 }
 ```
 
-### Funzionamento
+### Funzionamento Interno
 
-1.  **Pre-Handler**: Se la rotta è tracciata, il framework legge lo stato attuale del record dal DB (`oldData`) e lo salva nella richiesta.
-2.  **Controller**: Esegue l'update.
-3.  **Pre-Serialization (Post-Handler)**: Il framework confronta il payload di input con `oldData`.
-4.  **Salvataggio**: Se ci sono differenze, scrive un record nella tabella `change` (JSONB con il delta).
+1.  **Hook `preHandler`**: Se la rotta corrisponde a una regola di tracking, il framework legge lo stato attuale del record dal DB e lo salva in `req.trackingData`.
+2.  **Controller**: Esegue l'aggiornamento.
+3.  **Hook `preSerialization`**: Il framework confronta il payload di input (nuovi valori) con `req.trackingData` (vecchi valori).
+4.  **DB Write**: Se ci sono differenze nei campi monitorati, crea un record nella tabella `change` con il delta JSON, l'ID utente e il timestamp.
 
 ---
 
 ## 7.5 Strategie di Testing
 
-Un backend enterprise richiede test automatizzati. La struttura consigliata è:
+La suite di test utilizza `mocha` come runner, `expect` per le asserzioni e un wrapper personalizzato intorno ad `axios` per le chiamate HTTP simulate.
 
-- **Unit Test (`test/unit`)**: Testano funzioni pure, utility e servizi mockando il DB.
-- **E2E / Integration Test (`test/e2e`)**: Testano l'intero stack (Route -> Controller -> Service -> DB).
+### Setup (`test/common/bootstrap.ts`)
 
-### Setup dell'Ambiente di Test
+Questo file avvia un'istanza del server (spesso con un DB in memoria o dedicato ai test) prima di eseguire la suite.
 
-Per i test E2E, è cruciale non usare il DB di produzione.
+```typescript
+import { start as startServer } from '@volcanicminds/backend'
+import { userManager } from '@volcanicminds/typeorm'
 
-1.  **In-Memory DB**: `@volcanicminds/typeorm` supporta driver come `sqlite` in memoria o `pg-mem` per emulare Postgres.
-2.  **Container dedicato**: La soluzione migliore è uno script che alza un container Docker Postgres pulito per i test.
+// Hook globale Mocha
+export const beforeAll = async () => {
+  // Avvia il server su una porta di test (es. 2231)
+  await startServer({ userManager })
+}
+```
 
-### Esempio Test E2E (Mocha + Axios)
+### Test E2E (End-to-End)
+
+I test E2E simulano un client reale che chiama le API. Risiedono in `test/e2e/`.
+
+**Esempio: Test flusso Ordini**
 
 ```typescript
 import { expect } from 'expect'
 import { login, get, post } from '../common/api.js' // Helper wrapper di Axios
 
-describe('Order API', () => {
+describe('Orders E2E', () => {
   let token = ''
 
+  // 1. Setup: Ottieni Token Admin
   before(async () => {
-    // Login come Admin per ottenere il token
-    const auth = await login('admin@example.com', 'password')
+    const auth = await login('admin@test.volcanicminds.com', 'password')
     token = auth.token
   })
 
+  // 2. Test Creazione
   it('should create a new order', async () => {
     const payload = {
-      client: 'client-uuid',
-      amount: 150.0,
-      status: 'pending'
+      code: 'TEST_ORD_001',
+      name: 'Test Order',
+      company: 'volcanicminds',
+      year: 2025
     }
 
     const response = await post('/orders', payload, {
@@ -1939,14 +2191,34 @@ describe('Order API', () => {
     })
 
     expect(response.id).toBeDefined()
-    expect(response.status).toBe('pending')
+    expect(response.code).toBe('TEST_ORD_001')
   })
 
-  it('should list orders with pagination', async () => {
-    const { data, headers } = await get('/orders?page=1&pageSize=10')
+  // 3. Test Lista con Filtri
+  it('should find the created order via magic query', async () => {
+    // Testiamo la traduzione URL -> SQL
+    const { data, headers } = await get('/orders?code:eq=TEST_ORD_001')
 
-    expect(Array.isArray(data)).toBe(true)
-    expect(headers['v-total']).toBeDefined()
+    expect(data).toHaveLength(1)
+    expect(data[0].name).toBe('Test Order')
+    expect(headers['v-total']).toBe('1')
+  })
+})
+```
+
+### Test Unitari (`test/unit/`)
+
+Testano la logica dei Service o delle Utility senza avviare l'intero server HTTP. Possono richiedere il mocking del Repository se non si vuole usare il DB reale.
+
+```typescript
+import { expect } from 'expect'
+import { professionalService } from '../../src/services/professional.service.js'
+
+describe('Professional Service', () => {
+  it('should calculate counts correctly', async () => {
+    // Nota: richiede DB connesso o Mock del repository
+    const count = await professionalService.count({ role: 'admin' }, {})
+    expect(typeof count).toBe('number')
   })
 })
 ```
@@ -1955,56 +2227,62 @@ describe('Order API', () => {
 
 # Parte 8: System Administration e Deployment
 
-Questa sezione trascende il codice TypeScript e si occupa del "ferro": come portare il backend in produzione in modo sicuro, performante e resiliente.
+Il deployment del Volcanic Stack è progettato per essere container-native. L'applicazione deve girare dietro un Reverse Proxy (Nginx) che gestisce la terminazione SSL e la sicurezza perimetrale, mentre il container Docker gestisce la logica applicativa isolata.
 
-## 8.1 Hardening del Server (Ubuntu)
+## 8.1 Hardening del Server (Ubuntu/Linux)
 
-Prima di installare qualsiasi applicazione, il server deve essere messo in sicurezza.
+Prima di installare qualsiasi applicazione, il server host deve essere messo in sicurezza.
 
-### Configurazione Firewall (UFW)
+### 1. Configurazione Firewall (UFW)
 
-Configurazione "Deny by Default". Si apre solo ciò che serve.
+Adottiamo una strategia "Deny by Default". Si aprono solo le porte strettamente necessarie.
 
 ```bash
-# 1. Policy di base: Blocca tutto in ingresso, consenti tutto in uscita
+# 1. Installa UFW se non presente
+sudo apt update && sudo apt install ufw -y
+
+# 2. Policy di base: Blocca tutto in ingresso, consenti tutto in uscita
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 
-# 2. CRUCIALE: Consenti SSH (altrimenti ti chiudi fuori)
+# 3. CRUCIALE: Consenti SSH (altrimenti ti chiudi fuori dal server)
 sudo ufw allow OpenSSH
 
-# 3. Consenti traffico Web (Gestito da Nginx)
+# 4. Consenti traffico Web Standard (HTTP/HTTPS) gestito da Nginx
 sudo ufw allow 'Nginx Full'
 
-# 4. Attiva il firewall
+# 5. Attiva il firewall
 sudo ufw enable
 ```
 
-### Installazione Stack Base
+### 2. Installazione Stack Base
 
-Installazione di Nginx e Certbot per la gestione SSL automatica.
+Installazione di Docker, Nginx e Certbot.
 
 ```bash
-sudo apt update
+# Docker & Compose
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# Nginx & Certbot
 sudo apt install nginx certbot python3-certbot-nginx -y
-sudo systemctl status nginx
 ```
 
 ---
 
 ## 8.2 Nginx: Reverse Proxy & Security Gateway
 
-Nginx non serve solo a girare le richieste. Agisce come **WAF (Web Application Firewall)** di base, terminatore SSL e gestore del Rate Limiting.
+Nginx non serve solo a girare le richieste. Agisce come **WAF (Web Application Firewall)** di base, terminatore SSL e gestore del Rate Limiting per proteggere il processo Node.js (single-threaded).
 
-### Configurazione (`/etc/nginx/sites-available/volcanic-backend-sample`)
+### Configurazione (`/etc/nginx/sites-available/volcanic-sample-backend`)
 
 ```nginx
 # --- 1. RATE LIMITING (Protezione DDoS/Bruteforce) ---
 # Zona API: Max 10 richieste al secondo per IP.
-# Protegge il backend Node.js (monothread) da saturazione CPU.
+# Protegge il backend da saturazione CPU per troppe richieste.
 limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 
-# Zona Generale: Protegge da esaurimento socket TCP.
+# Zona Connessioni: Protegge da esaurimento socket TCP (Slowloris).
 limit_conn_zone $binary_remote_addr zone=addr_limit:10m;
 
 # --- 2. REINDIRIZZAMENTO HTTP -> HTTPS ---
@@ -2020,6 +2298,7 @@ server {
     server_name api.example.com;
 
     # --- CERTIFICATI SSL (Gestiti da Certbot) ---
+    # Certbot li inserirà automaticamente qui dopo il primo run
     ssl_certificate /etc/letsencrypt/live/api.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
@@ -2036,16 +2315,13 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     # --- BACKEND API PROXY ---
-    location /api/ {
+    location / {
         # Rate Limit Applicato: Max 10 req/s, burst (picco) fino a 20 senza delay
         limit_req zone=api_limit burst=20 nodelay;
-
-        # Rewrite URL:
-        # Il client chiama: https://dominio/api/auth/login
-        # Il backend riceve: /auth/login
-        rewrite ^/api/(.*) /$1 break;
+        limit_conn addr_limit 10;
 
         # Proxy verso Docker (Localhost porta 2230)
+        # Nota: Il container espone la porta solo su localhost per sicurezza
         proxy_pass http://127.0.0.1:2230;
 
         # Supporto WebSocket e KeepAlive
@@ -2055,7 +2331,7 @@ server {
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
 
-        # IP Passthrough (Fondamentale per i log di sicurezza del backend e RateLimit interno)
+        # IP Passthrough (Fondamentale per i log di audit del backend)
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -2066,92 +2342,95 @@ server {
 ### Attivazione
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/volcanic-backend-sample /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default 2>/dev/null # Rimuovi default
-sudo nginx -t # Verifica sintassi
-sudo systemctl restart nginx
+# Link simbolico
+sudo ln -s /etc/nginx/sites-available/volcanic-sample-backend /etc/nginx/sites-enabled/
+
+# Rimuovi default
+sudo rm /etc/nginx/sites-enabled/default 2>/dev/null
+
+# Verifica e Riavvio
+sudo nginx -t
+sudo systemctl reload nginx
+
+# Ottenimento Certificato (al primo setup)
+sudo certbot --nginx -d api.example.com
 ```
 
 ---
 
 ## 8.3 Docker Deployment Strategy
 
-Il backend gira in un container Docker isolato. Usiamo `--network=host` o mapping porte esplicito per performance, ma qui mappiamo `127.0.0.1:2230` per evitare di esporre la porta 2230 sull'IP pubblico (bypassando UFW).
+Il backend gira in un container Docker isolato. L'immagine è costruita usando una strategia **Multi-Stage Build** (visibile nel `Dockerfile`) per mantenere l'immagine di produzione leggera (senza compilatori TypeScript o devDependencies).
 
-### File Environment (`.env.prod`)
+### File Environment Produzione (`.env.prod`)
 
-Questo file deve risiedere sul server e **NON** nel repository.
+Questo file deve risiedere sul server (es. `/home/ubuntu/volcanic-sample-backend/.env.prod`) e **NON** nel repository Git.
 
 ```properties
-# --- CORE ---
+# --- CORE SETTINGS ---
 NODE_ENV=production
-# Ascolta su tutte le interfacce interne al container
 HOST=0.0.0.0
-PORT=2230
+PORT=2230 # Porta interna al container
 
-# --- NODE MEMORY LIMIT ---
-# Imposta il limite GC di Node.js per evitare OOM Kill del container.
-# Setta a ~75-80% della RAM dedicata al container.
-NODE_OPTIONS=--max-old-space-size=4096
+# --- NODE TUNING ---
+# Limita il Garbage Collector a circa il 75% della RAM allocata al container
+# Esempio per container con 4GB RAM
+NODE_OPTIONS=--max-old-space-size=3072
 
-# --- AUTH & SECURITY ---
+# --- AUTH SECURITY ---
 # Generare con: openssl rand -base64 64
-JWT_SECRET=<REPLACE_WITH_VERY_LONG_SECURE_STRING>
-JWT_EXPIRES_IN=15d
+JWT_SECRET=CHANGE_THIS_TO_VERY_LONG_RANDOM_STRING
+JWT_EXPIRES_IN=15m
 JWT_REFRESH=true
-JWT_REFRESH_SECRET=<REPLACE_WITH_DIFFERENT_SECURE_STRING>
-JWT_REFRESH_EXPIRES_IN=180d
+JWT_REFRESH_SECRET=CHANGE_THIS_TO_DIFFERENT_RANDOM_STRING
+JWT_REFRESH_EXPIRES_IN=30d
 
-# --- DATABASE CONNECTION (OVH/AWS Example) ---
+# --- DATABASE (Es. OVH Managed o AWS RDS) ---
 START_DB=true
-DB_HOST=<DB_HOSTNAME_OR_IP>
+DB_HOST=pg-databases.ovh.net
 DB_PORT=20184
-DB_USERNAME=<DB_USER>
-DB_PASSWORD=<DB_PASSWORD>
-DB_NAME=<DB_NAME>
+DB_NAME=db_production
+DB_USERNAME=db_user
+DB_PASSWORD=secure_db_password
 
-# --- DATABASE TUNING (Vedi Parte 1 della Guida) ---
+# --- DB SSL ---
+# Richiesto per connessioni cloud sicure
 DB_SSL=true
-# Path interno al container (montato via volume)
+# Percorso INTERNO al container (montato via volume)
 DB_SSL_CA_PATH=/app/certs/ca.pem
-DB_MAX_CONNECTING=50
-DB_CONNECTION_TIMEOUT=60000
-DB_SYNCHRONIZE_SCHEMA_AT_STARTUP=true
 
-# --- LOGGING (Production Optimization) ---
-# 'info' o 'warn' riduce I/O su disco/console drasticamente rispetto a 'trace'
+# --- LOGGING ---
+# In produzione 'info' riduce I/O. Usa 'false' per colorize per parsers (Datadog/ELK)
 LOG_LEVEL=info
 LOG_COLORIZE=false
-LOG_TIMESTAMP=true
 ```
 
-### Comando di Avvio (Manuale o Script)
+### Script di Avvio Docker
+
+Non usare `docker run` manuale ogni volta. Crea uno script o usa questo comando completo.
+
+**Comando di Run:**
 
 ```bash
-# 1. Build
-docker build --network=host -t volcanic-backend-sample .
-
-# 2. Stop & Remove
-docker stop volcanic-backend-sample || true && docker rm volcanic-backend-sample || true
-
-# 3. Run
-# Nota su --add-host: Risolve problemi DNS interni in alcune infrastrutture Cloud (es. OVH Managed DB)
-# dove il DNS del container non risolve l'hostname del DB privato.
 docker run -d \
-  --name volcanic-backend-sample \
+  --name volcanic-sample-backend \
   --restart always \
+  # Espone la porta SOLO su localhost (Nginx farà da proxy)
   -p 127.0.0.1:2230:2230 \
-  --add-host <DB_HOSTNAME>:<DB_PRIVATE_IP> \
+  # Risolve problemi DNS interni in alcune reti cloud
+  --add-host host.docker.internal:host-gateway \
+  # Monta il file .env di produzione
+  --env-file /home/ubuntu/volcanic-sample-backend/.env.prod \
+  # Monta i certificati CA per il DB (se necessario)
   -v /home/ubuntu/certs:/app/certs \
-  --env-file /home/ubuntu/volcanic-backend-sample/.env.prod \
-  volcanic-backend-sample
+  volcanic-sample-backend:latest
 ```
 
 ---
 
 ## 8.4 Continuous Deployment ("Poor Man's CI/CD")
 
-Per progetti che non usano Kubernetes/Jenkins, un semplice script bash in crontab è estremamente efficace e resiliente per l'Auto-Update.
+Per un setup rapido senza Kubernetes, un semplice script bash eseguito via cron è robusto ed efficace. Controlla Git, se ci sono modifiche, rebuilda e riavvia.
 
 ### Script `deploy.sh`
 
@@ -2160,15 +2439,17 @@ Per progetti che non usano Kubernetes/Jenkins, un semplice script bash in cronta
 
 # Configurazione
 LOG_FILE="/home/ubuntu/deploy.log"
-DIR_BE="/home/ubuntu/volcanic-backend-sample"
+APP_DIR="/home/ubuntu/volcanic-sample-backend"
+IMAGE_NAME="volcanic-sample-backend"
+CONTAINER_NAME="volcanic-sample-backend"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-cd "$DIR_BE" || exit
+cd "$APP_DIR" || { log "Directory not found"; exit 1; }
 
-# Fetch senza merge per controllare aggiornamenti
+# 1. Fetch senza merge
 git fetch origin main
 
 LOCAL=$(git rev-parse HEAD)
@@ -2177,121 +2458,510 @@ REMOTE=$(git rev-parse origin/main)
 if [ "$LOCAL" != "$REMOTE" ]; then
     log "🚀 Update found! ($LOCAL -> $REMOTE)"
 
-    # 1. Scarica Codice
+    # 2. Scarica codice
     git pull origin main
 
-    # 2. Build Docker
+    # 3. Build Docker
     log "Building Docker Image..."
-    docker build --network=host -t volcanic-backend-sample .
+    docker build -t $IMAGE_NAME .
 
     if [ $? -eq 0 ]; then
-        # 3. Restart Container (Solo se la build ha successo)
+        # 4. Zero-Downtime Restart (concettuale: stop -> start veloce)
         log "Restarting Container..."
-        docker stop volcanic-backend-sample || true && docker rm volcanic-backend-sample || true
+        docker stop $CONTAINER_NAME || true
+        docker rm $CONTAINER_NAME || true
 
-        # Esegui comando di run (vedi sopra per parametri completi)
+        # Esegui comando di run (copia i parametri dal paragrafo 8.3)
         docker run -d \
-          --name volcanic-backend-sample \
+          --name $CONTAINER_NAME \
           --restart always \
           -p 127.0.0.1:2230:2230 \
+          --env-file .env.prod \
           -v /home/ubuntu/certs:/app/certs \
-          --env-file /home/ubuntu/volcanic-backend-sample/.env.prod \
-          volcanic-backend-sample
+          $IMAGE_NAME
 
         log "✅ Backend updated successfully."
 
-        # Pulizia immagini vecchie (risparmio spazio disco)
+        # Pulizia immagini vecchie
         docker image prune -f > /dev/null 2>&1
     else
         log "❌ Build Failed. Aborting restart."
-        # Inviare notifica (mail/slack) qui se necessario
     fi
+else
+    # Nessun aggiornamento, uscita silenziosa
+    :
 fi
 ```
 
 ### Automazione (Crontab)
 
-Esegue il controllo ogni 30 minuti.
+Esegui il controllo ogni 15 minuti.
 
 ```bash
-# crontab -e
-0,30 * * * * /home/ubuntu/deploy.sh >> /home/ubuntu/cron_output.log 2>&1
+*/15 * * * * /home/ubuntu/volcanic-sample-backend/deploy.sh >> /dev/null 2>&1
 ```
 
 ---
 
-## 8.5 Database Operations & Maintenance
+## 8.5 Database Operations
 
 ### Estensioni Obbligatorie
 
-Il framework usa `uuid` come primary key. Se il database è pulito, questa estensione deve essere attivata.
+PostgreSQL deve avere l'estensione UUID attiva.
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 ```
 
-### Full Data Wipe (Reset script)
+### Data Seeding (Popolamento Iniziale)
 
-Utile in staging/dev. L'ordine di cancellazione è critico per via delle Foreign Keys.
+Invece di lanciare SQL manuali che potrebbero violare i vincoli di integrità o bypassare l'hashing delle password, `volcanic-sample-backend` fornisce un endpoint dedicato per l'inizializzazione sicura.
 
-```sql
--- Ordine inverso rispetto alle dipendenze
-DELETE FROM "timesheet";
-DELETE FROM "planning";
-DELETE FROM "activity";
-DELETE FROM "work_order";
-DELETE FROM "order";
-DELETE FROM "user";
-DELETE FROM "professional";
-DELETE FROM "client";
-DELETE FROM "order_type";
-DELETE FROM "order_state";
-DELETE FROM "order_category";
--- Se necessario droppare le tabelle:
--- DROP TABLE "timesheet" CASCADE; ...
-```
+File di riferimento: `src/api/tools/controller/tools.ts`.
 
-### Database Seeding Endpoint
-
-Il backend espone (se configurato in `tools/routes.ts`) un endpoint per popolare il DB iniziale.
-`curl -X POST http://127.0.0.1:2230/api/tools/prepare-database` (Richiede Auth Admin).
+1.  Assicurarsi che l'utente chiamante abbia un token temporaneo o che la sicurezza sia disabilitata per il primo avvio.
+2.  Chiamare:
+    ```bash
+    curl -X GET http://localhost:2230/api/tools/prepare-database \
+         -H "Authorization: Bearer <ADMIN_TOKEN>"
+    ```
+3.  **Cosa fa:**
+    - Pulisce le tabelle nell'ordine corretto (rispettando FK).
+    - Crea Utenti, Professionisti, Clienti e Ordini di test definiti in `src/utils/initialData.ts`.
+    - Applica l'hashing corretto alle password (`bcrypt`).
 
 ---
 
 ## 8.6 Diagnostica e Monitoraggio
 
-Comandi essenziali per capire "perché il server è lento".
+Strumenti essenziali per capire lo stato del sistema in produzione.
 
-### Monitoraggio Risorse
+### 1. Log Applicativi
+
+Vedere cosa sta succedendo nel backend in tempo reale.
 
 ```bash
-# CPU e RAM in tempo reale (ordinare per %MEM)
-htop
+docker logs volcanic-sample-backend --tail 200 -f
+```
 
-# Statistiche container Docker (CPU/RAM Usage live)
+### 2. Risorse (CPU/RAM)
+
+Verificare se il container è sotto stress o se c'è un memory leak.
+
+```bash
+# Visione live
 docker stats --no-stream
 
-# Verifica limiti di memoria applicati
-docker inspect volcanic-backend-sample --format='Memory: {{.HostConfig.Memory}}'
-# Se restituisce 0, il container può usare tutta la RAM dell'host (PERICOLOSO)
+# Verifica limite memoria applicato
+docker inspect volcanic-sample-backend --format='Memory Limit: {{.HostConfig.Memory}}'
 ```
 
-### Log Analysis
+### 3. Connettività Database
+
+Se l'app non parte ("Connection Timeout"), verificare se il container riesce a raggiungere il DB.
 
 ```bash
-# Log in tempo reale (follow)
-docker logs volcanic-backend-sample --tail 100 -f
-
-# Grep errori specifici nei log passati
-docker logs volcanic-backend-sample 2>&1 | grep "Error"
+# Entra nel container e usa nc (netcat) o ping
+docker exec -it volcanic-sample-backend sh
+/usr/src/app # nc -zv pg-databases.ovh.net 20184
 ```
 
-### Network Check
+---
+
+# Parte 9: Integrazione GraphQL & Apollo
+
+Il Volcanic Stack supporta un'architettura **Dual-Stack**: è possibile esporre le stesse funzionalità di business sia via REST (per integrazioni standard/web) che via GraphQL (per client mobile o frontend complessi che richiedono data-fetching selettivo), mantenendo il codice DRY (Don't Repeat Yourself).
+
+## 9.1 Attivazione e Configurazione
+
+L'integrazione di Apollo Server è gestita condizionalmente all'avvio.
+
+### 1. Variabili d'Ambiente (`.env`)
+
+Per abilitare l'endpoint `/graphql` e la Sandbox (se in dev):
+
+```properties
+GRAPHQL=true
+```
+
+### 2. Struttura dei File
+
+Per convenzione, il codice GraphQL risiede in `src/apollo`:
 
 ```bash
-# Verifica se il backend sta ascoltando sulla porta locale
-sudo netstat -tulpn | grep 2230
-
-# Verifica connettività dal container verso il DB
-docker exec -it volcanic-backend-sample nc -zv <DB_HOST> <DB_PORT>
+src/
+└── apollo/
+    ├── type-defs.ts    # Definizioni Schema (SDL)
+    ├── resolvers.ts    # Mappatura Query/Mutation -> Service
+    └── context.ts      # Costruzione del contesto (Auth)
 ```
+
+---
+
+## 9.2 Autenticazione e UserContext
+
+In GraphQL non abbiamo i middleware di Fastify (`global.isAuthenticated`) eseguiti prima del resolver nello stesso modo lineare. L'autenticazione deve avvenire durante la costruzione del **Context**.
+
+Il nostro obiettivo è iniettare lo stesso `UserContext` usato nelle API REST, in modo che i Service (`applyPermissions`) funzionino senza modifiche.
+
+### Implementazione `src/apollo/context.ts`
+
+```typescript
+import { FastifyRequest, FastifyReply } from 'fastify'
+import { UserContext } from '../../types/index.js'
+
+export interface MyContext {
+  userContext: UserContext
+}
+
+export const myContextFunction = async (request: FastifyRequest, reply: FastifyReply): Promise<MyContext> => {
+  // 1. Estrazione Token
+  const authHeader = request.headers.authorization
+  const token = authHeader?.replace('Bearer ', '')
+
+  // Contesto Default (Public/Guest)
+  let userContext: UserContext = {
+    userId: null,
+    role: 'public',
+    company: undefined,
+    professionalId: undefined
+  }
+
+  if (token) {
+    try {
+      // 2. Validazione JWT (usa l'istanza jwt del server Fastify)
+      const decoded: any = request.server.jwt.verify(token)
+
+      // 3. Recupero Utente dal DB (similare all'hook preHandler REST)
+      // Nota: usiamo userManager globale o repository diretto
+      const user = await repository.users.findOne({
+        where: { externalId: decoded.sub },
+        relations: ['professional']
+      })
+
+      if (user && !user.blocked) {
+        userContext = {
+          userId: user.id,
+          role: 'user', // Logica di mapping ruoli (semplificata)
+          company: user.professional?.company,
+          professionalId: user.professional?.id
+        }
+
+        if (user.roles.includes('admin')) userContext.role = 'admin'
+        else if (user.roles.includes('manager')) userContext.role = 'manager'
+      }
+    } catch (err) {
+      // Token invalido: procediamo come public o lanciamo errore se l'intera API è privata
+      // throw new GraphQLError('Invalid Token', { extensions: { code: 'UNAUTHENTICATED' } });
+    }
+  }
+
+  return { userContext }
+}
+```
+
+---
+
+## 9.3 Schema First: TypeDefs e Resolvers
+
+L'approccio consigliato è **Schema First**: definire i tipi, poi implementare i resolver che delegano ai Service.
+
+### 1. Definizione (`src/apollo/type-defs.ts`)
+
+```typescript
+export const typeDefs = `
+  type Order {
+    id: ID!
+    code: String!
+    name: String!
+    status: String
+    # Relazioni
+    workOrders: [WorkOrder]
+  }
+
+  type WorkOrder {
+    id: ID!
+    code: String!
+  }
+
+  # Input per filtri complessi (Mapping su Magic Query)
+  input OrderFilter {
+    code: String      # eq
+    status: String    # eq
+    nameContains: String # contains
+  }
+
+  type Query {
+    # Recupera un ordine specifico
+    order(id: ID!): Order
+    
+    # Lista con filtri
+    orders(filter: OrderFilter, page: Int, pageSize: Int): [Order]
+  }
+`
+```
+
+### 2. Resolvers (`src/apollo/resolvers.ts`)
+
+I resolver **NON** devono contenere logica SQL. Devono solo chiamare i Service esistenti.
+
+```typescript
+import { orderService } from '../services/order.service.js'
+import { workOrderService } from '../services/workOrder.service.js'
+
+export const resolvers = {
+  Query: {
+    order: async (_: any, args: { id: string }, context: MyContext) => {
+      // Riutilizzo del Service: la sicurezza è garantita da findOne internamente
+      return await orderService.findOne(context.userContext, args.id)
+    },
+
+    orders: async (_: any, args: any, context: MyContext) => {
+      // Mapping argomenti GraphQL -> Volcanic Query Params
+      // (Vedi sezione 9.4 per helper avanzati)
+      const queryParams = {
+        page: args.page || 1,
+        pageSize: args.pageSize || 25,
+        // Esempio mapping manuale
+        ...(args.filter?.code && { code: args.filter.code }),
+        ...(args.filter?.nameContains && { 'name:contains': args.filter.nameContains })
+      }
+
+      const { records } = await orderService.findAll(context.userContext, queryParams)
+      return records
+    }
+  },
+
+  // Field Resolver per le relazioni (risolve N+1 o caricamento lazy)
+  Order: {
+    workOrders: async (parent: any, _: any, context: MyContext) => {
+      // Se workOrders è già stato caricato dal service padre, usalo
+      if (parent.workOrders) return parent.workOrders
+
+      // Altrimenti chiama il service figlio filtrando per padre
+      // Nota: findAll del service applica la sicurezza anche qui!
+      const { records } = await workOrderService.findAll(context.userContext, {
+        'order:eq': parent.id
+      })
+      return records
+    }
+  }
+}
+```
+
+---
+
+## 9.4 Advanced Pattern: GraphQL to Magic Query Bridge
+
+Il sistema di filtri REST (`name:contains=foo`) è molto potente. Per non perdere questa potenza in GraphQL senza riscrivere migliaia di input type, possiamo creare un **adapter**.
+
+### Utility: `graphqlToVolcanic`
+
+Immaginiamo di passare un JSON stringify o un oggetto libero in GraphQL per i filtri avanzati.
+
+**TypeDefs:**
+
+```graphql
+scalar JSON # Richiede graphql-type-json
+type Query {
+  # queryParams accetta l'oggetto standard di Volcanic { "name:like": "A%", "sort": "id:desc" }
+  ordersGeneric(queryParams: JSON): [Order]
+}
+```
+
+**Resolver:**
+
+```typescript
+ordersGeneric: async (_: any, args: { queryParams: any }, ctx: MyContext) => {
+  // Passaggio diretto ("Pass-through")
+  // Il Service riceve esattamente ciò che riceverebbe dal controller REST
+  const { records } = await orderService.findAll(ctx.userContext, args.queryParams || {})
+  return records
+}
+```
+
+**Vantaggi:**
+
+1.  **Parità di Feature**: Qualsiasi filtro supportato da `@volcanicminds/typeorm` (incluso `_logic` o nested filtering `client.name:eq`) funziona in GraphQL immediatamente.
+2.  **Manutenibilità**: Non serve creare `InputType` per ogni combinazione di filtri.
+
+---
+
+## 9.5 Performance: Il Problema N+1
+
+In GraphQL, è facile cadere nel problema N+1 (es. chiedo 100 ordini, e per ognuno il resolver `client` fa una query al DB).
+
+### Soluzione 1: `addRelations` nel Service (Eager Loading)
+
+Se sappiamo che una query GraphQL richiederà spesso una relazione, configuriamo il Service per caricarla di default.
+
+```typescript
+// src/services/order.service.ts
+protected addRelations(qb, alias) {
+    // Carica sempre il cliente.
+    // Il resolver Order.client non dovrà fare query extra.
+    return qb.leftJoinAndSelect(`${alias}.client`, 'client')
+}
+```
+
+### Soluzione 2: DataLoader (Avanzato)
+
+Se l'eager loading è troppo pesante, si usa `DataLoader` nel contesto.
+
+1.  Creare un `BatchLoader` che accetta array di ID.
+2.  Eseguire `repository.find({ where: { id: In(ids) } })`.
+3.  Usare il loader nel resolver: `return context.loaders.clientLoader.load(parent.clientId)`.
+
+> **Consiglio Volcanic**: Per il 90% dei casi di business (dashboard, liste), l'uso intelligente di `addRelations` nel `BaseService` combinato con la paginazione è sufficiente e molto più semplice da mantenere rispetto ai DataLoader.
+
+---
+
+## 9.6 Riassunto Integrazione
+
+1.  **Abilita** GraphQL in `.env`.
+2.  **Implementa** `src/apollo/context.ts` per estrarre il token JWT e creare un `UserContext` identico a quello REST.
+3.  **Definisci** lo Schema (`type-defs.ts`).
+4.  **Implementa** i Resolver mappandoli 1:1 sui metodi `findAll`/`findOne` dei Service esistenti.
+5.  **Goditi** la sicurezza RLS automatica: poiché i resolver chiamano i Service, un utente GraphQL non potrà mai vedere dati che non potrebbe vedere via REST.
+
+---
+
+# Parte 10: Pattern Avanzati e Troubleshooting
+
+Questa sezione finale raccoglie i pattern specifici implementati in `volcanic-sample-backend` per la gestione del ciclo di vita del dato e la risoluzione dei problemi comuni.
+
+## 10.1 Data Seeding & Maintenance
+
+A differenza delle migrazioni classiche, `volcanic-sample-backend` utilizza un approccio a **"Smart Seeding"** tramite API. Questo è utilissimo per ambienti di test, staging o per ripristinare un ambiente di sviluppo pulito.
+
+### L'approccio `src/api/tools`
+
+Il controller `tools.ts` espone endpoint amministrativi che eseguono operazioni distruttive o massive.
+
+**Endpoint: `POST /api/tools/prepare-database`**
+
+Questo endpoint (protetto da Admin Auth) esegue tre passi critici:
+
+1.  **Clean**: Svuota le tabelle nell'ordine inverso rispetto alle Foreign Key (per evitare errori di vincolo).
+    ```typescript
+    // Esempio da src/api/tools/controller/tools.ts
+    const queryRunner = connection.createQueryRunner()
+    // Ordine inverso di dipendenza
+    await queryRunner.query('DELETE FROM "timesheet";') // Figlio
+    await queryRunner.query('DELETE FROM "activity";') // Padre
+    // ...
+    ```
+2.  **Seed**: Inserisce i dati statici definiti in `src/utils/initialData.ts`.
+    - Utenti, Ruoli, Stati Ordine, Categorie.
+3.  **Link**: Collega le entità (es. assegna i WorkOrder agli Ordini appena creati usando logiche di business, come la generazione del codice univoco).
+
+**Best Practice:**
+Non committare mai dati sensibili in `initialData.ts`. Usare librerie come `faker` o dati anonimizzati.
+
+---
+
+## 10.2 Gestione Enum e Costanti
+
+Per mantenere la coerenza tra il database (Postgres) e il codice (TypeScript), `volcanic-sample-backend` centralizza le definizioni.
+
+### File: `src/entities/all.enums.ts`
+
+Invece di spargere stringhe magiche ('active', 'closed') nel codice, si usano Enum TypeScript esportati.
+
+```typescript
+export enum OrderStateEnum {
+  ACTIVE = 'active',
+  CLOSED = 'closed',
+  LOST = 'lost'
+}
+
+export const VALID_COMPANIES = ['volcanicminds', 'acme']
+```
+
+**Utilizzo nell'Entità:**
+
+```typescript
+import { OrderStateEnum } from './all.enums.js'
+
+@Column({
+  type: 'enum',
+  enum: OrderStateEnum,
+  default: OrderStateEnum.ACTIVE
+})
+state: OrderStateEnum
+```
+
+**Utilizzo nel Service/Controller:**
+
+```typescript
+if (order.state === OrderStateEnum.CLOSED) {
+  // ...
+}
+```
+
+---
+
+## 10.3 Troubleshooting: Errori Comuni e Soluzioni
+
+Lavorando con il Volcanic Stack, potreste incontrare questi errori specifici. Ecco come risolverli.
+
+### 1. "Relation not found" / "Missing FROM-clause entry"
+
+**Sintomo:** Chiamate un'API con un filtro relazionale (es. `?client.name:eq=Acme`) e ricevete un errore 500 SQL.
+**Causa:** La relazione `client` non è stata caricata nel Service.
+**Soluzione:** Aggiungere la join in `addRelations` del Service.
+
+```typescript
+// src/services/order.service.ts
+protected addRelations(qb, alias) {
+    // L'alias 'client' DEVE corrispondere al prefisso usato nel filtro
+    return qb.leftJoinAndSelect(`${alias}.client`, 'client')
+}
+```
+
+### 2. "Circular Dependency" all'avvio
+
+**Sintomo:** Il server crasha all'avvio o TypeORM si lamenta che un'entità è `undefined`.
+**Causa:** Import circolare tra file di entità (es. Order importa WorkOrder che importa Order).
+**Soluzione:**
+
+1.  Usare `import type { ... }` per i tipi TypeScript.
+2.  Nei decoratori TypeORM, usare le **stringhe** invece delle classi.
+
+```typescript
+// ERRORE: @OneToMany(() => WorkOrder, ...)
+// CORRETTO: @OneToMany('WorkOrder', ...)
+```
+
+### 3. "Access Denied" silenzioso (Lista vuota)
+
+**Sintomo:** Un utente chiama `GET /orders` e riceve `[]` (lista vuota), ma nel DB ci sono dati.
+**Causa:** La RLS (`applyPermissions`) sta filtrando tutto.
+**Debug:**
+
+1.  Abilitare `DB_LOGGING=true` nel `.env`.
+2.  Controllare la query SQL generata nella console.
+3.  Verificare `req.userContext` nel controller: il ruolo è corretto? L'ID professionale è associato?
+
+### 4. Gestione Date e Timezone
+
+**Problema:** Le date salvate sembrano sbagliate di 1 o 2 ore.
+**Regola:**
+
+1.  Il DB (Postgres) deve essere in UTC.
+2.  Il Backend (Node) deve lavorare in UTC.
+3.  Il Frontend converte in Locale.
+4.  In `src/entities/*.ts`, usare colonne `timestamp` (senza time zone) se si gestisce tutto in UTC applicativo, o `timestamptz` se si vuole che Postgres gestisca l'offset. Volcanic preferisce date ISO string standard (`YYYY-MM-DDTHH:mm:ss.sssZ`).
+
+---
+
+## 10.4 Checklist per il Rilascio in Produzione
+
+Prima di deployare `volcanic-sample-backend`, verificare:
+
+1.  [ ] **Env**: `NODE_ENV=production`.
+2.  [ ] **Logs**: `LOG_LEVEL=info` (non `trace` o `debug`).
+3.  [ ] **DB Sync**: `DB_SYNCHRONIZE=false` (fondamentale per non perdere dati).
+4.  [ ] **Auth**: `JWT_SECRET` e `JWT_REFRESH_SECRET` sono lunghe, complesse e diverse tra loro.
+5.  [ ] **MFA**: Policy impostata secondo requisiti business (`OPTIONAL` o `MANDATORY`).
+6.  [ ] **Admin**: Verifica che l'utente Admin abbia una password forte e MFA attivo.
