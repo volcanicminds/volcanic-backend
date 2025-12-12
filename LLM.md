@@ -84,7 +84,7 @@
     - **6.3 TypeScript Augmentation**
       - Estensione tipi globali in `types/index.d.ts`.
 
-7.  **[Parte 7: Validazione, Utilities e Testing](#parte-7-validazione-utilities-e-testing)**
+7.  **[# Parte 7: Validazione, Utilities, Scheduler e Testing](#parte-7-validazione-utilities-scheduler-e-testing)**
 
     - **7.1 Validazione JSON Schema**
       - Override degli schemi core (es. Login Response custom).
@@ -95,7 +95,7 @@
     - **7.4 Testing**
       - Strategie Unit e E2E.
 
-8.  **[Parte 8 : Special Bonus - System Administration & Deployment Guide](#bonus-speciale-system-administration--deployment)**
+8.  **[Parte 8: System Administration e Deployment](#parte-8-system-administration-e-deployment)**
     - **8.1 Hardening del Server (Ubuntu)**
       - Configurazione Firewall (UFW): Strategia "Deny by Default".
       - Installazione Stack Base (Nginx, Certbot).
@@ -1953,9 +1953,7 @@ describe('Order API', () => {
 
 ---
 
----
-
-# Parte 8 : Special Bonus - System Administration & Deployment Guide
+# Parte 8: System Administration e Deployment
 
 Questa sezione trascende il codice TypeScript e si occupa del "ferro": come portare il backend in produzione in modo sicuro, performante e resiliente.
 
