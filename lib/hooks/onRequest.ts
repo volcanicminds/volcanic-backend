@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getParams, getData } from '../util/common.js'
-import type { AuthenticatedUser, AuthenticatedToken, Role } from '../../types/global.js'
+import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } from '../../types/global.js'
 
 const { embedded_auth = true } = global.config?.options || {}
 
@@ -25,6 +25,25 @@ export default async (req, reply) => {
 
   req.data = () => getData(req)
   req.parameters = () => getParams(req)
+
+  if (global.transferPath) {
+    const url = req.url.split('?')[0]
+    const isExact = url === global.transferPath
+    const isSubPath = url.startsWith(global.transferPath + '/')
+
+    if (isExact || isSubPath) {
+      if (req.server['transferManager']) {
+        const tm = req.server['transferManager'] as TransferManagement
+        const isValidTransferRequest = await tm.isValid(req)
+
+        if (isValidTransferRequest) {
+          req.roles = () => [roles.public.code]
+          req.hasRole = () => true
+          return
+        }
+      }
+    }
+  }
 
   if (embedded_auth) {
     req.roles = () => [roles.public.code]

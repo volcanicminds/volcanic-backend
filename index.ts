@@ -39,6 +39,8 @@ import typeDefs from './lib/apollo/type-defs.js'
 import require from './lib/util/require.js'
 
 import type {
+  FastifyReply,
+  FastifyRequest,
   UserManagement,
   TokenManagement,
   DataBaseManagement,
@@ -392,7 +394,10 @@ const start = async (decorators = {}) => {
       onUploadTerminate(_callback: TransferCallback) {
         throw new Error('Not implemented.')
       },
-      handle(_req: any, _res: any) {
+      handle(_req: FastifyRequest, _res: FastifyReply) {
+        throw new Error('Not implemented.')
+      },
+      isValid(_req: FastifyRequest) {
         throw new Error('Not implemented.')
       }
     } as TransferManagement,
@@ -417,8 +422,10 @@ const start = async (decorators = {}) => {
       if (log.e) log.error(`Startup: TRANSFER MANAGER FAILED: ${message}`)
     }
 
-    if (transferPath) {
-      if (log.i) log.info(`Transfer Manager 📂 mounted at ${transferPath}`)
+    global.transferPath = transferPath
+
+    if (global.transferPath) {
+      if (log.i) log.info(`Transfer Manager 📂 mounted at ${global.transferPath}`)
 
       // Register TUS route handler logic
       // Note: We bypass the body parser for this specific path to allow streaming
@@ -434,7 +441,7 @@ const start = async (decorators = {}) => {
             reply.hijack()
           })
         },
-        { prefix: transferPath }
+        { prefix: global.transferPath }
       )
     }
   }

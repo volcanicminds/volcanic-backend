@@ -211,6 +211,7 @@ export interface TransferManagement {
   onUploadFinish(callback: TransferCallback): void
   onUploadTerminate(callback: TransferCallback): void
   handle(req: any, res: any): Promise<void>
+  isValid(req: FastifyRequest): Promise<boolean>
 }
 
 declare module 'fastify' {
@@ -253,6 +254,7 @@ declare global {
   var server: any
   var config: GeneralConfig
   var transferConfig: TransferConfig
+  var transferPath: string | null
   var roles: Roles
   var tracking: TrackChangesList
   var trackingConfig: Data
