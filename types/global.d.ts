@@ -196,10 +196,21 @@ export interface DataBaseManagement {
   addChange(entityName, entityId, status, userId, contents, changeEntity): any | null
 }
 
-// Interface injected by the main application
 export interface MfaManagement {
   generateSetup(appName: string, email: string): Promise<{ secret: string; uri: string; qrCode: string }>
   verify(token: string, secret: string): boolean
+}
+
+// Callback type signature: (uploadOrId, req, res) => void
+export type TransferCallback = (data: any, req: any, res: any) => void
+
+export interface TransferManagement {
+  getPath(): string
+  getServer(): any
+  onUploadCreate(callback: TransferCallback): void
+  onUploadFinish(callback: TransferCallback): void
+  onUploadTerminate(callback: TransferCallback): void
+  handle(req: any, res: any): Promise<void>
 }
 
 declare module 'fastify' {
@@ -241,6 +252,7 @@ declare global {
   var log: any
   var server: any
   var config: GeneralConfig
+  var transferConfig: TransferConfig
   var roles: Roles
   var tracking: TrackChangesList
   var trackingConfig: Data

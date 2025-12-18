@@ -38,7 +38,14 @@ import resolvers from './lib/apollo/resolvers.js'
 import typeDefs from './lib/apollo/type-defs.js'
 import require from './lib/util/require.js'
 
-import type { UserManagement, TokenManagement, DataBaseManagement, MfaManagement } from './types/global.js'
+import type {
+  UserManagement,
+  TokenManagement,
+  DataBaseManagement,
+  MfaManagement,
+  TransferManagement,
+  TransferCallback
+} from './types/global.js'
 import general from './lib/config/general.js'
 
 global.log = logger
@@ -369,6 +376,26 @@ const start = async (decorators = {}) => {
         throw new Error('Not implemented.')
       }
     } as MfaManagement,
+    transferManager: {
+      getPath() {
+        throw new Error('Not implemented.')
+      },
+      getServer() {
+        throw new Error('Not implemented.')
+      },
+      onUploadCreate(_callback: TransferCallback) {
+        throw new Error('Not implemented.')
+      },
+      onUploadFinish(_callback: TransferCallback) {
+        throw new Error('Not implemented.')
+      },
+      onUploadTerminate(_callback: TransferCallback) {
+        throw new Error('Not implemented.')
+      },
+      handle(_req: any, _res: any) {
+        throw new Error('Not implemented.')
+      }
+    } as TransferManagement,
     ...decorators
   }
 
@@ -378,8 +405,42 @@ const start = async (decorators = {}) => {
     })
   )
 
+  // --- Transfer Manager Integration ---
+  if (server['transferManager']) {
+    const tm = server['transferManager'] as TransferManagement
+    // Fix: Explicit type string | null to match return type or null init
+    let transferPath: string | null = null
+    try {
+      transferPath = tm ? tm.getPath() : null
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      if (log.e) log.error(`Startup: TRANSFER MANAGER FAILED: ${message}`)
+    }
+
+    if (transferPath) {
+      if (log.i) log.info(`Transfer Manager 📂 mounted at ${transferPath}`)
+
+      // Register TUS route handler logic
+      // Note: We bypass the body parser for this specific path to allow streaming
+      await server.register(
+        async (instance) => {
+          instance.addContentTypeParser('*', (_req, _payload, done) => {
+            done(null)
+          })
+
+          instance.all('*', async (req, reply) => {
+            await tm.handle(req.raw, reply.raw)
+            // We hijack because TUS writes the response directly
+            reply.hijack()
+          })
+        },
+        { prefix: transferPath }
+      )
+    }
+  }
+  // ------------------------------------
+
   // --- STARTUP CHECKS (Admin MFA Reset) ---
-  // Read directly from Environment Variables for security/emergency overrides
   const resetEmail = process.env.MFA_ADMIN_FORCED_RESET_EMAIL
   const resetUntil = process.env.MFA_ADMIN_FORCED_RESET_UNTIL
 
@@ -401,7 +462,6 @@ const start = async (decorators = {}) => {
       } else {
         if (log.w) log.warn(`Startup: executing FORCE MFA RESET for admin ${resetEmail}`)
         try {
-          // Use the decorator directly if userManager is injected
           if (server['userManager'] && server['userManager'].isImplemented()) {
             await server['userManager'].forceDisableMfaForAdmin(resetEmail)
             if (log.w) log.warn(`Startup: MFA RESET SUCCESSFUL for ${resetEmail}`)
@@ -464,6 +524,8 @@ export type {
   TokenManagement,
   DataBaseManagement,
   MfaManagement,
+  TransferManagement,
+  TransferCallback,
   JobSchedule
 } from './types/global.js'
 
