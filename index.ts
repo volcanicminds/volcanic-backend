@@ -379,6 +379,9 @@ const start = async (decorators = {}) => {
       }
     } as MfaManagement,
     transferManager: {
+      isImplemented() {
+        return false
+      },
       getPath() {
         throw new Error('Not implemented.')
       },
@@ -413,13 +416,16 @@ const start = async (decorators = {}) => {
   // --- Transfer Manager Integration ---
   if (server['transferManager']) {
     const tm = server['transferManager'] as TransferManagement
-    // Fix: Explicit type string | null to match return type or null init
     let transferPath: string | null = null
-    try {
-      transferPath = tm ? tm.getPath() : null
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e)
-      if (log.e) log.error(`Startup: TRANSFER MANAGER FAILED: ${message}`)
+    if (tm?.isImplemented()) {
+      try {
+        transferPath = tm.getPath()
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
+        if (log.w) log.error(`Startup: TRANSFER MANAGER FAILED: ${message}`)
+      }
+    } else {
+      if (log.w) log.warn('Transfer Manager 📂 not available')
     }
 
     global.transferPath = transferPath

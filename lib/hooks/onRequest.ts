@@ -34,7 +34,7 @@ export default async (req, reply) => {
     if (isExact || isSubPath) {
       if (req.server['transferManager']) {
         const tm = req.server['transferManager'] as TransferManagement
-        const isValidTransferRequest = await tm.isValid(req)
+        const isValidTransferRequest = tm.isImplemented() && (await tm.isValid(req))
 
         if (isValidTransferRequest) {
           req.roles = () => [roles.public.code]

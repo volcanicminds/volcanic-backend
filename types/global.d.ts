@@ -205,6 +205,7 @@ export interface MfaManagement {
 export type TransferCallback = (data: any, req: any, res: any) => void
 
 export interface TransferManagement {
+  isImplemented(): boolean
   getPath(): string
   getServer(): any
   onUploadCreate(callback: TransferCallback): void
