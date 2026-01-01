@@ -210,7 +210,7 @@ const start = async (decorators = {}) => {
 
   server.setErrorHandler(function (error, _req, reply) {
     if (yn(process.env.HIDE_ERROR_DETAILS, process.env.NODE_ENV === 'production')) {
-      const err = error as any
+      const err = error as { statusCode: number; error: string }
       const statusCode = err.statusCode || 500
       const newError = { statusCode: err.statusCode, error: err.error }
       log.error(error)
