@@ -370,12 +370,44 @@ export const database: Database = {
 
 Un esempio di `.env` per produzione.
 
+| Variabile                      | Descrizione                                                         | Richiesto | Default             |
+| ------------------------------ | ------------------------------------------------------------------- | :-------: | ------------------- |
+| `NODE_ENV`                     | Ambiente dell'applicazione.                                         |    No     | `development`       |
+| `HOST`                         | Indirizzo host del server. Usa `0.0.0.0` per Docker.                |    No     | `0.0.0.0`           |
+| `PORT`                         | Porta di ascolto del server.                                        |    No     | `2230`              |
+| `JWT_SECRET`                   | Chiave segreta per firmare i JWT.                                   |  **Sì**   |                     |
+| `JWT_EXPIRES_IN`               | Tempo di scadenza JWT (es. `5d`, `12h`).                            |    No     | `5d`                |
+| `JWT_REFRESH`                  | Abilita refresh tokens.                                             |    No     | `true`              |
+| `JWT_REFRESH_SECRET`           | Chiave segreta per firmare i refresh tokens.                        |  **Sì**¹  |                     |
+| `JWT_REFRESH_EXPIRES_IN`       | Tempo di scadenza refresh tokens.                                   |    No     | `180d`              |
+| `LOG_LEVEL`                    | Verbosità log (`trace`, `debug`, `info`, `warn`, `error`, `fatal`). |    No     | `info`              |
+| `LOG_COLORIZE`                 | Abilita colori output log.                                          |    No     | `true`              |
+| `LOG_TIMESTAMP`                | Abilita timestamp nei log.                                          |    No     | `true`              |
+| `LOG_TIMESTAMP_READABLE`       | Usa formato timestamp leggibile.                                    |    No     | `true`              |
+| `LOG_FASTIFY`                  | Abilita logger nativo Fastify.                                      |    No     | `false`             |
+| `GRAPHQL`                      | Abilita Apollo Server per GraphQL.                                  |    No     | `false`             |
+| `SWAGGER`                      | Abilita documentazione Swagger/OpenAPI.                             |    No     | `true`              |
+| `SWAGGER_HOST`                 | URL base API per Swagger.                                           |    No     | `localhost:2230`    |
+| `SWAGGER_TITLE`                | Titolo documentazione API.                                          |    No     | `API Documentation` |
+| `SWAGGER_DESCRIPTION`          | Descrizione documentazione API.                                     |    No     |                     |
+| `SWAGGER_VERSION`              | Versione API.                                                       |    No     | `0.1.0`             |
+| `SWAGGER_PREFIX_URL`           | Path dove è disponibile Swagger UI.                                 |    No     | `/api-docs`         |
+| `MFA_POLICY`                   | Policy Sicurezza MFA (`OPTIONAL`, `MANDATORY`, `ONE_WAY`)           |    No     | `OPTIONAL`          |
+| `MFA_ADMIN_FORCED_RESET_EMAIL` | Email admin per reset MFA di emergenza                              |    No     |                     |
+| `MFA_ADMIN_FORCED_RESET_UNTIL` | Data ISO fino alla quale il reset è attivo                          |    No     |                     |
+| `HIDE_ERROR_DETAILS`           | Nasconde i dettagli (message) dell'errore nella risposta.           |    No     | `true` (prod)       |
+
+¹ Richiesto se `JWT_REFRESH` è abilitato.
+
+Ecco un file di configurazione completo:
+
 ```properties
 # --- Server ---
 NODE_ENV=production
 HOST=0.0.0.0
 PORT=2230
 APP_NAME=volcanic-sample-backend
+HIDE_ERROR_DETAILS=true
 
 # --- Database ---
 START_DB=true
@@ -391,6 +423,10 @@ DB_SSL_CA_PATH=/usr/src/app/certs/ca.pem
 DB_MAX_CONNECTING=50
 DB_MIN_CONNECTING=5
 DB_STATEMENT_TIMEOUT=60000
+DB_IDLE_TIMEOUT=30000
+DB_KEEP_ALIVE=true
+DB_CONNECTION_TIMEOUT=60000
+DB_QUERY_TIMEOUT=65000
 
 # --- Auth & Security ---
 # Generare con: openssl rand -base64 64
@@ -400,10 +436,76 @@ JWT_REFRESH=true
 JWT_REFRESH_SECRET=super_secret_refresh_key_change_me
 JWT_REFRESH_EXPIRES_IN=30d
 
+# MFA
+MFA_POLICY=OPTIONAL
+MFA_ADMIN_FORCED_RESET_EMAIL=admin@example.com
+MFA_ADMIN_FORCED_RESET_UNTIL=2025-01-01T00:00:00.000Z
+
+# --- API Documentation ---
+SWAGGER=true
+SWAGGER_HOST=localhost:2230
+SWAGGER_TITLE=API Documentation
+SWAGGER_DESCRIPTION=List of available APIs and schemas to use
+SWAGGER_VERSION=0.1.0
+SWAGGER_PREFIX_URL=/api-docs
+
+# --- GraphQL ---
+GRAPHQL=false
+
 # --- Logging ---
 LOG_LEVEL=info
 LOG_COLORIZE=false
+LOG_TIMESTAMP=true
+LOG_TIMESTAMP_READABLE=true
+LOG_FASTIFY=false
 ```
+
+---
+
+## 1.6 Configurazione Plugin Fastify (Rate Limit, Raw Body)
+
+È possibile abilitare e configurare plugin nativi di Fastify tramite il file `src/config/plugins.ts`.
+
+### Raw Body
+
+Utile per webhook (es. Stripe) che richiedono il payload grezzo per la validazione della firma.
+
+```typescript
+{
+  name: 'rawBody',
+  enable: true,
+  options: {
+    global: false, // Se true, aggiunge rawBody a tutte le richieste (memoria intensiva)
+    runFirst: true // Esegue il parsing prima di altri hook
+  }
+}
+```
+
+Se `global: false`, puoi abilitarlo sulla singola rotta in `routes.ts`:
+
+```typescript
+config: {
+  rawBody: true
+}
+```
+
+### Rate Limit
+
+Protegge l'API da abusi. Configurazione globale in `plugins.ts`:
+
+```typescript
+{
+  name: 'rateLimit',
+  enable: true,
+  options: {
+    global: true,
+    max: 100,
+    timeWindow: 60000 // 1 minuto
+  }
+}
+```
+
+È possibile sovrascrivere i limiti per singola rotta definendo l'oggetto `rateLimit` nella definizione della rotta.
 
 ---
 

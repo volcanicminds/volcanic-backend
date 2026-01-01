@@ -248,6 +248,7 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `MFA_POLICY`                   | MFA Security Policy (`OPTIONAL`, `MANDATORY`, `ONE_WAY`)                |    No    | `OPTIONAL`          |
 | `MFA_ADMIN_FORCED_RESET_EMAIL` | Admin email for emergency MFA reset                                     |    No    |                     |
 | `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
+| `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response.            |    No    | `true` (prod)       |
 
 ¹ Required if `JWT_REFRESH` is enabled.
 
