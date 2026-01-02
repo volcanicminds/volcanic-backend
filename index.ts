@@ -210,13 +210,14 @@ const start = async (decorators = {}) => {
 
   server.setErrorHandler(function (error, _req, reply) {
     if (yn(process.env.HIDE_ERROR_DETAILS, process.env.NODE_ENV === 'production')) {
-      const err = error as any
-      const statusCode = err.statusCode || err.status || 500
-      const errorType = err.error || 'Internal Server Error'
-      if (!err.statusCode && err.err && err.err.statusCode) {
-        reply.code(err.err.statusCode).send({ statusCode: err.err.statusCode, error: err.err.error || errorType })
-        return
+      const err = error as {
+        statusCode: number
+        status: number
+        error: string
+        err: { statusCode: number; status: number; error: string }
       }
+      const statusCode = err.statusCode || err.status || err.err?.statusCode || err.err?.status || 500
+      const errorType = err.error || err.err?.error || 'Internal Server Error'
       reply.code(statusCode).send({ statusCode, error: errorType })
       log.error(error)
     } else {
