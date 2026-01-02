@@ -10,10 +10,12 @@ MFA behavior is controlled globally via environment variables (`MFA_POLICY`) or 
 // src/config/general.ts
 export default {
   name: 'general',
-  enable: true,
   options: {
     // ...
     mfa_policy: process.env.MFA_POLICY || 'OPTIONAL'
+
+    // If true, allows admins to change other users' passwords (still requires old password knowledge)
+    // admin_can_change_passwords: false,
   }
 }
 ```

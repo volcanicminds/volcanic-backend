@@ -700,7 +700,6 @@ It's possible to specify that all JWT tokens belonging to the user who logs in a
 
 export default {
   name: 'general',
-  enable: true,
   options: {
     reset_external_id_on_login: true
   }
@@ -735,7 +734,6 @@ Out-of-the-box, the framework automatically secures all routes by checking for a
 
 export default {
   name: 'general',
-  enable: true,
   options: {
     embedded_auth: false
   }
@@ -752,7 +750,6 @@ It's possible to add a job scheduler. For more information, go to [Fastify Sched
 
 export default {
   name: 'general',
-  enable: true,
   options: {
     scheduler: true
   }

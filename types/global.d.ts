@@ -62,9 +62,9 @@ export interface Route {
 
 export interface GeneralConfig {
   name: string
-  enable: boolean
   options: {
     allow_multiple_admin: boolean
+    admin_can_change_passwords: boolean
     reset_external_id_on_login: boolean
     scheduler: boolean
     embedded_auth: boolean

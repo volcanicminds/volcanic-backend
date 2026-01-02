@@ -90,10 +90,19 @@ export async function validatePassword(req: FastifyRequest, reply: FastifyReply)
 }
 
 export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
-  const { email, oldPassword, newPassword1, newPassword2 } = req.data()
-
   if (!req.server['userManager'].isImplemented()) {
     throw new Error('Not implemented')
+  }
+
+  const _user = req.user
+  if (!_user) {
+    return reply.status(401).send(new Error('Unauthorized'))
+  }
+
+  const { email, oldPassword, newPassword1, newPassword2 } = req.data()
+
+  if (_user.email !== email && (!req.hasRole(roles.admin) || !global.config.options.admin_can_change_passwords)) {
+    return reply.status(400).send(new Error('Email not valid'))
   }
 
   if (!newPassword1 || !regExp.password.test(newPassword1)) {
@@ -262,7 +271,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     })
   }
 
-  if (config.enable && config.options.reset_external_id_on_login) {
+  if (config.options.reset_external_id_on_login) {
     user = await req.server['userManager'].resetExternalId(user.getId())
   }
 
@@ -451,7 +460,7 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   const isValid = req.server['mfaManager'].verify(token, secret)
   if (!isValid) return reply.status(403).send(new Error('Invalid MFA token'))
 
-  if (config.enable && config.options.reset_external_id_on_login) {
+  if (config.options.reset_external_id_on_login) {
     await req.server['userManager'].resetExternalId(user.getId())
   }
 

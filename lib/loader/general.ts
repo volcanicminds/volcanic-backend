@@ -5,12 +5,14 @@ import { globSync } from 'glob'
 export async function load() {
   const generalConfig: GeneralConfig = {
     name: 'general',
-    enable: true,
     options: {
       allow_multiple_admin: false,
+      admin_can_change_passwords: false,
       reset_external_id_on_login: false,
       scheduler: false,
-      embedded_auth: true
+      embedded_auth: true,
+      mfa_admin_forced_reset_email: undefined,
+      mfa_admin_forced_reset_until: undefined
     }
   }
 
@@ -25,7 +27,6 @@ export async function load() {
       const config: GeneralConfig = module.default || module
 
       if (config.name === generalConfig.name) {
-        generalConfig.enable = config.enable
         generalConfig.options = {
           ...generalConfig.options,
           ...(config.options || {})

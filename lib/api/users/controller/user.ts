@@ -30,7 +30,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   const { id: _id, ...data } = req.data()
 
   if (data.roles && data.roles.includes(roles.admin)) {
-    if (!config.enable || config.options?.allow_multiple_admin !== true) {
+    if (config.options?.allow_multiple_admin !== true) {
       return reply.status(403).send(Error('Cannot assign admin role to a user'))
     }
   }
