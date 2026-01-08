@@ -35,6 +35,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     }
   }
 
+  log.info(`Creating user with data: ${JSON.stringify(data)}`)
   const user = await req.server['userManager'].createUser(data)
   return user ? entity.User.save(user) : reply.status(400).send(Error('User not creatable'))
 }
