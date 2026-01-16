@@ -49,11 +49,31 @@ export default async (req, reply) => {
     req.roles = () => [roles.public.code]
     req.hasRole = (r: Role) => req.roles().includes(r?.code)
 
-    const auth = req.headers?.authorization || ''
     const cfg = req.routeOptions?.config || req.routeConfig || {}
-    const [prefix, bearerToken] = auth.split(' ')
+    const AUTH_MODE = process.env.AUTH_MODE || 'BEARER'
 
-    if (prefix === 'Bearer' && bearerToken != null) {
+    let bearerToken: string | undefined
+
+    if (AUTH_MODE === 'COOKIE') {
+      // COOKIE MODE: ONLY Check Cookie
+      const cookieToken = req.cookies['auth_token']
+      // If cookie is signed:
+      if (cookieToken) {
+        const unsigned = req.unsignCookie(cookieToken)
+        if (unsigned.valid && unsigned.value) {
+          bearerToken = unsigned.value
+        }
+      }
+    } else {
+      // BEARER MODE: ONLY Check Header
+      const auth = req.headers?.authorization || ''
+      const [prefix, token] = auth.split(' ')
+      if (prefix === 'Bearer' && token != null) {
+        bearerToken = token
+      }
+    }
+
+    if (bearerToken) {
       try {
         const tokenData = reply.server.jwt.verify(bearerToken)
 
@@ -123,6 +143,9 @@ export default async (req, reply) => {
           })
         }
       }
+    } else {
+      // No token found, but maybe route is public?
+      // If route requires roles and no token, it will be caught by permissions check below (bearerToken is null)
     }
 
     if (cfg.requiredRoles?.length > 0) {

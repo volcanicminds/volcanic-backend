@@ -133,6 +133,20 @@ export default {
     },
     {
       method: 'POST',
+      path: '/logout',
+      roles: [],
+      handler: 'auth.logout',
+      middlewares: [],
+      config: {
+        title: 'Logout',
+        description: 'Logout (clears cookie if in cookie mode)',
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
       path: '/refresh-token',
       roles: [],
       handler: 'auth.refreshToken',

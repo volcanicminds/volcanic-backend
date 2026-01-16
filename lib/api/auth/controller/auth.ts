@@ -281,7 +281,30 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId })
     : undefined
 
-  // Standard 200 OK
+  const AUTH_MODE = process.env.AUTH_MODE || 'BEARER'
+
+  if (AUTH_MODE === 'COOKIE') {
+    reply.setCookie('auth_token', token, {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      signed: true,
+      maxAge: 86400
+    })
+
+    return {
+      ...user,
+      roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
+      token: null, // Token hidden in cookie
+      refreshToken: null,
+      securityPolicy: {
+        mfaPolicy: mfa_policy
+      }
+    }
+  }
+
+  // Standard 200 OK (BEARER MODE)
   return {
     ...user,
     roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
@@ -291,6 +314,13 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
       mfaPolicy: mfa_policy
     }
   }
+}
+
+export async function logout(_req: FastifyRequest, reply: FastifyReply) {
+  if (process.env.AUTH_MODE === 'COOKIE') {
+    reply.clearCookie('auth_token', { path: '/' })
+  }
+  return { ok: true }
 }
 
 export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {

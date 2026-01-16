@@ -1,7 +1,6 @@
 # Indice: The Volcanic Stack - Definitive Backend Guide
 
 1.  **[Parte 1: Fondamenta e Infrastruttura](#parte-1-fondamenta-e-infrastruttura)**
-
     - **1.1 Introduzione e Filosofia dello Stack**
       - I Tre Pilastri (`backend`, `typeorm`, `tools`)
       - Principi Architetturali (Thin Controllers, Fat Services)
@@ -16,7 +15,6 @@
     - **1.5 Variabili d'Ambiente (Reference)**
 
 2.  **[Parte 2: Deep Dive Data Modeling & Entities](#parte-2-deep-dive-data-modeling--entities)**
-
     - **2.1 Anatomia di un'Entità Volcanic**
       - Active Record (`BaseEntity`) e Decoratori
       - Accesso Globale (`global.entity`)
@@ -35,7 +33,6 @@
     - **2.7 Best Practices di Modeling**
 
 3.  **[Parte 3: Magic Queries & Data Access](#parte-3-magic-queries--data-access)**
-
     - **3.1 Translation Layer: URL to SQL**
       - Flusso di traduzione e utilizzo (`executeFindQuery`)
     - **3.2 Reference Operatori di Filtro**
@@ -49,7 +46,6 @@
     - **3.6 Customizing QueryBuilder (Global Search)**
 
 4.  **[Parte 4: API Layer (Routing & Controllers)](#parte-4-api-layer-routing--controllers)**
-
     - **4.1 Autodiscovery delle Rotte**
       - Regole di matching dei file
     - **4.2 Configurazione `routes.ts`**
@@ -64,7 +60,6 @@
     - **4.6 JSON Schemas & Validazione**
 
 5.  **[Parte 5: Service Layer Architecture](#parte-5-service-layer-architecture)**
-
     - **5.1 Il Pattern `BaseService`**
       - Astrazione CRUD e Hooks
     - **5.2 Security Context & RLS (Row Level Security)**
@@ -78,9 +73,18 @@
     - **5.6 Caching**
 
 6.  **[Parte 6: Autenticazione e Sicurezza](#parte-6-autenticazione-e-sicurezza)**
-
     - **6.1 Stack Auth & JWT Lifecycle**
       - Access Token, Refresh Token e Revoca (`externalId`)
+      - Supporto Dual Mode (Bearer vs Cookie HttpOnly)
+
+### 6.1.1 Configurazione Dual Mode
+
+Il sistema supporta due modalità di autenticazione mutualmente esclusive, configurabili tramite la variabile d'ambiente `AUTH_MODE`.
+
+1.  **Bearer Token Mode** (`AUTH_MODE=BEARER`): Comportamento standard. Il token viene restituito nel body del login e deve essere inviato nell'header `Authorization: Bearer <token>`. Ideale per App Mobile e S2S.
+2.  **Cookie Mode** (`AUTH_MODE=COOKIE`): Comportamento sicuro per browser. Il token viene settato in un cookie `HttpOnly`, `Secure`, `SameSite=Strict`. Il body del login non contiene il token. Il client non deve gestire manualmente il token. Richiede `COOKIE_SECRET` nel `.env`.
+    - **Logout**: In modalità Cookie, la rotta `/auth/logout` cancella il cookie `auth_token`.
+
     - **6.2 Multi-Factor Authentication (MFA)**
       - Policy e Flusso "Gatekeeper" (Pre-Auth Token)
       - Adapter e Tools
@@ -90,8 +94,7 @@
       - Estensione tipi e Hook `preHandler`
     - **6.5 Emergency Admin Reset**
 
-7.  **[Parte 7: Validazione, Utilities, Scheduler e Testing](#parte-7-validazione-utilities-scheduler-e-testing)**
-
+3.  **[Parte 7: Validazione, Utilities, Scheduler e Testing](#parte-7-validazione-utilities-scheduler-e-testing)**
     - **7.1 Validazione JSON Schema e Schema Overriding**
       - Estensione schemi core (es. Login Response)
     - **7.2 Utilities Core (`@volcanicminds/tools`)**
@@ -103,8 +106,7 @@
     - **7.5 Strategie di Testing**
       - Setup, E2E e Unit Test
 
-8.  **[Parte 8: System Administration e Deployment](#parte-8-system-administration-e-deployment)**
-
+4.  **[Parte 8: System Administration e Deployment](#parte-8-system-administration-e-deployment)**
     - **8.1 Hardening del Server (Ubuntu/Linux)**
       - Firewall UFW e Stack Base
     - **8.2 Nginx: Reverse Proxy & Security Gateway**
@@ -117,8 +119,7 @@
       - Estensioni, Wipe e Seeding sicuro
     - **8.6 Diagnostica e Monitoraggio**
 
-9.  **[Parte 9: Integrazione GraphQL & Apollo](#parte-9-integrazione-graphql--apollo)**
-
+5.  **[Parte 9: Integrazione GraphQL & Apollo](#parte-9-integrazione-graphql--apollo)**
     - **9.1 Attivazione e Configurazione**
     - **9.2 Autenticazione e UserContext**
       - Adattamento Context per GraphQL
@@ -128,7 +129,7 @@
     - **9.5 Performance: Il Problema N+1**
     - **9.6 Riassunto Integrazione**
 
-10. **[Parte 10: Pattern Avanzati e Troubleshooting](#parte-10-pattern-avanzati-e-troubleshooting)**
+6.  **[Parte 10: Pattern Avanzati e Troubleshooting](#parte-10-pattern-avanzati-e-troubleshooting)**
     - **10.1 Data Seeding & Maintenance**
       - Approccio API-driven (`src/api/tools`)
     - **10.2 Gestione Enum e Costanti**
@@ -920,13 +921,11 @@ TypeORM permette di filtrare basandosi sulle colonne delle tabelle unite (Join).
 ### Esempi
 
 1.  **Filtrare Ordini per nome Cliente:**
-
     - Query: `GET /orders?client.name:containsi=Acme`
     - Prerequisito nel Service: `qb.leftJoinAndSelect('order.client', 'client')` (l'alias 'client' deve coincidere con la prima parte del filtro).
     - SQL Generato: `... AND client.name ILIKE '%Acme%'`
 
 2.  **Filtrare Attività per Azienda del Professionista:**
-
     - Query: `GET /activities?professional.company:eq=volcanicminds`
     - Struttura: `Activity` -> `Professional` -> `company`.
 

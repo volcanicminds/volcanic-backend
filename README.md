@@ -248,7 +248,12 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `MFA_POLICY`                   | MFA Security Policy (`OPTIONAL`, `MANDATORY`, `ONE_WAY`)                |    No    | `OPTIONAL`          |
 | `MFA_ADMIN_FORCED_RESET_EMAIL` | Admin email for emergency MFA reset                                     |    No    |                     |
 | `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
+| `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
+| `AUTH_MODE`                    | Authentication mode: `BEARER` (default) or `COOKIE`                     |    No    | `BEARER`            |
+| `COOKIE_SECRET`                | Secret for signing cookies (Required if `AUTH_MODE=COOKIE`)             | **Yes**² |                     |
 | `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response.            |    No    | `true` (prod)       |
+
+² Required if `AUTH_MODE` is `COOKIE`.
 
 ¹ Required if `JWT_REFRESH` is enabled.
 
@@ -318,7 +323,32 @@ JWT_EXPIRES_IN=5d
 JWT_REFRESH=true
 JWT_REFRESH_SECRET=yourRefreshSecret
 JWT_REFRESH_EXPIRES_IN=180d
+
+# Auth Mode: BEARER (default) or COOKIE
+AUTH_MODE=BEARER
+COOKIE_SECRET=super_secret_cookie_key_change_me
 ```
+
+## Authentication Modes: Bearer vs Cookie
+
+The framework supports two mutually exclusive authentication modes, controlled by `AUTH_MODE` in `.env`.
+
+### 1. Bearer Token Mode (`AUTH_MODE=BEARER`) - Default
+
+- **Standard API behavior**.
+- Login returns `{ token: "...", user: ... }` in the JSON body.
+- Client must send `Authorization: Bearer <token>` header for requests.
+- **Best for:** Mobile Apps, Server-to-Server.
+
+### 2. Cookie Mode (`AUTH_MODE=COOKIE`)
+
+- **Browser-secure behavior**.
+- Login sets an `HttpOnly`, `Secure`, `SameSite=Strict` cookie named `auth_token`.
+- Login returns `{ user: ... }` (Token is hidden from JavaScript).
+- Authorization header is ignored; the server validates the cookie.
+- **Best for:** Single Page Applications (React, Vue, etc.) to prevent XSS token theft.
+
+To enable Cookie mode, you must set `COOKIE_SECRET` in `.env`.
 
 With `reply.jwtSign(payload)` is possible obtain a fresh JWT token. Each authenticated calls must be recalled specifying in the header:
 

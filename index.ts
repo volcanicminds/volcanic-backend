@@ -30,6 +30,7 @@ import compress from '@fastify/compress'
 import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
 import rawBody from 'fastify-raw-body'
+import cookie from '@fastify/cookie'
 
 import { ApolloServer } from '@apollo/server'
 import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastify'
@@ -191,6 +192,7 @@ const start = async (decorators = {}) => {
   const plugins = await loaderPlugins.load()
 
   if (plugins?.rawBody) await server.register(rawBody, plugins.rawBody || {})
+  if (plugins?.cookie) await server.register(cookie, plugins.cookie || {})
   if (!loadApollo && plugins?.helmet) await server.register(helmet, plugins.helmet || {})
 
   if (plugins?.rateLimit) {

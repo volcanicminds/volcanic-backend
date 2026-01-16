@@ -61,5 +61,13 @@ export default [
     name: 'rawBody',
     enable: false,
     options: {}
+  },
+  {
+    name: 'cookie',
+    enable: process.env.AUTH_MODE === 'COOKIE',
+    options: {
+      secret: process.env.COOKIE_SECRET,
+      parseOptions: {}
+    }
   }
 ]
