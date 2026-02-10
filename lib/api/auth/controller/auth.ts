@@ -23,13 +23,13 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(new Error('Repeated password not match'))
   }
 
-  let existings = await req.server['userManager'].retrieveUserByEmail(data.email)
+  let existings = await req.server['userManager'].retrieveUserByEmail(data.email, req.runner)
   if (existings) {
     return reply.status(400).send(new Error('Email already registered'))
   }
 
   if ((data.requiredRoles || []).includes('admin')) {
-    existings = await req.server['userManager'].findQuery({ 'roles:in': 'admin' })
+    existings = await req.server['userManager'].findQuery({ 'roles:in': 'admin' }, req.runner)
     if (existings?.records?.length) {
       return reply.status(400).send(new Error('User admin already registered'))
     }
@@ -42,7 +42,7 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     data.roles.push(publicRole)
   }
 
-  const user = await req.server['userManager'].createUser({ ...data, password: password })
+  const user = await req.server['userManager'].createUser({ ...data, password: password }, req.runner)
   if (!user) {
     return reply.status(400).send(new Error('User not registered'))
   }
@@ -53,7 +53,7 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
 export async function unregister(req: FastifyRequest, reply: FastifyReply) {
   const { email, password } = req.data()
 
-  let user = await req.server['userManager'].retrieveUserByPassword(email, password)
+  let user = await req.server['userManager'].retrieveUserByPassword(email, password, req.runner)
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
@@ -64,7 +64,7 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(new Error('User blocked'))
   }
 
-  user = await req.server['userManager'].disableUserById(user.getId())
+  user = await req.server['userManager'].disableUserById(user.getId(), req.runner)
   isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
@@ -113,7 +113,7 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(new Error('Repeated new password not match'))
   }
 
-  let user = await req.server['userManager'].retrieveUserByPassword(email, oldPassword)
+  let user = await req.server['userManager'].retrieveUserByPassword(email, oldPassword, req.runner)
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
@@ -124,7 +124,7 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(new Error('User blocked'))
   }
 
-  user = await req.server['userManager'].changePassword(email, newPassword1, oldPassword)
+  user = await req.server['userManager'].changePassword(email, newPassword1, oldPassword, req.runner)
   isValid = await req.server['userManager'].isValidUser(user)
   return { ok: isValid }
 }
@@ -142,9 +142,9 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
 
   let user = null as any
   if (email) {
-    user = await req.server['userManager'].retrieveUserByEmail(email)
+    user = await req.server['userManager'].retrieveUserByEmail(email, req.runner)
   } else if (username) {
-    user = await req.server['userManager'].retrieveUserByUsername(username)
+    user = await req.server['userManager'].retrieveUserByUsername(username, req.runner)
   }
 
   let isValid = await req.server['userManager'].isValidUser(user)
@@ -157,7 +157,7 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(new Error('User blocked'))
   }
 
-  user = await req.server['userManager'].forgotPassword(user.email)
+  user = await req.server['userManager'].forgotPassword(user.email, req.runner)
   isValid = await req.server['userManager'].isValidUser(user)
 
   return { ok: isValid }
@@ -170,7 +170,7 @@ export async function confirmEmail(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(new Error('Missing the confirm email token'))
   }
 
-  let user = await req.server['userManager'].retrieveUserByConfirmationToken(code)
+  let user = await req.server['userManager'].retrieveUserByConfirmationToken(code, req.runner)
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
@@ -181,7 +181,7 @@ export async function confirmEmail(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(new Error('User blocked'))
   }
 
-  user = await req.server['userManager'].userConfirmation(user)
+  user = await req.server['userManager'].userConfirmation(user, req.runner)
   isValid = await req.server['userManager'].isValidUser(user)
 
   return { ok: isValid }
@@ -202,7 +202,7 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(new Error('Repeated new password not match'))
   }
 
-  let user = await req.server['userManager'].retrieveUserByResetPasswordToken(code)
+  let user = await req.server['userManager'].retrieveUserByResetPasswordToken(code, req.runner)
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
@@ -213,7 +213,7 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(new Error('User blocked'))
   }
 
-  user = await req.server['userManager'].resetPassword(user, newPassword1)
+  user = await req.server['userManager'].resetPassword(user, newPassword1, req.runner)
   isValid = await req.server['userManager'].isValidUser(user)
   return { ok: isValid, user }
 }
@@ -233,7 +233,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(new Error('Password not valid'))
   }
 
-  let user = await req.server['userManager'].retrieveUserByPassword(email, password)
+  let user = await req.server['userManager'].retrieveUserByPassword(email, password, req.runner)
   if (!user) {
     return reply.status(403).send(new Error('Wrong credentials'))
   }
@@ -262,7 +262,10 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   const isMandatory = mfa_policy === MfaPolicy.MANDATORY
 
   if (isMfaEnabled || isMandatory) {
-    const tempToken = await reply.jwtSign({ sub: user.externalId, role: 'pre-auth-mfa' }, { expiresIn: '5m' })
+    const tempToken = await reply.jwtSign(
+      { sub: user.externalId, role: 'pre-auth-mfa', tid: req.tenant?.id },
+      { expiresIn: '5m' }
+    )
     // Use 202 Accepted to bypass 200 OK strict schema filtering
     return reply.status(202).send({
       mfaRequired: isMfaEnabled, // If enabled, verify. If not enabled but mandatory, setup.
@@ -272,13 +275,13 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   }
 
   if (config.options.reset_external_id_on_login) {
-    user = await req.server['userManager'].resetExternalId(user.getId())
+    user = await req.server['userManager'].resetExternalId(user.getId(), req.runner)
   }
 
   // https://www.iana.org/assignments/jwt/jwt.xhtml
-  const token = await reply.jwtSign({ sub: user.externalId })
+  const token = await reply.jwtSign({ sub: user.externalId, tid: req.tenant?.id })
   const refreshToken = reply.server.jwt['refreshToken']
-    ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId })
+    ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId, tid: req.tenant?.id })
     : undefined
 
   const AUTH_MODE = process.env.AUTH_MODE || 'BEARER'
@@ -342,14 +345,14 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(new Error('Mismatched tokens'))
   }
 
-  const user = await req.server['userManager'].retrieveUserByExternalId(tokenData.sub)
+  const user = await req.server['userManager'].retrieveUserByExternalId(tokenData.sub, req.runner)
   const isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
     return reply.status(403).send(new Error('Wrong refresh token'))
   }
 
-  const newToken = await reply.jwtSign({ sub: user.externalId })
+  const newToken = await reply.jwtSign({ sub: user.externalId, tid: req.tenant?.id })
   return {
     token: newToken
   }
@@ -361,43 +364,12 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
     return reply.status(403).send(new Error('User not linked'))
   }
 
-  const user = await req.server['userManager'].resetExternalId(req.user.getId())
+  const user = await req.server['userManager'].resetExternalId(req.user.getId(), req.runner)
   isValid = await req.server['userManager'].isValidUser(user)
   return { ok: isValid }
 }
 
-export async function block(req: FastifyRequest, reply: FastifyReply) {
-  if (!req.server['userManager'].isImplemented()) {
-    throw new Error('Not implemented')
-  }
 
-  if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
-    return reply.status(403).send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to block a user' })
-  }
-
-  const { id: userId } = req.parameters()
-  const { reason } = req.data()
-
-  let user = await req.server['userManager'].blockUserById(userId, reason)
-  user = await req.server['userManager'].resetExternalId(user.getId())
-  return { ok: !!user.getId() }
-}
-
-export async function unblock(req: FastifyRequest, reply: FastifyReply) {
-  if (!req.server['userManager'].isImplemented()) {
-    throw new Error('Not implemented')
-  }
-
-  if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
-    return reply
-      .status(403)
-      .send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to unblock a user' })
-  }
-
-  const { id: userId } = req.parameters()
-  const user = await req.server['userManager'].unblockUserById(userId)
-  return { ok: !!user.getId() }
-}
 
 export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
@@ -429,16 +401,16 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     }
 
     // 2. Save using userManager (typeorm)
-    await req.server['userManager'].saveMfaSecret(user.getId(), secret)
-    await req.server['userManager'].enableMfa(user.getId())
+    await req.server['userManager'].saveMfaSecret(user.getId(), secret, req.runner)
+    await req.server['userManager'].enableMfa(user.getId(), req.runner)
 
     // IMPORTANT: Return full tokens upon enablement if user was in pending state
     // BUT usually user is already logged in via temp token or full token.
     // If user is setting up from "Forced Setup", they need tokens now.
 
-    const finalToken = await reply.jwtSign({ sub: user.externalId })
+    const finalToken = await reply.jwtSign({ sub: user.externalId, tid: req.tenant?.id })
     const refreshToken = reply.server.jwt['refreshToken']
-      ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId })
+      ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId, tid: req.tenant?.id })
       : undefined
 
     return {
@@ -480,10 +452,10 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   if (!token) return reply.status(400).send(new Error('Missing token'))
 
   // 1. Retrieve secret via userManager
-  const user = await req.server['userManager'].retrieveUserByExternalId(subjectId)
+  const user = await req.server['userManager'].retrieveUserByExternalId(subjectId, req.runner)
   if (!user) return reply.status(404).send(new Error('User not found'))
 
-  const secret = await req.server['userManager'].retrieveMfaSecret(user.getId())
+  const secret = await req.server['userManager'].retrieveMfaSecret(user.getId(), req.runner)
   if (!secret) return reply.status(403).send(new Error('MFA not configured for user'))
 
   // 2. Verify via mfaManager
@@ -491,12 +463,12 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   if (!isValid) return reply.status(403).send(new Error('Invalid MFA token'))
 
   if (config.options.reset_external_id_on_login) {
-    await req.server['userManager'].resetExternalId(user.getId())
+    await req.server['userManager'].resetExternalId(user.getId(), req.runner)
   }
 
-  const finalToken = await reply.jwtSign({ sub: user.externalId })
+  const finalToken = await reply.jwtSign({ sub: user.externalId, tid: req.tenant?.id })
   const refreshToken = reply.server.jwt['refreshToken']
-    ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId })
+    ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId, tid: req.tenant?.id })
     : undefined
 
   return {
@@ -520,7 +492,7 @@ export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
   }
 
   try {
-    await req.server['userManager'].disableMfa(user.getId())
+    await req.server['userManager'].disableMfa(user.getId(), req.runner)
     return { ok: true }
   } catch (error: any) {
     req.log.error({ err: error }, 'MFA Disable failed')
@@ -528,22 +500,4 @@ export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
-export async function resetMfa(req: FastifyRequest, reply: FastifyReply) {
-  const { id } = req.parameters()
 
-  if (!req.hasRole(roles.admin)) {
-    return reply.status(403).send(new Error('Only admins can reset MFA'))
-  }
-
-  if (!id) {
-    return reply.status(400).send(new Error('Missing user id'))
-  }
-
-  try {
-    await req.server['userManager'].disableMfa(id)
-    return { ok: true }
-  } catch (error: any) {
-    req.log.error({ err: error }, 'MFA Reset failed')
-    return reply.status(500).send(new Error('Failed to reset MFA'))
-  }
-}

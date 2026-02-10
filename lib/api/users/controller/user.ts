@@ -90,7 +90,40 @@ export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
   return reply.send({ isAdmin: user?.getId() && req.hasRole(roles.admin) })
 }
 
-export async function resetMfa(req: FastifyRequest, reply: FastifyReply) {
+export async function block(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.server['userManager'].isImplemented()) {
+    throw new Error('Not implemented')
+  }
+
+  if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
+    return reply.status(403).send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to block a user' })
+  }
+
+  const { id: userId } = req.parameters()
+  const { reason } = req.data()
+
+  let user = await req.server['userManager'].blockUserById(userId, reason, req.runner)
+  user = await req.server['userManager'].resetExternalId(user.getId(), req.runner)
+  return { ok: !!user.getId() }
+}
+
+export async function unblock(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.server['userManager'].isImplemented()) {
+    throw new Error('Not implemented')
+  }
+
+  if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
+    return reply
+      .status(403)
+      .send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to unblock a user' })
+  }
+
+  const { id: userId } = req.parameters()
+  const user = await req.server['userManager'].unblockUserById(userId, req.runner)
+  return { ok: !!user.getId() }
+}
+
+export async function resetMfaByAdmin(req: FastifyRequest, reply: FastifyReply) {
   const { id } = req.parameters()
 
   if (!req.hasRole(roles.admin)) {
@@ -102,10 +135,44 @@ export async function resetMfa(req: FastifyRequest, reply: FastifyReply) {
   }
 
   try {
-    await req.server['userManager'].disableMfa(id)
+    await req.server['userManager'].disableMfa(id, req.runner)
     return { ok: true }
   } catch (error) {
     req.log.error(error)
     return reply.status(500).send(new Error('Failed to reset MFA'))
+  }
+}
+
+export async function resetPasswordByAdmin(req: FastifyRequest, reply: FastifyReply) {
+  // Check if feature is enabled via config
+  if (config.options?.allow_admin_change_password_users !== true) {
+    return reply.status(404).send()
+  }
+
+  if (!req.hasRole(roles.admin)) {
+    return reply.status(403).send(new Error('Only admins can reset user passwords'))
+  }
+
+  const { id } = req.parameters()
+  if (!id) {
+    return reply.status(400).send(new Error('Missing user id'))
+  }
+
+  const { password } = req.data()
+  if (!password) {
+    return reply.status(400).send(new Error('Missing password in request body'))
+  }
+
+  try {
+    const user = await req.server['userManager'].retrieveUserById(id)
+    if (!user) {
+      return reply.status(404).send(new Error('User not found'))
+    }
+
+    await req.server['userManager'].resetPassword(user, password)
+    return { ok: true }
+  } catch (error) {
+    req.log.error(error)
+    return reply.status(500).send(new Error('Failed to reset password'))
   }
 }

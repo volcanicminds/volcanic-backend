@@ -8,11 +8,16 @@ export async function load() {
     options: {
       allow_multiple_admin: false,
       admin_can_change_passwords: false,
+      allow_admin_change_password_users: false,
       reset_external_id_on_login: false,
       scheduler: false,
       embedded_auth: true,
       mfa_admin_forced_reset_email: undefined,
-      mfa_admin_forced_reset_until: undefined
+      mfa_admin_forced_reset_until: undefined,
+      multi_tenant: {
+        enabled: false,
+        query_key: 'tid'
+      }
     }
   }
 

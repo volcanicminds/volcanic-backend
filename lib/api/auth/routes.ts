@@ -174,37 +174,7 @@ export default {
         }
       }
     },
-    {
-      method: 'POST',
-      path: '/block/:id',
-      roles: [roles.admin, roles.backoffice],
-      handler: 'auth.block',
-      middlewares: ['global.isAuthenticated'],
-      config: {
-        title: 'Block a user by id',
-        description: 'Block a user by id',
-        params: { $ref: 'onlyIdSchema#' },
-        body: { $ref: 'blockBodySchema#' },
-        response: {
-          200: { $ref: 'defaultResponse#' }
-        }
-      }
-    },
-    {
-      method: 'POST',
-      path: '/unblock/:id',
-      roles: [roles.admin, roles.backoffice],
-      handler: 'auth.unblock',
-      middlewares: ['global.isAuthenticated'],
-      config: {
-        title: 'Unblock a user by id',
-        description: 'Unblock a user by id',
-        params: { $ref: 'onlyIdSchema#' },
-        response: {
-          200: { $ref: 'defaultResponse#' }
-        }
-      }
-    },
+
     {
       method: 'POST',
       path: '/mfa/setup',
@@ -237,7 +207,7 @@ export default {
     {
       method: 'POST',
       path: '/mfa/verify',
-      roles: [], // Open, validation via temp token manually in controller
+      roles: [],
       handler: 'auth.mfaVerify',
       middlewares: [],
       config: {
@@ -263,6 +233,7 @@ export default {
           200: { $ref: 'defaultResponse#' }
         }
       }
-    }
+    },
+
   ]
 }

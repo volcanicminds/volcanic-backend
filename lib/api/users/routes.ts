@@ -182,18 +182,74 @@ export default {
     },
     {
       method: 'POST',
-      path: '/:id/mfa/reset',
-      roles: [roles.admin],
-      handler: 'user.resetMfa',
+      path: '/:id/block',
+      roles: [roles.admin, roles.backoffice],
+      handler: 'user.block',
       middlewares: ['global.isAuthenticated'],
       config: {
-        title: 'Reset MFA for user',
+        title: 'Block a user by id',
+        description: 'Block a user by id',
+        params: { $ref: 'onlyIdSchema#' },
+        body: { $ref: 'blockBodySchema#' },
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/:id/unblock',
+      roles: [roles.admin, roles.backoffice],
+      handler: 'user.unblock',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Unblock a user by id',
+        description: 'Unblock a user by id',
+        params: { $ref: 'onlyIdSchema#' },
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/:id/mfa/reset',
+      roles: [roles.admin],
+      handler: 'user.resetMfaByAdmin',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Reset MFA for specific user',
         description: 'Disable MFA for a specific user (Admin only)',
         params: { $ref: 'globalParamsSchema#' },
         response: {
           200: { $ref: 'defaultResponse#' }
         }
       }
+    },
+    {
+      method: 'POST',
+      path: '/:id/password/reset',
+      roles: [roles.admin],
+      handler: 'user.resetPasswordByAdmin',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Reset password for specific user',
+        description:
+          'Admin can reset password for a specific user. Requires config option allow_admin_change_password_users to be enabled.',
+        params: { $ref: 'globalParamsSchema#' },
+        body: {
+          type: 'object',
+          required: ['password'],
+          properties: {
+            password: { type: 'string', minLength: 6 }
+          }
+        },
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
     }
   ]
+
+
 }

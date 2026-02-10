@@ -1,4 +1,10 @@
 export default async (req, reply) => {
+  if (req.runner) {
+    if (!req.runner.isReleased) {
+      await req.runner.release()
+    }
+  }
+
   let extraMessage = ''
   if (log.i && req.startedAt) {
     const elapsed: number = new Date().getTime() - req.startedAt.getTime()

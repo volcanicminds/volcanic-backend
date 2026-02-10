@@ -23,6 +23,63 @@ const normalizeRoles = (rolesArray: any[] | undefined): string[] => {
 export default async (req, reply) => {
   if (log.i) req.startedAt = new Date()
 
+  const { multi_tenant } = global.config?.options || {}
+
+  if (multi_tenant?.enabled) {
+    let tenantSlug: string | undefined
+
+    if (multi_tenant.resolver === 'subdomain') {
+      const host = req.headers.host || ''
+      const parts = host.split('.')
+      if (parts.length >= 2) {
+        // FIXME: Improve subdomain extraction strategy. Currently assumes [slug].[domain].[tld] or [slug].localhost
+        if (parts[0] !== 'www') {
+          tenantSlug = parts[0]
+        }
+      }
+    } else if (multi_tenant.resolver === 'header') {
+      tenantSlug = req.headers[multi_tenant?.header_key || 'x-tenant-id'] as string
+    } else if (multi_tenant.resolver === 'query') {
+      tenantSlug = (req.query as any)[multi_tenant?.query_key || 'tid']
+    }
+
+    if (!tenantSlug) {
+      return reply.code(400).send({ statusCode: 400, error: 'Tenant ID missing', message: 'Tenant ID is required' })
+    }
+
+    if (!global.repository?.tenants) {
+      log.error('Multi-tenant enabled but global.repository.tenants not found')
+      return reply.code(500).send({ statusCode: 500, error: 'Internal Server Error' })
+    }
+
+    const tenant = await global.repository.tenants.findOneBy({ slug: tenantSlug })
+
+    if (!tenant) {
+      return reply
+        .code(404)
+        .send({ statusCode: 404, error: 'Tenant Not Found', message: `Tenant '${tenantSlug}' not found` })
+    }
+
+    if (tenant.status !== 'active') {
+      return reply.code(403).send({ statusCode: 403, error: 'Tenant Inactive', message: 'Tenant is not active' })
+    }
+
+    // Tenant Context Setup
+    const runner = global.connection.createQueryRunner()
+    await runner.connect()
+
+    // Validate schema name safety
+    if (!/^[a-z0-9_]+$/i.test(tenant.schema)) {
+      await runner.release()
+      return reply.code(400).send({ statusCode: 400, error: 'Invalid Schema Name' })
+    }
+
+    await runner.query(`SET search_path TO "${tenant.schema}", "public"`)
+
+    req.runner = runner
+    req.tenant = tenant
+  }
+
   req.data = () => getData(req)
   req.parameters = () => getParams(req)
 
@@ -55,9 +112,7 @@ export default async (req, reply) => {
     let bearerToken: string | undefined
 
     if (AUTH_MODE === 'COOKIE') {
-      // COOKIE MODE: ONLY Check Cookie
       const cookieToken = req.cookies['auth_token']
-      // If cookie is signed:
       if (cookieToken) {
         const unsigned = req.unsignCookie(cookieToken)
         if (unsigned.valid && unsigned.value) {
@@ -65,7 +120,6 @@ export default async (req, reply) => {
         }
       }
     } else {
-      // BEARER MODE: ONLY Check Header
       const auth = req.headers?.authorization || ''
       const [prefix, token] = auth.split(' ')
       if (prefix === 'Bearer' && token != null) {
@@ -77,7 +131,19 @@ export default async (req, reply) => {
       try {
         const tokenData = reply.server.jwt.verify(bearerToken)
 
-        // --- MFA GATEKEEPER ---
+        // Validate Tenant Access
+        const { multi_tenant } = global.config?.options || {}
+        if (multi_tenant?.enabled && req.tenant && tokenData.tid) {
+          if (tokenData.tid !== req.tenant.id) {
+            return reply.status(403).send({
+              statusCode: 403,
+              code: 'TENANT_MISMATCH',
+              message: 'Token does not belong to this tenant'
+            })
+          }
+        }
+
+        // MFA Gatekeeper Check
         if (tokenData.role === 'pre-auth-mfa') {
           const currentUrl = req.routeOptions.url || req.raw.url
           const isAllowed = MFA_SETUP_WHITELIST.some((url) => currentUrl.endsWith(url))
@@ -143,9 +209,6 @@ export default async (req, reply) => {
           })
         }
       }
-    } else {
-      // No token found, but maybe route is public?
-      // If route requires roles and no token, it will be caught by permissions check below (bearerToken is null)
     }
 
     if (cfg.requiredRoles?.length > 0) {
@@ -160,3 +223,5 @@ export default async (req, reply) => {
     }
   }
 }
+
+

@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { FastifyRequest, FastifyReply } from 'fastify'
+import { EntityManager } from 'typeorm'
 import { MfaPolicy } from '../lib/config/constants.js'
+import { VQuery, VFindResult } from './orm.js'
 
-export { MfaPolicy }
+export { MfaPolicy, VQuery, VFindResult }
 
 export interface AuthenticatedUser {
   getId(): any
@@ -65,6 +67,7 @@ export interface GeneralConfig {
   options: {
     allow_multiple_admin: boolean
     admin_can_change_passwords: boolean
+    allow_admin_change_password_users: boolean
     reset_external_id_on_login: boolean
     scheduler: boolean
     embedded_auth: boolean
@@ -72,6 +75,13 @@ export interface GeneralConfig {
     mfa_policy?: MfaPolicy | string
     mfa_admin_forced_reset_email?: string
     mfa_admin_forced_reset_until?: string
+    // Multi-Tenant Configs
+    multi_tenant?: {
+      enabled: boolean
+      resolver?: 'subdomain' | 'header' | 'query'
+      header_key?: string
+      query_key?: string
+    }
   }
 }
 
@@ -160,8 +170,8 @@ export interface UserManagement {
   userConfirmation(user: any)
   blockUserById(id: string, reason: string): any | null
   unblockUserById(id: string): any | null
-  countQuery(data: any): any | null
-  findQuery(data: any): any | null
+  countQuery(data: VQuery): any | null
+  findQuery(data: VQuery): VFindResult<any> | null
   disableUserById(id: string): any | null
 
   // MFA Persistence Methods
@@ -184,8 +194,8 @@ export interface TokenManagement {
   retrieveTokenByExternalId(id: string): any | null
   blockTokenById(id: string, reason: string): any | null
   unblockTokenById(id: string): any | null
-  countQuery(data: any): any | null
-  findQuery(data: any): any | null
+  countQuery(data: VQuery): any | null
+  findQuery(data: VQuery): VFindResult<any> | null
   removeTokenById(id: string): any | null
 }
 
@@ -215,17 +225,33 @@ export interface TransferManagement {
   isValid(req: FastifyRequest): Promise<boolean>
 }
 
+export interface TenantManagement {
+  isImplemented(): boolean
+  resolveTenant(req: FastifyRequest): Promise<any | null>
+  switchContext(tenant: any, db?: EntityManager): Promise<void>
+  createTenant?(data: any): Promise<void>
+  deleteTenant?(id: string): Promise<void>
+  listTenants?(): Promise<any[]>
+}
+
 declare module 'fastify' {
   export interface FastifyRequest {
     user?: AuthenticatedUser
     token?: AuthenticatedToken
     startedAt?: Date
-    data(): Data
+    data(): Data & VQuery
     parameters(): Data
     roles(): string[]
     hasRole(role: Role): boolean
     payloadSize?: number
     trackingData?: any
+    runner?: any
+    tenant?: any
+    /**
+     * The Tenant-Aware EntityManager for this request.
+     * MUST be used for all DB operations within this request scope.
+     */
+    db?: EntityManager
   }
   export interface FastifyReply {
     payloadSize?: number
@@ -236,12 +262,19 @@ export interface FastifyRequest extends FastifyRequest {
   user?: AuthenticatedUser
   token?: AuthenticatedToken
   startedAt?: Date
-  data(): Data
+  data(): Data & VQuery
   parameters(): Data
   roles(): string[]
   hasRole(role: Role): boolean
   payloadSize?: number
   trackingData?: any
+  runner?: any
+  tenant?: any
+  /**
+   * The Tenant-Aware EntityManager for this request.
+   * MUST be used for all DB operations within this request scope.
+   */
+  db?: EntityManager
 }
 
 export interface FastifyReply extends FastifyReply {
