@@ -47,12 +47,12 @@ export default async (req, reply) => {
       return reply.code(400).send({ statusCode: 400, error: 'Tenant ID missing', message: 'Tenant ID is required' })
     }
 
-    if (!global.repository?.tenants) {
-      log.error('Multi-tenant enabled but global.repository.tenants not found')
+    if (!global.connection) {
+      log.error('Multi-tenant enabled but global.connection not found')
       return reply.code(500).send({ statusCode: 500, error: 'Internal Server Error' })
     }
 
-    const tenant = await global.repository.tenants.findOneBy({ slug: tenantSlug })
+    const tenant = await global.connection.getRepository(global.entity.Tenant).findOneBy({ slug: tenantSlug })
 
     if (!tenant) {
       return reply
