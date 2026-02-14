@@ -35,6 +35,16 @@ export abstract class BaseService<T extends ObjectLiteral> {
   // Abstract method: Forces developers to define security rules for every entity
   protected abstract applyPermissions(qb: SelectQueryBuilder<T>, ctx: UserContext, alias: string): SelectQueryBuilder<T>
 
+  /**
+   * Creates a request-scoped clone of the service to inject the Tenant-Aware Transaction/Manager
+   * usage: await myService.use(req.db).findAll(...)
+   */
+  use(manager: Document | any): this {
+    const clone = Object.create(this)
+    clone.repository = manager.getRepository(this.repository.target)
+    return clone
+  }
+
   // Hook to add relationships (joins) automatically
   protected addRelations(qb: SelectQueryBuilder<T>, _alias: string): SelectQueryBuilder<T> {
     return qb
@@ -171,8 +181,9 @@ export async function find(req: FastifyRequest, reply: FastifyReply) {
   // 2. Extract Data (Query params, Body)
   const data = req.data()
 
-  // 3. Call Service
-  const { headers, records } = await orderService.findAll(ctx, data)
+  // 3. Call Service (Injecting DB Context for Multi-Tenant safety)
+  // ALWAYS use .use(req.db) to ensure the service uses the correct connection isolation
+  const { headers, records } = await orderService.use(req.db).findAll(ctx, data)
 
   // 4. Send Response
   return reply.type('application/json').headers(headers).send(records)
@@ -182,7 +193,7 @@ export async function findOne(req: FastifyRequest, reply: FastifyReply) {
   const { id } = req.parameters()
   const ctx = req.userContext
 
-  const order = await orderService.findOne(ctx, id)
+  const order = await orderService.use(req.db).findOne(ctx, id)
 
   // Handle 404 Not Found OR 403 Forbidden (implicitly handled by service returning null)
   return order || reply.status(404).send()

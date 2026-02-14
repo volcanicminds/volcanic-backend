@@ -61,7 +61,7 @@
 
 5.  **[Parte 5: Service Layer Architecture](#parte-5-service-layer-architecture)**
     - **5.1 Il Pattern `BaseService`**
-      - Astrazione CRUD e Hooks
+      - Astrazione CRUD e Hook `use(req.db)`
     - **5.2 Security Context & RLS (Row Level Security)**
       - Implementazione di `applyPermissions`
     - **5.3 QueryBuilder Avanzato**
@@ -152,6 +152,7 @@ Il framework è un sistema **opinionator** composto da tre pacchetti modulari ch
     - Wrapper di **Fastify**.
     - Gestisce il ciclo di vita HTTP, il caricamento automatico delle rotte (`Auto-Discovery`), la validazione degli Schema JSON e il sistema di Hook globali.
     - Integra nativamente il sistema di Autenticazione (JWT, Refresh Token) e Sicurezza (MFA Gatekeeper).
+    - **Universal Database Context**: Inietta automaticamente un `EntityManager` strettamente scopato in `req.db` (Supporto Single & Multi-Tenant).
 2.  **`@volcanicminds/typeorm` (Data Layer)**
     - Wrapper di **TypeORM**.
     - Introduce le **"Magic Queries"**: un motore di traduzione che converte automaticamente query string complesse (filtri, sort, paginazione, logica booleana) in SQL ottimizzato.
@@ -399,6 +400,29 @@ Un esempio di `.env` per produzione.
 | `HIDE_ERROR_DETAILS`           | Nasconde i dettagli (message) dell'errore nella risposta.           |    No     | `true` (prod)       |
 
 ¹ Richiesto se `JWT_REFRESH` è abilitato.
+
+---
+
+## 1.7 Architettura Single vs Multi-Tenant
+
+Il framework supporta entrambe le architetture OOTB. Il comportamento è controllato da `req.db`.
+
+- **Single-Tenant** (Default): `req.db` è iniettato dal connection pool globale. Zero overhead.
+- **Multi-Tenant**: Se abilitato, `req.db` è iniettato da un `QueryRunner` dedicato che isola i dati (es. via `SET search_path`).
+
+Per abilitare il multi-tenant, configura `src/config/general.ts`:
+
+```typescript
+export default {
+  options: {
+    multi_tenant: {
+      enabled: true,
+      resolver: 'header', // o 'subdomain', 'query'
+      header_key: 'x-tenant-id'
+    }
+  }
+}
+```
 
 Ecco un file di configurazione completo:
 
@@ -1697,6 +1721,7 @@ Come notato nella Parte 1, il framework inietta repository ed entità nel `globa
 - **`repository.[nomePlurale]`**: Istanza del Repository.
   - Uso: `repository.orders.find(...)`
   - Corrisponde a: `DataSource.getRepository(Order)`
+  - **Importante**: In applicazioni Multi-Tenant o transazioni, preferire l'uso di `req.db.getRepository(Order)` (tramite `service.use(req.db)`) per garantire l'uso della connessione isolata corretta.
 - **`entity.[NomeClasse]`**: Classe Entità.
   - Uso: `entity.Order.create(...)`
   - Corrisponde a: `import { Order } from ...`

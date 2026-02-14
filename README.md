@@ -423,6 +423,25 @@ import multipart from '@fastify/multipart'
 import rawBody from 'fastify-raw-body'
 ```
 
+## Database Context (`req.db`)
+
+One of the most important features of Volcanic Backend is the **Universal Database Context**.
+Every request object (`req`) is guaranteed to have a `req.db` property populated with a valid TypeORM `EntityManager`.
+
+- **Single-Tenant**: `req.db` points to the global default connection.
+- **Multi-Tenant**: `req.db` points to an isolated `QueryRunner` for that specific tenant/request.
+
+This allows you to write code that works **Out-Of-The-Box** for both single-tenant and multi-tenant applications without changing a single line of business logic.
+
+**Usage:**
+
+```typescript
+// In your controller
+const { headers, records } = await myService.use(req.db).findAll(...)
+```
+
+---
+
 ## Core Concepts: Routes and Controllers
 
 The routing system is one of the core strengths of the framework. It's file-system based, meaning the framework automatically discovers and registers any `routes.ts` file within the `src/api/` directory.

@@ -61,7 +61,7 @@
 
 5.  **[Part 5: Service Layer Architecture](#part-5-service-layer-architecture)**
     - **5.1 The `BaseService` Pattern**
-      - CRUD Abstraction and Hooks
+      - CRUD Abstraction and `use(req.db)` Hook
     - **5.2 Security Context & RLS (Row Level Security)**
       - `applyPermissions` implementation
     - **5.3 Advanced QueryBuilder**
@@ -152,6 +152,7 @@ The framework is an **opinionated** system composed of three modular packages wo
     - **Fastify** wrapper.
     - Manages the HTTP lifecycle, automatic route loading (`Auto-Discovery`), JSON Schema validation, and the Global Hooks system.
     - Natively integrates the Authentication system (JWT, Refresh Token) and Security (MFA Gatekeeper).
+    - **Universal Database Context**: Automatically injects strictly-scoped `EntityManager` into `req.db` (Single & Multi-Tenant support).
 2.  **`@volcanicminds/typeorm` (Data Layer)**
     - **TypeORM** wrapper.
     - Introduces **"Magic Queries"**: a translation engine that automatically converts complex query strings (filters, sort, pagination, boolean logic) into optimized SQL.
@@ -399,6 +400,29 @@ An example `.env` for production.
 | `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response.            |    No    | `true` (prod)       |
 
 ¹ Required if `JWT_REFRESH` is enabled.
+
+---
+
+## 1.7 Single vs Multi-Tenant Architecture
+
+The framework supports both architectures OOTB. The behavior is controlled by `req.db`.
+
+- **Single-Tenant** (Default): `req.db` is injected from the global connection pool. Zero overhead.
+- **Multi-Tenant**: If enabled, `req.db` is injected from a dedicated `QueryRunner` that isolates data (e.g., via `SET search_path`).
+
+To enable multi-tenancy, configure `src/config/general.ts`:
+
+```typescript
+export default {
+  options: {
+    multi_tenant: {
+      enabled: true,
+      resolver: 'header', // or 'subdomain', 'query'
+      header_key: 'x-tenant-id'
+    }
+  }
+}
+```
 
 Here is a full configuration file:
 
@@ -1697,6 +1721,7 @@ As noted in Part 1, the framework injects repositories and entities into `global
 - **`repository.[pluralName]`**: Repository Instance.
   - Usage: `repository.orders.find(...)`
   - Corresponds to: `DataSource.getRepository(Order)`
+  - **Important**: In Multi-Tenant applications or transactions, prefer using `req.db.getRepository(Order)` (via `service.use(req.db)`) to ensure you are using the correct isolated connection.
 - **`entity.[ClassName]`**: Entity Class.
   - Usage: `entity.Order.create(...)`
   - Corresponds to: `import { Order } from ...`
