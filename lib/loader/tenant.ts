@@ -4,9 +4,16 @@ import { TenantManagement } from '../../types/global.js'
 export async function apply(server: FastifyInstance) {
   const { multi_tenant } = global.config.options || {}
 
-  // Se multi-tenant non è abilitato, usciamo subito
+  // Se multi-tenant non è abilitato, usciamo subito e iniettiamo il contesto single-tenant
   if (!multi_tenant?.enabled) {
-    if (log.d) log.debug('Multi-Tenant: Disabled by configuration')
+    if (log.i) log.info('Multi-Tenant: Disabled — using single-tenant DB context')
+
+    server.addHook('onRequest', async (req) => {
+      const dataSource = (global as any).connection
+      if (dataSource) {
+        req.db = dataSource.manager
+      }
+    })
     return
   }
 
