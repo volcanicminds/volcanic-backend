@@ -9,7 +9,7 @@ export async function apply(server: FastifyInstance) {
     if (log.i) log.info('Multi-Tenant: Disabled — using single-tenant DB context')
 
     server.addHook('onRequest', async (req) => {
-      const dataSource = (global as any).connection
+      const dataSource = global.connection
       if (dataSource) {
         req.db = dataSource.manager
       }
