@@ -14,9 +14,9 @@ export default {
     {
       method: 'GET',
       path: '/',
-      roles: [], // [roles.admin],
+      roles: [roles.admin],
       handler: 'tenants.list',
-      middlewares: [], // ['global.isAuthenticated'],
+      middlewares: ['global.isAuthenticated'],
       config: {
         title: 'List Tenants',
         description: 'Retrieve all tenants.',
