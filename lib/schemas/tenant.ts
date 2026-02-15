@@ -1,7 +1,7 @@
 export const tenantBodySchema = {
   $id: 'tenantBodySchema',
   type: 'object',
-  required: ['name', 'slug', 'schemaName'],
+  required: ['name', 'slug', 'dbSchema'],
   properties: {
     name: { type: 'string', minLength: 1, maxLength: 255 },
     slug: {
@@ -10,7 +10,7 @@ export const tenantBodySchema = {
       maxLength: 100,
       pattern: '^[a-z0-9_-]+$'
     },
-    schemaName: { type: 'string', minLength: 1, maxLength: 63 },
+    dbSchema: { type: 'string', minLength: 1, maxLength: 63 },
     config: { type: 'object', additionalProperties: true }
   }
 }
@@ -32,7 +32,7 @@ export const tenantResponseSchema = {
     id: { type: 'string', format: 'uuid' },
     name: { type: 'string' },
     slug: { type: 'string' },
-    schemaName: { type: 'string' },
+    dbSchema: { type: 'string' },
     status: { type: 'string', enum: ['active', 'suspended', 'archived'] },
     config: { type: 'object' },
     createdAt: { type: 'string', format: 'date-time' },
