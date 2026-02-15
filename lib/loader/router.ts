@@ -119,6 +119,7 @@ async function load(): Promise<ConfiguredRoute[]> {
           description = '',
           enable = yn(defaultConfig.enable, true),
           deprecated = yn(defaultConfig.deprecated, false),
+          tenantContext = yn(defaultConfig.tenantContext, true),
           tags = defaultConfig.tags,
           version = defaultConfig.version || '',
           security = defaultConfig.security,
@@ -185,6 +186,7 @@ async function load(): Promise<ConfiguredRoute[]> {
             middlewares,
             roles: requiredRoles,
             enable,
+            tenantContext,
             rawBody,
             rateLimit,
             base,
@@ -211,7 +213,8 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
   let countRoutes = 0
   for (const route of routes) {
     if (route?.enable) {
-      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc } = route
+      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc, tenantContext } =
+        route
 
       if (log.d) log.debug(`* Add path ${method} ${path} on handle ${handler}`)
       const midds = await loadMiddlewares(base, middlewares)
@@ -224,7 +227,8 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
         config: {
           requiredRoles: roles || [],
           rawBody: rawBody || false,
-          rateLimit: rateLimit || undefined
+          rateLimit: rateLimit || undefined,
+          tenantContext: tenantContext
         },
         handler: async function (req: FastifyRequest, reply: FastifyReply) {
           let module

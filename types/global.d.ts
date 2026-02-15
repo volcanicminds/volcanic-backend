@@ -41,6 +41,7 @@ export interface RouteConfig {
   description: string
   enable: boolean
   deprecated: boolean
+  tenantContext?: boolean
   tags?: string[]
   version: string
   security?: any
@@ -108,6 +109,7 @@ export interface JobSchedule {
 
 export interface ConfiguredRoute {
   enable: boolean
+  tenantContext: boolean
   method: any
   path: string
   handler: any
@@ -232,6 +234,9 @@ export interface TenantManagement {
   createTenant?(data: any): Promise<void>
   deleteTenant?(id: string): Promise<void>
   listTenants?(): Promise<any[]>
+  getTenant?(id: string): Promise<any | null>
+  updateTenant?(id: string, data: any): Promise<any | null>
+  restoreTenant?(id: string): Promise<any | null>
 }
 
 declare module 'fastify' {

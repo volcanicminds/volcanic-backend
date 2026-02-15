@@ -23,63 +23,6 @@ const normalizeRoles = (rolesArray: any[] | undefined): string[] => {
 export default async (req, reply) => {
   if (log.i) req.startedAt = new Date()
 
-  const { multi_tenant } = global.config?.options || {}
-
-  if (multi_tenant?.enabled) {
-    let tenantSlug: string | undefined
-
-    if (multi_tenant.resolver === 'subdomain') {
-      const host = req.headers.host || ''
-      const parts = host.split('.')
-      if (parts.length >= 2) {
-        // FIXME: Improve subdomain extraction strategy. Currently assumes [slug].[domain].[tld] or [slug].localhost
-        if (parts[0] !== 'www') {
-          tenantSlug = parts[0]
-        }
-      }
-    } else if (multi_tenant.resolver === 'header') {
-      tenantSlug = req.headers[multi_tenant?.header_key || 'x-tenant-id'] as string
-    } else if (multi_tenant.resolver === 'query') {
-      tenantSlug = (req.query as any)[multi_tenant?.query_key || 'tid']
-    }
-
-    if (!tenantSlug) {
-      return reply.code(400).send({ statusCode: 400, error: 'Tenant ID missing', message: 'Tenant ID is required' })
-    }
-
-    if (!global.connection) {
-      log.error('Multi-tenant enabled but global.connection not found')
-      return reply.code(500).send({ statusCode: 500, error: 'Internal Server Error' })
-    }
-
-    const tenant = await global.connection.getRepository(global.entity.Tenant).findOneBy({ slug: tenantSlug })
-
-    if (!tenant) {
-      return reply
-        .code(404)
-        .send({ statusCode: 404, error: 'Tenant Not Found', message: `Tenant '${tenantSlug}' not found` })
-    }
-
-    if (tenant.status !== 'active') {
-      return reply.code(403).send({ statusCode: 403, error: 'Tenant Inactive', message: 'Tenant is not active' })
-    }
-
-    // Tenant Context Setup
-    const runner = global.connection.createQueryRunner()
-    await runner.connect()
-
-    // Validate schema name safety
-    if (!/^[a-z0-9_]+$/i.test(tenant.schema)) {
-      await runner.release()
-      return reply.code(400).send({ statusCode: 400, error: 'Invalid Schema Name' })
-    }
-
-    await runner.query(`SET search_path TO "${tenant.schema}", "public"`)
-
-    req.runner = runner
-    req.tenant = tenant
-  }
-
   req.data = () => getData(req)
   req.parameters = () => getParams(req)
 
@@ -223,5 +166,3 @@ export default async (req, reply) => {
     }
   }
 }
-
-

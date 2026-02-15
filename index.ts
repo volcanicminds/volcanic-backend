@@ -252,6 +252,7 @@ const start = async (decorators = {}) => {
   const apollo = loadApollo ? await attachApollo(server) : null
   await addFastifySwagger(server)
   await addApolloRouting(server, apollo)
+  await loaderTenant.apply(server)
   await addFastifyRouting(server)
   await addFastifySchedule(server)
 
@@ -275,9 +276,6 @@ const start = async (decorators = {}) => {
     })
   )
 
-  await loaderTenant.apply(server)
-
-  // --- Transfer Manager Integration ---
   if (server['transferManager']) {
     const tm = server['transferManager'] as TransferManagement
     let transferPath: string | null = null

@@ -25,23 +25,33 @@ export async function apply(server: FastifyInstance) {
     // Recuperiamo il gestore tenant iniettato o di default
     const tm = server['tenantManager'] as TenantManagement
 
+    // Check if route opts out of tenant context
+    const cfg = (req.routeOptions?.config as any) || {}
+    if (cfg.tenantContext === false) {
+      if (log.t) log.trace(`Multi-Tenant: Route ${req.url} opted out of tenant context via config`)
+      // Inject global DB context (public schema) like single-tenant
+      const dataSource = global.connection
+      if (dataSource) req.db = dataSource.manager
+      return
+    }
+
     // Controllo critico: se è abilitato il MT, DEVE esserci un manager implementato
     if (!tm || !tm.isImplemented()) {
       const errorMsg = 'Multi-Tenant enabled but no TenantManager provided/implemented!'
       if (log.f) log.fatal(errorMsg)
-      throw new Error(errorMsg) 
+      throw new Error(errorMsg)
     }
 
     try {
       // 1. Risoluzione Tenant
       const tenant = await tm.resolveTenant(req)
-      
+
       if (!tenant) {
         if (log.w) log.warn(`Multi-Tenant: Tenant resolution failed for request ${req.id}`)
-        return reply.code(404).send({ 
-          statusCode: 404, 
-          error: 'Not Found', 
-          message: 'Tenant not found or resolution failed' 
+        return reply.code(404).send({
+          statusCode: 404,
+          error: 'Not Found',
+          message: 'Tenant not found or resolution failed'
         })
       }
 
@@ -55,7 +65,7 @@ export async function apply(server: FastifyInstance) {
       if (dataSource) {
         const qr = dataSource.createQueryRunner()
         await qr.connect()
-        
+
         // Assegnamo il manager del QueryRunner alla richiesta
         req.db = qr.manager
 
@@ -72,14 +82,13 @@ export async function apply(server: FastifyInstance) {
       } else {
         if (log.w) log.warn('Multi-Tenant: Global connection not found! Skipping DB context creation.')
       }
-
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       if (log.e) log.error(`Multi-Tenant Error: ${message}`)
-      return reply.code(500).send({ 
-        statusCode: 500, 
-        error: 'Internal Server Error', 
-        message: 'Tenant Context Switch Failed' 
+      return reply.code(500).send({
+        statusCode: 500,
+        error: 'Internal Server Error',
+        message: 'Tenant Context Switch Failed'
       })
     }
   })
