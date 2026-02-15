@@ -6,7 +6,7 @@ export async function apply(server: FastifyInstance) {
 
   // Se multi-tenant non è abilitato, usciamo subito e iniettiamo il contesto single-tenant
   if (!multi_tenant?.enabled) {
-    if (log.i) log.info('Multi-Tenant: Disabled — using single-tenant DB context')
+    if (log.i) log.info('Multi-Tenant: Disabled (Using single-tenant DB context)')
 
     server.addHook('onRequest', async (req) => {
       const dataSource = global.connection

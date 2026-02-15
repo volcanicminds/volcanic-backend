@@ -40,9 +40,7 @@ import resolvers from './lib/apollo/resolvers.js'
 import typeDefs from './lib/apollo/type-defs.js'
 import require from './lib/util/require.js'
 
-import type {
-  TransferManagement
-} from './types/global.js'
+import type { TransferManagement } from './types/global.js'
 import general from './lib/config/general.js'
 import {
   defaultUserManager,
@@ -164,13 +162,17 @@ async function addFastifySchedule(server: FastifyInstance) {
   }
 }
 
-const start = async (decorators = {}) => {
-  const begin = new Date().getTime()
-  mark.print(logger)
-
+const preload = async () => {
   global.config = await loaderConfig.load()
   global.t = loaderTranslation.load()
   global.roles = await loaderRoles.load()
+}
+
+const start = async (decorators = {}) => {
+  if (!global.config) await preload()
+
+  const begin = new Date().getTime()
+  mark.print(logger)
 
   const { tracking, trackingConfig } = await loaderTracking.load()
   global.tracking = tracking
@@ -247,11 +249,9 @@ const start = async (decorators = {}) => {
     })
   }
 
-
   const apollo = loadApollo ? await attachApollo(server) : null
   await addFastifySwagger(server)
   await addApolloRouting(server, apollo)
-  await loaderTenant.apply(server)
   await addFastifyRouting(server)
   await addFastifySchedule(server)
 
@@ -274,6 +274,8 @@ const start = async (decorators = {}) => {
       await server.decorate(key, decorators[key])
     })
   )
+
+  await loaderTenant.apply(server)
 
   // --- Transfer Manager Integration ---
   if (server['transferManager']) {
@@ -394,6 +396,7 @@ export type {
   Roles,
   Route,
   RouteConfig,
+  GeneralConfig,
   ConfiguredRoute,
   UserManagement,
   TokenManagement,
@@ -406,4 +409,4 @@ export type {
 
 export { MfaPolicy } from './lib/config/constants.js'
 
-export { yn, start, TranslatedError }
+export { yn, preload, start, TranslatedError }
