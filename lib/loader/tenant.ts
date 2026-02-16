@@ -26,7 +26,7 @@ export async function apply(server: FastifyInstance) {
     const tm = server['tenantManager'] as TenantManagement
 
     // Check if route opts out of tenant context
-    const cfg = (req.routeOptions?.config as any) || {}
+    const cfg = (req.routeOptions?.config as { tenantContext?: boolean }) || {}
     if (cfg.tenantContext === false) {
       if (log.t) log.trace(`Multi-Tenant: Route ${req.url} opted out of tenant context via config`)
       // Inject global DB context (public schema) like single-tenant
