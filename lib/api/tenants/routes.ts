@@ -100,6 +100,44 @@ export default {
           200: { $ref: 'defaultResponse#' }
         }
       }
+    },
+    {
+      method: 'POST',
+      path: '/impersonate',
+      roles: [roles.admin],
+      handler: 'tenants.impersonate',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Impersonate User',
+        description: 'Generate an impersonation token for a specific user in a target tenant (System Admin Only).',
+        // Optional: Define body schema for documentation
+        body: {
+          type: 'object',
+          properties: {
+            targetTenantSlug: { type: 'string' },
+            targetTenantId: { type: 'string' },
+            targetRole: { type: 'string' },
+            targetUserEmail: { type: 'string' },
+            targetUserId: { type: 'string' }
+          }
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              token: { type: 'string' },
+              expiresAt: { type: 'string', format: 'date-time' },
+              impersonatedUser: {
+                type: 'object',
+                properties: {
+                  email: { type: 'string' },
+                  id: { type: 'string' }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
