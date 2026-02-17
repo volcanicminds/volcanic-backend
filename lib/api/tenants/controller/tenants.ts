@@ -14,10 +14,10 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
 
   const data = req.data()
   // Provisioning is handled by the manager implementation
-  await tm.createTenant(data)
+  const tenant = await tm.createTenant(data)
 
-  // Return created (or just success if createTenant doesn't return the object)
-  return reply.code(201).send(data)
+  // Return created
+  return reply.code(201).send(tenant)
 }
 
 export async function findOne(req: FastifyRequest, reply: FastifyReply) {
