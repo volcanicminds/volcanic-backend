@@ -36,7 +36,7 @@ export default {
         description: 'Create a new tenant with its own schema.',
         body: { $ref: 'tenantBodySchema#' },
         response: {
-          201: { $ref: 'defaultResponse#' }
+          201: { $ref: 'tenantResponseSchema#' }
         }
       }
     },

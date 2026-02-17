@@ -387,6 +387,7 @@ export type {
   global,
   FastifyReply,
   FastifyRequest,
+  FastifyInstance,
   AuthenticatedUser,
   AuthenticatedToken,
   Role,

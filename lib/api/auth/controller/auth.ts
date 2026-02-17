@@ -241,7 +241,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   const isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(403).send(new Error('Wrong credentials'))
+    return reply.status(403).send(new Error('Invalid user'))
   }
 
   if (!(user.confirmed === true)) {
@@ -368,8 +368,6 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
   isValid = await req.server['userManager'].isValidUser(user)
   return { ok: isValid }
 }
-
-
 
 export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
@@ -499,5 +497,3 @@ export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(500).send(new Error('Failed to disable MFA'))
   }
 }
-
-

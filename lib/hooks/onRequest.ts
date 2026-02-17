@@ -76,7 +76,14 @@ export default async (req, reply) => {
 
         // Validate Tenant Access
         const { multi_tenant } = global.config?.options || {}
-        if (multi_tenant?.enabled && req.tenant && tokenData.tid) {
+        if (multi_tenant?.enabled) {
+          if (!req.tenant || !tokenData.tid) {
+            return reply.status(403).send({
+              statusCode: 403,
+              code: 'TENANT_NOT_FOUND',
+              message: 'Token does not belong to this tenant'
+            })
+          }
           if (tokenData.tid !== req.tenant.id) {
             return reply.status(403).send({
               statusCode: 403,

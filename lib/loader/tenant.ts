@@ -68,6 +68,7 @@ export async function apply(server: FastifyInstance) {
 
         // Assegnamo il manager del QueryRunner alla richiesta
         req.db = qr.manager
+        req.runner = qr
 
         // 4. Switch Schema su QUESTO QueryRunner
         // Passiamo il manager affinché il TenantManager possa eseguire "SET search_path" su questa connessione specifica

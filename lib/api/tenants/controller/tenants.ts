@@ -17,7 +17,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   await tm.createTenant(data)
 
   // Return created (or just success if createTenant doesn't return the object)
-  return reply.code(201).send({ message: 'Tenant created', ...data })
+  return reply.code(201).send(data)
 }
 
 export async function findOne(req: FastifyRequest, reply: FastifyReply) {

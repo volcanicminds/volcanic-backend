@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { FastifyRequest, FastifyReply } from 'fastify'
+export { FastifyInstance } from 'fastify'
 import { EntityManager } from 'typeorm'
 import { MfaPolicy } from '../lib/config/constants.js'
 import { VQuery, VFindResult } from './orm.js'
