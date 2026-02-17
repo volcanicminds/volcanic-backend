@@ -78,6 +78,7 @@ async function addApolloRouting(server: FastifyInstance, apollo: ApolloServer<My
 async function addFastifyRouting(server: FastifyInstance) {
   log.trace('Add server routes')
 
+  await loaderTenant.apply(server)
   await loaderHooks.apply(server)
   await loaderSchemas.apply(server)
   await loaderRouter.apply(server)
@@ -252,7 +253,6 @@ const start = async (decorators = {}) => {
   const apollo = loadApollo ? await attachApollo(server) : null
   await addFastifySwagger(server)
   await addApolloRouting(server, apollo)
-  await loaderTenant.apply(server)
   await addFastifyRouting(server)
   await addFastifySchedule(server)
 

@@ -118,7 +118,7 @@ export default async (req, reply) => {
         let token: null | AuthenticatedToken = null
 
         if (req.server['userManager']?.isImplemented()) {
-          user = await req.server['userManager'].retrieveUserByExternalId(subjectId)
+          user = await req.server['userManager'].retrieveUserByExternalId(subjectId, req.db)
           if (user) {
             const isValid = await req.server['userManager'].isValidUser(user)
             if (!isValid) {
@@ -131,7 +131,7 @@ export default async (req, reply) => {
         }
 
         if (!user && req.server['tokenManager']?.isImplemented()) {
-          token = await req.server['tokenManager'].retrieveTokenByExternalId(subjectId)
+          token = await req.server['tokenManager'].retrieveTokenByExternalId(subjectId, req.db)
           if (token) {
             const isValid = await req.server['tokenManager'].isValidToken(token)
             if (!isValid) {
