@@ -77,6 +77,12 @@ export async function apply(server: FastifyInstance) {
         // 5. Cleanup: Rilascio del QueryRunner alla fine della richiesta
         reply.raw.on('finish', async () => {
           if (!qr.isReleased) {
+            try {
+              // Vital: Reset search_path to public avoids polluting the connection pool
+              await qr.query('SET search_path TO public')
+            } catch (err) {
+              if (log.e) log.error(`Multi-Tenant: Failed to reset search_path: ${err}`)
+            }
             await qr.release()
           }
         })
