@@ -109,7 +109,9 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Impersonate User',
-        description: 'Generate an impersonation token for a specific user in a target tenant (System Admin Only).',
+        description:
+          'Generate an impersonation token for a specific user in a target tenant (System Admin or Tenant Admin).',
+        tenantContext: true, // Enable tenant context to allow Tenant Admins to be authenticated
         // Optional: Define body schema for documentation
         body: {
           type: 'object',

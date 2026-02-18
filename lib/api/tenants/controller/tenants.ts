@@ -60,27 +60,16 @@ export async function restore(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
-  // 0. Security Check: Only 'system' tenant admins can impersonate
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore
-  if (req.user?.tenantId !== 'system' && req.tenant?.slug !== 'system') {
-    // Fallback check if tenant is not populated but user is
-    // We assume strict system tenant isolation
-    // But wait, req.tenant is populated by resolveTenant
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    if (req.tenant?.slug !== 'system') {
-      return reply.code(403).send({ error: 'Only system admins can impersonate (Invalid Context)' })
-    }
-  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, prefer-const
+  let { targetTenantSlug, targetTenantId, targetRole, targetUserEmail, targetUserId } = req.body as any
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { targetTenantSlug, targetTenantId, targetRole, targetUserEmail, targetUserId } = req.body as any
+  // DX Improvement: If no target tenant specified, default to current context (self-impersonation)
+  if (!targetTenantSlug && !targetTenantId && req.tenant) {
+    targetTenantSlug = req.tenant.slug
+  }
 
   // 1. Risoluzione Tenant (MUST be active)
   // We access the Tenant Entity remotely via global connection
-  // BUT we should avoid importing specific Entities here if possible to keep it generic.
-  // However, tenants table is core framework.
   const Tenant = global.entity?.Tenant || global.connection.getRepository('Tenant').target
   const tenantRepo = global.connection.getRepository(Tenant)
 
@@ -95,7 +84,42 @@ export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
     return reply.code(404).send({ error: 'Target tenant not found or inactive' })
   }
 
-  // 2. Risoluzione Utente (su schema target)
+  // 2. Security Check (Hardened)
+  // Allow if:
+  // A) System Admin (Cross-Tenant)
+  // B) Tenant Admin (Same Tenant)
+
+  let isSystemAdmin = false
+  // Check system context or explicit system tenant id
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  if (req.user?.tenantId === 'system' || req.tenant?.slug === 'system') {
+    isSystemAdmin = true
+  }
+
+  let isTenantAdminForTarget = false
+  // Check if current request tenant matches target
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  if (req.tenant?.id === targetTenant.id || req.tenant?.slug === targetTenant.slug) {
+    // Logic to check admin role
+    // We safely check req.roles() if available, or fallback to user.roles
+    const userRoles = typeof req.roles === 'function' ? req.roles() : req.user?.roles || []
+    // Normalize roles to strings
+    const roleCodes = userRoles.map((r: any) => (typeof r === 'string' ? r : r?.code))
+
+    if (roleCodes.includes('admin')) {
+      isTenantAdminForTarget = true
+    }
+  }
+
+  if (!isSystemAdmin && !isTenantAdminForTarget) {
+    return reply
+      .code(403)
+      .send({ error: 'Unauthorized: Only System Admins or Tenant Admins can impersonate (Invalid Context)' })
+  }
+
+  // 3. Risoluzione Utente (su schema target)
   // We manually switch context using a fresh QueryRunner to avoid polluting the request context
   const qr = global.connection.createQueryRunner()
   await qr.connect()
