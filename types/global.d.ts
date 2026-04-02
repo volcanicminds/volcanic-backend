@@ -4,9 +4,9 @@ import { FastifyRequest, FastifyReply } from 'fastify'
 export { FastifyInstance } from 'fastify'
 import { EntityManager } from 'typeorm'
 import { MfaPolicy } from '../lib/config/constants.js'
-import { VQuery, VFindResult } from './orm.js'
+import { VQuery, VFindResult, VHeaders } from './orm.js'
 
-export { MfaPolicy, VQuery, VFindResult }
+export { MfaPolicy, VQuery, VFindResult, VHeaders }
 
 export interface AuthenticatedUser {
   getId(): any
