@@ -246,6 +246,8 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `SWAGGER_VERSION`              | The version of the API.                                                 |    No    | `0.1.0`             |
 | `SWAGGER_PREFIX_URL`           | The path where Swagger UI is available.                                 |    No    | `/api-docs`         |
 | `MFA_POLICY`                   | MFA Security Policy (`OPTIONAL`, `MANDATORY`, `ONE_WAY`)                |    No    | `OPTIONAL`          |
+| `AUTH_CODE_SIZE`               | Length of the generated authorization codes (nanoid).                   |    No    | `10`                |
+| `MFA_APP_NAME`                 | Name of the application displayed in Authenticator apps.                |    No    | `VolcanicApp`       |
 | `MFA_ADMIN_FORCED_RESET_EMAIL` | Admin email for emergency MFA reset                                     |    No    |                     |
 | `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
 | `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
