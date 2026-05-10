@@ -59,38 +59,29 @@ export async function restore(req: FastifyRequest, reply: FastifyReply) {
   return reply.send({ message: 'Tenant restored', tenant })
 }
 
-export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, prefer-const
-  let { targetTenantSlug, targetTenantId, targetRole, targetUserEmail, targetUserId } = req.body as any
-
-  // DX Improvement: If no target tenant specified, default to current context (self-impersonation)
-  if (!targetTenantSlug && !targetTenantId && req.tenant) {
-    targetTenantSlug = req.tenant.slug
+// Helper: Resolve Target Tenant
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resolveTargetTenant(targetTenantSlug: string, targetTenantId: string, reqTenant: any) {
+  let resolvedSlug = targetTenantSlug
+  if (!resolvedSlug && !targetTenantId && reqTenant) {
+    resolvedSlug = reqTenant.slug
   }
 
-  // 1. Risoluzione Tenant (MUST be active)
-  // We access the Tenant Entity remotely via global connection
   const Tenant = global.entity?.Tenant || global.connection.getRepository('Tenant').target
   const tenantRepo = global.connection.getRepository(Tenant)
 
-  const targetTenant = await tenantRepo.findOne({
+  return tenantRepo.findOne({
     where: [
-      { slug: targetTenantSlug, status: 'active' },
+      { slug: resolvedSlug, status: 'active' },
       { id: targetTenantId, status: 'active' }
     ]
   })
+}
 
-  if (!targetTenant) {
-    return reply.code(404).send({ error: 'Target tenant not found or inactive' })
-  }
-
-  // 2. Security Check (Hardened)
-  // Allow if:
-  // A) System Admin (Cross-Tenant)
-  // B) Tenant Admin (Same Tenant)
-
+// Helper: Security Check
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function checkImpersonationSecurity(req: FastifyRequest, targetTenant: any): boolean {
   let isSystemAdmin = false
-  // Check system context or explicit system tenant id
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   if (req.user?.tenantId === 'system' || req.tenant?.slug === 'system') {
@@ -98,48 +89,34 @@ export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
   }
 
   let isTenantAdminForTarget = false
-  // Check if current request tenant matches target
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   if (req.tenant?.id === targetTenant.id || req.tenant?.slug === targetTenant.slug) {
-    // Logic to check admin role
-    // We safely check req.roles() if available, or fallback to user.roles
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
     const userRoles = typeof req.roles === 'function' ? req.roles() : req.user?.roles || []
-    // Normalize roles to strings
-    const roleCodes = userRoles.map((r: any) => (typeof r === 'string' ? r : r?.code))
+    const roleCodes = userRoles.map((r: { code?: string } | string) => (typeof r === 'string' ? r : r?.code))
 
     if (roleCodes.includes('admin')) {
       isTenantAdminForTarget = true
     }
   }
 
-  if (!isSystemAdmin && !isTenantAdminForTarget) {
-    return reply
-      .code(403)
-      .send({ error: 'Unauthorized: Only System Admins or Tenant Admins can impersonate (Invalid Context)' })
-  }
+  return isSystemAdmin || isTenantAdminForTarget
+}
 
-  // 3. Risoluzione Utente (su schema target)
-  // We manually switch context using a fresh QueryRunner to avoid polluting the request context
+// Helper: Resolve Target User
+async function resolveTargetUser(dbSchema: string, targetUserId: string, targetUserEmail: string, targetRole: string) {
   const qr = global.connection.createQueryRunner()
   await qr.connect()
 
   try {
-    const dbSchema = targetTenant.dbSchema
-    if (!dbSchema) throw new Error('Target tenant has no schema defined')
-
     await qr.query(`SET search_path TO "${dbSchema}", "public"`)
 
-    // We assume User entity is standard.
-    // We try to get repository from name string to avoid strict type dependency if possible,
-    // or use global.entity.User if available from boot.
     const UserEntity = global.entity?.User || 'User'
     const targetUserRepo = qr.manager.getRepository(UserEntity)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let targetUser: any = null
-
-    // Criteri di ricerca (user MUST be active)
-    // User.e.ts has: blocked: boolean. confirmed: boolean.
 
     const baseWhere = { blocked: false }
 
@@ -148,7 +125,6 @@ export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
     } else if (targetUserEmail) {
       targetUser = await targetUserRepo.findOne({ where: { ...baseWhere, email: targetUserEmail } })
     } else if (targetRole) {
-      // SECURITY: ArrayContains
       targetUser = await targetUserRepo
         .createQueryBuilder('user')
         .where('user.blocked = :blocked', { blocked: false })
@@ -156,31 +132,62 @@ export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
         .getOne()
     }
 
-    if (!targetUser) {
-      return reply.code(404).send({ error: 'Target user not found (or blocked) matching criteria' })
-    }
-
-    // 3. Generazione Token Impersonato
-    // We rely on fastify-jwt which is decorated on 'reply' (standard in volcanic-backend)
-    const token = await reply.jwtSign(
-      {
-        sub: targetUser.externalId, // Identity: The Local Admin
-        tid: targetTenant.id, // Context: The Target Tenant
-        roles: targetUser.roles, // Privileges: Inherited from Target
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        impersonator: req.user.email, // Audit: Who is holding the puppet strings
-        iat: Math.floor(Date.now() / 1000)
-      },
-      { expiresIn: '24h' }
-    )
-
-    return {
-      token,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      impersonatedUser: { email: targetUser.email, id: targetUser.id }
-    }
+    return targetUser
   } finally {
     await qr.release()
+  }
+}
+
+export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, prefer-const
+  let { targetTenantSlug, targetTenantId, targetRole, targetUserEmail, targetUserId } = req.body as any
+
+  // 1. Risoluzione Tenant
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  const targetTenant = await resolveTargetTenant(targetTenantSlug, targetTenantId, req.tenant)
+  if (!targetTenant) {
+    return reply.code(404).send({ error: 'Target tenant not found or inactive' })
+  }
+
+  // 2. Security Check (Hardened)
+  const isAuthorized = checkImpersonationSecurity(req, targetTenant)
+  if (!isAuthorized) {
+    return reply
+      .code(403)
+      .send({ error: 'Unauthorized: Only System Admins or Tenant Admins can impersonate (Invalid Context)' })
+  }
+
+  // 3. Risoluzione Utente (su schema target)
+  const dbSchema = targetTenant.dbSchema
+  if (!dbSchema) {
+    throw new Error('Target tenant has no schema defined')
+  }
+
+  const targetUser = await resolveTargetUser(dbSchema, targetUserId, targetUserEmail, targetRole)
+
+  if (!targetUser) {
+    return reply.code(404).send({ error: 'Target user not found (or blocked) matching criteria' })
+  }
+
+  // 4. Generazione Token Impersonato
+  // We rely on fastify-jwt which is decorated on 'reply' (standard in volcanic-backend)
+  const token = await reply.jwtSign(
+    {
+      sub: targetUser.externalId, // Identity: The Local Admin
+      tid: targetTenant.id, // Context: The Target Tenant
+      roles: targetUser.roles, // Privileges: Inherited from Target
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      impersonator: req.user.email, // Audit: Who is holding the puppet strings
+      iat: Math.floor(Date.now() / 1000)
+    },
+    { expiresIn: '24h' }
+  )
+
+  return {
+    token,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    impersonatedUser: { email: targetUser.email, id: targetUser.id }
   }
 }

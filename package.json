@@ -52,7 +52,7 @@
     "start": "tsx --env-file .env server.ts",
     "dev": "tsx watch --env-file .env server.ts",
     "test": "npm run test:full",
-    "test:full": "cross-env PORT=2231 NODE_ENV=memory BROWSER=false mocha --loader=tsx ./test/index.spec.ts -t 100000",
+    "test:full": "cross-env PORT=2231 NODE_ENV=memory BROWSER=false mocha --import=tsx ./test/index.spec.ts -t 100000",
     "reset": "npm install && npm update && npm run build",
     "upgrade-deps": "npx npm-check-updates -u",
     "lint": "eslint .",
@@ -101,6 +101,7 @@
     "globals": "^16.5.0",
     "mocha": "^11.7.5",
     "npm-upgrade": "^3.1.2",
+    "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.50.0"
