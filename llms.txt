@@ -1,11 +1,19 @@
 # Volcanic Stack: System Context for AI Agents (llms.txt)
 > **AI AGENT DIRECTIVE**: This document is the ultimate source of truth for the @volcanicminds/backend framework.
 > Read this entirely before proposing architecture changes, generating services, or debugging.
-> 
+>
+> **⚠️ DOC STATUS (updated 2026-06) — CANONICAL DATA-ACCESS PATTERN**:
+> The official v2 pattern is the **context-aware Service Layer: `service.use(req.db)`** (required for strong
+> multi-tenancy; RLS enforced in `applyPermissions` on `BaseService`). Direct access to
+> **`global.repository.X` is LEGACY and FORBIDDEN at runtime** (`@volcanicminds/typeorm` throws a fail-fast
+> `[Volcanic Architecture 2.0] FATAL ... FORBIDDEN`). Any snippet below still showing `repository.orders…`
+> direct access reflects the old (v1/legacy) pattern — prefer `service.use(req.db)`. Canonical reference:
+> `docs/ADVANCED_ARCHITECTURE.md`. **In any conflict, the package source code wins.**
+>
 > **Core Paradigms (MANDATORY)**:
 > 1. **Framework**: Node.js (v24+ required), Fastify v5, pure ESM (`NodeNext`).
 > 2. **Architecture**: Thin Controllers, Fat Services. Controllers only map HTTP to Services. Services handle business logic and never know about HTTP.
-> 3. **Data Layer**: `@volcanicminds/typeorm` (Active Record pattern via `BaseEntity`). NEVER use raw SQL unless for extreme reporting (`@ViewEntity`). Use "Magic Queries" (`req.data()`) for filtering.
+> 3. **Data Layer**: `@volcanicminds/typeorm` (Active Record pattern via `BaseEntity`). Access data ONLY through the context-aware Service Layer (`service.use(req.db)`), never via `global.repository.X` (legacy/forbidden). NEVER use raw SQL unless for extreme reporting (`@ViewEntity`). Use "Magic Queries" (`req.data()`) for filtering.
 > 4. **Security**: Row Level Security (RLS) is enforced in `applyPermissions` on the `BaseService`. Do not bypass it.
 > 5. **TypeScript**: Strict typing required. Always use provided types (`FastifyRequest`, `FastifyReply`, `UserContext`).
 
@@ -186,7 +194,7 @@ Unlike architectures that use explicit Dependency Injection everywhere, the Volc
 
 - **`log`**: Pino Logger instance. Available everywhere.
 - **`entity.[PascalCase]`**: Direct access to the Entity class (e.g., `entity.User`). Useful for static methods like `.create()`.
-- **`repository.[camelCasePlural]`**: Connected TypeORM Repository instance (e.g., `repository.users`). Automatically pluralized.
+- **`repository.[camelCasePlural]`**: ⚠️ LEGACY/FORBIDDEN for data access — direct `global.repository.X` throws at runtime (Architecture 2.0). Resolve the repository from the request context instead: `req.db.getRepository(Entity)` or, in a service, `service.use(req.db)`.
 - **`config`**: Configuration loaded at startup.
 
 ---
@@ -877,12 +885,17 @@ There are two ways to invoke this engine:
 
 ```typescript
 import { executeFindQuery } from '@volcanicminds/typeorm'
+import { Order } from '../../../entities/order.e.js'
 
 // Controller
 export async function find(req, reply) {
+  // Resolve the repository from the request context (multi-tenant safe).
+  // NEVER use global.repository.orders — it is forbidden at runtime.
+  const orderRepo = req.db.getRepository(Order)
+
   // Translates req.data() into SQL, executes and formats response
   const { headers, records } = await executeFindQuery(
-    repository.orders,
+    orderRepo,
     { client: true }, // Relations
     req.data()
   )
@@ -895,7 +908,7 @@ In `volcanic-sample-backend`, logic is encapsulated in `BaseService.findAll`. Th
 
 ```typescript
 // Service
-const { headers, records } = await orderService.findAll(req.userContext, req.data())
+const { headers, records } = await orderService.use(req.db).findAll(req.userContext, req.data())
 ```
 
 ---
@@ -1248,7 +1261,7 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   }
 
   // Passing to Service
-  return await orderService.update(req.userContext, id, data)
+  return await orderService.use(req.db).update(req.userContext, id, data)
 }
 ```
 
@@ -1279,7 +1292,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
 
   try {
     // 4. Delegate to Service (Business Logic & Security)
-    const result = await orderService.create(req.userContext, payload)
+    const result = await orderService.use(req.db).create(req.userContext, payload)
 
     // 5. Response
     // If result is null or errors occur, service will have thrown exception
@@ -1313,9 +1326,9 @@ export class OrderService extends BaseService<Order> {
     const exists = await this.repository.findOne({ where: { code: data.code } })
     if (exists) throw new Error('Order code already exists')
 
-    // Persistence
-    const order = entity.Order.create(data)
-    return await entity.Order.save(order)
+    // Persistence (use the context-bound repository, not global Active Record)
+    const order = this.repository.create(data)
+    return await this.repository.save(order)
   }
 }
 ```
@@ -1417,15 +1430,28 @@ To avoid rewriting search, pagination, and filtering logic endlessly, all CRUD s
 Here is the reference structure implemented in `volcanic-sample-backend`. Note how it integrates "Magic Queries" seen in Part 3.
 
 ```typescript
-import { ObjectLiteral, Repository, SelectQueryBuilder, Brackets } from 'typeorm'
+import { ObjectLiteral, Repository, SelectQueryBuilder, Brackets, EntityManager, ObjectType } from 'typeorm'
 import { UserContext } from '../../types/index.js'
 
 export abstract class BaseService<T extends ObjectLiteral> {
-  protected repository: Repository<T>
+  protected manager?: EntityManager
   protected cacheTTL: number = 0 // Default: no cache
 
-  constructor(repository: Repository<T>) {
-    this.repository = repository
+  // CANONICAL v2: pass the ENTITY TYPE, never a global repository.
+  constructor(protected readonly entityType: ObjectType<T>) {}
+
+  // Bind the service to the request-scoped manager (req.db). Returns a scoped clone.
+  // Controllers MUST call: service.use(req.db).findAll(...)
+  use(manager: EntityManager): this {
+    const scoped = Object.create(this) as this
+    scoped.manager = manager
+    return scoped
+  }
+
+  // Repository ALWAYS resolved from req.db (multi-tenant safe). global.repository.X is forbidden.
+  protected get repository(): Repository<T> {
+    if (!this.manager) throw new Error('Service used without context: call service.use(req.db) first')
+    return this.manager.getRepository(this.entityType)
   }
 
   /**
@@ -1548,8 +1574,8 @@ import { UserContext } from '../../types/index.js'
 
 export class OrderService extends BaseService<Order> {
   constructor() {
-    // repository.orders is global, injected by loader
-    super(repository.orders)
+    // Pass the entity type; the repository is resolved from req.db via .use()
+    super(Order)
   }
 
   protected applyPermissions(
@@ -1696,13 +1722,13 @@ async createFull(ctx: UserContext, data: any) {
     // IMPORTANT: use queryRunner.manager, NOT global.repository or entity.save()
 
     // Step A: Save Order
-    const order = entity.Order.create(orderData)
+    const order = queryRunner.manager.create(Order, orderData)
     const savedOrder = await queryRunner.manager.save(order)
 
     // Step B: Save WorkOrders
     for (const wo of workOrders) {
       wo.order = savedOrder.id
-      const workOrder = entity.WorkOrder.create(wo)
+      const workOrder = queryRunner.manager.create(WorkOrder, wo)
       await queryRunner.manager.save(workOrder)
     }
 
@@ -1729,13 +1755,9 @@ As noted in Part 1, the framework injects repositories and entities into `global
 
 ### Data Access
 
-- **`repository.[pluralName]`**: Repository Instance.
-  - Usage: `repository.orders.find(...)`
-  - Corresponds to: `DataSource.getRepository(Order)`
-  - **Important**: In Multi-Tenant applications or transactions, prefer using `req.db.getRepository(Order)` (via `service.use(req.db)`) to ensure you are using the correct isolated connection.
-- **`entity.[ClassName]`**: Entity Class.
-  - Usage: `entity.Order.create(...)`
-  - Corresponds to: `import { Order } from ...`
+- **`req.db` (CANONICAL)**: request-scoped `EntityManager`. Resolve repositories from it — `req.db.getRepository(Order)` — or use a service via `service.use(req.db)`. This is the ONLY supported data-access path (single & multi-tenant).
+- **`repository.[pluralName]`**: ⚠️ LEGACY/FORBIDDEN. Direct `global.repository.X` access throws `[Volcanic Architecture 2.0] FATAL ... FORBIDDEN` at runtime. Do not use.
+- **`entity.[ClassName]`**: use ONLY as a type/class reference (`import { Order } from ...`) or for static metadata — NOT for global Active-Record writes inside request handlers (use the context-bound repository instead).
 
 ### Singleton Pattern
 
@@ -1760,7 +1782,7 @@ import { STATIC_CACHE_TTL } from '../config/constants.js'
 
 export class OrderTypeService extends BaseService<OrderType> {
   constructor() {
-    super(repository.ordertypes)
+    super(OrderType)
     // Enable auto cache for findAll and findOne
     this.cacheTTL = STATIC_CACHE_TTL // e.g. 15 minutes in ms
   }
@@ -2354,7 +2376,7 @@ import { professionalService } from '../../src/services/professional.service.js'
 describe('Professional Service', () => {
   it('should calculate counts correctly', async () => {
     // Note: requires connected DB or Repository Mock
-    const count = await professionalService.count({ role: 'admin' }, {})
+    const count = await professionalService.use(connection.manager).count({ role: 'admin' }, {})
     expect(typeof count).toBe('number')
   })
 })
@@ -2745,10 +2767,13 @@ Our goal is to inject same `UserContext` used in REST APIs, so Services (`applyP
 
 ```typescript
 import { FastifyRequest, FastifyReply } from 'fastify'
+import { EntityManager } from 'typeorm'
 import { UserContext } from '../../types/index.js'
+import { User } from '../../entities/user.e.js'
 
 export interface MyContext {
   userContext: UserContext
+  db: EntityManager // request-scoped manager, passed to services via .use(db)
 }
 
 export const myContextFunction = async (request: FastifyRequest, reply: FastifyReply): Promise<MyContext> => {
@@ -2770,8 +2795,8 @@ export const myContextFunction = async (request: FastifyRequest, reply: FastifyR
       const decoded: any = request.server.jwt.verify(token)
 
       // 3. User Recovery from DB (similar to REST preHandler hook)
-      // Note: we use global userManager or direct repository
-      const user = await repository.users.findOne({
+      // Resolve the repository from the request-scoped manager (never global.repository)
+      const user = await request.db.getRepository(User).findOne({
         where: { externalId: decoded.sub },
         relations: ['professional']
       })
@@ -2793,7 +2818,7 @@ export const myContextFunction = async (request: FastifyRequest, reply: FastifyR
     }
   }
 
-  return { userContext }
+  return { userContext, db: request.db }
 }
 ```
 
@@ -2850,7 +2875,7 @@ export const resolvers = {
   Query: {
     order: async (_: any, args: { id: string }, context: MyContext) => {
       // Service reuse: security is guaranteed by findOne internally
-      return await orderService.findOne(context.userContext, args.id)
+      return await orderService.use(context.db).findOne(context.userContext, args.id)
     },
 
     orders: async (_: any, args: any, context: MyContext) => {
@@ -2864,7 +2889,7 @@ export const resolvers = {
         ...(args.filter?.nameContains && { 'name:contains': args.filter.nameContains })
       }
 
-      const { records } = await orderService.findAll(context.userContext, queryParams)
+      const { records } = await orderService.use(context.db).findAll(context.userContext, queryParams)
       return records
     }
   },
@@ -2877,7 +2902,7 @@ export const resolvers = {
 
       // Otherwise call child service filtering by parent
       // Note: service findAll applies security here too!
-      const { records } = await workOrderService.findAll(context.userContext, {
+      const { records } = await workOrderService.use(context.db).findAll(context.userContext, {
         'order:eq': parent.id
       })
       return records
@@ -2912,7 +2937,7 @@ type Query {
 ordersGeneric: async (_: any, args: { queryParams: any }, ctx: MyContext) => {
   // Direct passing ("Pass-through")
   // Service receives exactly what it would receive from REST controller
-  const { records } = await orderService.findAll(ctx.userContext, args.queryParams || {})
+  const { records } = await orderService.use(ctx.db).findAll(ctx.userContext, args.queryParams || {})
   return records
 }
 ```
@@ -2946,7 +2971,7 @@ protected addRelations(qb, alias) {
 If eager loading is too heavy, use `DataLoader` in context.
 
 1.  Create a `BatchLoader` accepting array of IDs.
-2.  Execute `repository.find({ where: { id: In(ids) } })`.
+2.  Execute `req.db.getRepository(Client).find({ where: { id: In(ids) } })`.
 3.  Use loader in resolver: `return context.loaders.clientLoader.load(parent.clientId)`.
 
 > **Volcanic Advice**: For 90% of business cases (dashboards, lists), smart usage of `addRelations` in `BaseService` combined with pagination is sufficient and much easier to maintain than DataLoaders.

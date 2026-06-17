@@ -9,8 +9,9 @@ export const emailAlt =
 /*
  * email can have multiple words
  * email can use . - or + for smart labeling
+ * TLD has no upper length limit (e.g. .test, .info, .email)
  */
-export const email = /^\w+([.+-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/
+export const email = /^\w+([.+-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,})+$/
 
 /*
  * password must contain 1 number (0-9)

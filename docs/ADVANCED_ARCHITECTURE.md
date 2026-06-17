@@ -1,5 +1,11 @@
 # Advanced Architecture: Service & Repository Pattern
 
+> **✅ CANONICAL v2 PATTERN (source of truth, 2026-06).** The context-aware Service Layer shown here —
+> `service.use(req.db)` with RLS in `applyPermissions` — is the **official** data-access pattern, required
+> for strong multi-tenancy. Direct `global.repository.X` access is **legacy** and is rejected at runtime by a
+> fail-fast Proxy in `@volcanicminds/typeorm`. Older snippets in `llms.txt`/README/Context7 may still show the
+> legacy form; this document takes precedence, and the package source code is the ultimate authority.
+
 While `@volcanicminds/backend` allows for simple route-to-controller logic, building enterprise-grade applications requires a more robust architecture to handle complexity, security, and maintainability.
 
 This guide details the recommended architecture used in complex projects (like `volcanic-backend-sample`), focusing on the **Service Layer Pattern** and the **BaseService abstraction**.
