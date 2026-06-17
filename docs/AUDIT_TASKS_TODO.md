@@ -56,9 +56,10 @@
   - File: `lib/api/auth/controller/auth.ts:28,153,157,212`; `lib/hooks/onRequest.ts:147`
   - "Email already registered", "User blocked" vs "Wrong credentials", `404 SUBJECT_NOT_FOUND`. `forgotPassword` deve rispondere sempre 200 generico; uniformare i messaggi pubblici.
 
-- [ ] **Q1 — Regex `username` con flag `/gi` usata con `.test()` (bug validazione)** · `BE`
+- [x] **Q1 — Regex `username` con flag `/gi` usata con `.test()` (bug validazione)** · `BE` ✅ *(2026-06-17)*
   - File: `lib/util/regexp.ts:5`
   - `lastIndex` persiste tra chiamate → risultati alternati true/false. Rimuovere il flag `g`.
+  - **Fatto:** rimosso il flag `g` (resta `i`). Aggiunto test di regressione (`test/unit/regexp.ts`: `username.test('john')` chiamato 4× → sempre `true`).
 
 ---
 
@@ -151,6 +152,25 @@
 - [ ] **Q12 — Vulnerabilità moderate residue (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
   - File: dipendenze
   - `npm audit fix` e ri-verifica.
+
+---
+
+## 🆕 Rilievi emersi durante la stesura dei test (2026-06-17)
+
+- [x] **T1 — i18n rotto nel pacchetto pubblicato (BUG di produzione)** · `BE` ✅ *(2026-06-17)*
+  - `tsc` non copiava `lib/locales/*.json` in `dist/`, ma il runtime carica i dizionari da `dist/lib/locales` (via `main: dist/index.js`). Risultato: pacchetto pubblicato con catalogo i18n vuoto → ogni `t.__(...)` cadeva sulla chiave/`generic error` (per questo il sample riceveva `undefined`).
+  - **Fix:** `scripts/copy-assets.mjs` + `postbuild` che copia i locales in `dist/`. Coperto dai test translation reali (backend + sample).
+
+- [x] **T2 — Test che mascheravano i fallimenti** · `BE`, `SA` ✅ *(2026-06-17)*
+  - Assert dentro `try/catch` silenziati + `tearDown` con `process.exit(0)` (suite sempre exit 0). Rimossi; i test ora asseriscono davvero. Vedi anche fix loader/`--exit` già committati.
+
+- [ ] **T3 — Policy password non applica il carattere speciale (BUG)** · `BE`
+  - File: `lib/util/regexp.ts` (regex `password`)
+  - La classe `[...()-_=...]` contiene il **range non voluto** `)-_` (0x29–0x5F) → lettere maiuscole e cifre soddisfano il requisito "1 carattere speciale". Es. `NoSpecial1A` passa pur senza speciali.
+  - **Non corretto**: la regex è usata anche al **login** → inasprirla può bloccare utenti esistenti (rischio compat). Decisione del maintainer. Test `pending` che lo documenta in `test/unit/regexp.ts`.
+
+- [x] **T4 — Suite di test resa eseguibile + copertura iniziale** · `BE`, `TO`, `TO`, `SA` ✅ *(2026-06-17)*
+  - Infra mocha+tsx funzionante su tutti i repo (prima: backend non compilava, sample crashava, tools/typeorm zero). Aggiunti test: backend (S2 secret, validatori/Q1, S4 plugins, translation), typeorm (crypto/S9, Magic Query con guard injection/proto, S6), tools (MFA TOTP, concurrency). Tot: **45 passing + 1 pending**. Prerequisito per [[Q11]] (CI).
 
 ---
 

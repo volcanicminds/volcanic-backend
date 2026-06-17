@@ -2,7 +2,9 @@
  * min 3 max 33, one special character (. _ -) only in the middle
  * username can have uppercase or lowercase chars
  */
-export const username = /(?=^.{3,33}$)^[a-z][a-z0-9]*[._-]?[a-z0-9]+$/gi
+// NOTE: no `g` flag — with it, `.test()` is stateful (advances lastIndex) and
+// returns alternating true/false across calls on the same input.
+export const username = /(?=^.{3,33}$)^[a-z][a-z0-9]*[._-]?[a-z0-9]+$/i
 export const emailAlt =
   /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
 
