@@ -1,0 +1,156 @@
+# AUDIT TASKS — TODO
+
+> Audit di sicurezza/qualità sui 4 progetti del workspace (`volcanic-backend`, `volcanic-tools`,
+> `volcanic-database-typeorm`, `volcanic-backend-sample`). Data: 2026-06-17.
+>
+> **Tutti gli interventi sono non-funzionali**: non cambiano il comportamento osservabile delle API,
+> ma migliorano sicurezza, robustezza, performance e manutenibilità.
+>
+> Legenda progetti: **BE** = volcanic-backend · **TO** = volcanic-tools · **DB** = volcanic-database-typeorm · **SA** = volcanic-backend-sample
+
+---
+
+## 🔴 CRITICA
+
+- [x] **S1 — Dipendenza `fast-jwt` vulnerabile (algorithm/cache confusion)** · `BE`, `SA` ✅ *(2026-06-17)*
+  - File: `package.json` (dep transitiva via `@fastify/jwt`)
+  - `fast-jwt ≤6.2.3`: CVE-2023-48223 (fix incompleto, algorithm confusion via RSA key whitespace-prefixed) + cache confusion (claim di un token restituiti per un altro → identity/authorization mixup). `npm audit`: 1 critical + 6 high per repo.
+  - Azione: aggiornare `@fastify/jwt`/`fast-jwt`; `npm audit fix`; pinnare versioni; ripetere audit.
+  - **Fatto:** `@fastify/jwt` bumpato a `^10.1.0` in `volcanic-backend` (richiede `fast-jwt ^6.2.0`) → installato `fast-jwt@6.2.4`. Nel `volcanic-backend-sample` (transitivo) `npm update fast-jwt` → `6.2.4`. `npm audit`: **0 critical** in entrambi i repo. `type-check` OK; il fallimento dei test è pre-esistente e indipendente (manca il peer `@volcanicminds/typeorm` nel node_modules del repo, richiesto dal bootstrap di test).
+  - **Scope corretto:** `fast-jwt` è presente solo in `BE` (diretto) e `SA` (transitivo). I critical/high di `TO` e `DB` riguardano **altri** pacchetti → rientrano in **Q12**, non in S1.
+
+---
+
+## 🟠 ALTA
+
+- [x] **S2 — Secret JWT mancante/debole (fail-fast)** · `BE` ✅ *(2026-06-17)*
+  - File: `index.ts:188`, `240-243`
+  - **Correzione di analisi:** con `JWT_SECRET=''` il server NON parte con secret vuoto (`@fastify/jwt` fa `assert(secret, 'missing secret')` → eccezione, per giunta unhandled in `server.ts`). Il rischio reale non era "token forgiabili da secret vuoto" ma **secret debole accettato in silenzio** (corto/noto/bassa entropia) + errore di avvio illeggibile.
+  - **Fatto (Opzione A — fail-fast):** nuova utility `lib/util/secret.ts` (`validateSecretStrength`/`assertSecretStrength`): mancante → sempre fatale `process.exit(1)`; debole (lunghezza < 32, denylist valori noti, < 8 caratteri distinti) → fatale in produzione, warning in dev. Cablata in `index.ts` prima di registrare JWT, per `JWT_SECRET`, `JWT_REFRESH_SECRET` (se refresh attivo) e `COOKIE_SECRET` (se `AUTH_MODE=COOKIE`). Aggiunto `.catch` in `server.ts` per evitare unhandled rejection.
+  - **Verifica:** `type-check` OK; 4 scenari (mancante dev / debole prod / debole dev / forte) con exit code attesi (1/1/0/0); secret dev (88 char) passa senza warning.
+  - **Nota:** scenario "solo rotte pubbliche senza secret" non implementato di proposito — le rotte auth native (login/refresh) firmano i token e richiedono comunque il secret; vedi discussione (Opzioni B/Ibrido scartate).
+
+- [ ] **S3 — CORS default `origin: '*'` + `credentials: true`** · `BE`
+  - File: `lib/config/plugins.ts:6-9`
+  - Default troppo permissivo per B2B. Allowlist origini via env; vietare `*`+credentials; warning di startup.
+
+- [ ] **S4 — helmet disabilitato di default e assente con GraphQL** · `BE`
+  - File: `lib/config/plugins.ts:46-49`, `index.ts:201` (`!loadApollo`)
+  - Abilitare helmet di default; per Apollo usare helmet con CSP compatibile invece di escluderlo.
+
+- [ ] **S5 — rate-limit disabilitato di default + nessun limite su auth/MFA** · `BE`
+  - File: `lib/config/plugins.ts:41-44`, `lib/api/auth/routes.ts`
+  - Brute-force su login e su codice MFA (6 cifre = 10⁶) senza throttling. Rate-limit attivo di default + limiti stretti per-route su login/forgot/reset/mfa.
+
+- [ ] **S6 — Timing attack / user enumeration in login** · `DB`
+  - File: `lib/loader/userManager.ts:217-227`
+  - Se l'email non esiste non si esegue `bcrypt.compare` → risposta più rapida. Eseguire un compare dummy a costo costante.
+
+- [ ] **S7 — User enumeration via messaggi/stati** · `BE`
+  - File: `lib/api/auth/controller/auth.ts:28,153,157,212`; `lib/hooks/onRequest.ts:147`
+  - "Email already registered", "User blocked" vs "Wrong credentials", `404 SUBJECT_NOT_FOUND`. `forgotPassword` deve rispondere sempre 200 generico; uniformare i messaggi pubblici.
+
+- [ ] **Q1 — Regex `username` con flag `/gi` usata con `.test()` (bug validazione)** · `BE`
+  - File: `lib/util/regexp.ts:5`
+  - `lastIndex` persiste tra chiamate → risultati alternati true/false. Rimuovere il flag `g`.
+
+---
+
+## 🟡 MEDIA
+
+- [ ] **S8 — `refreshToken` usa `jwt.decode` (no verifica firma) + check "Token too old" errato** · `BE`
+  - File: `lib/api/auth/controller/auth.ts:336-341`
+  - `decode` non verifica la firma; il check confronta `sub` (externalId) con un timestamp. Usare `verify` (`ignoreExpiration`) e una vera claim temporale.
+
+- [ ] **S9 — Crypto: fallback legacy AES-256-CBC non autenticato + key derivation debole** · `DB`
+  - File: `lib/util/crypto.ts:29-36, 8-13`
+  - CBC malleabile (downgrade); key = primi 32 char di `base64(sha256(secret))` (no salt/HKDF). Migrare a solo GCM; HKDF/scrypt; deprecare/migrare record CBC.
+
+- [ ] **S10 — Possibile ReDoS nelle regex email** · `BE`
+  - File: `lib/util/regexp.ts:7,14`
+  - Quantificatori annidati (`\w+([.+-]?\w+)*`). Semplificare le regex; limitare lunghezza input prima del match.
+
+- [ ] **S11 — Nessuna protezione anti-replay TOTP + nessun rate-limit MFA** · `TO`, `BE`
+  - File: `lib/mfa/index.ts:60-73` (TO), `lib/api/auth/controller/auth.ts:430-461` (BE)
+  - Codice TOTP riusabile entro la finestra. Tracciare l'ultimo `delta` usato per utente; aggiungere rate-limit.
+
+- [ ] **S12 — `SET search_path` interpolato senza risanitizzazione** · `BE`
+  - File: `lib/api/tenants/controller/tenants.ts:114`
+  - A differenza di `tenantManager.switchContext`. Centralizzare e applicare ovunque la sanitizzazione/whitelist dello schema.
+
+- [ ] **S13 — Impersonation: audit non persistito, TTL 24h, no step-up MFA** · `BE`
+  - File: `lib/api/tenants/controller/tenants.ts:141-193`; `index.ts:319-352` (MFA admin reset via env)
+  - Persistere audit log; ridurre TTL; valutare step-up MFA; audit obbligatorio sul reset MFA via env.
+
+- [ ] **S14 — Revocation latency: cache su `retrieveUserByExternalId`** · `DB`
+  - File: `lib/loader/userManager.ts:208-211` (`cache: global.cacheTimeout`)
+  - Utente bloccato/ruoli cambiati restano validi fino a scadenza cache. Invalidare cache su `block`/`resetExternalId`/cambio ruoli; documentare il trade-off.
+
+- [ ] **Q2 — `changePassword`: null deref se utente inesistente** · `DB`
+  - File: `lib/loader/userManager.ts:239-240`
+  - `bcrypt.compare(old, user.password)` con `user` possibile `null`. Aggiungere guard.
+
+- [ ] **Q3 — `isPasswordToBeChanged`: `throw new Error(e)` con `e` Error** · `DB`
+  - File: `lib/loader/userManager.ts:327`
+  - Messaggio `[object…]`. Usare `throw e` o messaggio esplicito.
+
+- [ ] **Q4 — Parser `_logic` senza limite profondità/lunghezza (DoS)** · `DB`
+  - File: `lib/query/parser.ts`
+  - Limitare numero token e profondità di annidamento.
+
+- [ ] **Q5 — `Semaphore.release()` può rendere `running` negativo** · `TO`
+  - File: `lib/ai/concurrency.ts:39`
+  - Clamp `running = Math.max(0, running - 1)`.
+
+- [ ] **Q6 — `login` valida la complessità password al login** · `BE`
+  - File: `lib/api/auth/controller/auth.ts:232`
+  - Inasprire la policy bloccherebbe utenti esistenti + leak della policy. Validare complessità solo in registrazione/cambio password.
+
+---
+
+## 🟢 BASSA
+
+- [ ] **S15 — Cookie `maxAge` (1g) ≠ `JWT_EXPIRES_IN` (15g) + access token troppo longevo** · `BE`
+  - File: `lib/api/auth/controller/auth.ts:296` vs `index.ts:189`
+  - Allineare scadenze; ridurre access token (es. 15m) appoggiandosi al refresh.
+
+- [ ] **S16 — Manca `bodyLimit`/`limits` multipart espliciti (DoS payload)** · `BE`
+  - File: `index.ts` (registrazione server/multipart)
+  - Impostare `bodyLimit` e `limits.fileSize`.
+
+- [ ] **S17 — `console.log('DEBUG: …')` in produzione** · `TO`
+  - File: `lib/ai/model.ts:50,52`
+  - Rimuovere o passare al logger a livello debug.
+
+- [ ] **Q7 — `embedded_auth` letto a import-time** · `BE`
+  - File: `lib/hooks/onRequest.ts:5`
+  - Spostare la lettura dentro l'handler.
+
+- [ ] **Q8 — Loop `do/while` con query DB per unicità UUIDv4** · `DB`
+  - File: `lib/loader/userManager.ts:61-65,116-120`; `lib/loader/tokenManager.ts:51-54`
+  - Collisione ~impossibile: generare l'UUID e affidarsi all'unique constraint.
+
+- [ ] **Q9 — `try { } catch (e) { throw e }` inutile e ripetuto** · `DB`
+  - File: `lib/loader/userManager.ts`, `lib/loader/tokenManager.ts` (vari, con `eslint-disable no-useless-catch`)
+  - Rimuovere i wrapper inutili.
+
+- [ ] **Q10 — `@ts-ignore`/`as any` su `req.user`/`req.tenant`** · `BE`
+  - File: `lib/api/tenants/controller/tenants.ts`
+  - Tipizzare le augmentation Fastify per eliminare i bypass.
+
+- [ ] **Q11 — Nessuna CI** · `BE`, `TO`, `DB`, `SA`
+  - File: `.github/` assente
+  - Pipeline su PR: `lint` + `type-check` + `test` + `npm audit` + SAST.
+
+- [ ] **Q12 — Vulnerabilità moderate residue (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
+  - File: dipendenze
+  - `npm audit fix` e ri-verifica.
+
+---
+
+## ⚡ Quick wins (alto impatto / basso sforzo)
+
+1. **S1** — `npm audit fix` + upgrade `@fastify/jwt` (chiude la vuln critica JWT su tutti i repo).
+2. **S2** — fail-fast su `JWT_SECRET` mancante/debole.
+3. **S3/S4/S5** — invertire i default: helmet + rate-limit **on**, CORS allowlist.
+4. **Q1** — rimuovere il flag `g` dalla regex `username` (bug di validazione concreto).

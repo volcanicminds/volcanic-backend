@@ -39,6 +39,7 @@ import { myContextFunction, MyContext } from './lib/apollo/context.js'
 import resolvers from './lib/apollo/resolvers.js'
 import typeDefs from './lib/apollo/type-defs.js'
 import require from './lib/util/require.js'
+import { assertSecretStrength } from './lib/util/secret.js'
 
 import type { TransferManagement } from './types/global.js'
 import general from './lib/config/general.js'
@@ -197,7 +198,15 @@ const start = async (decorators = {}) => {
   const plugins = await loaderPlugins.load()
 
   if (plugins?.rawBody) await server.register(rawBody, plugins.rawBody || {})
-  if (plugins?.cookie) await server.register(cookie, plugins.cookie || {})
+  if (plugins?.cookie) {
+    // Signed cookies (e.g. the auth_token in COOKIE mode) require a strong secret.
+    if (process.env.AUTH_MODE === 'COOKIE') {
+      assertSecretStrength('COOKIE_SECRET', process.env.COOKIE_SECRET, {
+        prod: process.env.NODE_ENV === 'production'
+      })
+    }
+    await server.register(cookie, plugins.cookie || {})
+  }
   if (!loadApollo && plugins?.helmet) await server.register(helmet, plugins.helmet || {})
 
   if (plugins?.rateLimit) {
@@ -236,6 +245,11 @@ const start = async (decorators = {}) => {
   if (plugins?.cors) await server.register(cors, plugins.cors || {})
   if (plugins?.compress) await server.register(compress, plugins.compress || {})
 
+  // Fail fast on missing/weak signing secrets before registering JWT.
+  // Missing is always fatal; weak is fatal in production, a warning otherwise.
+  const prod = process.env.NODE_ENV === 'production'
+  assertSecretStrength('JWT_SECRET', JWT_SECRET, { prod })
+
   if (log.t) log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
   await server.register(jwtValidator, {
     secret: JWT_SECRET,
@@ -243,6 +257,7 @@ const start = async (decorators = {}) => {
   })
 
   if (loadRefreshJWT) {
+    assertSecretStrength('JWT_REFRESH_SECRET', JWT_REFRESH_SECRET || JWT_SECRET, { prod })
     await server.register(jwtValidator, {
       namespace: 'refreshToken',
       secret: JWT_REFRESH_SECRET || JWT_SECRET,
