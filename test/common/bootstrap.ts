@@ -30,10 +30,11 @@ export async function uploadData() {
 }
 
 export async function tearDown() {
-  if (startStuffServer) {
+  if (startStuffServer && server) {
     await server.close()
   }
-  process.exit(0)
+  // No process.exit here: it would mask test failures (always exit 0) and
+  // truncate the reporter. Mocha is run with --exit to close lingering handles.
 }
 
 export function buildTasks() {

@@ -18,9 +18,9 @@ beforeAll(async () => {
 })
 afterAll(async () => await tearDown())
 
-describe(`Test: ${pkg.name}@${pkg.version} on node@${process.version}`, async () => {
+describe(`Test: ${pkg.name}@${pkg.version} on node@${process.version}`, () => {
   const tasks = buildTasks()
-  if (tasks.e2e) await e2e()
-  if (tasks.unit) await unit()
-  if (tasks.demo) await demo()
+  if (tasks.e2e) e2e()
+  if (tasks.unit) unit()
+  if (tasks.demo) demo()
 })
