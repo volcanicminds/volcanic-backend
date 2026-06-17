@@ -44,7 +44,7 @@ export default [
   },
   {
     name: 'helmet',
-    enable: false,
+    enable: true,
     options: {}
   },
   {

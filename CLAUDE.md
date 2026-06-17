@@ -10,7 +10,7 @@
 
 | Pacchetto | Repo | Ruolo | Context7 |
 |---|---|---|---|
-| `@volcanicminds/backend` | `volcanic-backend` (questo) | Core HTTP/Fastify, auth, autodiscovery, hooks, GraphQL | `/volcanicminds/volcanic-backend` |
+| `@volcanicminds/backend` | `volcanic-backend` (questo) | Core HTTP/Fastify, auth, autodiscovery, hooks | `/volcanicminds/volcanic-backend` |
 | `@volcanicminds/typeorm` | `volcanic-database-typeorm` | Data layer: Magic Query + multi-tenant | `/volcanicminds/volcanic-database-typeorm` |
 | `@volcanicminds/tools` | `volcanic-tools` | Utility tree-shakeable: mfa, mailer, logger, storage, transfer, ai | `/volcanicminds/volcanic-tools` |
 
@@ -45,14 +45,13 @@ npm run check-all    # lint + type-check  <-- esegui prima di committare
 ## Architettura interna (`lib/`)
 
 - `index.ts` — bootstrap `start()`: registra plugin Fastify, JWT (+refresh come namespace separato),
-  Swagger (opz.), Apollo (opz.), poi loader: tenant → hooks → schemas → router. Gestisce TUS transfer
+  Swagger (opz.), poi loader: tenant → hooks → schemas → router. Gestisce TUS transfer
   mount e il check "Admin MFA forced reset" all'avvio.
 - `lib/loader/*` — autodiscovery: `router` (scansiona `src/api/**/routes.ts` del consumer),
   `schemas`, `hooks`, `plugins`, `roles`, `schedules`, `tracking`, `tenant`, `translation`, `general`.
 - `lib/api/*` — API native del framework: `auth`, `health`, `tenants`, `token`, `tool`, `users`.
 - `lib/hooks/*` — `onRequest`, `onResponse`, `onError`, `preHandler`, `preSerialization`.
 - `lib/middleware/*` — `isAuthenticated`, `isAdmin`, pre/post auth & forgot-password.
-- `lib/apollo/*` — GraphQL (attivo solo con `GRAPHQL=true`).
 - `lib/schemas/*` — JSON Schema core (override via deep-merge se il consumer usa lo stesso `$id`).
 - `lib/defaults/managers.ts` — i Null Object dei manager.
 

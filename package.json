@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "2.3.3",
+  "version": "2.4.0",
   "type": "module",
   "codename": "rome",
   "license": "MIT",
@@ -14,16 +14,13 @@
     "http",
     "https",
     "fastify",
-    "apollo",
     "swagger",
-    "graphql",
     "helmet",
     "json",
     "typescript",
     "javascript",
     "rest",
     "restful",
-    "graphql",
     "pino",
     "rate limit",
     "jest"
@@ -62,8 +59,6 @@
     "combine": "node combine.js"
   },
   "dependencies": {
-    "@apollo/server": "^5.2.0",
-    "@as-integrations/fastify": "^3.1.0",
     "@fastify/compress": "^8.3.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
@@ -79,7 +74,6 @@
     "fastify": "^5.6.2",
     "fastify-raw-body": "^5.0.0",
     "glob": "^13.0.0",
-    "graphql": "^16.12.0",
     "i18n": "^0.15.3",
     "lodash": "^4.17.21",
     "nanoid": "^5.1.6",

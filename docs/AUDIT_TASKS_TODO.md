@@ -34,9 +34,13 @@
   - File: `lib/config/plugins.ts:6-9`
   - Default troppo permissivo per B2B. Allowlist origini via env; vietare `*`+credentials; warning di startup.
 
-- [ ] **S4 — helmet disabilitato di default e assente con GraphQL** · `BE`
+- [x] **S4 — helmet disabilitato di default e assente con GraphQL** · `BE` ✅ *(2026-06-17)*
   - File: `lib/config/plugins.ts:46-49`, `index.ts:201` (`!loadApollo`)
   - Abilitare helmet di default; per Apollo usare helmet con CSP compatibile invece di escluderlo.
+  - **Fatto:** deciso (con il maintainer) di **rimuovere del tutto il GraphQL** — era uno stub demo (`helloWorld`), disabilitato di default, zero test. Questo elimina alla radice la condizione `!loadApollo` su helmet. Inoltre helmet portato a `enable: true` di default in `lib/config/plugins.ts`.
+  - **Rimozione GraphQL:** tolti import/funzioni Apollo e `GRAPHQL`/`loadApollo` da `index.ts`; eliminata cartella `lib/apollo/`; rimosse deps `@apollo/server`, `@as-integrations/fastify`, `graphql` da `package.json` (+ keyword `apollo`/`graphql`); ripulito `.env` (backend+sample), `README.md`, `llms.txt` (rimossa Part 9 + TOC + env, 275 righe).
+  - **Verifica:** `type-check` + `build` + lint OK; boot reale OK (39 rotte, "Server up", helmet attivo). `npm audit` prod: da **13 → 9** vulnerabilità (rimosse 4 con apollo/graphql).
+  - **Nota:** cambio di superficie pubblica (pacchetto pubblicato) → segnare come **minor/breaking** nel versioning. Residuo cosmetico: in `llms.txt` la numerazione salta "Part 8 → Part 10" (non rinumerato per non toccare i sotto-paragrafi `10.x`).
 
 - [ ] **S5 — rate-limit disabilitato di default + nessun limite su auth/MFA** · `BE`
   - File: `lib/config/plugins.ts:41-44`, `lib/api/auth/routes.ts`

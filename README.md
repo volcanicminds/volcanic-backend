@@ -13,6 +13,9 @@ A Node.js framework based on Fastify to build robust APIs quickly, featuring an 
 - Updated all dependencies to their latest versions.
 - Increase minimum Node.js version to 24.x.
 - Switched to pure ECMAScript Modules (`NodeNext`). CommonJS/`require` is no longer supported.
+- **(v2.4.0)** Removed the optional GraphQL/Apollo integration (the `GRAPHQL` flag and the `@apollo/server` dependency). It was a demo stub disabled by default; the framework is now REST-only.
+- **(v2.4.0)** `helmet` security headers are now enabled by default (previously opt-in).
+- **(v2.4.0)** Startup now fails fast on a missing or weak signing secret (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `COOKIE_SECRET`): minimum 32 characters — fatal in production, a warning otherwise.
 
 ## Documentation & Guides
 
@@ -26,7 +29,7 @@ For advanced usage and enterprise architecture patterns, please refer to the det
 
 ## Based on
 
-**Volcanic Backend** is a powerful, opinionated, and extensible Node.js framework for creating robust and scalable RESTful and GraphQL APIs. It's built on modern, high-performance libraries like [Fastify](https://www.fastify.io) and can be optionally paired with [Apollo Server](https://www.apollographql.com).
+**Volcanic Backend** is a powerful, opinionated, and extensible Node.js framework for creating robust and scalable RESTful APIs. It's built on modern, high-performance libraries like [Fastify](https://www.fastify.io).
 
 The framework provides a comprehensive set of built-in features including a filesystem-based router, JWT authentication, role-based access control, task scheduling, and seamless database integration, allowing developers to focus on business logic rather than boilerplate.
 
@@ -185,7 +188,6 @@ LOG_TIMESTAMP=true
 LOG_TIMESTAMP_READABLE=true
 LOG_FASTIFY=false
 
-GRAPHQL=false
 SWAGGER=true
 SWAGGER_HOST=myawesome.backend.com
 SWAGGER_TITLE=API Documentation
@@ -238,7 +240,6 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
 | `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format.                                  |    No    | `true`              |
 | `LOG_FASTIFY`                  | Enable Fastify's built-in logger.                                       |    No    | `false`             |
-| `GRAPHQL`                      | Enable the Apollo Server for GraphQL.                                   |    No    | `false`             |
 | `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `true`              |
 | `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
 | `SWAGGER_TITLE`                | The title of the API documentation.                                     |    No    | `API Documentation` |

@@ -33,11 +33,6 @@ import multipart from '@fastify/multipart'
 import rawBody from 'fastify-raw-body'
 import cookie from '@fastify/cookie'
 
-import { ApolloServer } from '@apollo/server'
-import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastify'
-import { myContextFunction, MyContext } from './lib/apollo/context.js'
-import resolvers from './lib/apollo/resolvers.js'
-import typeDefs from './lib/apollo/type-defs.js'
 import require from './lib/util/require.js'
 import { assertSecretStrength } from './lib/util/secret.js'
 
@@ -53,28 +48,6 @@ import {
 } from './lib/defaults/managers.js'
 
 global.log = logger
-
-async function attachApollo(server: FastifyInstance) {
-  log.info('Attach ApolloServer to Fastify')
-  const apollo = new ApolloServer<MyContext>({
-    typeDefs,
-    resolvers,
-    plugins: [fastifyApolloDrainPlugin(server)]
-  })
-
-  await apollo.start()
-
-  return apollo
-}
-
-async function addApolloRouting(server: FastifyInstance, apollo: ApolloServer<MyContext> | null) {
-  if (apollo) {
-    log.trace('Add graphql routes')
-    await server.register(fastifyApollo(apollo), {
-      context: myContextFunction
-    })
-  }
-}
 
 async function addFastifyRouting(server: FastifyInstance) {
   log.trace('Add server routes')
@@ -184,7 +157,7 @@ const start = async (decorators = {}) => {
   const server: FastifyInstance = fastify()
   global.server = server
 
-  const { HOST: host = '0.0.0.0', PORT: port = '2230', GRAPHQL } = process.env
+  const { HOST: host = '0.0.0.0', PORT: port = '2230' } = process.env
   const {
     JWT_SECRET = '',
     JWT_EXPIRES_IN = '15d',
@@ -194,7 +167,6 @@ const start = async (decorators = {}) => {
   } = process.env
 
   const loadRefreshJWT = yn(JWT_REFRESH, true)
-  const loadApollo = yn(GRAPHQL, false)
   const plugins = await loaderPlugins.load()
 
   if (plugins?.rawBody) await server.register(rawBody, plugins.rawBody || {})
@@ -207,7 +179,7 @@ const start = async (decorators = {}) => {
     }
     await server.register(cookie, plugins.cookie || {})
   }
-  if (!loadApollo && plugins?.helmet) await server.register(helmet, plugins.helmet || {})
+  if (plugins?.helmet) await server.register(helmet, plugins.helmet || {})
 
   if (plugins?.rateLimit) {
     await server.register(rateLimit, plugins.rateLimit || {})
@@ -265,9 +237,7 @@ const start = async (decorators = {}) => {
     })
   }
 
-  const apollo = loadApollo ? await attachApollo(server) : null
   await addFastifySwagger(server)
-  await addApolloRouting(server, apollo)
   await addFastifyRouting(server)
   await addFastifySchedule(server)
 

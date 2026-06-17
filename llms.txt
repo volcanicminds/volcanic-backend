@@ -138,24 +138,14 @@ The system supports two mutually exclusive authentication modes, configurable vi
       - Extensions, Wipe, and Secure Seeding
     - **8.6 Diagnostics and Monitoring**
 
-5.  **[Part 9: GraphQL & Apollo Integration](#part-9-graphql--apollo-integration)**
-    - **9.1 Activation and Configuration**
-    - **9.2 Authentication and UserContext**
-      - Adapting Context for GraphQL
-    - **9.3 Schema First: TypeDefs and Resolvers**
-      - Mapping Resolvers to existing Services
-    - **9.4 Advanced Pattern: GraphQL to Magic Query Bridge**
-    - **9.5 Performance: The N+1 Problem**
-    - **9.6 Integration Summary**
-
-6.  **[Part 10: Advanced Patterns and Troubleshooting](#part-10-advanced-patterns-and-troubleshooting)**
-    - **10.1 Data Seeding & Maintenance**
+5.  **[Part 9: Advanced Patterns and Troubleshooting](#part-9-advanced-patterns-and-troubleshooting)**
+    - **9.1 Data Seeding & Maintenance**
       - API-driven approach (`src/api/tools`)
-    - **10.2 Enum and Constant Management**
+    - **9.2 Enum and Constant Management**
       - Centralizing definitions
-    - **10.3 Troubleshooting: Common Errors and Solutions**
+    - **9.3 Troubleshooting: Common Errors and Solutions**
       - Circular Dependency, Relation Not Found, Access Denied
-    - **10.4 Production Release Checklist**
+    - **9.4 Production Release Checklist**
 
 # Part 1: Foundations and Infrastructure
 
@@ -406,7 +396,6 @@ An example `.env` for production.
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
 | `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format.                                  |    No    | `true`              |
 | `LOG_FASTIFY`                  | Enable Fastify's built-in logger.                                       |    No    | `false`             |
-| `GRAPHQL`                      | Enable the Apollo Server for GraphQL.                                   |    No    | `false`             |
 | `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `true`              |
 | `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
 | `SWAGGER_TITLE`                | The title of the API documentation.                                     |    No    | `API Documentation` |
@@ -492,9 +481,6 @@ SWAGGER_TITLE=API Documentation
 SWAGGER_DESCRIPTION=List of available APIs and schemas to use
 SWAGGER_VERSION=0.1.0
 SWAGGER_PREFIX_URL=/api-docs
-
-# --- GraphQL ---
-GRAPHQL=false
 
 # --- Logging ---
 LOG_LEVEL=info
@@ -2727,272 +2713,11 @@ docker exec -it volcanic-sample-backend sh
 
 ---
 
-# Part 9: GraphQL & Apollo Integration
-
-The Volcanic Stack supports a **Dual-Stack** architecture: it is possible to expose same business functionalities via both REST (for standard integrations/web) and GraphQL (for mobile clients or complex frontends requiring selective data-fetching), keeping code DRY (Don't Repeat Yourself).
-
-## 9.1 Activation and Configuration
-
-Apollo Server integration is conditionally handled at startup.
-
-### 1. Environment Variables (`.env`)
-
-To enable `/graphql` endpoint and Sandbox (if in dev):
-
-```properties
-GRAPHQL=true
-```
-
-### 2. File Structure
-
-By convention, GraphQL code resides in `src/apollo`:
-
-```bash
-src/
-└── apollo/
-    ├── type-defs.ts    # Schema Definitions (SDL)
-    ├── resolvers.ts    # Mapping Query/Mutation -> Service
-    └── context.ts      # Context construction (Auth)
-```
-
----
-
-## 9.2 Authentication and UserContext
-
-In GraphQL we don't have Fastify middleware (`global.isAuthenticated`) executed linearly before resolver in same way. Authentication must happen during **Context** construction.
-
-Our goal is to inject same `UserContext` used in REST APIs, so Services (`applyPermissions`) work without modifications.
-
-### `src/apollo/context.ts` Implementation
-
-```typescript
-import { FastifyRequest, FastifyReply } from 'fastify'
-import { EntityManager } from 'typeorm'
-import { UserContext } from '../../types/index.js'
-import { User } from '../../entities/user.e.js'
-
-export interface MyContext {
-  userContext: UserContext
-  db: EntityManager // request-scoped manager, passed to services via .use(db)
-}
-
-export const myContextFunction = async (request: FastifyRequest, reply: FastifyReply): Promise<MyContext> => {
-  // 1. Token Extraction
-  const authHeader = request.headers.authorization
-  const token = authHeader?.replace('Bearer ', '')
-
-  // Default Context (Public/Guest)
-  let userContext: UserContext = {
-    userId: null,
-    role: 'public',
-    company: undefined,
-    professionalId: undefined
-  }
-
-  if (token) {
-    try {
-      // 2. JWT Validation (uses Fastify server jwt instance)
-      const decoded: any = request.server.jwt.verify(token)
-
-      // 3. User Recovery from DB (similar to REST preHandler hook)
-      // Resolve the repository from the request-scoped manager (never global.repository)
-      const user = await request.db.getRepository(User).findOne({
-        where: { externalId: decoded.sub },
-        relations: ['professional']
-      })
-
-      if (user && !user.blocked) {
-        userContext = {
-          userId: user.id,
-          role: 'user', // Role mapping logic (simplified)
-          company: user.professional?.company,
-          professionalId: user.professional?.id
-        }
-
-        if (user.roles.includes('admin')) userContext.role = 'admin'
-        else if (user.roles.includes('manager')) userContext.role = 'manager'
-      }
-    } catch (err) {
-      // Invalid token: proceed as public or throw error if entire API is private
-      // throw new GraphQLError('Invalid Token', { extensions: { code: 'UNAUTHENTICATED' } });
-    }
-  }
-
-  return { userContext, db: request.db }
-}
-```
-
----
-
-## 9.3 Schema First: TypeDefs and Resolvers
-
-Recommended approach is **Schema First**: define types, then implement resolvers delegating to Services.
-
-### 1. Definition (`src/apollo/type-defs.ts`)
-
-```typescript
-export const typeDefs = `
-  type Order {
-    id: ID!
-    code: String!
-    name: String!
-    status: String
-    # Relations
-    workOrders: [WorkOrder]
-  }
-
-  type WorkOrder {
-    id: ID!
-    code: String!
-  }
-
-  # Input for complex filters (Mapping on Magic Query)
-  input OrderFilter {
-    code: String      # eq
-    status: String    # eq
-    nameContains: String # contains
-  }
-
-  type Query {
-    # Retrieve specific order
-    order(id: ID!): Order
-    
-    # List with filters
-    orders(filter: OrderFilter, page: Int, pageSize: Int): [Order]
-  }
-`
-```
-
-### 2. Resolvers (`src/apollo/resolvers.ts`)
-
-Resolvers must **NOT** contain SQL logic. They must only call existing Services.
-
-```typescript
-import { orderService } from '../services/order.service.js'
-import { workOrderService } from '../services/workOrder.service.js'
-
-export const resolvers = {
-  Query: {
-    order: async (_: any, args: { id: string }, context: MyContext) => {
-      // Service reuse: security is guaranteed by findOne internally
-      return await orderService.use(context.db).findOne(context.userContext, args.id)
-    },
-
-    orders: async (_: any, args: any, context: MyContext) => {
-      // Mapping GraphQL arguments -> Volcanic Query Params
-      // (See section 9.4 for advanced helpers)
-      const queryParams = {
-        page: args.page || 1,
-        pageSize: args.pageSize || 25,
-        // Example manual mapping
-        ...(args.filter?.code && { code: args.filter.code }),
-        ...(args.filter?.nameContains && { 'name:contains': args.filter.nameContains })
-      }
-
-      const { records } = await orderService.use(context.db).findAll(context.userContext, queryParams)
-      return records
-    }
-  },
-
-  // Field Resolver for relations (solves N+1 or lazy loading)
-  Order: {
-    workOrders: async (parent: any, _: any, context: MyContext) => {
-      // If workOrders was already loaded by parent service, use it
-      if (parent.workOrders) return parent.workOrders
-
-      // Otherwise call child service filtering by parent
-      // Note: service findAll applies security here too!
-      const { records } = await workOrderService.use(context.db).findAll(context.userContext, {
-        'order:eq': parent.id
-      })
-      return records
-    }
-  }
-}
-```
-
----
-
-## 9.4 Advanced Pattern: GraphQL to Magic Query Bridge
-
-REST filter system (`name:contains=foo`) is very powerful. To not lose this power in GraphQL without rewriting thousands of input types, we can create an **adapter**.
-
-### Utility: `graphqlToVolcanic`
-
-Let's imagine passing a JSON stringify or free object in GraphQL for advanced filters.
-
-**TypeDefs:**
-
-```graphql
-scalar JSON # Requires graphql-type-json
-type Query {
-  # queryParams accepts standard Volcanic object { "name:like": "A%", "sort": "id:desc" }
-  ordersGeneric(queryParams: JSON): [Order]
-}
-```
-
-**Resolver:**
-
-```typescript
-ordersGeneric: async (_: any, args: { queryParams: any }, ctx: MyContext) => {
-  // Direct passing ("Pass-through")
-  // Service receives exactly what it would receive from REST controller
-  const { records } = await orderService.use(ctx.db).findAll(ctx.userContext, args.queryParams || {})
-  return records
-}
-```
-
-**Advantages:**
-
-1.  **Feature Parity**: Any filter supported by `@volcanicminds/typeorm` (including `_logic` or nested filtering `client.name:eq`) works in GraphQL immediately.
-2.  **Maintainability**: No need to create `InputType` for every filter combination.
-
----
-
-## 9.5 Performance: The N+1 Problem
-
-In GraphQL, it is easy to fall into N+1 problem (e.g., asking for 100 orders, and for each one `client` resolver makes a DB query).
-
-### Solution 1: `addRelations` in Service (Eager Loading)
-
-If we know a GraphQL query will often require a relation, configure Service to load it by default.
-
-```typescript
-// src/services/order.service.ts
-protected addRelations(qb, alias) {
-    // Always load client.
-    // Order.client resolver won't need extra queries.
-    return qb.leftJoinAndSelect(`${alias}.client`, 'client')
-}
-```
-
-### Solution 2: DataLoader (Advanced)
-
-If eager loading is too heavy, use `DataLoader` in context.
-
-1.  Create a `BatchLoader` accepting array of IDs.
-2.  Execute `req.db.getRepository(Client).find({ where: { id: In(ids) } })`.
-3.  Use loader in resolver: `return context.loaders.clientLoader.load(parent.clientId)`.
-
-> **Volcanic Advice**: For 90% of business cases (dashboards, lists), smart usage of `addRelations` in `BaseService` combined with pagination is sufficient and much easier to maintain than DataLoaders.
-
----
-
-## 9.6 Integration Summary
-
-1.  **Enable** GraphQL in `.env`.
-2.  **Implement** `src/apollo/context.ts` to extract JWT token and create `UserContext` identical to REST one.
-3.  **Define** Schema (`type-defs.ts`).
-4.  **Implement** Resolvers mapping them 1:1 to Service `findAll`/`findOne` methods.
-5.  **Enjoy** automatic RLS security: since resolvers call Services, a GraphQL user can never see data they couldn't see via REST.
-
----
-
-# Part 10: Advanced Patterns and Troubleshooting
+# Part 9: Advanced Patterns and Troubleshooting
 
 This final section collects specific patterns implemented in `volcanic-sample-backend` for data lifecycle management and common problem solving.
 
-## 10.1 Data Seeding & Maintenance
+## 9.1 Data Seeding & Maintenance
 
 Unlike classic migrations, `volcanic-sample-backend` uses a **"Smart Seeding"** approach via API. This is very useful for test environments, staging, or restoring a clean dev environment.
 
@@ -3022,7 +2747,7 @@ Never commit sensitive data in `initialData.ts`. Use libraries like `faker` or a
 
 ---
 
-## 10.2 Enum and Constant Management
+## 9.2 Enum and Constant Management
 
 To maintain consistency between database (Postgres) and code (TypeScript), `volcanic-sample-backend` centralizes definitions.
 
@@ -3063,7 +2788,7 @@ if (order.state === OrderStateEnum.CLOSED) {
 
 ---
 
-## 10.3 Troubleshooting: Common Errors and Solutions
+## 9.3 Troubleshooting: Common Errors and Solutions
 
 Working with Volcanic Stack, you might encounter these specific errors. Here is how to solve them.
 
@@ -3117,7 +2842,7 @@ protected addRelations(qb, alias) {
 
 ---
 
-## 10.4 Production Release Checklist
+## 9.4 Production Release Checklist
 
 Before deploying `volcanic-sample-backend`, verify:
 
