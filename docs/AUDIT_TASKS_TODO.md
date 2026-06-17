@@ -46,9 +46,11 @@
   - File: `lib/config/plugins.ts:41-44`, `lib/api/auth/routes.ts`
   - Brute-force su login e su codice MFA (6 cifre = 10⁶) senza throttling. Rate-limit attivo di default + limiti stretti per-route su login/forgot/reset/mfa.
 
-- [ ] **S6 — Timing attack / user enumeration in login** · `DB`
+- [x] **S6 — Timing attack / user enumeration in login** · `DB` ✅ *(2026-06-17)*
   - File: `lib/loader/userManager.ts:217-227`
   - Se l'email non esiste non si esegue `bcrypt.compare` → risposta più rapida. Eseguire un compare dummy a costo costante.
+  - **Fatto:** `retrieveUserByPassword` ora esegue **sempre** `bcrypt.compare` (contro un hash dummy cost-12 quando l'utente non esiste) e ritorna `null` in entrambi i casi di fallimento. Equalizza il timing (test: 267.0 vs 266.7 ms) ed elimina anche l'incoerenza precedente throw→500 (utente assente) vs return-null→403 (password errata): ora entrambi i percorsi danno 403 "Wrong credentials" uniforme. Rimosso il `try/catch` ridondante. Bump `@volcanicminds/typeorm 2.3.4 → 2.3.5`.
+  - **Verifica:** `type-check` + `build` OK su typeorm.
 
 - [ ] **S7 — User enumeration via messaggi/stati** · `BE`
   - File: `lib/api/auth/controller/auth.ts:28,153,157,212`; `lib/hooks/onRequest.ts:147`
