@@ -4,6 +4,11 @@ import secret from './secret.js'
 import regexp from './regexp.js'
 import plugins from './plugins.js'
 import tenants from './tenants.js'
+import yn from './yn.js'
+import common from './common.js'
+import generate from './generate.js'
+import path from './path.js'
+import managers from './managers.js'
 
 export default function load() {
   describe('Unit', () => {
@@ -13,5 +18,10 @@ export default function load() {
     regexp()
     plugins()
     tenants()
+    yn()
+    common()
+    generate()
+    path()
+    managers()
   })
 }

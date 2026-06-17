@@ -67,5 +67,45 @@ export default () => {
         expect(regExp.username.test('john')).toBe(true)
       }
     })
+
+    it('validates ZIP codes (5 digits, optional +4)', () => {
+      for (const ok of ['00100', '12345', '12345-6789']) expect(regExp.zipCode.test(ok)).toBe(true)
+      for (const bad of ['1234', '123456', 'abcde', '12345-67']) expect(regExp.zipCode.test(bad)).toBe(false)
+    })
+
+    it('validates company tax codes (optional 2-letter prefix + 11 digits)', () => {
+      for (const ok of ['IT12345678901', '12345678901']) expect(regExp.taxCodeCompany.test(ok)).toBe(true)
+      for (const bad of ['it12345678901', '1234567890', 'IT1234567890A']) {
+        expect(regExp.taxCodeCompany.test(bad)).toBe(false)
+      }
+    })
+
+    it('validates personal tax codes (Italian codice fiscale)', () => {
+      expect(regExp.taxCodePersona.test('RSSMRA85T10A562S')).toBe(true)
+      // invalid month letter (Z is not in the allowed set)
+      expect(regExp.taxCodePersona.test('RSSMRA85Z10A562S')).toBe(false)
+      expect(regExp.taxCodePersona.test('RSSMRA85T10A562')).toBe(false)
+    })
+
+    it('validates IBANs', () => {
+      for (const ok of ['IT60X0542811101000000123456', 'GB29NWBK60161331926819']) {
+        expect(regExp.iban.test(ok)).toBe(true)
+      }
+      for (const bad of ['XX', '1234', 'IT']) expect(regExp.iban.test(bad)).toBe(false)
+    })
+
+    it('validates Italian phone numbers', () => {
+      expect(regExp.mobilePhone.test('3331234567')).toBe(true)
+      expect(regExp.mobilePhone.test('+393331234567')).toBe(true)
+      expect(regExp.mobilePhone.test('1234567890')).toBe(false)
+
+      expect(regExp.landLinePhone.test('06 123456')).toBe(true)
+      expect(regExp.landLinePhone.test('+39 06 12345')).toBe(true)
+      expect(regExp.landLinePhone.test('333')).toBe(false)
+
+      expect(regExp.tollFreePhone.test('800123456')).toBe(true)
+      expect(regExp.tollFreePhone.test('+39800123456')).toBe(true)
+      expect(regExp.tollFreePhone.test('12345')).toBe(false)
+    })
   })
 }

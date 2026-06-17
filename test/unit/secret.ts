@@ -1,5 +1,24 @@
 import { expect } from 'expect'
-import { validateSecretStrength, MIN_SECRET_LENGTH } from '../../lib/util/secret.js'
+import { validateSecretStrength, assertSecretStrength, MIN_SECRET_LENGTH } from '../../lib/util/secret.js'
+
+// Run `fn` capturing any process.exit() call; returns the exit code or null.
+function captureExit(fn: () => void): number | null {
+  const original = process.exit
+  let code: number | null = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  process.exit = ((c?: number) => {
+    code = c ?? 0
+    throw new Error('__exit__')
+  }) as any
+  try {
+    fn()
+  } catch (err) {
+    if ((err as Error).message !== '__exit__') throw err
+  } finally {
+    process.exit = original
+  }
+  return code
+}
 
 // S2 — fail-fast on missing/weak signing secrets.
 export default () => {
@@ -32,6 +51,25 @@ export default () => {
       const r = validateSecretStrength(strong)
       expect(r.ok).toBe(true)
       expect(r.missing).toBe(false)
+    })
+
+    const STRONG = 'kJ8$vQ2!mZx7Lp0wRt5Nb3Yc9Df6Hg1Aa'
+    const WEAK = 'a'.repeat(MIN_SECRET_LENGTH + 8) // long but low entropy
+
+    it('assertSecretStrength: a missing secret is always fatal (even in dev)', () => {
+      expect(captureExit(() => assertSecretStrength('JWT_SECRET', undefined, { prod: false }))).toBe(1)
+      expect(captureExit(() => assertSecretStrength('JWT_SECRET', '', { prod: true }))).toBe(1)
+    })
+
+    it('assertSecretStrength: a weak secret is fatal only in production', () => {
+      expect(captureExit(() => assertSecretStrength('JWT_SECRET', WEAK, { prod: true }))).toBe(1)
+      // non-production: tolerated (warning), no exit
+      expect(captureExit(() => assertSecretStrength('JWT_SECRET', WEAK, { prod: false }))).toBeNull()
+    })
+
+    it('assertSecretStrength: a strong secret never exits', () => {
+      expect(captureExit(() => assertSecretStrength('JWT_SECRET', STRONG, { prod: true }))).toBeNull()
+      expect(captureExit(() => assertSecretStrength('JWT_SECRET', STRONG, { prod: false }))).toBeNull()
     })
   })
 }

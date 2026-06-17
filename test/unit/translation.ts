@@ -40,5 +40,11 @@ export default () => {
       expect(translated.translatedMessage).toBe('Ciao Clark Kent')
       expect(translated.data).toEqual({ user: { firstname: 'Clark', lastname: 'Kent' } })
     })
+
+    it('defaults status to 400 and honors a custom HTTP status', () => {
+      expect(new TranslatedError({ translationCode: 'hello' }).status).toBe(400)
+      expect(new TranslatedError({ translationCode: 'hello', status: 401 }).status).toBe(401)
+      expect(new TranslatedError({ translationCode: 'hello', status: 404 }).status).toBe(404)
+    })
   })
 }
