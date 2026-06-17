@@ -1,5 +1,18 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 
+/*
+ * S12 — schema name hardening for `SET search_path`.
+ * Postgres identifiers cannot be parameterized, so the schema name is always
+ * string-interpolated. Mirror the canonical sanitization used by
+ * `@volcanicminds/typeorm`'s `tenantManager.switchContext`
+ * (`schema.replace(/[^a-z0-9_]/gi, '')`): strip anything outside the safe
+ * identifier alphabet. A legit schema name is unaffected; a tampered/malformed
+ * value collapses to empty and is rejected fail-fast instead of being injected.
+ */
+export function sanitizeSchemaName(schema: string): string {
+  return (schema || '').replace(/[^a-z0-9_]/gi, '')
+}
+
 export async function list(req: FastifyRequest, reply: FastifyReply) {
   const tm = req.server['tenantManager']
   if (!tm.isImplemented()) return reply.status(501).send()
@@ -107,11 +120,16 @@ function checkImpersonationSecurity(req: FastifyRequest, targetTenant: any): boo
 
 // Helper: Resolve Target User
 async function resolveTargetUser(dbSchema: string, targetUserId: string, targetUserEmail: string, targetRole: string) {
+  const safeSchema = sanitizeSchemaName(dbSchema)
+  if (!safeSchema) {
+    throw new Error('Invalid target tenant schema')
+  }
+
   const qr = global.connection.createQueryRunner()
   await qr.connect()
 
   try {
-    await qr.query(`SET search_path TO "${dbSchema}", "public"`)
+    await qr.query(`SET search_path TO "${safeSchema}", "public"`)
 
     const UserEntity = global.entity?.User || 'User'
     const targetUserRepo = qr.manager.getRepository(UserEntity)

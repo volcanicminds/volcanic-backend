@@ -32,6 +32,26 @@ export default () => {
       expect(regExp.password.test('Abcdefg1-')).toBe(true)
     })
 
+    it('isEmail enforces a length bound (RFC 5321: 254) before matching', () => {
+      const longLocal = 'a'.repeat(300) + '@b.co'
+      expect(longLocal.length).toBeGreaterThan(regExp.MAX_EMAIL_LENGTH)
+      expect(regExp.isEmail(longLocal)).toBe(false)
+      expect(regExp.isEmail('')).toBe(false)
+      expect(regExp.isEmail(undefined)).toBe(false)
+      expect(regExp.isEmail('john.doe@example.com')).toBe(true)
+    })
+
+    it('email regex is linear on adversarial input (S10: no catastrophic backtracking)', () => {
+      // Pre-fix, `\w+([.+-]?\w+)*` partitioned a run of word-chars exponentially:
+      // ~34 chars took 20s. The required-separator form is linear; this must
+      // complete in well under a second even with the regex tested directly.
+      const evil = 'a'.repeat(60) + '!' // word-chars then a non-matching char, no `@`
+      const start = process.hrtime.bigint()
+      expect(regExp.email.test(evil)).toBe(false)
+      const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6
+      expect(elapsedMs).toBeLessThan(100)
+    })
+
     it('validates usernames', () => {
       for (const ok of ['john', 'jo_hn', 'a1b2c3', 'mario-rossi']) {
         expect(regExp.username.test(ok)).toBe(true)

@@ -73,17 +73,19 @@
   - File: `lib/util/crypto.ts:29-36, 8-13`
   - CBC malleabile (downgrade); key = primi 32 char di `base64(sha256(secret))` (no salt/HKDF). Migrare a solo GCM; HKDF/scrypt; deprecare/migrare record CBC.
 
-- [ ] **S10 — Possibile ReDoS nelle regex email** · `BE`
+- [x] **S10 — Possibile ReDoS nelle regex email** · `BE`
   - File: `lib/util/regexp.ts:7,14`
   - Quantificatori annidati (`\w+([.+-]?\w+)*`). Semplificare le regex; limitare lunghezza input prima del match.
+  - **Fatto:** confermato il ReDoS esponenziale (len 34 = ~20s di blocco event-loop). Reso il separatore **obbligatorio** (`[.+-]`/`[.-]` invece di `[.+-]?`/`[.-]?`) → partizione unica → tempo lineare (50k char = 0.24ms), semantica di validazione invariata sul corpus di test. Aggiunti `MAX_EMAIL_LENGTH = 254` (RFC 5321) e helper `isEmail()` che fa il length-guard **prima** del match; i 3 call site in `auth.ts` (register/forgot/check) ora usano `isEmail`. `emailAlt` verificata sicura (separatori già obbligatori), aggiunta nota. Test di regressione in `test/unit/regexp.ts` (length-bound + linearità su input avversariale).
 
 - [ ] **S11 — Nessuna protezione anti-replay TOTP + nessun rate-limit MFA** · `TO`, `BE`
   - File: `lib/mfa/index.ts:60-73` (TO), `lib/api/auth/controller/auth.ts:430-461` (BE)
   - Codice TOTP riusabile entro la finestra. Tracciare l'ultimo `delta` usato per utente; aggiungere rate-limit.
 
-- [ ] **S12 — `SET search_path` interpolato senza risanitizzazione** · `BE`
+- [x] **S12 — `SET search_path` interpolato senza risanitizzazione** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts:114`
   - A differenza di `tenantManager.switchContext`. Centralizzare e applicare ovunque la sanitizzazione/whitelist dello schema.
+  - **Fatto:** aggiunto helper `sanitizeSchemaName()` in `tenants.ts` con lo **stesso** pattern canonico del `tenantManager.switchContext` di `@volcanicminds/typeorm` (`replace(/[^a-z0-9_]/gi, '')`); applicato in `resolveTargetUser` prima del `SET search_path`, con **fail-fast** (`throw 'Invalid target tenant schema'`) se lo schema collassa a vuoto. Aggiunto guard in profondità al confine d'input: `pattern: '^[a-zA-Z0-9_]+$'` su `dbSchema` in `tenantBodySchema`. Verificati gli altri `SET search_path` del BE: o costanti (`TO public`) o delegati al `tenantManager` già sicuro. Test in `test/unit/tenants.ts` (identità su nomi validi, strip di payload injection, input nullish).
 
 - [ ] **S13 — Impersonation: audit non persistito, TTL 24h, no step-up MFA** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts:141-193`; `index.ts:319-352` (MFA admin reset via env)

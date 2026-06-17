@@ -10,7 +10,9 @@ export const tenantBodySchema = {
       maxLength: 100,
       pattern: '^[a-z0-9_-]+$'
     },
-    dbSchema: { type: 'string', minLength: 1, maxLength: 63 },
+    // S12: constrain to a safe SQL identifier alphabet (used in `SET search_path`).
+    // maxLength 63 = Postgres identifier limit; pattern mirrors the runtime sanitizer.
+    dbSchema: { type: 'string', minLength: 1, maxLength: 63, pattern: '^[a-zA-Z0-9_]+$' },
     config: { type: 'object', additionalProperties: true }
   }
 }

@@ -17,7 +17,7 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   if (!data.username) {
     return reply.status(400).send(new Error('Username not valid'))
   }
-  if (!data.email || !regExp.email.test(data.email)) {
+  if (!regExp.isEmail(data.email)) {
     return reply.status(400).send(new Error('Email not valid'))
   }
   if (!password || !regExp.password.test(password)) {
@@ -140,7 +140,7 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
     throw new Error('Not implemented')
   }
 
-  if (!username && (!email || (email && !regExp.email.test(email)))) {
+  if (!username && !regExp.isEmail(email)) {
     return reply.status(400).send(new Error('Missing a valid user identifier'))
   }
 
@@ -230,7 +230,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     throw new Error('Not implemented')
   }
 
-  if (!email || !regExp.email.test(email)) {
+  if (!regExp.isEmail(email)) {
     return reply.status(400).send(new Error('Email not valid'))
   }
   // At login we do NOT re-validate the password complexity policy: the password

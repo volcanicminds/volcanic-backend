@@ -3,6 +3,7 @@ import translation from './translation.js'
 import secret from './secret.js'
 import regexp from './regexp.js'
 import plugins from './plugins.js'
+import tenants from './tenants.js'
 
 export default function load() {
   describe('Unit', () => {
@@ -11,5 +12,6 @@ export default function load() {
     secret()
     regexp()
     plugins()
+    tenants()
   })
 }
