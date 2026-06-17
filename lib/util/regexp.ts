@@ -16,14 +16,14 @@ export const emailAlt =
 export const email = /^\w+([.+-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,})+$/
 
 /*
- * password must contain 1 number (0-9)
- * password must contain 1 uppercase chars
- * password must contain 1 lowercase chars
- * password must contain 1 non-alpha number
- * password is 8-64 characters with no space
+ * password must contain at least: 1 lowercase, 1 uppercase, 1 digit, 1 special char
+ * password is at least 8 characters with no space
+ * NOTE: the `-` inside the special-char class is escaped (`\-`). Without the
+ * escape, `()-_` is parsed as the range )..._ (0x29-0x5F), which makes letters
+ * and digits satisfy the "1 special char" requirement (i.e. it is NOT enforced).
  */
 export const password =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%&*()-_=+[\]{}|;:'",.<>?^])[A-Za-z\d!@#$%&*()-_=+[\]{}|;:'",.<>?^]{8,}$/
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%&*()\-_=+[\]{}|;:'",.<>?^])[A-Za-z\d!@#$%&*()\-_=+[\]{}|;:'",.<>?^]{8,}$/
 export const zipCode = /(^\d{5}$)|(^\d{5}-\d{4}$)/
 export const taxCodePersona =
   /^[a-zA-Z]{6}[0-9]{2}[abcdehlmprstABCDEHLMPRST]{1}[0-9]{2}([a-zA-Z]{1}[0-9]{3})[a-zA-Z]{1}$/

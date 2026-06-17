@@ -3,6 +3,10 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import * as regExp from '../../../util/regexp.js'
 import { MfaPolicy } from '../../../config/constants.js'
 
+// Upper bound for the password accepted at login: a cheap guard against oversized
+// payloads. Complexity is enforced only when a password is set, not at login.
+const MAX_PASSWORD_LENGTH = 256
+
 export async function register(req: FastifyRequest, reply: FastifyReply) {
   const { password1: password, password2, ...data } = req.data()
 
@@ -229,7 +233,12 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   if (!email || !regExp.email.test(email)) {
     return reply.status(400).send(new Error('Email not valid'))
   }
-  if (!password || !regExp.password.test(password)) {
+  // At login we do NOT re-validate the password complexity policy: the password
+  // was already validated when it was set (register/change/reset), and bcrypt is
+  // the actual security gate. Re-checking the policy here adds no security and
+  // would lock out existing users whenever the policy changes. We only bound the
+  // input length as a cheap guard against oversized payloads.
+  if (!password || password.length > MAX_PASSWORD_LENGTH) {
     return reply.status(400).send(new Error('Password not valid'))
   }
 

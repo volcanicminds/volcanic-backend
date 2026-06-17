@@ -17,17 +17,20 @@ export default () => {
       for (const ok of ['Aa1!aaaa', 'StrongP@ss1', 'xY9#weR2tq']) {
         expect(regExp.password.test(ok)).toBe(true)
       }
-      for (const bad of ['Aa1!', 'alllowercase1!', 'NOLOWER1!', 'NoDigits!!']) {
+      for (const bad of ['Aa1!', 'alllowercase1!', 'NOLOWER1!', 'NoDigits!!', 'NoSpecial1A']) {
         // each lacks at least one required class or is shorter than 8
         expect(regExp.password.test(bad)).toBe(false)
       }
     })
 
-    // KNOWN BUG (not yet fixed — tightening it could lock out existing users at login):
-    // the "special char" class `[...()-_=...]` contains an unintended range `)-_`
-    // (0x29..0x5F), so letters/digits satisfy the "1 special char" rule.
-    // e.g. 'NoSpecial1A' wrongly passes. Enable this once the regex is corrected.
-    it('should require a real special character (KNOWN BUG: char-class range )-_)')
+    it('actually requires a special character (T3: char-class range )-_ fixed)', () => {
+      // Without a real special char these must fail (previously passed via the )-_ range bug).
+      expect(regExp.password.test('NoSpecial1A')).toBe(false)
+      expect(regExp.password.test('Abcdefg1')).toBe(false)
+      // With a real special char (including the literal '-') they pass.
+      expect(regExp.password.test('NoSpecial1A!')).toBe(true)
+      expect(regExp.password.test('Abcdefg1-')).toBe(true)
+    })
 
     it('validates usernames', () => {
       for (const ok of ['john', 'jo_hn', 'a1b2c3', 'mario-rossi']) {

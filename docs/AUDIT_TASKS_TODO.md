@@ -109,9 +109,10 @@
   - File: `lib/ai/concurrency.ts:39`
   - Clamp `running = Math.max(0, running - 1)`.
 
-- [ ] **Q6 — `login` valida la complessità password al login** · `BE`
+- [x] **Q6 — `login` valida la complessità password al login** · `BE` ✅ *(2026-06-18)*
   - File: `lib/api/auth/controller/auth.ts:232`
   - Inasprire la policy bloccherebbe utenti esistenti + leak della policy. Validare complessità solo in registrazione/cambio password.
+  - **Fatto:** al login la complessità non è più verificata — solo presenza + tetto di lunghezza (`MAX_PASSWORD_LENGTH = 256`, guard anti-payload). bcrypt resta l'unico gate. Questo **disaccoppia** il login dalla policy e rende sicura [[T3]] (nessun lockout di utenti esistenti). La complessità resta imposta in register/change/reset/validate.
 
 ---
 
@@ -164,10 +165,10 @@
 - [x] **T2 — Test che mascheravano i fallimenti** · `BE`, `SA` ✅ *(2026-06-17)*
   - Assert dentro `try/catch` silenziati + `tearDown` con `process.exit(0)` (suite sempre exit 0). Rimossi; i test ora asseriscono davvero. Vedi anche fix loader/`--exit` già committati.
 
-- [ ] **T3 — Policy password non applica il carattere speciale (BUG)** · `BE`
+- [x] **T3 — Policy password non applica il carattere speciale (BUG)** · `BE` ✅ *(2026-06-18)*
   - File: `lib/util/regexp.ts` (regex `password`)
-  - La classe `[...()-_=...]` contiene il **range non voluto** `)-_` (0x29–0x5F) → lettere maiuscole e cifre soddisfano il requisito "1 carattere speciale". Es. `NoSpecial1A` passa pur senza speciali.
-  - **Non corretto**: la regex è usata anche al **login** → inasprirla può bloccare utenti esistenti (rischio compat). Decisione del maintainer. Test `pending` che lo documenta in `test/unit/regexp.ts`.
+  - La classe `[...()-_=...]` conteneva il **range non voluto** `)-_` (0x29–0x5F) → lettere maiuscole e cifre soddisfacevano il requisito "1 carattere speciale". Es. `NoSpecial1A` passava pur senza speciali.
+  - **Fatto:** `-` ora **escapato** (`\-`) in entrambe le occorrenze → il carattere speciale è realmente richiesto. Effetto collaterale: `/` e `\` (ammessi solo grazie al bug) non sono più caratteri validi per **nuove** password (nessun impatto sugli utenti esistenti, vedi Q6). Reso sicuro dalla risoluzione di [[Q6]]. Test reale in `test/unit/regexp.ts` + matrice di verifica (12 casi).
 
 - [x] **T4 — Suite di test resa eseguibile + copertura iniziale** · `BE`, `TO`, `TO`, `SA` ✅ *(2026-06-17)*
   - Infra mocha+tsx funzionante su tutti i repo (prima: backend non compilava, sample crashava, tools/typeorm zero). Aggiunti test: backend (S2 secret, validatori/Q1, S4 plugins, translation), typeorm (crypto/S9, Magic Query con guard injection/proto, S6), tools (MFA TOTP, concurrency). Tot: **45 passing + 1 pending**. Prerequisito per [[Q11]] (CI).
