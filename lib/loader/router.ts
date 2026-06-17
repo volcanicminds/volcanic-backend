@@ -61,6 +61,132 @@ async function loadMiddlewares(base: string, middlewares: string[] = []) {
   return midds
 }
 
+
+function processRoute(
+  route: Route,
+  index: number,
+  file: string,
+  dir: string,
+  base: string,
+  defaultConfig: any,
+  authMiddlewares: string[],
+  validRoutes: ConfiguredRoute[]
+): ConfiguredRoute | null {
+  const errors: string[] = []
+  const {
+    method: methodCase,
+    path: pathName = '/',
+    handler,
+    roles: rs = [],
+    config = {} as RouteConfig,
+    middlewares = [],
+    rateLimit
+  } = route
+
+  const rsp = !rs.length ? [roles.public] : rs
+  let requiredRoles: Role[] = []
+
+  try {
+    requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin]
+  } catch (err) {
+    if (log.e) log.error(`Error in loading roles for ${methodCase} ${pathName} (${handler})`)
+    if (log.t) log.trace(err)
+    config.enable = false
+  }
+
+  const reqAuth: boolean =
+    middlewares.some((m) => authMiddlewares.includes(m)) ||
+    requiredRoles.every((r) => r.code !== roles.public.code)
+
+  if (!config?.security && reqAuth) {
+    config.security = 'bearer'
+  }
+
+  const {
+    title = '',
+    description = '',
+    enable = yn(defaultConfig.enable, true),
+    deprecated = yn(defaultConfig.deprecated, false),
+    tenantContext = yn(defaultConfig.tenantContext, true),
+    tags = defaultConfig.tags,
+    version = defaultConfig.version || '',
+    security = defaultConfig.security,
+    query,
+    params,
+    body,
+    response,
+    consumes,
+    rawBody = false
+  } = config || {}
+
+  const endpoint = `${dir}${pathName.replace(/\/+$/, '')}`
+  const method = methodCase.toUpperCase()
+  const num = index + 1
+  const handlerParts = handler.split('.')
+
+  if (enable) {
+    if (!pathName.startsWith('/')) errors.push(`Error in [${file}] bad path [${pathName}] at route n. ${num}`)
+    if (!methods.includes(method)) errors.push(`Error in [${file}] bad method [${method}] at route n. ${num}`)
+    if (handlerParts.length !== 2) errors.push(`Error in [${file}] bad handler [${handler}] at route n. ${num}`)
+
+    const key = method + endpoint + version
+    if (validRoutes.some((r) => `${r.method}${r.path}${r.doc?.version}` === key)) {
+      errors.push(`Error in [${file}] duplicated path [${pathName}] at route n. ${num}`)
+    }
+
+    if (errors.length > 0) {
+      if (log.e) errors.forEach((error) => log.error(error))
+    }
+  }
+
+  const toAdd = enable && errors.length === 0
+  if (toAdd) {
+    if (log.t)
+      log.trace(
+        `* Method [${method}] path ${endpoint} handler ${handler} enabled with ${
+          middlewares?.length || 0
+        } middlewares`
+      )
+  } else {
+    if (log.w) log.warn(`* Method [${method}] path ${endpoint} handler ${handler} disabled. Skip.`)
+  }
+
+  if (toAdd) {
+    const doc = {
+      summary: title,
+      description,
+      deprecated,
+      tags,
+      version,
+      security: security === 'bearer' ? [{ Bearer: [] }] : security,
+      response
+    } as any
+
+    if (query) doc.querystring = query
+    if (params) doc.params = params
+    if (body) doc.body = body
+    if (consumes) doc.consumes = consumes
+
+    return {
+      handler,
+      method,
+      path: '/' + endpoint,
+      middlewares,
+      roles: requiredRoles,
+      enable,
+      tenantContext,
+      rawBody,
+      rateLimit,
+      base,
+      file: path.join(base, defaultConfig.controller || 'controller', handlerParts[0]),
+      func: handlerParts[1],
+      doc: doc
+    }
+  }
+
+  return null
+}
+
 async function load(): Promise<ConfiguredRoute[]> {
   const validRoutes: ConfiguredRoute[] = []
   const patterns = normalizePatterns(['..', 'api', '**', 'routes.{ts,js}'], ['src', 'api', '**', 'routes.{ts,js}'])
@@ -84,116 +210,9 @@ async function load(): Promise<ConfiguredRoute[]> {
       if (log.t) log.trace(`* Add ${routes.length} routes from ${file}`)
 
       routes.forEach((route: Route, index: number) => {
-        const errors: string[] = []
-        const {
-          method: methodCase,
-          path: pathName = '/',
-          handler,
-          roles: rs = [],
-          config = {} as RouteConfig,
-          middlewares = [],
-          rateLimit
-        } = route
-
-        const rsp = !rs.length ? [roles.public] : rs
-        let requiredRoles: Role[] = []
-
-        try {
-          requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin]
-        } catch (err) {
-          if (log.e) log.error(`Error in loading roles for ${methodCase} ${pathName} (${handler})`)
-          if (log.t) log.trace(err)
-          config.enable = false
-        }
-
-        const reqAuth: boolean =
-          middlewares.some((m) => authMiddlewares.includes(m)) ||
-          requiredRoles.every((r) => r.code !== roles.public.code)
-
-        if (!config?.security && reqAuth) {
-          config.security = 'bearer'
-        }
-
-        const {
-          title = '',
-          description = '',
-          enable = yn(defaultConfig.enable, true),
-          deprecated = yn(defaultConfig.deprecated, false),
-          tenantContext = yn(defaultConfig.tenantContext, true),
-          tags = defaultConfig.tags,
-          version = defaultConfig.version || '',
-          security = defaultConfig.security,
-          query,
-          params,
-          body,
-          response,
-          consumes,
-          rawBody = false
-        } = config || {}
-
-        const endpoint = `${dir}${pathName.replace(/\/+$/, '')}`
-        const method = methodCase.toUpperCase()
-        const num = index + 1
-        const handlerParts = handler.split('.')
-
-        if (enable) {
-          if (!pathName.startsWith('/')) errors.push(`Error in [${file}] bad path [${pathName}] at route n. ${num}`)
-          if (!methods.includes(method)) errors.push(`Error in [${file}] bad method [${method}] at route n. ${num}`)
-          if (handlerParts.length !== 2) errors.push(`Error in [${file}] bad handler [${handler}] at route n. ${num}`)
-
-          const key = method + endpoint + version
-          if (validRoutes.some((r) => `${r.method}${r.path}${r.doc?.version}` === key)) {
-            errors.push(`Error in [${file}] duplicated path [${pathName}] at route n. ${num}`)
-          }
-
-          if (errors.length > 0) {
-            if (log.e) errors.forEach((error) => log.error(error))
-          }
-        }
-
-        const toAdd = enable && errors.length === 0
-        if (toAdd) {
-          if (log.t)
-            log.trace(
-              `* Method [${method}] path ${endpoint} handler ${handler} enabled with ${
-                middlewares?.length || 0
-              } middlewares`
-            )
-        } else {
-          if (log.w) log.warn(`* Method [${method}] path ${endpoint} handler ${handler} disabled. Skip.`)
-        }
-
-        if (toAdd) {
-          const doc = {
-            summary: title,
-            description,
-            deprecated,
-            tags,
-            version,
-            security: security === 'bearer' ? [{ Bearer: [] }] : security,
-            response
-          } as any
-
-          if (query) doc.querystring = query
-          if (params) doc.params = params
-          if (body) doc.body = body
-          if (consumes) doc.consumes = consumes
-
-          validRoutes.push({
-            handler,
-            method,
-            path: '/' + endpoint,
-            middlewares,
-            roles: requiredRoles,
-            enable,
-            tenantContext,
-            rawBody,
-            rateLimit,
-            base,
-            file: path.join(base, defaultConfig.controller || 'controller', handlerParts[0]),
-            func: handlerParts[1],
-            doc: doc
-          })
+        const configuredRoute = processRoute(route, index, file, dir, base, defaultConfig, authMiddlewares, validRoutes)
+        if (configuredRoute) {
+          validRoutes.push(configuredRoute)
         }
       })
     }

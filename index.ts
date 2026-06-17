@@ -91,13 +91,13 @@ async function addFastifySwagger(server: FastifyInstance) {
   if (loadSwagger) {
     log.trace('Add swagger plugin')
 
-    const fs = require('fs')
+    const fs = require('fs').promises
     const path = require('path')
     const logoPath = path.resolve(process.cwd(), 'logo-dark.png')
 
     let content = ''
     try {
-      content = fs.readFileSync(logoPath, { encoding: 'base64' })
+      content = await fs.readFile(logoPath, { encoding: 'base64' })
     } catch (_e) {
       if (log.w) log.warn('Swagger logo not found at ' + logoPath)
     }
