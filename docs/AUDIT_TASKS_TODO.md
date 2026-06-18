@@ -113,9 +113,11 @@
   - File: `lib/query/parser.ts`
   - Limitare numero token e profondità di annidamento.
 
-- [ ] **Q5 — `Semaphore.release()` può rendere `running` negativo** · `TO`
-  - File: `lib/ai/concurrency.ts:39`
+- [x] **Q5 — `Semaphore.release()` può rendere `running` negativo** · `TO` ✅ *(2026-06-18)*
+  - File: `lib/ai/concurrency.ts:40`
   - Clamp `running = Math.max(0, running - 1)`.
+  - **Fatto:** `this.running--` → `this.running = Math.max(0, this.running - 1)`. Un `release()` non bilanciato da un `acquire()` (doppio release, release dopo errore) non porta più `running` sotto zero, evitando che il semaforo conceda permessi extra oltre `max`.
+  - **Verifica:** `check-all` (lint + type-check) OK su `volcanic-tools`.
 
 - [x] **Q6 — `login` valida la complessità password al login** · `BE` ✅ *(2026-06-18)*
   - File: `lib/api/auth/controller/auth.ts:232`
@@ -134,13 +136,16 @@
   - File: `index.ts` (registrazione server/multipart)
   - Impostare `bodyLimit` e `limits.fileSize`.
 
-- [ ] **S17 — `console.log('DEBUG: …')` in produzione** · `TO`
+- [x] **S17 — `console.log('DEBUG: …')` in produzione** · `TO` ✅ *(2026-06-18)*
   - File: `lib/ai/model.ts:50,52`
   - Rimuovere o passare al logger a livello debug.
+  - **Fatto (già risolto):** i `console.log('DEBUG: …')` erano già stati rimossi nel commit `d100188` ("✅ [Tests] AI createModel + MFA unit coverage; drop debug logs") di `volcanic-tools`. Verificato: nessun `console.log`/`DEBUG:` residuo in `lib/ai/`. Nessuna modifica necessaria, task chiuso.
 
-- [ ] **Q7 — `embedded_auth` letto a import-time** · `BE`
+- [x] **Q7 — `embedded_auth` letto a import-time** · `BE` ✅ *(2026-06-18)*
   - File: `lib/hooks/onRequest.ts:5`
   - Spostare la lettura dentro l'handler.
+  - **Fatto:** rimossa la destrutturazione `const { embedded_auth = true } = global.config?.options || {}` a livello modulo (eseguita all'import, quando `global.config` poteva non essere ancora popolato → valore congelato/`undefined` al primo load) e spostata dentro l'handler `onRequest`, così la flag viene riletta a ogni richiesta dal `global.config` ormai inizializzato.
+  - **Verifica:** `check-all` (lint + type-check) OK su `volcanic-backend`.
 
 - [ ] **Q8 — Loop `do/while` con query DB per unicità UUIDv4** · `DB`
   - File: `lib/loader/userManager.ts:61-65,116-120`; `lib/loader/tokenManager.ts:51-54`

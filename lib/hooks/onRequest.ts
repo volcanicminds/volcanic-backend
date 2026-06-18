@@ -2,8 +2,6 @@
 import { getParams, getData } from '../util/common.js'
 import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } from '../../types/global.js'
 
-const { embedded_auth = true } = global.config?.options || {}
-
 const MFA_SETUP_WHITELIST = ['/auth/mfa/setup', '/auth/mfa/enable', '/auth/mfa/verify', '/auth/logout']
 
 const normalizeRoles = (rolesArray: any[] | undefined): string[] => {
@@ -44,6 +42,8 @@ export default async (req, reply) => {
       }
     }
   }
+
+  const { embedded_auth = true } = global.config?.options || {}
 
   if (embedded_auth) {
     req.roles = () => [roles.public.code]
