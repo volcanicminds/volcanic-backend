@@ -65,9 +65,11 @@
 
 ## 🟡 MEDIA
 
-- [ ] **S8 — `refreshToken` usa `jwt.decode` (no verifica firma) + check "Token too old" errato** · `BE`
+- [x] **S8 — `refreshToken` usa `jwt.decode` (no verifica firma) + check "Token too old" errato** · `BE` ✅ *(2026-06-18)*
   - File: `lib/api/auth/controller/auth.ts:336-341`
   - `decode` non verifica la firma; il check confronta `sub` (externalId) con un timestamp. Usare `verify` (`ignoreExpiration`) e una vera claim temporale.
+  - **Fatto:** sostituito `jwt.decode(token)` con `jwt.verify(token, { ignoreExpiration: true })` (in try/catch → `403 Invalid token` su firma non valida): la firma è ora verificata, ma il token d'accesso scaduto resta accettato (è il senso del refresh). Riscritto il check "Token too old" sulla claim temporale reale `iat` (il token è firmato con `expiresIn`, quindi porta `iat`+`exp`): rifiuta se `iat` manca o è precedente a now−30g. Il vecchio confronto `sub > minAccettable` (id utente vs timestamp unix) era dead code.
+  - **Verifica:** `check-all` (lint + type-check) OK.
 
 - [ ] **S9 — Crypto: fallback legacy AES-256-CBC non autenticato + key derivation debole** · `DB`
   - File: `lib/util/crypto.ts:29-36, 8-13`
@@ -95,13 +97,17 @@
   - File: `lib/loader/userManager.ts:208-211` (`cache: global.cacheTimeout`)
   - Utente bloccato/ruoli cambiati restano validi fino a scadenza cache. Invalidare cache su `block`/`resetExternalId`/cambio ruoli; documentare il trade-off.
 
-- [ ] **Q2 — `changePassword`: null deref se utente inesistente** · `DB`
+- [x] **Q2 — `changePassword`: null deref se utente inesistente** · `DB` ✅ *(2026-06-18)*
   - File: `lib/loader/userManager.ts:239-240`
   - `bcrypt.compare(old, user.password)` con `user` possibile `null`. Aggiungere guard.
+  - **Fatto:** `bcrypt.compare(oldPassword, user?.password || DUMMY_PASSWORD_HASH)` + condizione `if (user && match)`. Elimina il `TypeError` (→ 500) su utente inesistente e mantiene il costo bcrypt costante riusando il pattern di [[S6]] (stesso `DUMMY_PASSWORD_HASH`). Percorso di fallimento ora uniforme: `400 Password not changed`.
+  - **Verifica:** `build` (typeorm) OK.
 
-- [ ] **Q3 — `isPasswordToBeChanged`: `throw new Error(e)` con `e` Error** · `DB`
+- [x] **Q3 — `isPasswordToBeChanged`: `throw new Error(e)` con `e` Error** · `DB` ✅ *(2026-06-18)*
   - File: `lib/loader/userManager.ts:327`
   - Messaggio `[object…]`. Usare `throw e` o messaggio esplicito.
+  - **Fatto:** `throw new Error(e)` → `throw e` (l'unico errore intercettabile nel try è già un `Error`, prima veniva doppio-wrappato/stringificato).
+  - **Verifica:** `build` (typeorm) OK.
 
 - [ ] **Q4 — Parser `_logic` senza limite profondità/lunghezza (DoS)** · `DB`
   - File: `lib/query/parser.ts`

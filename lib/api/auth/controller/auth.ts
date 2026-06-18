@@ -342,10 +342,21 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
     throw new Error('Not implemented')
   }
 
-  const tokenData = (await reply.server.jwt.decode(token)) as { sub: number }
-  const minAccettable = Math.floor(Date.now() / 1000) - 2592000 // 30 days
+  // Verify the signature of the (possibly expired) access token: `ignoreExpiration`
+  // lets a stale token through — which is the whole point of refresh — but a forged
+  // or tampered token is now rejected (previously `decode` skipped signature checks).
+  let tokenData: { sub: number; iat?: number }
+  try {
+    tokenData = (await reply.server.jwt.verify(token, { ignoreExpiration: true })) as { sub: number; iat?: number }
+  } catch {
+    return reply.status(403).send(new Error('Invalid token'))
+  }
 
-  if (tokenData?.sub > 0 && tokenData?.sub > minAccettable) {
+  // Reject refresh of access tokens issued too long ago. Use the real temporal
+  // claim (`iat`), not `sub` (the externalId): the old check compared a user id
+  // against a unix timestamp and was effectively dead code.
+  const minAccettable = Math.floor(Date.now() / 1000) - 2592000 // 30 days
+  if (!tokenData?.iat || tokenData.iat < minAccettable) {
     return reply.status(403).send(new Error('Token too old'))
   }
 
