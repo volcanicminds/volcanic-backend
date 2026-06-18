@@ -65,12 +65,18 @@ export function validateSecretStrength(value: string | undefined): SecretCheck {
 
   const v = value.trim()
 
-  if (v.length < MIN_SECRET_LENGTH) {
-    return { ok: false, missing: false, reason: `too short (${v.length} chars, minimum ${MIN_SECRET_LENGTH})` }
+  // Check the denylist BEFORE the length check, using a substring match: a weak
+  // value padded to reach the minimum length (e.g. "changeme" + filler) must
+  // still be rejected. An exact-match-after-length check would be dead code,
+  // since every denylisted token is shorter than MIN_SECRET_LENGTH.
+  const lower = v.toLowerCase()
+  const weak = [...COMMON_WEAK_SECRETS].find((w) => lower.includes(w))
+  if (weak) {
+    return { ok: false, missing: false, reason: `contains a well-known/default value ("${weak}")` }
   }
 
-  if (COMMON_WEAK_SECRETS.has(v.toLowerCase())) {
-    return { ok: false, missing: false, reason: 'matches a well-known/default value' }
+  if (v.length < MIN_SECRET_LENGTH) {
+    return { ok: false, missing: false, reason: `too short (${v.length} chars, minimum ${MIN_SECRET_LENGTH})` }
   }
 
   const distinct = new Set(v).size

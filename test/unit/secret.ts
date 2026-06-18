@@ -45,6 +45,18 @@ export default () => {
       expect(r.reason).toMatch(/low entropy/)
     })
 
+    it('rejects well-known/default values even when padded to the minimum length', () => {
+      // A weak token padded to >= 32 chars must still be caught (substring match,
+      // checked before the length rule — otherwise this would be dead code).
+      const padded = 'changeme'.padEnd(MIN_SECRET_LENGTH + 8, 'x')
+      const r = validateSecretStrength(padded)
+      expect(r.ok).toBe(false)
+      expect(r.reason).toMatch(/well-known\/default/)
+
+      const containsToken = 'MyVeryLongPassphraseWith-token-inside-xyz1'
+      expect(validateSecretStrength(containsToken).ok).toBe(false)
+    })
+
     it('accepts a strong random secret', () => {
       const strong = 'kJ8$vQ2!mZx7Lp0wRt5Nb3Yc9Df6Hg1Aa' // >= 32 chars, high entropy
       expect(strong.length).toBeGreaterThanOrEqual(MIN_SECRET_LENGTH)
