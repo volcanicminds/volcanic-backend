@@ -31,18 +31,21 @@ export class TenantManager {
       return null
     }
 
-    // Rule B: JWT is OPTIONAL (For Public Routes/Login)
-    // Rule C: Must Match (Security against Spoofing)
-    if (jwtTid && headerTid) {
-      if (jwtTid !== headerTid) {
-        // Warning: Mismatch between Token and Header.
-        // This is suspicious unless it's a System Admin impersonation flow.
-        if ((global as any).log?.w)
-          (global as any).log.warn(`[TenantManager] Mismatch: Token(${jwtTid}) vs Header(${headerTid})`)
-      }
+    // Rule B: JWT is OPTIONAL (For Public Routes/Login).
+    // Rule C: If the JWT carries a tenant binding, the header MUST match it.
+    //   A token bound to tenant X requesting tenant Y via header is a tenant-isolation
+    //   bypass (IDOR) attempt — REJECT it, do not merely warn. If a privileged
+    //   System-Admin impersonation flow is ever required, gate it HERE behind an
+    //   explicit, verified role check on `req.user` (e.g. a dedicated `system_admin`
+    //   role) — never relax this default.
+    if (jwtTid && jwtTid !== headerTid) {
+      if ((global as any).log?.w)
+        (global as any).log.warn(`[TenantManager] Tenant spoofing blocked: Token(${jwtTid}) vs Header(${headerTid})`)
+      return null
     }
 
-    const tenantId = headerTid
+    // Prefer the JWT-bound tenant when present; fall back to the header (public/login routes).
+    const tenantId = jwtTid || headerTid
 
     // 5. Database Lookup
     const tenantRepo = this.dataSource.getRepository('Tenant')
