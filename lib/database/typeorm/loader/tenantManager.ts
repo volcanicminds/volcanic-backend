@@ -217,7 +217,7 @@ export class TenantManager {
   async updateTenant(id: string, data: Partial<Tenant>) {
     const repo = this.dataSource.getRepository('Tenant')
     // Exclude dbSchema from updates as it requires migration of tables
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const { dbSchema: _ignore, ...updateData } = data
     await repo.update(id, updateData as any)
     return repo.findOneBy({ id })

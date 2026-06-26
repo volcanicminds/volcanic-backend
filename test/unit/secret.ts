@@ -5,7 +5,7 @@ import { validateSecretStrength, assertSecretStrength, MIN_SECRET_LENGTH } from 
 function captureExit(fn: () => void): number | null {
   const original = process.exit
   let code: number | null = null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   process.exit = ((c?: number) => {
     code = c ?? 0
     throw new Error('__exit__')
