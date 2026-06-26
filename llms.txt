@@ -5,7 +5,7 @@
 > **⚠️ DOC STATUS (updated 2026-06) — CANONICAL DATA-ACCESS PATTERN**:
 > The official v2 pattern is the **context-aware Service Layer: `service.use(req.db)`** (required for strong
 > multi-tenancy; RLS enforced in `applyPermissions` on `BaseService`). Direct access to
-> **`global.repository.X` is LEGACY and FORBIDDEN at runtime** (`@volcanicminds/typeorm` throws a fail-fast
+> **`global.repository.X` is LEGACY and FORBIDDEN at runtime** (`@volcanicminds/backend/typeorm` throws a fail-fast
 > `[Volcanic Architecture 2.0] FATAL ... FORBIDDEN`). Any snippet below still showing `repository.orders…`
 > direct access reflects the old (v1/legacy) pattern — prefer `service.use(req.db)`. Canonical reference:
 > `docs/ADVANCED_ARCHITECTURE.md`. **In any conflict, the package source code wins.**
@@ -13,7 +13,7 @@
 > **Core Paradigms (MANDATORY)**:
 > 1. **Framework**: Node.js (v24+ required), Fastify v5, pure ESM (`NodeNext`).
 > 2. **Architecture**: Thin Controllers, Fat Services. Controllers only map HTTP to Services. Services handle business logic and never know about HTTP.
-> 3. **Data Layer**: `@volcanicminds/typeorm` (Active Record pattern via `BaseEntity`). Access data ONLY through the context-aware Service Layer (`service.use(req.db)`), never via `global.repository.X` (legacy/forbidden). NEVER use raw SQL unless for extreme reporting (`@ViewEntity`). Use "Magic Queries" (`req.data()`) for filtering.
+> 3. **Data Layer**: `@volcanicminds/backend/typeorm` (Active Record pattern via `BaseEntity`). Access data ONLY through the context-aware Service Layer (`service.use(req.db)`), never via `global.repository.X` (legacy/forbidden). NEVER use raw SQL unless for extreme reporting (`@ViewEntity`). Use "Magic Queries" (`req.data()`) for filtering.
 > 4. **Security**: Row Level Security (RLS) is enforced in `applyPermissions` on the `BaseService`. Do not bypass it.
 > 5. **TypeScript**: Strict typing required. Always use provided types (`FastifyRequest`, `FastifyReply`, `UserContext`).
 
@@ -162,7 +162,7 @@ The framework is an **opinionated** system composed of three modular packages wo
     - Manages the HTTP lifecycle, automatic route loading (`Auto-Discovery`), JSON Schema validation, and the Global Hooks system.
     - Natively integrates the Authentication system (JWT, Refresh Token) and Security (MFA Gatekeeper).
     - **Universal Database Context**: Automatically injects strictly-scoped `EntityManager` into `req.db` (Single & Multi-Tenant support).
-2.  **`@volcanicminds/typeorm` (Data Layer)**
+2.  **`@volcanicminds/backend/typeorm` (Data Layer)**
     - **TypeORM** wrapper.
     - Introduces **"Magic Queries"**: a translation engine that automatically converts complex query strings (filters, sort, pagination, boolean logic) into optimized SQL.
     - Manages database connection and Entity initialization.
@@ -231,7 +231,7 @@ The `index.ts` file is the entry point. It orchestrates starting the database be
 'use strict'
 
 import { start as startServer, yn } from '@volcanicminds/backend'
-import { start as startDatabase, userManager, DataSource } from '@volcanicminds/typeorm'
+import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
 // Import the MFA adapter from tools (concrete implementation)
 import { mfaAdapter } from './src/services/mfa.adapter.js'
 // Import DB config
@@ -301,7 +301,7 @@ class CustomNamingStrategy extends DefaultNamingStrategy implements NamingStrate
 The `extra` object passes parameters directly to the `node-postgres` (`pg`) driver, essential for network stability.
 
 ```typescript
-import { Database } from '@volcanicminds/typeorm'
+import { Database } from '@volcanicminds/backend/typeorm'
 import { GLOBAL_CACHE_TTL } from './constants.js'
 import fs from 'node:fs'
 
@@ -541,7 +541,7 @@ You can override limits per route by defining the `rateLimit` object in the rout
 
 # Part 2: Deep Dive Data Modeling & Entities
 
-In `@volcanicminds/typeorm`, the Data Layer is not just a table mapper (ORM), but the engine enabling "Magic Query" and "Auto-Discovery" features.
+In `@volcanicminds/backend/typeorm`, the Data Layer is not just a table mapper (ORM), but the engine enabling "Magic Query" and "Auto-Discovery" features.
 
 Entities in this stack follow the **Active Record** pattern (extending `BaseEntity`), meaning the entity itself possesses methods for saving and finding (`User.save()`, `User.findOne()`).
 
@@ -783,7 +783,7 @@ export class Activity extends BaseEntity {
 
 ## 2.6 SQL Views and `@ViewEntity`
 
-For complex reporting, dashboards, or aggregations that would require too many joins in code, Views are used. `@volcanicminds/typeorm` treats views as read-only entities, allowing standard filters, pagination, and sorting.
+For complex reporting, dashboards, or aggregations that would require too many joins in code, Views are used. `@volcanicminds/backend/typeorm` treats views as read-only entities, allowing standard filters, pagination, and sorting.
 
 **Example: `src/entities/planningView.e.ts`**
 This view aggregates data from 8 different tables to provide a performant "flat table" for the planning report.
@@ -851,7 +851,7 @@ const { records } = await executeFindView(entity.PlanningView, req.data())
 
 In a traditional backend architecture, developers spend 30-40% of their time writing "boilerplate code" to parse filters, handle pagination, and sort results.
 
-The Volcanic Stack eliminates this layer. The `@volcanicminds/typeorm` package provides a translation engine that allows the client (Frontend or API Consumer) to define exactly what data it wants, how it wants it sorted and filtered, without writing a single line of SQL or logic in the controller.
+The Volcanic Stack eliminates this layer. The `@volcanicminds/backend/typeorm` package provides a translation engine that allows the client (Frontend or API Consumer) to define exactly what data it wants, how it wants it sorted and filtered, without writing a single line of SQL or logic in the controller.
 
 ## 3.1 Translation Layer: URL to SQL
 
@@ -870,7 +870,7 @@ There are two ways to invoke this engine:
 **Mode 1: Direct Usage (for simple endpoints)**
 
 ```typescript
-import { executeFindQuery } from '@volcanicminds/typeorm'
+import { executeFindQuery } from '@volcanicminds/backend/typeorm'
 import { Order } from '../../../entities/order.e.js'
 
 // Controller
@@ -1693,7 +1693,7 @@ protected applyCustomFilters(qb: SelectQueryBuilder<Order>, queryParams: any, al
 Example from `src/services/fullOrder.service.ts`.
 
 ```typescript
-import { connection } from '@volcanicminds/typeorm' // or global.connection
+import { connection } from '@volcanicminds/backend/typeorm' // or global.connection
 
 async createFull(ctx: UserContext, data: any) {
   const { workOrders, activities, ...orderData } = data
@@ -2294,7 +2294,7 @@ This file starts a server instance (often with in-memory DB or dedicated test DB
 
 ```typescript
 import { start as startServer } from '@volcanicminds/backend'
-import { userManager } from '@volcanicminds/typeorm'
+import { userManager } from '@volcanicminds/backend/typeorm'
 
 // Mocha Global Hook
 export const beforeAll = async () => {

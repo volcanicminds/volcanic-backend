@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "2.4.0",
+  "version": "3.0.0",
   "type": "module",
   "codename": "rome",
   "license": "MIT",
@@ -28,13 +28,22 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/typeorm.js",
+    "./lib/database/typeorm/**"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js"
-    }
+    },
+    "./typeorm": {
+      "types": "./dist/typeorm.d.ts",
+      "import": "./dist/typeorm.js",
+      "require": "./dist/typeorm.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -49,14 +58,17 @@
     "prod": "cd dist && node server.js",
     "start": "tsx --env-file .env server.ts",
     "dev": "tsx watch --env-file .env server.ts",
-    "test": "npm run test:full",
-    "test:full": "cross-env PORT=2231 NODE_ENV=memory BROWSER=false mocha --import=tsx ./test/index.spec.ts -t 100000 --exit",
+    "test": "npm run test:core && npm run test:typeorm",
+    "test:core": "cross-env PORT=2231 NODE_ENV=memory BROWSER=false mocha --import=tsx ./test/index.spec.ts -t 100000 --exit",
+    "test:typeorm": "cross-env NODE_ENV=memory MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/typeorm/**/*.spec.ts -t 20000 --exit",
+    "test:full": "npm run test:core",
     "reset": "npm install && npm update && npm run build",
     "upgrade-deps": "npx npm-check-updates -u",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
-    "check-all": "npm run lint && npm run type-check",
+    "depcruise": "depcruise index.ts typeorm.ts lib --config .dependency-cruiser.cjs",
+    "check-all": "npm run lint && npm run type-check && npm run depcruise",
     "combine": "node combine.js"
   },
   "dependencies": {
@@ -85,19 +97,52 @@
     "semver": "^7.7.3",
     "toad-scheduler": "^3.1.0"
   },
+  "peerDependencies": {
+    "bcrypt": "^6.0.0",
+    "pg": "^8.13.0",
+    "pluralize": "^8.0.0",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.28"
+  },
+  "peerDependenciesMeta": {
+    "typeorm": {
+      "optional": true
+    },
+    "bcrypt": {
+      "optional": true
+    },
+    "pluralize": {
+      "optional": true
+    },
+    "reflect-metadata": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@types/bcrypt": "^6.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.10.4",
+    "@types/pg": "^8.11.10",
+    "@types/pluralize": "^0.0.33",
     "@types/semver": "^7.7.1",
+    "bcrypt": "^6.0.0",
     "cross-env": "^10.1.0",
+    "dependency-cruiser": "^18.0.0",
     "eslint": "^9.39.2",
     "expect": "^30.2.0",
     "globals": "^16.5.0",
     "mocha": "^11.7.5",
     "npm-upgrade": "^3.1.2",
+    "pg": "^8.13.0",
+    "pluralize": "^8.0.0",
+    "reflect-metadata": "^0.2.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
+    "typeorm": "^0.3.28",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.50.0"
   },

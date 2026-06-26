@@ -1,0 +1,49 @@
+name: CI
+on:
+  push:
+    branches: [main, v3]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run type-check
+      - run: npm run depcruise
+      - run: npm run build
+      - run: npx publint
+      - run: npx --yes @arethetypeswrong/cli@latest --pack . --profile esm-only
+
+  test:
+    runs-on: ubuntu-latest
+    needs: verify
+    env:
+      NODE_ENV: memory
+      MFA_DB_SECRET: unit-test-secret-please-change-32xyz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci # compila bcrypt (nativo); ubuntu-latest ha i build tools
+      - run: npm run build # i test girano contro dist/ (self-reference @volcanicminds/backend[/typeorm])
+      - run: npm test
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [verify, test]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm, registry-url: 'https://registry.npmjs.org' }
+      - run: npm ci
+      - run: npm run build
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

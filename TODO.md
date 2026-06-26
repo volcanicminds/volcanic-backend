@@ -1,6 +1,6 @@
 # TODO
 
-- add example / demo project (with @volcanicminds/backend & @volcanicminds/typeorm)
+- add example / demo project (with @volcanicminds/backend & @volcanicminds/backend/typeorm)
 - validations (see typeorm)
 - subscribers / hooks (Active Records: in separated files)
 - api versioning

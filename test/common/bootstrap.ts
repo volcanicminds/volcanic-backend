@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { start as startServer } from '@volcanicminds/backend'
-import { start as startDatabase, DataSource, userManager } from '@volcanicminds/typeorm'
+import { start as startDatabase, DataSource, userManager } from '@volcanicminds/backend/typeorm'
 
 export const DEFAULT_ADMIN_EMAIL = 'admin@user.com'
 export const DEFAULT_ADMIN_PASSWORD = '71iD$k%3X#m4'

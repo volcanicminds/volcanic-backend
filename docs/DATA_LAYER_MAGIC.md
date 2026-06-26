@@ -1,6 +1,6 @@
 # Data Layer Magic: From URL to SQL
 
-One of the most powerful features of the `@volcanicminds/backend` + `@volcanicminds/typeorm` combination is the automatic translation of HTTP Query Strings into complex, optimized SQL queries.
+One of the most powerful features of the `@volcanicminds/backend` + `@volcanicminds/backend/typeorm` combination is the automatic translation of HTTP Query Strings into complex, optimized SQL queries.
 
 This guide explains how to leverage this "magic" to build flexible APIs without writing boilerplate query parsing logic.
 
@@ -28,7 +28,7 @@ This abstraction allows you to switch HTTP methods (e.g., from `GET` to `POST` f
 This function is the bridge between the raw data and the database.
 
 ```typescript
-import { executeFindQuery } from '@volcanicminds/typeorm'
+import { executeFindQuery } from '@volcanicminds/backend/typeorm'
 
 // In your Service or Controller
 const { headers, records } = await executeFindQuery(
@@ -97,7 +97,7 @@ Sometimes you need to aggregate data (e.g., Reporting) that cannot be easily rep
 2.  Use `executeFindView` instead of `executeFindQuery`.
 
 ```typescript
-import { executeFindView } from '@volcanicminds/typeorm'
+import { executeFindView } from '@volcanicminds/backend/typeorm'
 
 // In your Service
 async function findReports(data: any) {

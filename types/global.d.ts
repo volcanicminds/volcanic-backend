@@ -258,6 +258,12 @@ declare module 'fastify' {
      * MUST be used for all DB operations within this request scope.
      */
     db?: EntityManager
+    /** Raw request body, populated by `fastify-raw-body` when enabled on the route. */
+    rawBody?: string | Buffer
+    /** Multipart helpers, populated by `@fastify/multipart`. */
+    isMultipart(): boolean
+    file(options?: any): Promise<any>
+    files(options?: any): AsyncIterableIterator<any>
   }
   export interface FastifyReply {
     payloadSize?: number
@@ -281,6 +287,12 @@ export interface FastifyRequest extends FastifyRequest {
    * MUST be used for all DB operations within this request scope.
    */
   db?: EntityManager
+  /** Raw request body, populated by `fastify-raw-body` when enabled on the route. */
+  rawBody?: string | Buffer
+  /** Multipart helpers, populated by `@fastify/multipart`. */
+  isMultipart(): boolean
+  file(options?: any): Promise<any>
+  files(options?: any): AsyncIterableIterator<any>
 }
 
 export interface FastifyReply extends FastifyReply {

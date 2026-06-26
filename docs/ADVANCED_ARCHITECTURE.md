@@ -3,7 +3,7 @@
 > **✅ CANONICAL v2 PATTERN (source of truth, 2026-06).** The context-aware Service Layer shown here —
 > `service.use(req.db)` with RLS in `applyPermissions` — is the **official** data-access pattern, required
 > for strong multi-tenancy. Direct `global.repository.X` access is **legacy** and is rejected at runtime by a
-> fail-fast Proxy in `@volcanicminds/typeorm`. Older snippets in `llms.txt`/README/Context7 may still show the
+> fail-fast Proxy in `@volcanicminds/backend/typeorm`. Older snippets in `llms.txt`/README/Context7 may still show the
 > legacy form; this document takes precedence, and the package source code is the ultimate authority.
 
 While `@volcanicminds/backend` allows for simple route-to-controller logic, building enterprise-grade applications requires a more robust architecture to handle complexity, security, and maintainability.
@@ -17,7 +17,7 @@ To maintain Separation of Concerns (SoC), the application is divided into distin
 1.  **Route Layer**: Defines HTTP endpoints, method types, validation schemas, and required roles.
 2.  **Controller Layer**: Handles HTTP request parsing, delegates logic to the Service Layer, and formats the HTTP response. **Controllers should remain "thin".**
 3.  **Service Layer**: Contains the business logic. It operates on Domain Entities and is agnostic of the HTTP transport (it doesn't know what `req` or `res` are). It receives a `UserContext` and raw data.
-4.  **Data Access Layer (Repositories)**: Managed by `@volcanicminds/typeorm`.
+4.  **Data Access Layer (Repositories)**: Managed by `@volcanicminds/backend/typeorm`.
 
 ## The `BaseService` Pattern
 

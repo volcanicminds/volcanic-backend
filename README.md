@@ -2,6 +2,7 @@
 [![opensource](https://img.shields.io/badge/open-source-blue)](https://en.wikipedia.org/wiki/Open_source)
 [![volcanic-backend](https://img.shields.io/badge/volcanic-minds-orange)](https://github.com/volcanicminds/volcanic-backend)
 [![npm](https://img.shields.io/badge/package-npm-white)](https://www.npmjs.com/package/@volcanicminds/backend)
+[![CI](https://github.com/volcanicminds/volcanic-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/volcanicminds/volcanic-backend/actions/workflows/ci.yml)
 
 # volcanic-backend
 
@@ -22,7 +23,7 @@ A Node.js framework based on Fastify to build robust APIs quickly, featuring an 
 For advanced usage and enterprise architecture patterns, please refer to the detailed documentation:
 
 - **[Advanced Architecture](docs/ADVANCED_ARCHITECTURE.md)**: Service Layer pattern, BaseService abstraction, and dependency injection.
-- **[Data Layer Magic](docs/DATA_LAYER_MAGIC.md)**: How `req.data()` works and how to turn URLs into complex SQL queries with `@volcanicminds/typeorm`.
+- **[Data Layer Magic](docs/DATA_LAYER_MAGIC.md)**: How `req.data()` works and how to turn URLs into complex SQL queries with `@volcanicminds/backend/typeorm`.
 - **[Schema Customization](docs/SCHEMA_OVERRIDING.md)**: How to extend core schemas (like Login Response) without forking the framework.
 - **[Security & MFA](docs/SECURITY_MFA.md)**: Deep dive into Multi-Factor Authentication policies, Gatekeeper flow, and emergency resets.
 - **[TypeScript Guide](docs/TYPESCRIPT_GUIDE.md)**: How to properly extend Request types, global scopes, and inject User Contexts.
@@ -39,7 +40,7 @@ And, what you see in [package.json](package.json).
 
 - **Convention over Configuration**: A clear and consistent project structure for APIs, controllers, and routes simplifies development and reduces boilerplate.
 - **Extensibility**: Easily extendable with custom plugins, hooks, and middleware to fit any project's needs.
-- **Database Agnostic**: Designed to work seamlessly with `@volcanicminds/typeorm`, supporting both SQL (e.g., PostgreSQL) and NoSQL (e.g., MongoDB) databases.
+- **Database Agnostic**: Designed to work seamlessly with `@volcanicminds/backend/typeorm`, supporting both SQL (e.g., PostgreSQL) and NoSQL (e.g., MongoDB) databases.
 - **Feature-Rich**: Out-of-the-box support for JWT authentication, role-based access control (RBAC), automatic Swagger/OpenAPI documentation, and much more.
 
 ## Project sample
@@ -54,10 +55,11 @@ And, what you see in [package.json](package.json).
 npm install @volcanicminds/backend
 ```
 
-For database interactions, it is highly recommended to also install the companion package:
+For database interactions, the data layer is included in v3 as the subpath `@volcanicminds/backend/typeorm`
+(no separate package). Install its optional **peer dependencies** only if you use it:
 
 ```sh
-npm install @volcanicminds/typeorm
+npm install typeorm bcrypt pluralize reflect-metadata pg
 ```
 
 ### Minimal Working Example
@@ -69,7 +71,7 @@ This example demonstrates how to set up a basic server with a single endpoint.
 ```typescript
 // index.ts
 import { start } from '@volcanicminds/backend'
-import { start as startDatabase, userManager } from '@volcanicminds/typeorm'
+import { start as startDatabase, userManager } from '@volcanicminds/backend/typeorm'
 import { myDbConfig } from './src/config/database.js' // Assume you have a db config file
 
 async function main() {
@@ -583,16 +585,16 @@ Useful methods / objects:
 - `req.roles()` to grab **Roles** (as `string[]`) from `req.user` if compiled.
 - `req.hasRole(role:Role)` to check if the **Role** is appliable for `req.user`.
 
-### Advanced Data Access with `req.data()` and `@volcanicminds/typeorm`
+### Advanced Data Access with `req.data()` and `@volcanicminds/backend/typeorm`
 
-The real power is unlocked when combining `req.data()` with `@volcanicminds/typeorm`.
+The real power is unlocked when combining `req.data()` with `@volcanicminds/backend/typeorm`.
 
 ```typescript
 // src/api/products/controller/product.ts
 import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
-import { executeFindQuery } from '@volcanicminds/typeorm'
+import { executeFindQuery } from '@volcanicminds/backend/typeorm'
 
-// The 'repository' global is populated by @volcanicminds/typeorm
+// The 'repository' global is populated by @volcanicminds/backend/typeorm
 declare var repository: any
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
@@ -615,9 +617,9 @@ This single controller function can handle a wide variety of requests without an
 - `GET /products?sort=price:desc`
 - `GET /products?name:containsi=widget&category.name:eq=Tools`
 
-**Database Synergy with `@volcanicminds/typeorm`**
+**Database Synergy with `@volcanicminds/backend/typeorm`**
 
-While `volcanic-backend` can be used with any data layer, it is designed for seamless integration with its companion package, `@volcanicminds/typeorm`. This combination provides a powerful, query-string-driven API out-of-the-box.
+While `volcanic-backend` can be used with any data layer, it is designed for seamless integration with its companion package, `@volcanicminds/backend/typeorm`. This combination provides a powerful, query-string-driven API out-of-the-box.
 
 **How it Works:**
 
@@ -626,13 +628,13 @@ While `volcanic-backend` can be used with any data layer, it is designed for sea
 
 2.  **`volcanic-backend` Controller**: The controller uses the `req.data()` helper to grab all query parameters.
 
-3.  **`volcanic-typeorm` Translation**: The `executeFindQuery` function from `@volcanicminds/typeorm` receives these parameters and uses its internal `applyQuery` engine to translate them into a rich TypeORM query object, including `where`, `order`, `skip`, and `take` clauses. It automatically handles the syntax for different databases (e.g., `ILIKE` for PostgreSQL, `$regex` for MongoDB).
+3.  **`volcanic-typeorm` Translation**: The `executeFindQuery` function from `@volcanicminds/backend/typeorm` receives these parameters and uses its internal `applyQuery` engine to translate them into a rich TypeORM query object, including `where`, `order`, `skip`, and `take` clauses. It automatically handles the syntax for different databases (e.g., `ILIKE` for PostgreSQL, `$regex` for MongoDB).
 
 4.  **Database Execution**: TypeORM executes the optimized query against the database.
 
 5.  **Response with Headers**: `executeFindQuery` returns the records and a set of custom pagination headers (`v-total`, `v-pageCount`, etc.), which the controller then sends back to the client.
 
-This powerful synergy allows you to build complex, high-performance data endpoints with minimal effort. Please refer to the `@volcanicminds/typeorm` `README.md` for a complete guide on its advanced query syntax.
+This powerful synergy allows you to build complex, high-performance data endpoints with minimal effort. Please refer to the `@volcanicminds/backend/typeorm` `README.md` for a complete guide on its advanced query syntax.
 
 ## Roles
 
@@ -663,13 +665,22 @@ You can use something like this to specify which roles (routes.ts) can recall so
 roles: [roles.admin, roles.public]
 ```
 
-## Database
+## Database (data layer)
 
-Use package [`@volcaniminds/typeorm`](https://github.com/volcanicminds/volcanic-database-typeorm) ([npm](https://www.npmjs.com/package/@volcanicminds/typeorm))
+The data layer is bundled as the subpath **`@volcanicminds/backend/typeorm`** (in v3; previously the standalone,
+now-EOL `@volcanicminds/backend/typeorm`). Import it directly:
 
 ```ts
-npm install @volcanicminds/typeorm
+import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
 ```
+
+Install its optional **peer dependencies** in your app (only if you use the data layer):
+
+```sh
+npm install typeorm bcrypt pluralize reflect-metadata pg
+```
+
+See `docs/configuration.md` for options and environment variables, and `MIGRATION.md` for the v2→v3 upgrade.
 
 ## Hooks
 

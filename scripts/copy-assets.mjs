@@ -5,7 +5,16 @@
 // empty i18n catalog and every translation falls back to its key.
 import { cpSync, existsSync } from 'node:fs'
 
-const assets = [['lib/locales', 'dist/lib/locales']]
+const assets = [
+  ['lib/locales', 'dist/lib/locales'],
+  // Core declaration files (`.d.ts`) are NOT emitted by `tsc` into `dist/`, but
+  // `dist/index.d.ts` re-exports types from `./types/global.js` (which imports
+  // `./orm.js`). Without these under `dist/types/`, consumers get unresolved
+  // types (attw "Internal resolution error"). The data layer types live in
+  // `types/database/typeorm/global.ts` (a real `.ts`, emitted by tsc) → no copy.
+  ['types/global.d.ts', 'dist/types/global.d.ts'],
+  ['types/orm.d.ts', 'dist/types/orm.d.ts']
+]
 
 for (const [from, to] of assets) {
   if (existsSync(from)) {

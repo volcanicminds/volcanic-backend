@@ -17,10 +17,13 @@
     "skipLibCheck": true,
     "strict": true,
     "noImplicitAny": false,
+    "strictPropertyInitialization": false,
+    "useUnknownInCatchVariables": false,
+    "noUnusedLocals": false,
     "paths": {
       "@types": ["./types"]
     }
   },
-  "include": ["*.ts", "*.d.ts", "lib/**/*", "types/*"],
+  "include": ["*.ts", "*.d.ts", "lib/**/*", "types/**/*"],
   "exclude": ["node_modules", "dist", "test"]
 }
