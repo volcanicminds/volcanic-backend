@@ -1,4 +1,5 @@
 {
   "url": "https://context7.com/volcanicminds/volcanic-backend",
-  "public_key": "pk_MSCtFRLqqJKtR6gHZ4U7E"
+  "public_key": "pk_MSCtFRLqqJKtR6gHZ4U7E",
+  "description": "Opinionated Fastify v5 backend framework (ESM, Node >=24) with JWT/MFA auth, autodiscovery, multi-tenancy, and an optional TypeORM data layer with Magic Query."
 }
