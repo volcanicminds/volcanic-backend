@@ -112,5 +112,5 @@ Context7 dedicato al database. Usa Context7 per **panoramica e firma API**, ma i
 
 `llms.txt` (guida pattern completa), `README.md`,
 `docs/ADVANCED_ARCHITECTURE.md` (Service/Repository pattern, `.use(req.db)`), `docs/SECURITY_MFA.md`,
-`docs/SCHEMA_OVERRIDING.md`, `docs/DATA_LAYER_MAGIC.md`, `docs/configuration.md` (config data layer),
+`docs/SCHEMA_OVERRIDING.md`, `docs/DATA_LAYER_MAGIC.md`, `docs/CONFIGURATION.md` (config data layer),
 `docs/TYPESCRIPT_GUIDE.md`, `DOCKER.md`.

@@ -698,7 +698,7 @@ Install its optional **peer dependencies** in your app (only if you use the data
 npm install typeorm bcrypt pluralize reflect-metadata pg
 ```
 
-For the full options and environment variables see `docs/configuration.md`; `llms.txt` (Part 3) is the exhaustive
+For the full options and environment variables see `docs/CONFIGURATION.md`; `llms.txt` (Part 3) is the exhaustive
 reference. The essentials you need day-to-day are below.
 
 ### Core features

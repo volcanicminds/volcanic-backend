@@ -53,10 +53,13 @@ async function loadMiddleware(base: string, middleware: string = '') {
 }
 
 async function loadMiddlewares(base: string, middlewares: string[] = []) {
-  const midds = {}
+  const midds: { [key: string]: any[] } = {}
   for (const m of middlewares) {
     const middleware = await loadMiddleware(base, m)
-    Object.keys(middleware).map((name) => (midds[name] = [...(midds[name] || []), middleware[name]]))
+    for (const name in middleware) {
+      if (!midds[name]) midds[name] = []
+      midds[name].push(middleware[name])
+    }
   }
   return midds
 }
