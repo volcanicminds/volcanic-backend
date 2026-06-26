@@ -1,196 +1,196 @@
 # AUDIT TASKS — TODO
 
-> Audit di sicurezza/qualità sui 4 progetti del workspace (`volcanic-backend`, `volcanic-tools`,
-> `volcanic-database-typeorm`, `volcanic-backend-sample`). Data: 2026-06-17.
+> Security/quality audit across the 4 workspace projects (`volcanic-backend`, `volcanic-tools`,
+> `volcanic-database-typeorm`, `volcanic-backend-sample`). Date: 2026-06-17.
 >
-> **Tutti gli interventi sono non-funzionali**: non cambiano il comportamento osservabile delle API,
-> ma migliorano sicurezza, robustezza, performance e manutenibilità.
+> **All interventions are non-functional**: they do not change the observable behavior of the APIs,
+> but improve security, robustness, performance and maintainability.
 >
-> Legenda progetti: **BE** = volcanic-backend · **TO** = volcanic-tools · **DB** = volcanic-database-typeorm · **SA** = volcanic-backend-sample
+> Project legend: **BE** = volcanic-backend · **TO** = volcanic-tools · **DB** = volcanic-database-typeorm · **SA** = volcanic-backend-sample
 
 ---
 
-## 🔴 CRITICA
+## 🔴 CRITICAL
 
-- [x] **S1 — Dipendenza `fast-jwt` vulnerabile (algorithm/cache confusion)** · `BE`, `SA` ✅ *(2026-06-17)*
-  - File: `package.json` (dep transitiva via `@fastify/jwt`)
-  - `fast-jwt ≤6.2.3`: CVE-2023-48223 (fix incompleto, algorithm confusion via RSA key whitespace-prefixed) + cache confusion (claim di un token restituiti per un altro → identity/authorization mixup). `npm audit`: 1 critical + 6 high per repo.
-  - Azione: aggiornare `@fastify/jwt`/`fast-jwt`; `npm audit fix`; pinnare versioni; ripetere audit.
-  - **Fatto:** `@fastify/jwt` bumpato a `^10.1.0` in `volcanic-backend` (richiede `fast-jwt ^6.2.0`) → installato `fast-jwt@6.2.4`. Nel `volcanic-backend-sample` (transitivo) `npm update fast-jwt` → `6.2.4`. `npm audit`: **0 critical** in entrambi i repo. `type-check` OK; il fallimento dei test è pre-esistente e indipendente (manca il peer `@volcanicminds/typeorm` nel node_modules del repo, richiesto dal bootstrap di test).
-  - **Scope corretto:** `fast-jwt` è presente solo in `BE` (diretto) e `SA` (transitivo). I critical/high di `TO` e `DB` riguardano **altri** pacchetti → rientrano in **Q12**, non in S1.
+- [x] **S1 — Vulnerable `fast-jwt` dependency (algorithm/cache confusion)** · `BE`, `SA` ✅ *(2026-06-17)*
+  - File: `package.json` (transitive dep via `@fastify/jwt`)
+  - `fast-jwt ≤6.2.3`: CVE-2023-48223 (incomplete fix, algorithm confusion via whitespace-prefixed RSA key) + cache confusion (claims of one token returned for another → identity/authorization mixup). `npm audit`: 1 critical + 6 high per repo.
+  - Action: update `@fastify/jwt`/`fast-jwt`; `npm audit fix`; pin versions; re-run the audit.
+  - **Done:** `@fastify/jwt` bumped to `^10.1.0` in `volcanic-backend` (requires `fast-jwt ^6.2.0`) → installed `fast-jwt@6.2.4`. In `volcanic-backend-sample` (transitive) `npm update fast-jwt` → `6.2.4`. `npm audit`: **0 critical** in both repos. `type-check` OK; the test failure is pre-existing and unrelated (the `@volcanicminds/typeorm` peer is missing from the repo node_modules, required by the test bootstrap).
+  - **Scope correction:** `fast-jwt` is present only in `BE` (direct) and `SA` (transitive). The critical/high items in `TO` and `DB` concern **other** packages → they fall under **Q12**, not S1.
 
 ---
 
-## 🟠 ALTA
+## 🟠 HIGH
 
-- [x] **S2 — Secret JWT mancante/debole (fail-fast)** · `BE` ✅ *(2026-06-17)*
+- [x] **S2 — Missing/weak JWT secret (fail-fast)** · `BE` ✅ *(2026-06-17)*
   - File: `index.ts:188`, `240-243`
-  - **Correzione di analisi:** con `JWT_SECRET=''` il server NON parte con secret vuoto (`@fastify/jwt` fa `assert(secret, 'missing secret')` → eccezione, per giunta unhandled in `server.ts`). Il rischio reale non era "token forgiabili da secret vuoto" ma **secret debole accettato in silenzio** (corto/noto/bassa entropia) + errore di avvio illeggibile.
-  - **Fatto (Opzione A — fail-fast):** nuova utility `lib/util/secret.ts` (`validateSecretStrength`/`assertSecretStrength`): mancante → sempre fatale `process.exit(1)`; debole (lunghezza < 32, denylist valori noti, < 8 caratteri distinti) → fatale in produzione, warning in dev. Cablata in `index.ts` prima di registrare JWT, per `JWT_SECRET`, `JWT_REFRESH_SECRET` (se refresh attivo) e `COOKIE_SECRET` (se `AUTH_MODE=COOKIE`). Aggiunto `.catch` in `server.ts` per evitare unhandled rejection.
-  - **Verifica:** `type-check` OK; 4 scenari (mancante dev / debole prod / debole dev / forte) con exit code attesi (1/1/0/0); secret dev (88 char) passa senza warning.
-  - **Nota:** scenario "solo rotte pubbliche senza secret" non implementato di proposito — le rotte auth native (login/refresh) firmano i token e richiedono comunque il secret; vedi discussione (Opzioni B/Ibrido scartate).
+  - **Analysis correction:** with `JWT_SECRET=''` the server does NOT start with an empty secret (`@fastify/jwt` does `assert(secret, 'missing secret')` → exception, moreover unhandled in `server.ts`). The real risk was not "tokens forgeable from an empty secret" but **a weak secret silently accepted** (short/known/low entropy) + an unreadable startup error.
+  - **Done (Option A — fail-fast):** new utility `lib/util/secret.ts` (`validateSecretStrength`/`assertSecretStrength`): missing → always fatal `process.exit(1)`; weak (length < 32, denylist of known values, < 8 distinct chars) → fatal in production, warning in dev. Wired into `index.ts` before registering JWT, for `JWT_SECRET`, `JWT_REFRESH_SECRET` (if refresh is enabled) and `COOKIE_SECRET` (if `AUTH_MODE=COOKIE`). Added a `.catch` in `server.ts` to avoid an unhandled rejection.
+  - **Verification:** `type-check` OK; 4 scenarios (missing dev / weak prod / weak dev / strong) with the expected exit codes (1/1/0/0); dev secret (88 chars) passes without warning.
+  - **Note:** the "public routes only, no secret" scenario was intentionally not implemented — the native auth routes (login/refresh) sign tokens and require the secret anyway; see discussion (Options B/Hybrid discarded).
 
 - [ ] **S3 — CORS default `origin: '*'` + `credentials: true`** · `BE`
   - File: `lib/config/plugins.ts:6-9`
-  - Default troppo permissivo per B2B. Allowlist origini via env; vietare `*`+credentials; warning di startup.
+  - Default too permissive for B2B. Allowlist origins via env; forbid `*`+credentials; startup warning.
 
-- [x] **S4 — helmet disabilitato di default e assente con GraphQL** · `BE` ✅ *(2026-06-17)*
+- [x] **S4 — helmet disabled by default and absent with GraphQL** · `BE` ✅ *(2026-06-17)*
   - File: `lib/config/plugins.ts:46-49`, `index.ts:201` (`!loadApollo`)
-  - Abilitare helmet di default; per Apollo usare helmet con CSP compatibile invece di escluderlo.
-  - **Fatto:** deciso (con il maintainer) di **rimuovere del tutto il GraphQL** — era uno stub demo (`helloWorld`), disabilitato di default, zero test. Questo elimina alla radice la condizione `!loadApollo` su helmet. Inoltre helmet portato a `enable: true` di default in `lib/config/plugins.ts`.
-  - **Rimozione GraphQL:** tolti import/funzioni Apollo e `GRAPHQL`/`loadApollo` da `index.ts`; eliminata cartella `lib/apollo/`; rimosse deps `@apollo/server`, `@as-integrations/fastify`, `graphql` da `package.json` (+ keyword `apollo`/`graphql`); ripulito `.env` (backend+sample), `README.md`, `llms.txt` (rimossa Part 9 + TOC + env, 275 righe).
-  - **Verifica:** `type-check` + `build` + lint OK; boot reale OK (39 rotte, "Server up", helmet attivo). `npm audit` prod: da **13 → 9** vulnerabilità (rimosse 4 con apollo/graphql).
-  - **Nota:** cambio di superficie pubblica (pacchetto pubblicato) → segnare come **minor/breaking** nel versioning. Residuo cosmetico: in `llms.txt` la numerazione salta "Part 8 → Part 10" (non rinumerato per non toccare i sotto-paragrafi `10.x`).
+  - Enable helmet by default; for Apollo use helmet with a compatible CSP instead of excluding it.
+  - **Done:** decided (with the maintainer) to **remove GraphQL entirely** — it was a demo stub (`helloWorld`), disabled by default, zero tests. This removes the `!loadApollo` condition on helmet at the root. helmet was also set to `enable: true` by default in `lib/config/plugins.ts`.
+  - **GraphQL removal:** removed Apollo imports/functions and `GRAPHQL`/`loadApollo` from `index.ts`; deleted the `lib/apollo/` folder; removed the `@apollo/server`, `@as-integrations/fastify`, `graphql` deps from `package.json` (+ the `apollo`/`graphql` keywords); cleaned up `.env` (backend+sample), `README.md`, `llms.txt` (removed Part 9 + TOC + env, 275 lines).
+  - **Verification:** `type-check` + `build` + lint OK; real boot OK (39 routes, "Server up", helmet active). `npm audit` prod: from **13 → 9** vulnerabilities (4 removed with apollo/graphql).
+  - **Note:** public-surface change (published package) → mark as **minor/breaking** in versioning. Cosmetic leftover: in `llms.txt` the numbering jumps "Part 8 → Part 10" (not renumbered to avoid touching the `10.x` sub-paragraphs).
 
-- [ ] **S5 — rate-limit disabilitato di default + nessun limite su auth/MFA** · `BE`
+- [ ] **S5 — rate-limit disabled by default + no limit on auth/MFA** · `BE`
   - File: `lib/config/plugins.ts:41-44`, `lib/api/auth/routes.ts`
-  - Brute-force su login e su codice MFA (6 cifre = 10⁶) senza throttling. Rate-limit attivo di default + limiti stretti per-route su login/forgot/reset/mfa.
+  - Brute-force on login and on the MFA code (6 digits = 10⁶) without throttling. Rate-limit enabled by default + tight per-route limits on login/forgot/reset/mfa.
 
 - [x] **S6 — Timing attack / user enumeration in login** · `DB` ✅ *(2026-06-17)*
   - File: `lib/loader/userManager.ts:217-227`
-  - Se l'email non esiste non si esegue `bcrypt.compare` → risposta più rapida. Eseguire un compare dummy a costo costante.
-  - **Fatto:** `retrieveUserByPassword` ora esegue **sempre** `bcrypt.compare` (contro un hash dummy cost-12 quando l'utente non esiste) e ritorna `null` in entrambi i casi di fallimento. Equalizza il timing (test: 267.0 vs 266.7 ms) ed elimina anche l'incoerenza precedente throw→500 (utente assente) vs return-null→403 (password errata): ora entrambi i percorsi danno 403 "Wrong credentials" uniforme. Rimosso il `try/catch` ridondante. Bump `@volcanicminds/typeorm 2.3.4 → 2.3.5`.
-  - **Verifica:** `type-check` + `build` OK su typeorm.
+  - If the email does not exist `bcrypt.compare` is not run → faster response. Run a constant-cost dummy compare.
+  - **Done:** `retrieveUserByPassword` now **always** runs `bcrypt.compare` (against a cost-12 dummy hash when the user does not exist) and returns `null` in both failure cases. It equalizes the timing (test: 267.0 vs 266.7 ms) and also removes the previous inconsistency throw→500 (missing user) vs return-null→403 (wrong password): both paths now return a uniform 403 "Wrong credentials". Removed the redundant `try/catch`. Bump `@volcanicminds/typeorm 2.3.4 → 2.3.5`.
+  - **Verification:** `type-check` + `build` OK on typeorm.
 
-- [ ] **S7 — User enumeration via messaggi/stati** · `BE`
+- [ ] **S7 — User enumeration via messages/states** · `BE`
   - File: `lib/api/auth/controller/auth.ts:28,153,157,212`; `lib/hooks/onRequest.ts:147`
-  - "Email already registered", "User blocked" vs "Wrong credentials", `404 SUBJECT_NOT_FOUND`. `forgotPassword` deve rispondere sempre 200 generico; uniformare i messaggi pubblici.
+  - "Email already registered", "User blocked" vs "Wrong credentials", `404 SUBJECT_NOT_FOUND`. `forgotPassword` must always respond with a generic 200; make the public messages uniform.
 
-- [x] **Q1 — Regex `username` con flag `/gi` usata con `.test()` (bug validazione)** · `BE` ✅ *(2026-06-17)*
+- [x] **Q1 — `username` regex with `/gi` flag used with `.test()` (validation bug)** · `BE` ✅ *(2026-06-17)*
   - File: `lib/util/regexp.ts:5`
-  - `lastIndex` persiste tra chiamate → risultati alternati true/false. Rimuovere il flag `g`.
-  - **Fatto:** rimosso il flag `g` (resta `i`). Aggiunto test di regressione (`test/unit/regexp.ts`: `username.test('john')` chiamato 4× → sempre `true`).
+  - `lastIndex` persists across calls → alternating true/false results. Remove the `g` flag.
+  - **Done:** removed the `g` flag (`i` remains). Added a regression test (`test/unit/regexp.ts`: `username.test('john')` called 4× → always `true`).
 
 ---
 
-## 🟡 MEDIA
+## 🟡 MEDIUM
 
-- [x] **S8 — `refreshToken` usa `jwt.decode` (no verifica firma) + check "Token too old" errato** · `BE` ✅ *(2026-06-18)*
+- [x] **S8 — `refreshToken` uses `jwt.decode` (no signature verification) + wrong "Token too old" check** · `BE` ✅ *(2026-06-18)*
   - File: `lib/api/auth/controller/auth.ts:336-341`
-  - `decode` non verifica la firma; il check confronta `sub` (externalId) con un timestamp. Usare `verify` (`ignoreExpiration`) e una vera claim temporale.
-  - **Fatto:** sostituito `jwt.decode(token)` con `jwt.verify(token, { ignoreExpiration: true })` (in try/catch → `403 Invalid token` su firma non valida): la firma è ora verificata, ma il token d'accesso scaduto resta accettato (è il senso del refresh). Riscritto il check "Token too old" sulla claim temporale reale `iat` (il token è firmato con `expiresIn`, quindi porta `iat`+`exp`): rifiuta se `iat` manca o è precedente a now−30g. Il vecchio confronto `sub > minAccettable` (id utente vs timestamp unix) era dead code.
-  - **Verifica:** `check-all` (lint + type-check) OK.
+  - `decode` does not verify the signature; the check compares `sub` (externalId) with a timestamp. Use `verify` (`ignoreExpiration`) and a real time claim.
+  - **Done:** replaced `jwt.decode(token)` with `jwt.verify(token, { ignoreExpiration: true })` (in try/catch → `403 Invalid token` on invalid signature): the signature is now verified, but the expired access token is still accepted (that's the point of refresh). Rewrote the "Token too old" check on the real `iat` time claim (the token is signed with `expiresIn`, so it carries `iat`+`exp`): rejects if `iat` is missing or older than now−30d. The old `sub > minAcceptable` comparison (user id vs unix timestamp) was dead code.
+  - **Verification:** `check-all` (lint + type-check) OK.
 
-- [ ] **S9 — Crypto: fallback legacy AES-256-CBC non autenticato + key derivation debole** · `DB`
+- [ ] **S9 — Crypto: unauthenticated legacy AES-256-CBC fallback + weak key derivation** · `DB`
   - File: `lib/util/crypto.ts:29-36, 8-13`
-  - CBC malleabile (downgrade); key = primi 32 char di `base64(sha256(secret))` (no salt/HKDF). Migrare a solo GCM; HKDF/scrypt; deprecare/migrare record CBC.
+  - Malleable CBC (downgrade); key = first 32 chars of `base64(sha256(secret))` (no salt/HKDF). Migrate to GCM only; HKDF/scrypt; deprecate/migrate CBC records.
 
-- [x] **S10 — Possibile ReDoS nelle regex email** · `BE`
+- [x] **S10 — Possible ReDoS in the email regexes** · `BE`
   - File: `lib/util/regexp.ts:7,14`
-  - Quantificatori annidati (`\w+([.+-]?\w+)*`). Semplificare le regex; limitare lunghezza input prima del match.
-  - **Fatto:** confermato il ReDoS esponenziale (len 34 = ~20s di blocco event-loop). Reso il separatore **obbligatorio** (`[.+-]`/`[.-]` invece di `[.+-]?`/`[.-]?`) → partizione unica → tempo lineare (50k char = 0.24ms), semantica di validazione invariata sul corpus di test. Aggiunti `MAX_EMAIL_LENGTH = 254` (RFC 5321) e helper `isEmail()` che fa il length-guard **prima** del match; i 3 call site in `auth.ts` (register/forgot/check) ora usano `isEmail`. `emailAlt` verificata sicura (separatori già obbligatori), aggiunta nota. Test di regressione in `test/unit/regexp.ts` (length-bound + linearità su input avversariale).
+  - Nested quantifiers (`\w+([.+-]?\w+)*`). Simplify the regexes; bound the input length before matching.
+  - **Done:** confirmed the exponential ReDoS (len 34 = ~20s of event-loop blocking). Made the separator **mandatory** (`[.+-]`/`[.-]` instead of `[.+-]?`/`[.-]?`) → unique partition → linear time (50k chars = 0.24ms), validation semantics unchanged on the test corpus. Added `MAX_EMAIL_LENGTH = 254` (RFC 5321) and an `isEmail()` helper that does the length-guard **before** matching; the 3 call sites in `auth.ts` (register/forgot/check) now use `isEmail`. `emailAlt` verified safe (separators already mandatory), note added. Regression tests in `test/unit/regexp.ts` (length-bound + linearity on adversarial input).
 
-- [ ] **S11 — Nessuna protezione anti-replay TOTP + nessun rate-limit MFA** · `TO`, `BE`
+- [ ] **S11 — No TOTP anti-replay protection + no MFA rate-limit** · `TO`, `BE`
   - File: `lib/mfa/index.ts:60-73` (TO), `lib/api/auth/controller/auth.ts:430-461` (BE)
-  - Codice TOTP riusabile entro la finestra. Tracciare l'ultimo `delta` usato per utente; aggiungere rate-limit.
+  - TOTP code reusable within the window. Track the last `delta` used per user; add rate-limit.
 
-- [x] **S12 — `SET search_path` interpolato senza risanitizzazione** · `BE`
+- [x] **S12 — `SET search_path` interpolated without re-sanitization** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts:114`
-  - A differenza di `tenantManager.switchContext`. Centralizzare e applicare ovunque la sanitizzazione/whitelist dello schema.
-  - **Fatto:** aggiunto helper `sanitizeSchemaName()` in `tenants.ts` con lo **stesso** pattern canonico del `tenantManager.switchContext` di `@volcanicminds/typeorm` (`replace(/[^a-z0-9_]/gi, '')`); applicato in `resolveTargetUser` prima del `SET search_path`, con **fail-fast** (`throw 'Invalid target tenant schema'`) se lo schema collassa a vuoto. Aggiunto guard in profondità al confine d'input: `pattern: '^[a-zA-Z0-9_]+$'` su `dbSchema` in `tenantBodySchema`. Verificati gli altri `SET search_path` del BE: o costanti (`TO public`) o delegati al `tenantManager` già sicuro. Test in `test/unit/tenants.ts` (identità su nomi validi, strip di payload injection, input nullish).
+  - Unlike `tenantManager.switchContext`. Centralize and apply schema sanitization/whitelist everywhere.
+  - **Done:** added a `sanitizeSchemaName()` helper in `tenants.ts` with the **same** canonical pattern as `@volcanicminds/typeorm`'s `tenantManager.switchContext` (`replace(/[^a-z0-9_]/gi, '')`); applied in `resolveTargetUser` before the `SET search_path`, with **fail-fast** (`throw 'Invalid target tenant schema'`) if the schema collapses to empty. Added a defense-in-depth guard at the input boundary: `pattern: '^[a-zA-Z0-9_]+$'` on `dbSchema` in `tenantBodySchema`. Verified the other `SET search_path` in BE: either constant (`TO public`) or delegated to the already-safe `tenantManager`. Tests in `test/unit/tenants.ts` (identity on valid names, stripping of injection payloads, nullish input).
 
-- [ ] **S13 — Impersonation: audit non persistito, TTL 24h, no step-up MFA** · `BE`
+- [ ] **S13 — Impersonation: audit not persisted, 24h TTL, no step-up MFA** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts:141-193`; `index.ts:319-352` (MFA admin reset via env)
-  - Persistere audit log; ridurre TTL; valutare step-up MFA; audit obbligatorio sul reset MFA via env.
+  - Persist the audit log; reduce the TTL; consider step-up MFA; mandatory audit on the MFA reset via env.
 
-- [ ] **S14 — Revocation latency: cache su `retrieveUserByExternalId`** · `DB`
+- [ ] **S14 — Revocation latency: cache on `retrieveUserByExternalId`** · `DB`
   - File: `lib/loader/userManager.ts:208-211` (`cache: global.cacheTimeout`)
-  - Utente bloccato/ruoli cambiati restano validi fino a scadenza cache. Invalidare cache su `block`/`resetExternalId`/cambio ruoli; documentare il trade-off.
+  - Blocked user/changed roles stay valid until the cache expires. Invalidate the cache on `block`/`resetExternalId`/role change; document the trade-off.
 
-- [x] **Q2 — `changePassword`: null deref se utente inesistente** · `DB` ✅ *(2026-06-18)*
+- [x] **Q2 — `changePassword`: null deref if the user does not exist** · `DB` ✅ *(2026-06-18)*
   - File: `lib/loader/userManager.ts:239-240`
-  - `bcrypt.compare(old, user.password)` con `user` possibile `null`. Aggiungere guard.
-  - **Fatto:** `bcrypt.compare(oldPassword, user?.password || DUMMY_PASSWORD_HASH)` + condizione `if (user && match)`. Elimina il `TypeError` (→ 500) su utente inesistente e mantiene il costo bcrypt costante riusando il pattern di [[S6]] (stesso `DUMMY_PASSWORD_HASH`). Percorso di fallimento ora uniforme: `400 Password not changed`.
-  - **Verifica:** `build` (typeorm) OK.
+  - `bcrypt.compare(old, user.password)` with `user` possibly `null`. Add a guard.
+  - **Done:** `bcrypt.compare(oldPassword, user?.password || DUMMY_PASSWORD_HASH)` + the `if (user && match)` condition. Removes the `TypeError` (→ 500) on a non-existent user and keeps the bcrypt cost constant by reusing the [[S6]] pattern (same `DUMMY_PASSWORD_HASH`). The failure path is now uniform: `400 Password not changed`.
+  - **Verification:** `build` (typeorm) OK.
 
-- [x] **Q3 — `isPasswordToBeChanged`: `throw new Error(e)` con `e` Error** · `DB` ✅ *(2026-06-18)*
+- [x] **Q3 — `isPasswordToBeChanged`: `throw new Error(e)` with `e` being an Error** · `DB` ✅ *(2026-06-18)*
   - File: `lib/loader/userManager.ts:327`
-  - Messaggio `[object…]`. Usare `throw e` o messaggio esplicito.
-  - **Fatto:** `throw new Error(e)` → `throw e` (l'unico errore intercettabile nel try è già un `Error`, prima veniva doppio-wrappato/stringificato).
-  - **Verifica:** `build` (typeorm) OK.
+  - `[object…]` message. Use `throw e` or an explicit message.
+  - **Done:** `throw new Error(e)` → `throw e` (the only catchable error in the try is already an `Error`, previously it was double-wrapped/stringified).
+  - **Verification:** `build` (typeorm) OK.
 
-- [ ] **Q4 — Parser `_logic` senza limite profondità/lunghezza (DoS)** · `DB`
+- [ ] **Q4 — `_logic` parser without depth/length limit (DoS)** · `DB`
   - File: `lib/query/parser.ts`
-  - Limitare numero token e profondità di annidamento.
+  - Limit the number of tokens and the nesting depth.
 
-- [x] **Q5 — `Semaphore.release()` può rendere `running` negativo** · `TO` ✅ *(2026-06-18)*
+- [x] **Q5 — `Semaphore.release()` can make `running` negative** · `TO` ✅ *(2026-06-18)*
   - File: `lib/ai/concurrency.ts:40`
   - Clamp `running = Math.max(0, running - 1)`.
-  - **Fatto:** `this.running--` → `this.running = Math.max(0, this.running - 1)`. Un `release()` non bilanciato da un `acquire()` (doppio release, release dopo errore) non porta più `running` sotto zero, evitando che il semaforo conceda permessi extra oltre `max`.
-  - **Verifica:** `check-all` (lint + type-check) OK su `volcanic-tools`.
+  - **Done:** `this.running--` → `this.running = Math.max(0, this.running - 1)`. A `release()` not balanced by an `acquire()` (double release, release after error) no longer drives `running` below zero, preventing the semaphore from granting extra permits beyond `max`.
+  - **Verification:** `check-all` (lint + type-check) OK on `volcanic-tools`.
 
-- [x] **Q6 — `login` valida la complessità password al login** · `BE` ✅ *(2026-06-18)*
+- [x] **Q6 — `login` validates password complexity at login** · `BE` ✅ *(2026-06-18)*
   - File: `lib/api/auth/controller/auth.ts:232`
-  - Inasprire la policy bloccherebbe utenti esistenti + leak della policy. Validare complessità solo in registrazione/cambio password.
-  - **Fatto:** al login la complessità non è più verificata — solo presenza + tetto di lunghezza (`MAX_PASSWORD_LENGTH = 256`, guard anti-payload). bcrypt resta l'unico gate. Questo **disaccoppia** il login dalla policy e rende sicura [[T3]] (nessun lockout di utenti esistenti). La complessità resta imposta in register/change/reset/validate.
+  - Tightening the policy would lock out existing users + leak the policy. Validate complexity only on registration/password change.
+  - **Done:** at login the complexity is no longer checked — only presence + a length cap (`MAX_PASSWORD_LENGTH = 256`, anti-payload guard). bcrypt remains the only gate. This **decouples** login from the policy and makes [[T3]] safe (no lockout of existing users). Complexity is still enforced in register/change/reset/validate.
 
 ---
 
-## 🟢 BASSA
+## 🟢 LOW
 
-- [ ] **S15 — Cookie `maxAge` (1g) ≠ `JWT_EXPIRES_IN` (15g) + access token troppo longevo** · `BE`
+- [ ] **S15 — Cookie `maxAge` (1d) ≠ `JWT_EXPIRES_IN` (15d) + access token too long-lived** · `BE`
   - File: `lib/api/auth/controller/auth.ts:296` vs `index.ts:189`
-  - Allineare scadenze; ridurre access token (es. 15m) appoggiandosi al refresh.
+  - Align the expirations; reduce the access token (e.g. 15m) relying on the refresh.
 
-- [ ] **S16 — Manca `bodyLimit`/`limits` multipart espliciti (DoS payload)** · `BE`
-  - File: `index.ts` (registrazione server/multipart)
-  - Impostare `bodyLimit` e `limits.fileSize`.
+- [ ] **S16 — Missing explicit `bodyLimit`/`limits` for multipart (payload DoS)** · `BE`
+  - File: `index.ts` (server/multipart registration)
+  - Set `bodyLimit` and `limits.fileSize`.
 
-- [x] **S17 — `console.log('DEBUG: …')` in produzione** · `TO` ✅ *(2026-06-18)*
+- [x] **S17 — `console.log('DEBUG: …')` in production** · `TO` ✅ *(2026-06-18)*
   - File: `lib/ai/model.ts:50,52`
-  - Rimuovere o passare al logger a livello debug.
-  - **Fatto (già risolto):** i `console.log('DEBUG: …')` erano già stati rimossi nel commit `d100188` ("✅ [Tests] AI createModel + MFA unit coverage; drop debug logs") di `volcanic-tools`. Verificato: nessun `console.log`/`DEBUG:` residuo in `lib/ai/`. Nessuna modifica necessaria, task chiuso.
+  - Remove or move to the logger at debug level.
+  - **Done (already resolved):** the `console.log('DEBUG: …')` had already been removed in commit `d100188` ("✅ [Tests] AI createModel + MFA unit coverage; drop debug logs") of `volcanic-tools`. Verified: no residual `console.log`/`DEBUG:` in `lib/ai/`. No change needed, task closed.
 
-- [x] **Q7 — `embedded_auth` letto a import-time** · `BE` ✅ *(2026-06-18)*
+- [x] **Q7 — `embedded_auth` read at import-time** · `BE` ✅ *(2026-06-18)*
   - File: `lib/hooks/onRequest.ts:5`
-  - Spostare la lettura dentro l'handler.
-  - **Fatto:** rimossa la destrutturazione `const { embedded_auth = true } = global.config?.options || {}` a livello modulo (eseguita all'import, quando `global.config` poteva non essere ancora popolato → valore congelato/`undefined` al primo load) e spostata dentro l'handler `onRequest`, così la flag viene riletta a ogni richiesta dal `global.config` ormai inizializzato.
-  - **Verifica:** `check-all` (lint + type-check) OK su `volcanic-backend`.
+  - Move the read inside the handler.
+  - **Done:** removed the module-level destructuring `const { embedded_auth = true } = global.config?.options || {}` (executed at import, when `global.config` might not be populated yet → frozen/`undefined` value at first load) and moved it inside the `onRequest` handler, so the flag is re-read on every request from the now-initialized `global.config`.
+  - **Verification:** `check-all` (lint + type-check) OK on `volcanic-backend`.
 
-- [ ] **Q8 — Loop `do/while` con query DB per unicità UUIDv4** · `DB`
+- [ ] **Q8 — `do/while` loop with a DB query for UUIDv4 uniqueness** · `DB`
   - File: `lib/loader/userManager.ts:61-65,116-120`; `lib/loader/tokenManager.ts:51-54`
-  - Collisione ~impossibile: generare l'UUID e affidarsi all'unique constraint.
+  - Collision ~impossible: generate the UUID and rely on the unique constraint.
 
-- [ ] **Q9 — `try { } catch (e) { throw e }` inutile e ripetuto** · `DB`
-  - File: `lib/loader/userManager.ts`, `lib/loader/tokenManager.ts` (vari, con `eslint-disable no-useless-catch`)
-  - Rimuovere i wrapper inutili.
+- [ ] **Q9 — Useless and repeated `try { } catch (e) { throw e }`** · `DB`
+  - File: `lib/loader/userManager.ts`, `lib/loader/tokenManager.ts` (various, with `eslint-disable no-useless-catch`)
+  - Remove the useless wrappers.
 
-- [ ] **Q10 — `@ts-ignore`/`as any` su `req.user`/`req.tenant`** · `BE`
+- [ ] **Q10 — `@ts-ignore`/`as any` on `req.user`/`req.tenant`** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts`
-  - Tipizzare le augmentation Fastify per eliminare i bypass.
+  - Type the Fastify augmentations to eliminate the bypasses.
 
-- [ ] **Q11 — Nessuna CI** · `BE`, `TO`, `DB`, `SA`
-  - File: `.github/` assente
-  - Pipeline su PR: `lint` + `type-check` + `test` + `npm audit` + SAST.
+- [ ] **Q11 — No CI** · `BE`, `TO`, `DB`, `SA`
+  - File: `.github/` absent
+  - Pipeline on PR: `lint` + `type-check` + `test` + `npm audit` + SAST.
 
-- [ ] **Q12 — Vulnerabilità moderate residue (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
-  - File: dipendenze
-  - `npm audit fix` e ri-verifica.
-
----
-
-## 🆕 Rilievi emersi durante la stesura dei test (2026-06-17)
-
-- [x] **T1 — i18n rotto nel pacchetto pubblicato (BUG di produzione)** · `BE` ✅ *(2026-06-17)*
-  - `tsc` non copiava `lib/locales/*.json` in `dist/`, ma il runtime carica i dizionari da `dist/lib/locales` (via `main: dist/index.js`). Risultato: pacchetto pubblicato con catalogo i18n vuoto → ogni `t.__(...)` cadeva sulla chiave/`generic error` (per questo il sample riceveva `undefined`).
-  - **Fix:** `scripts/copy-assets.mjs` + `postbuild` che copia i locales in `dist/`. Coperto dai test translation reali (backend + sample).
-
-- [x] **T2 — Test che mascheravano i fallimenti** · `BE`, `SA` ✅ *(2026-06-17)*
-  - Assert dentro `try/catch` silenziati + `tearDown` con `process.exit(0)` (suite sempre exit 0). Rimossi; i test ora asseriscono davvero. Vedi anche fix loader/`--exit` già committati.
-
-- [x] **T3 — Policy password non applica il carattere speciale (BUG)** · `BE` ✅ *(2026-06-18)*
-  - File: `lib/util/regexp.ts` (regex `password`)
-  - La classe `[...()-_=...]` conteneva il **range non voluto** `)-_` (0x29–0x5F) → lettere maiuscole e cifre soddisfacevano il requisito "1 carattere speciale". Es. `NoSpecial1A` passava pur senza speciali.
-  - **Fatto:** `-` ora **escapato** (`\-`) in entrambe le occorrenze → il carattere speciale è realmente richiesto. Effetto collaterale: `/` e `\` (ammessi solo grazie al bug) non sono più caratteri validi per **nuove** password (nessun impatto sugli utenti esistenti, vedi Q6). Reso sicuro dalla risoluzione di [[Q6]]. Test reale in `test/unit/regexp.ts` + matrice di verifica (12 casi).
-
-- [x] **T4 — Suite di test resa eseguibile + copertura iniziale** · `BE`, `TO`, `TO`, `SA` ✅ *(2026-06-17)*
-  - Infra mocha+tsx funzionante su tutti i repo (prima: backend non compilava, sample crashava, tools/typeorm zero). Aggiunti test: backend (S2 secret, validatori/Q1, S4 plugins, translation), typeorm (crypto/S9, Magic Query con guard injection/proto, S6), tools (MFA TOTP, concurrency). Tot: **45 passing + 1 pending**. Prerequisito per [[Q11]] (CI).
+- [ ] **Q12 — Residual moderate vulnerabilities (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
+  - File: dependencies
+  - `npm audit fix` and re-verify.
 
 ---
 
-## ⚡ Quick wins (alto impatto / basso sforzo)
+## 🆕 Findings that emerged while writing the tests (2026-06-17)
 
-1. **S1** — `npm audit fix` + upgrade `@fastify/jwt` (chiude la vuln critica JWT su tutti i repo).
-2. **S2** — fail-fast su `JWT_SECRET` mancante/debole.
-3. **S3/S4/S5** — invertire i default: helmet + rate-limit **on**, CORS allowlist.
-4. **Q1** — rimuovere il flag `g` dalla regex `username` (bug di validazione concreto).
+- [x] **T1 — i18n broken in the published package (production BUG)** · `BE` ✅ *(2026-06-17)*
+  - `tsc` did not copy `lib/locales/*.json` into `dist/`, but the runtime loads the dictionaries from `dist/lib/locales` (via `main: dist/index.js`). Result: published package with an empty i18n catalog → every `t.__(...)` fell back to the key/`generic error` (this is why the sample received `undefined`).
+  - **Fix:** `scripts/copy-assets.mjs` + a `postbuild` that copies the locales into `dist/`. Covered by the real translation tests (backend + sample).
+
+- [x] **T2 — Tests that masked failures** · `BE`, `SA` ✅ *(2026-06-17)*
+  - Asserts inside silenced `try/catch` + `tearDown` with `process.exit(0)` (suite always exit 0). Removed; the tests now really assert. See also the loader/`--exit` fixes already committed.
+
+- [x] **T3 — Password policy does not enforce the special character (BUG)** · `BE` ✅ *(2026-06-18)*
+  - File: `lib/util/regexp.ts` (`password` regex)
+  - The `[...()-_=...]` class contained the **unintended range** `)-_` (0x29–0x5F) → uppercase letters and digits satisfied the "1 special character" requirement. E.g. `NoSpecial1A` passed despite having no specials.
+  - **Done:** `-` is now **escaped** (`\-`) in both occurrences → the special character is actually required. Side effect: `/` and `\` (allowed only thanks to the bug) are no longer valid characters for **new** passwords (no impact on existing users, see Q6). Made safe by the resolution of [[Q6]]. Real test in `test/unit/regexp.ts` + verification matrix (12 cases).
+
+- [x] **T4 — Test suite made runnable + initial coverage** · `BE`, `TO`, `TO`, `SA` ✅ *(2026-06-17)*
+  - Working mocha+tsx infra across all repos (before: backend did not compile, sample crashed, tools/typeorm zero). Added tests: backend (S2 secret, validators/Q1, S4 plugins, translation), typeorm (crypto/S9, Magic Query with injection/proto guard, S6), tools (MFA TOTP, concurrency). Total: **45 passing + 1 pending**. Prerequisite for [[Q11]] (CI).
+
+---
+
+## ⚡ Quick wins (high impact / low effort)
+
+1. **S1** — `npm audit fix` + upgrade `@fastify/jwt` (closes the critical JWT vuln across all repos).
+2. **S2** — fail-fast on a missing/weak `JWT_SECRET`.
+3. **S3/S4/S5** — flip the defaults: helmet + rate-limit **on**, CORS allowlist.
+4. **Q1** — remove the `g` flag from the `username` regex (concrete validation bug).
