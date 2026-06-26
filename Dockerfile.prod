@@ -3,7 +3,7 @@ FROM node:24-bookworm-slim AS builder
 
 WORKDIR /usr/src/app
 
-# Fallback di build per i moduli nativi (bcrypt) — su glibc di norma usa i prebuilt
+# Build fallback for native modules (bcrypt) — on glibc it normally uses prebuilts
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 
@@ -13,8 +13,8 @@ RUN npm ci --prefer-offline --no-audit
 COPY . .
 RUN npm run build
 
-# Tiene solo i runtime, poi REINTEGRA i peer del data layer: nel framework sono
-# dichiarati in devDependencies (servono ai test), ma a runtime qui servono davvero.
+# Keep only runtime deps, then REINSTALL the data-layer peers: the framework declares
+# them in devDependencies (needed by tests), but here they are genuinely needed at runtime.
 RUN npm prune --omit=dev \
     && npm install --no-save --prefer-offline --no-audit \
        typeorm@^0.3.28 pg@^8.13.0 bcrypt@^6.0.0 reflect-metadata@^0.2.2 pluralize@^8.0.0
@@ -29,12 +29,12 @@ LABEL maintainer="Developers <developers@volcanicminds.com>"
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
 
-# Solo node_modules (runtime + peer data layer), dist e package.json: niente sorgenti/compilatori
+# Only node_modules (runtime + data-layer peers), dist and package.json: no sources/compilers
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/package.json ./
 
 EXPOSE 2230
 
-# `prod` = cd dist && node server.js (entry compilato dello stesso server di test del framework)
+# `prod` = cd dist && node server.js (compiled entry of the framework's own test server)
 CMD ["npm", "run", "prod"]

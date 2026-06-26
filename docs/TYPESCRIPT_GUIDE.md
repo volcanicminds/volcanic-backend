@@ -136,12 +136,12 @@ declare global {
 
 ## Data layer & tsconfig
 
-Il data layer è incluso come subpath `@volcanicminds/backend/typeorm`:
+The data layer is included as the subpath `@volcanicminds/backend/typeorm`:
 
 ```typescript
 import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
 ```
 
-Le **entità TypeORM** (proprietà decorate senza initializer) richiedono che il `tsconfig.json` abbia
-`strictPropertyInitialization: false`, `useUnknownInCatchVariables: false`, `noUnusedLocals: false` — già
-impostate nel repo del framework. Un consumer che definisce proprie entità deve replicarle nel proprio tsconfig.
+**TypeORM entities** (decorated properties without an initializer) require the `tsconfig.json` to set
+`strictPropertyInitialization: false`, `useUnknownInCatchVariables: false`, `noUnusedLocals: false` — already
+set in the framework repo. A consumer that defines its own entities must replicate them in its own tsconfig.
