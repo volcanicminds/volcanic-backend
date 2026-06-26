@@ -63,6 +63,13 @@
     - **3.5 Pagination and Sorting**
       - Input Parameters and Response Headers (`v-total`)
     - **3.6 Customizing QueryBuilder (Global Search)**
+    - **3.7 Security Hardening (Sensitive Fields, Prototype Pollution, ReDoS, `:raw`)**
+    - **3.8 Data Layer Configuration (Init Options & Environment Variables)**
+    - **3.9 Data Layer API Reference (`start`, `executeFindQuery`, `applyQuery`, …)**
+    - **3.10 Standalone Usage (without the HTTP core)**
+    - **3.11 Multi-Tenancy: Unified Context Pattern (`switchContext`, `runInTenantContext`)**
+    - **3.12 Utility: Password Hash Generation (`generate-hash.js`)**
+    - **3.13 Local Database Setup (Docker & pgAdmin)**
 
 4.  **[Part 4: API Layer (Routing & Controllers)](#part-4-api-layer-routing--controllers)**
     - **4.1 Route Autodiscovery**
@@ -166,6 +173,15 @@ The framework is an **opinionated** system composed of three modular packages wo
     - **TypeORM** wrapper.
     - Introduces **"Magic Queries"**: a translation engine that automatically converts complex query strings (filters, sort, pagination, boolean logic) into optimized SQL.
     - Manages database connection and Entity initialization.
+    - **v3 note — the data layer ships inside the backend as the subpath `@volcanicminds/backend/typeorm`.**
+      It is **optional and decoupled, not bundled into the core**: its dependencies (`typeorm`, `bcrypt`,
+      `pluralize`, `reflect-metadata`, `pg`) are declared as *optional peer dependencies*, so a project that
+      uses only the HTTP core never installs them and never imports the data layer (the core ↛ data-layer
+      boundary is enforced in CI). It is also **replaceable**: the implementation lives under
+      `lib/database/typeorm/**`, so an alternative data adapter can be added under `lib/database/` without
+      touching the core. Integration stays the same — inject the managers (`userManager`, `tokenManager`, …)
+      via `start(decorators)`; if you don't, the core boots with no-op defaults. See the full data-layer
+      reference in [Part 3](#part-3-magic-queries--data-access) and `docs/configuration.md`.
 3.  **`@volcanicminds/tools` (Utilities)**
     - A _tree-shakeable_ support library.
     - Provides standardized tools for Logger, Mailer, and MFA/OTP code generation.
@@ -911,7 +927,9 @@ This table is the "Rosetta Stone" for the frontend developer. Every key in the J
 | :--------- | :------ | :------------------------ | :-------------------------------------------------------------- |
 | **(none)** | Any     | `=`                       | Implicit equality. `status=active` → `status = 'active'`        |
 | `:eq`      | Any     | `=`                       | Explicit equality. `id:eq=123`                                  |
+| `:eqi`     | String  | `ILIKE`                   | Case-insensitive equality. `country:eqi=it` matches `IT`/`It`   |
 | `:neq`     | Any     | `!=`                      | Not equal to. `type:neq=guest`                                  |
+| `:neqi`    | String  | `NOT ILIKE`               | Case-insensitive not-equal. `country:neqi=it`                   |
 | `:null`    | Boolean | `IS NULL` / `IS NOT NULL` | `deleted:null=true` (is null) / `deleted:null=false` (not null) |
 | `:notNull` | Boolean | `IS NOT NULL`             | `code:notNull=true` (readability alias)                         |
 
@@ -939,10 +957,26 @@ This table is the "Rosetta Stone" for the frontend developer. Every key in the J
 
 ### List Operators (Array)
 
-| Operator | SQL            | Description                                                                                         |
-| :------- | :------------- | :-------------------------------------------------------------------------------------------------- |
-| `:in`    | `IN (...)`     | Included in list. <br>URL: `status:in=open,pending` (CSV)<br>Body: `status:in: ["open", "pending"]` |
-| `:nin`   | `NOT IN (...)` | Excluded from list. `role:nin=admin,root`                                                           |
+| Operator   | SQL            | Description                                                                                         |
+| :--------- | :------------- | :-------------------------------------------------------------------------------------------------- |
+| `:in`      | `IN (...)`     | Included in list. <br>URL: `status:in=open,pending` (CSV)<br>Body: `status:in: ["open", "pending"]` |
+| `:nin`     | `NOT IN (...)` | Excluded from list. `role:nin=admin,root`                                                           |
+| `:overlap` | `&& ARRAY[…]`  | Array overlap (has at least one element in common). Postgres array column. <br>URL: `companies:overlap=acme,globex`. On MongoDB it degrades to `$in`. |
+
+### Raw / Dangerous Operator (off by default)
+
+| Operator | SQL              | Description                                                                                                                                                            |
+| :------- | :--------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:raw`   | _(raw fragment)_ | Injects a raw SQL fragment after the column alias (e.g. `age:raw=> 18`). **⚠️ SQL injection risk.** Disabled unless `VOLCANIC_CUSTOM_QUERY_OPERATORS=true`; logs a `SECURITY RISK!` warning when active. Never expose to untrusted clients. |
+
+### Database Compatibility (Postgres vs MongoDB)
+
+The translation engine is **hybrid**: the same endpoint works against PostgreSQL and MongoDB for the common
+operators. Case-insensitive operators (`:eqi`, `:neqi`, `:likei`, `:containsi`, `:startsi`, `:endsi`,
+`:ncontainsi`) compile to `ILIKE` on Postgres and to anchored case-insensitive `RegExp` on MongoDB. The
+case-sensitive `LIKE`-family operators (`:like`, `:contains`, `:starts`, `:ends`, `:ncontains`) are Postgres-only
+— on MongoDB prefer their `i` variants. `:overlap` maps to a Postgres array operator and degrades to `$in` on
+MongoDB. When in doubt, use the case-insensitive variants for portable APIs.
 
 ---
 
@@ -1066,6 +1100,242 @@ protected applyCustomFilters(qb: SelectQueryBuilder<Order>, params: any, alias: 
 
   return params;
 }
+```
+
+---
+
+## 3.7 Security Hardening (Data Layer)
+
+The Magic Query engine is **secure by default**. These protections live in `lib/database/typeorm/query.ts` and
+apply to every filter that flows through `applyQuery` / `useWhere` (and therefore through `executeFindQuery`,
+`executeCountQuery`, and the `BaseService`).
+
+### 1. Sensitive Field Blocking
+
+Filters targeting sensitive columns are **silently dropped** (the condition is skipped, not an error) so an
+attacker cannot probe secrets through the query string (e.g. `?password:containsi=a`).
+
+- **Default blacklist:** `['password', 'mfaSecret', 'resetPasswordToken', 'confirmationToken']`.
+- The match is by **substring on the full field path**, so nested relation fields (e.g. `user.password`) are
+  covered too.
+- **Customizable** at startup or runtime:
+
+```typescript
+import { start, configureSensitiveFields } from '@volcanicminds/backend/typeorm'
+
+// At startup — overrides the default blacklist entirely
+await start({ type: 'postgres', sensitiveFields: ['password', 'secretKey', 'ssn'] })
+
+// Or at runtime
+configureSensitiveFields(['password', 'mfaSecret', 'apiKey', 'ssn'])
+```
+
+### 2. Prototype Pollution Protection
+
+Every incoming key — the raw key, each dotted path segment, and the final field name — is validated by
+`hasProtoRisk`. Keys equal to `__proto__`, `constructor`, or `prototype` are rejected, blocking attempts to
+poison the generated query object or the Object prototype.
+
+### 3. ReDoS Protection
+
+User input compiled into `RegExp` (the MongoDB code path for the case-insensitive operators) is passed through
+`escapeRegExp` first, neutralizing crafted patterns designed to cause catastrophic backtracking.
+
+### 4. SQL Injection Control
+
+Filtering is built exclusively from a fixed **allowlist of operators** (`reservedOperators`) mapped to
+parameterized TypeORM helpers (`Equal`, `In`, `ILike`, `Between`, …) — never string concatenation. The only
+escape hatch is `:raw`, which is **disabled unless `VOLCANIC_CUSTOM_QUERY_OPERATORS=true`** and emits a runtime
+`SECURITY RISK!` warning when enabled. Treat `:raw` as trusted-callers-only.
+
+---
+
+## 3.8 Data Layer Configuration (Init Options & Environment Variables)
+
+The data layer is configured through options passed to `start()` and through environment variables. Full table
+in `docs/configuration.md`; summarized here.
+
+### Initialization Options (`start(options)`)
+
+| Option            | Type       | Default                                                              | Description                                            |
+| :---------------- | :--------- | :------------------------------------------------------------------ | :----------------------------------------------------- |
+| `sensitiveFields` | `string[]` | `['password', 'mfaSecret', 'resetPasswordToken', 'confirmationToken']` | Fields blocked from filtering (see 3.7).            |
+| `cacheTimeout`    | `number`   | `30000`                                                             | Global query cache timeout (ms).                       |
+| `logging`         | `boolean`  | `true`                                                             | Enables global TypeORM logging.                        |
+| _…TypeORM options_ |            |                                                                     | All standard TypeORM `DataSourceOptions` are accepted (`type`, `host`, `port`, `entities`, `synchronize`, …). |
+
+### Environment Variables
+
+| Variable                           | Type      | Default     | Description                                                                                  |
+| :--------------------------------- | :-------- | :---------- | :------------------------------------------------------------------------------------------- |
+| `DB_HOST`                          | `string`  | `127.0.0.1` | Postgres host.                                                                               |
+| `DB_PORT`                          | `number`  | `5432`      | Postgres port.                                                                               |
+| `DB_USERNAME`                      | `string`  | `vminds`    | DB user.                                                                                     |
+| `DB_PASSWORD`                      | `string`  | `vminds`    | DB password.                                                                                 |
+| `DB_NAME`                          | `string`  | `vminds`    | DB name.                                                                                     |
+| `LOG_DB_LEVEL`                     | `string`  | `warn`      | Data-layer log level: `trace`, `debug`, `info`, `warn`, `error` (maps to TypeORM levels).   |
+| `LOG_COLORIZE`                     | `boolean` | `true`      | Colorize console output.                                                                     |
+| `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` | `boolean` | `false`     | Auto-synchronize schema at startup. **Ignored when multi-tenant mode is enabled.**          |
+| `VOLCANIC_CUSTOM_QUERY_OPERATORS`  | `boolean` | `false`     | Enables the `:raw` operator. ⚠️ SQL injection risk — see 3.7.                                |
+
+> See Part 1.4/1.5 for the production-grade connection pool, SSL, and timeout variables (`DB_SSL`,
+> `DB_MAX_CONNECTING`, `DB_STATEMENT_TIMEOUT`, …).
+
+---
+
+## 3.9 Data Layer API Reference
+
+Everything below is exported from `@volcanicminds/backend/typeorm`.
+
+| Export                                                          | Purpose                                                                                                          |
+| :------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------- |
+| `start(options)`                                               | Initializes the TypeORM `DataSource`, autoloads entities, wires managers, sets globals. Returns the `DataSource`. |
+| `configureSensitiveFields(fields: string[])`                  | Replaces the sensitive-fields blacklist at runtime (see 3.7).                                                   |
+| `applyQuery(data, extraWhere, repo)`                          | **Core translator.** Turns raw query params into a TypeORM query object (`where`, `order`, `take`, `skip`).      |
+| `useWhere(where, repo?)`                                       | Translates only the **filter** portion into a TypeORM `where`.                                                  |
+| `useOrder(order: string[])`                                   | Translates only the **sort** portion (`field:asc`/`field:desc`) into a TypeORM `order`.                          |
+| `executeFindQuery(repo, relations?, data?, extraWhere?, extraOptions?)` | High-level find: runs `findAndCount`, returns `{ records, headers }` with the `v-*` pagination headers.   |
+| `executeCountQuery(repo, data?, extraWhere?)`                 | Count-only variant (respects filters, no pagination).                                                            |
+| `executeFindView(viewEntity, data?, extraWhere?, extraOptions?, runner?)` | Same as `executeFindQuery` but for `@ViewEntity` (read-only SQL views); optional `QueryRunner` for tenant context. |
+| `executeCountView(viewEntity, data?, extraWhere?, runner?)`  | Count-only variant for views.                                                                                   |
+| `DataSource`                                                  | Re-export of TypeORM's `DataSource`.                                                                            |
+| `User`, `Tenant`, `Token`, `Change`                          | Framework base entities.                                                                                        |
+| `userManager`, `tokenManager`, `dataBaseManager`, `TenantManager` | Managers injected into the core via `start(decorators)`.                                                  |
+| `Database`                                                    | Type of the database manager interface.                                                                         |
+
+**Headers returned by `executeFindQuery` / `executeFindView`:** `v-count`, `v-total`, `v-page`, `v-pageSize`,
+`v-pageCount` (see 3.5).
+
+---
+
+## 3.10 Standalone Usage (without the HTTP core)
+
+The Magic Query translator does not require the Fastify core — `applyQuery` works against any TypeORM repository,
+so you can use it with Express, raw TypeORM, background jobs, etc.
+
+```typescript
+import { applyQuery } from '@volcanicminds/backend/typeorm'
+import { myUserRepository } from './repositories.js' // any TypeORM repository
+
+app.get('/users', async (req, reply) => {
+  // Translate the HTTP query into a TypeORM query object…
+  const typeOrmQuery = applyQuery(req.query, {}, myUserRepository)
+  // …then run it however you like
+  const [records, total] = await myUserRepository.findAndCount(typeOrmQuery)
+  reply.send({ data: records, total })
+})
+```
+
+For the full find-and-paginate behavior (including the `v-*` headers) use `executeFindQuery` instead, passing any
+repository you resolved yourself.
+
+---
+
+## 3.11 Multi-Tenancy: Unified Context Pattern
+
+Postgres multi-tenancy is implemented via **schema isolation** (`SET search_path`). The `TenantManager`
+(`lib/database/typeorm/loader/tenantManager.ts`) enforces a strict, leak-proof context pattern.
+
+### Critical Security Rules
+
+1. **Global context switching is forbidden.** `switchContext(tenant)` **without** an `EntityManager` throws a
+   FATAL error — modifying the global `search_path` would poison the shared connection pool and leak data across
+   tenants. You must always pass the transactional `EntityManager` from a dedicated `QueryRunner`.
+
+   ```typescript
+   // ❌ FORBIDDEN — throws "CRITICAL: Attempted UNSAFE global context switch"
+   await tenantManager.switchContext(tenant)
+
+   // ✅ CORRECT — bound to a single QueryRunner
+   const qr = dataSource.createQueryRunner()
+   await qr.connect()
+   await tenantManager.switchContext(tenant, qr.manager)
+   ```
+
+2. **Tenant resolution is strict.** `resolveTenant(req)` requires the tenant header (default `x-tenant-id`,
+   configurable via `multi_tenant.header_key`). If the JWT carries a tenant binding (`req.user.tid`) and it does
+   **not** match the header, the request is **rejected** (tenant-isolation / IDOR protection) — not merely logged.
+   Only `active` tenants resolve. A privileged System-Admin impersonation flow, if ever needed, must be gated here
+   behind an explicit verified role — never by relaxing this default.
+
+3. **Background jobs / system tasks** must use the helper, which creates, switches, and releases a `QueryRunner`
+   safely (and always resets `search_path` to `public` on exit):
+
+   ```typescript
+   await tenantManager.runInTenantContext('tenant-slug', async (em) => {
+     // `em` is an isolated EntityManager already bound to the tenant schema
+     return em.getRepository(Order).find()
+   })
+   ```
+
+### Tenant Lifecycle
+
+- `createTenant(data)` — creates the tenant row, then (Postgres) `CREATE SCHEMA`, synchronizes the tables into
+  that schema via an ephemeral `DataSource`, and optionally seeds an admin user (`adminEmail`/`adminPassword`) —
+  all inside one transaction using `SET LOCAL search_path`. `dbSchema` is sanitized (`[^a-z0-9_]` stripped).
+- `getTenant` / `listTenants` / `updateTenant` (cannot change `dbSchema`) / `deleteTenant` (soft delete) /
+  `restoreTenant`.
+
+> Multi-tenancy is enabled via `src/config/general.ts` (`options.multi_tenant`) — see Part 1.7. When enabled,
+> `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` is ignored (each tenant schema is synchronized at `createTenant` time).
+
+---
+
+## 3.12 Utility: Password Hash Generation
+
+The data layer hashes passwords with **bcrypt** (`saltRounds = 12`). For seeding, fixtures, or manual DB edits
+you can generate a compatible hash from the CLI — the repo ships a small helper equivalent to:
+
+```javascript
+// generate-hash.js
+import * as bcrypt from 'bcrypt'
+const password = process.argv[2]
+const hash = await bcrypt.hash(password, 12)
+console.log(`Password ${password}`)
+console.log(`Hash ${hash}`)
+```
+
+```bash
+node generate-hash.js 'MyS3cretP@ss'
+# Password MyS3cretP@ss
+# Hash $2b$12$....
+```
+
+Use the resulting hash anywhere a pre-hashed password is expected (seed scripts, manual inserts). Never store
+plaintext passwords.
+
+---
+
+## 3.13 Local Database Setup (Docker & pgAdmin)
+
+For local development/testing against real Postgres (the test suites run in-memory with `NODE_ENV=memory` and do
+**not** need this). Defaults match the data layer's `DB_*` defaults (`vminds`/`vminds`).
+
+```bash
+docker pull postgres:latest
+
+# Without a data mount (ephemeral)
+docker run -itd -e POSTGRES_USER=vminds -e POSTGRES_PASSWORD=vminds \
+  -p 5432:5432 --name postgresql postgres
+
+# With a persistent data mount
+docker run -itd -e POSTGRES_USER=vminds -e POSTGRES_PASSWORD=vminds \
+  -p 5432:5432 -v ${PWD}/data:/var/lib/postgresql/data --name postgresql postgres
+```
+
+Optional pgAdmin UI:
+
+```bash
+docker pull dpage/pgadmin4:latest
+docker run --name pgadmin-vminds -p 5051:80 \
+  -e "PGADMIN_DEFAULT_EMAIL=developers@volcanicminds.com" \
+  -e "PGADMIN_DEFAULT_PASSWORD=vminds" -d dpage/pgadmin4
+
+# Find the Postgres container IP to connect from pgAdmin:
+docker ps -aqf "name=postgres"
+docker inspect <container_id> | grep IPAddress
+# Or list all container IPs at once:
+docker ps -q | xargs -n 1 docker inspect --format '{{ .NetworkSettings.IPAddress }} {{ .Name }}'
 ```
 
 ---
