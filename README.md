@@ -606,15 +606,18 @@ The real power is unlocked when combining `req.data()` with `@volcanicminds/back
 // src/api/products/controller/product.ts
 import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
 import { executeFindQuery } from '@volcanicminds/backend/typeorm'
-
-// The 'repository' global is populated by @volcanicminds/backend/typeorm
-declare var repository: any
+import { Product } from '../../../entities/product.e.js'
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
+  // Always resolve the repository from the request-scoped EntityManager (`req.db`):
+  // it is multi-tenant safe. NEVER use the `global.repository.X` accessor — it is
+  // forbidden at runtime by a fail-fast Proxy.
+  const productRepo = req.db.getRepository(Product)
+
   // req.data() automatically gets all query string (or body!) parameters
   // executeFindQuery translates them into a full TypeORM query with pagination, sorting, and filtering
   const { headers, records } = await executeFindQuery(
-    repository.products, // The TypeORM repository for the 'Product' entity
+    productRepo,
     { category: true }, // Eagerly load the 'category' relation
     req.data()
   )
@@ -632,7 +635,7 @@ This single controller function can handle a wide variety of requests without an
 
 **Database Synergy with `@volcanicminds/backend/typeorm`**
 
-While `volcanic-backend` can be used with any data layer, it is designed for seamless integration with its companion package, `@volcanicminds/backend/typeorm`. This combination provides a powerful, query-string-driven API out-of-the-box.
+While `volcanic-backend` can run with any data layer (or none), it ships a built-in one as the subpath `@volcanicminds/backend/typeorm`. This combination provides a powerful, query-string-driven API out-of-the-box.
 
 **How it Works:**
 
@@ -641,13 +644,13 @@ While `volcanic-backend` can be used with any data layer, it is designed for sea
 
 2.  **`volcanic-backend` Controller**: The controller uses the `req.data()` helper to grab all query parameters.
 
-3.  **`volcanic-typeorm` Translation**: The `executeFindQuery` function from `@volcanicminds/backend/typeorm` receives these parameters and uses its internal `applyQuery` engine to translate them into a rich TypeORM query object, including `where`, `order`, `skip`, and `take` clauses. It automatically handles the syntax for different databases (e.g., `ILIKE` for PostgreSQL, `$regex` for MongoDB).
+3.  **Data-layer Translation**: The `executeFindQuery` function from `@volcanicminds/backend/typeorm` receives these parameters and uses its internal `applyQuery` engine to translate them into a rich TypeORM query object, including `where`, `order`, `skip`, and `take` clauses. It automatically handles the syntax for different databases (e.g., `ILIKE` for PostgreSQL, `$regex` for MongoDB).
 
 4.  **Database Execution**: TypeORM executes the optimized query against the database.
 
 5.  **Response with Headers**: `executeFindQuery` returns the records and a set of custom pagination headers (`v-total`, `v-pageCount`, etc.), which the controller then sends back to the client.
 
-This powerful synergy allows you to build complex, high-performance data endpoints with minimal effort. Please refer to the `@volcanicminds/backend/typeorm` `README.md` for a complete guide on its advanced query syntax.
+This powerful synergy allows you to build complex, high-performance data endpoints with minimal effort. See the **[Database (data layer)](#database-data-layer)** section below for the complete query syntax, multi-tenancy rules, and API reference (also in `llms.txt`, Part 3).
 
 ## Roles
 
@@ -680,7 +683,10 @@ roles: [roles.admin, roles.public]
 
 ## Database (data layer)
 
-The data layer (Magic Query + multi-tenant) is the subpath **`@volcanicminds/backend/typeorm`**. Import it directly:
+The data layer (Magic Query + multi-tenant) is the subpath **`@volcanicminds/backend/typeorm`**. It dynamically
+translates HTTP query-string parameters into complex pagination, sorting, and filtering queries, with a
+database-agnostic abstraction layer that works with both SQL (e.g. PostgreSQL) and NoSQL (e.g. MongoDB) for most
+common use cases. Import it directly:
 
 ```ts
 import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
@@ -692,7 +698,168 @@ Install its optional **peer dependencies** in your app (only if you use the data
 npm install typeorm bcrypt pluralize reflect-metadata pg
 ```
 
-See `docs/configuration.md` for options and environment variables, and `llms.txt` (Part 3) for the full data-layer reference.
+For the full options and environment variables see `docs/configuration.md`; `llms.txt` (Part 3) is the exhaustive
+reference. The essentials you need day-to-day are below.
+
+### Core features
+
+- **Server-Side Pagination**: handle large datasets with `page` and `pageSize`.
+- **Multi-Field Sorting**: define complex sort orders directly from the URL.
+- **Advanced Dynamic Filtering**: a rich set of filter operators, well beyond simple equality.
+- **Nested Relation Queries**: filter and sort on fields of related entities using dot notation.
+- **Complex Boolean Logic**: nested `AND`/`OR` conditions via the `_logic` parameter.
+- **Hybrid Database Support**: one endpoint that works transparently with PostgreSQL and MongoDB for standard queries.
+- **Standalone or Integrated**: use it inside the framework or as a plain TypeORM utility.
+- **Security Hardening**: built-in protections against SQL Injection (strict operator control), Prototype Pollution, and ReDoS.
+
+### Core concept
+
+The library bridges flat HTTP query strings and the structured query objects TypeORM expects:
+
+`HTTP Query String` → `applyQuery()` → `TypeORM Query Object`
+
+### Usage
+
+**Integrated (recommended) — `executeFindQuery` does everything:**
+
+```typescript
+// src/api/users/controller/user.ts
+import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
+import { executeFindQuery } from '@volcanicminds/backend/typeorm'
+import { User } from '../../../entities/user.e.js' // Your Entity
+
+export async function find(req: FastifyRequest, reply: FastifyReply) {
+  // 1. Resolve the repository from the request context (multi-tenant safe)
+  const userRepo = req.db.getRepository(User)
+
+  // 2. executeFindQuery handles pagination, sorting, filtering and headers
+  const { headers, records } = await executeFindQuery(
+    userRepo,
+    { company: true }, // Optional relations to include
+    req.data()
+  )
+
+  return reply.type('application/json').headers(headers).send(records)
+}
+```
+
+**Standalone — use `applyQuery` directly in any TypeORM project:**
+
+```typescript
+import { applyQuery } from '@volcanicminds/backend/typeorm'
+import { myUserRepository } from './repositories' // Your TypeORM repository instance
+
+app.get('/users', async (req, reply) => {
+  // applyQuery translates the request query into a TypeORM query object
+  const typeOrmQuery = applyQuery(req.query, {}, myUserRepository)
+
+  const [records, total] = await myUserRepository.findAndCount(typeOrmQuery)
+
+  reply.send({ data: records, total })
+})
+```
+
+### Query string guide
+
+**Pagination** — `page` (default `1`) and `pageSize` (default `25`).
+`GET /users?page=2&pageSize=50`
+
+**Sorting** — `sort=field` (asc) or `sort=field:desc`; repeat for multi-field sorting.
+`GET /users?sort=lastName:asc&sort=createdAt:desc`
+
+**Filtering** — `field:operator=value`. With no operator it defaults to equality.
+
+| Operator     | Description                                                               | Example URL                                   | PostgreSQL | MongoDB |
+| :----------- | :------------------------------------------------------------------------ | :-------------------------------------------- | :--------: | :-----: |
+| `:eq`        | Equals                                                                    | `...&status:eq=active`                        |     ✅     |   ✅    |
+| `:neq`       | Not equals                                                                | `...&status:neq=archived`                     |     ✅     |   ✅    |
+| `:eqi`       | Equals (case-insensitive)                                                 | `...&country:eqi=it`                          |     ✅     |   ✅    |
+| `:gt`, `:ge` | Greater than / Greater than or equal                                      | `...&visits:gt=100`                           |     ✅     |   ✅    |
+| `:lt`, `:le` | Less than / Less than or equal                                            | `...&price:lt=99.99`                          |     ✅     |   ✅    |
+| `:in`        | Included in an array (comma-sep.)                                         | `...&status:in=active,pending`                |     ✅     |   ✅    |
+| `:nin`       | Not included in an array                                                  | `...&category:nin=old,obsolete`               |     ✅     |   ✅    |
+| `:overlap`   | Array overlap (has common elements)                                       | `...&companies:overlap=acme,globex`           |     ✅     |   ✅    |
+| `:between`   | Is between two values (colon-sep.)                                        | `...&createdAt:between=2024-01-01:2024-12-31` |     ✅     |   ✅    |
+| `:null`      | Is null                                                                   | `...&deletedAt:null=true`                     |     ✅     |   ✅    |
+| `:notNull`   | Is not null                                                               | `...&updatedAt:notNull=true`                  |     ✅     |   ✅    |
+| `:contains`  | Contains (case-sensitive)                                                 | `...&name:contains=Corp`                      |     ✅     |   ❌    |
+| `:containsi` | Contains (case-insensitive)                                               | `...&name:containsi=corp`                     |     ✅     |   ✅    |
+| `:starts`    | Starts with (case-sensitive)                                              | `...&code:starts=INV-`                        |     ✅     |   ❌    |
+| `:startsi`   | Starts with (case-insensitive)                                            | `...&code:startsi=inv-`                       |     ✅     |   ✅    |
+| `:ends`      | Ends with (case-sensitive)                                                | `...&file:ends=.pdf`                          |     ✅     |   ❌    |
+| `:endsi`     | Ends with (case-insensitive)                                              | `...&file:endsi=.pdf`                         |     ✅     |   ✅    |
+| `:raw`       | Raw SQL ⚠️ **Dangerous** — disabled by default (see security note below). | `...&age:raw=> 18`                            |     ✅     |   ✅    |
+
+**Nested relation filters** — dot notation on related entities:
+`GET /users?company.name:eq=Volcanic Minds`
+
+**Complex boolean logic with `_logic`** — give conditions short aliases and combine them with nested `AND`/`OR`.
+Syntax: `field:operator[alias]=value` (the `[alias]` is optional; it defaults to the full parameter key).
+
+```text
+# Find users whose first name is 'Mario' OR last name is 'Rossi'
+?firstName:eq[fn]=Mario&lastName:eq[ln]=Rossi&_logic=(fn OR ln)
+
+# (active users from Italy) OR (pending users from Germany)
+?status:eq[s1]=active&country:eq[c1]=IT&status:eq[s2]=pending&country:eq[c2]=DE&_logic=((s1 AND c1) OR (s2 AND c2))
+```
+
+### Security: sensitive fields & the `:raw` operator
+
+- **Sensitive fields are blocked from filtering** by default: `password`, `mfaSecret`, `resetPasswordToken`,
+  `confirmationToken`. Override the list via `start({ ..., sensitiveFields: ['password', 'ssn'] })` or at runtime
+  with `configureSensitiveFields(fields)`.
+- The **`:raw` operator is disabled by default** (it allows raw SQL fragments → SQL-injection risk). Enable it
+  only if you fully control the input by setting `VOLCANIC_CUSTOM_QUERY_OPERATORS=true` in your environment. Use
+  with **extreme caution**.
+
+### Multi-Tenancy (Unified Context Pattern)
+
+Postgres multi-tenancy is enforced via schema isolation (`SET search_path`) with a strict, leak-proof pattern.
+
+**Global context switching is forbidden.** `switchContext(tenant)` without an `EntityManager` throws a fatal
+error — changing the global `search_path` would poison the shared pool and leak data across tenants. Always pass
+the `EntityManager` of a dedicated `QueryRunner`:
+
+```typescript
+// ❌ FORBIDDEN — throws "CRITICAL: Attempted UNSAFE global context switch"
+await tenantManager.switchContext(tenant)
+
+// ✅ CORRECT — bound to a single QueryRunner
+const qr = dataSource.createQueryRunner()
+await qr.connect()
+await tenantManager.switchContext(tenant, qr.manager)
+```
+
+**Tenant resolution is strict.** `resolveTenant(req)` requires the tenant header (default `x-tenant-id`). If the
+JWT carries a tenant binding (`req.user.tid`) and it does **not** match the header, the request is **rejected**
+(tenant-isolation / IDOR protection). Only `active` tenants resolve.
+
+**Background jobs / system tasks** must use the helper, which creates, switches, and safely releases a
+`QueryRunner` (always resetting `search_path` to `public` on exit):
+
+```typescript
+await tenantManager.runInTenantContext('tenant-slug', async (em) => {
+  // `em` is an isolated EntityManager already bound to the tenant schema
+  return em.getRepository(Order).find()
+})
+```
+
+### API reference
+
+- **`start(options)`** — initializes the database connection. `options` may include `sensitiveFields` (string[]) to customize the blocked-filter list.
+- **`configureSensitiveFields(fields)`** — update the sensitive-fields list at runtime.
+- **`executeFindQuery(repo, relations, data, extraWhere?, extraOptions?)`** — high-level find-and-count: processes all parameters and returns `{ headers, records }`.
+- **`executeCountQuery(repo, data, extraWhere?)`** — count records matching the filters.
+- **`applyQuery(data, extraWhere, repo)`** — the core translation function: raw query params → TypeORM query object.
+- **`useWhere(where, repo)`** — translate only the filter part of the query.
+- **`useOrder(order)`** — translate only the sorting part of the query.
+
+`executeFindView` / `executeCountView` are the view-backed counterparts, with the same signatures.
+
+### Useful scripts
+
+- `node generate-hash.js <my-string>` — generate a bcrypt hash for a given string (passwords / seeding / testing).
 
 ## Hooks
 
