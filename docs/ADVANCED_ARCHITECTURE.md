@@ -1,6 +1,6 @@
 # Advanced Architecture: Service & Repository Pattern
 
-> **✅ CANONICAL v2 PATTERN (source of truth, 2026-06).** The context-aware Service Layer shown here —
+> **✅ CANONICAL DATA-ACCESS PATTERN (source of truth, 2026-06).** The context-aware Service Layer shown here —
 > `service.use(req.db)` with RLS in `applyPermissions` — is the **official** data-access pattern, required
 > for strong multi-tenancy. Direct `global.repository.X` access is **legacy** and is rejected at runtime by a
 > fail-fast Proxy in `@volcanicminds/backend/typeorm`. Older snippets in `llms.txt`/README/Context7 may still show the

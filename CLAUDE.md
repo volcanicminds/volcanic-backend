@@ -1,8 +1,8 @@
 # CLAUDE.md — @volcanicminds/backend
 
 > **Questo repo È il framework, non un'applicazione.** Pacchetto npm `@volcanicminds/backend`
-> (codename `rome`, **v3.x**). Wrapper opinionato attorno a **Fastify v5**. **Dalla v3 include anche il
-> data layer** (ex `@volcanicminds/typeorm`) esposto come **subpath interno `@volcanicminds/backend/typeorm`**.
+> (codename `rome`, **v3.x**). Wrapper opinionato attorno a **Fastify v5**. **Include il
+> data layer** (Magic Query + multi-tenant) esposto come **subpath interno `@volcanicminds/backend/typeorm`**.
 > Gli esempi "applicativi" in `llms.txt` (controller, service, entità di dominio come `Order`/`Client`) si
 > riferiscono a un **repo consumer separato** (`volcanic-backend-sample`), NON a questo.
 > Qui si lavora sugli **interni del framework** in `lib/`.
@@ -14,19 +14,16 @@
 | `@volcanicminds/backend` | `volcanic-backend` (questo) | Core HTTP/Fastify, auth, autodiscovery, hooks **+ data layer come subpath `/typeorm`** (Magic Query + multi-tenant) | `/volcanicminds/volcanic-backend` |
 | `@volcanicminds/tools` | `volcanic-tools` | Utility tree-shakeable: mfa, mailer, logger, storage, transfer, ai | `/volcanicminds/volcanic-tools` |
 
-> ⚠️ `@volcanicminds/typeorm` (repo `volcanic-database-typeorm`) è **EOL**: fuso qui in v3. Importa da
-> `@volcanicminds/backend/typeorm`.
-
-**Disaccoppiamento (resta reale, garantito diversamente):** il core **non** importa il data layer. Dalla v3
-il decoupling non è più dato dalla separazione fisica del pacchetto, ma da **subpath export + peer dependencies
-opzionali + boundary enforced in CI** (`dependency-cruiser`, regola `core-no-datalayer-import`). Verifica:
+**Disaccoppiamento (reale):** il core **non** importa il data layer. Il decoupling è garantito da
+**subpath export + peer dependencies opzionali + boundary enforced in CI** (`dependency-cruiser`, regola
+`core-no-datalayer-import`). Verifica:
 `npm run depcruise`. L'integrazione runtime è invariata: **iniezione di "Manager"** (Null Object Pattern) via
 `start(decorators)` — `userManager`, `tokenManager`, `dataBaseManager`, `mfaManager`, `transferManager`,
 `tenantManager`. I tipi delle interfacce (`UserManagement`, `TokenManagement`, `DataBaseManagement`,
 `MfaManagement`, `TransferManagement`) sono esportati da `index.ts`. Se un manager non è iniettato, parte un
 default no-op → il server si avvia comunque.
 
-Wiring consumer (v3):
+Wiring consumer:
 ```typescript
 import { start as startServer } from '@volcanicminds/backend'
 import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
@@ -72,7 +69,7 @@ npm run check-all    # lint + type-check + depcruise  <-- esegui prima di commit
 - `lib/middleware/*` — `isAuthenticated`, `isAdmin`, pre/post auth & forgot-password.
 - `lib/schemas/*` — JSON Schema core (override via deep-merge se il consumer usa lo stesso `$id`).
 - `lib/defaults/managers.ts` — i Null Object dei manager.
-- **`lib/database/typeorm/**`** — **data layer** (ex `@volcanicminds/typeorm`): `query.ts`/`query/*` (Magic Query),
+- **`lib/database/typeorm/**`** — **data layer**: `query.ts`/`query/*` (Magic Query),
   `entities/*` (User/Tenant/Token/Change), `loader/*` (manager + autoload entità + multi-tenant), `util/*`.
   Il core **non** deve importarlo (regola `depcruise`); il flusso è data layer → core (solo import type-only).
 
@@ -92,11 +89,10 @@ Dal data layer `@volcanicminds/backend/typeorm` (lato consumer): `entity.[Pascal
 
 ## ⚠️ Drift documentazione vs codice
 
-`llms.txt` (3100+ righe, ottima guida ai pattern) e i doc Context7 sono **leggermente disallineati**
-dal codice corrente. In particolare mostrano `repository.orders…` per l'accesso dati, ma il data layer
-**vieta `global.repository.X`** (Proxy fail-fast) imponendo `service.use(req.db)` (vedi
-`docs/ADVANCED_ARCHITECTURE.md`, fonte aggiornata). I doc possono ancora citare `@volcanicminds/typeorm`
-come pacchetto separato: dalla v3 è il subpath `@volcanicminds/backend/typeorm`. In caso di conflitto, **vince il codice**.
+`llms.txt` (3100+ righe, ottima guida ai pattern) e i doc Context7 possono essere **leggermente disallineati**
+dal codice corrente. In particolare alcuni snippet mostrano `repository.orders…` per l'accesso dati, ma il data
+layer **vieta `global.repository.X`** (Proxy fail-fast) imponendo `service.use(req.db)` (vedi
+`docs/ADVANCED_ARCHITECTURE.md`, fonte aggiornata). In caso di conflitto, **vince il codice**.
 
 ## Maturità (stato al 2026-06)
 
@@ -108,13 +104,13 @@ come pacchetto separato: dalla v3 è il subpath `@volcanicminds/backend/typeorm`
 ## Tooling / MCP — Context7
 
 I pacchetti sono indicizzati su **Context7** (MCP): `/volcanicminds/volcanic-backend`, `/volcanicminds/volcanic-tools`.
-`/volcanicminds/volcanic-database-typeorm` è **deprecato** (EOL, fuso nel backend). Usa Context7 per **panoramica
-e firma API**, ma i suoi snippet derivano da `llms.txt`/README → possono riflettere pattern v1/pacchetto separato.
-Per i **pattern correnti** valida sempre sul sorgente in `lib/` (vedi sezione "Drift" sopra).
+Il data layer è documentato sotto `/volcanicminds/volcanic-backend` (subpath `/typeorm`): non esiste un ID
+Context7 dedicato al database. Usa Context7 per **panoramica e firma API**, ma i suoi snippet derivano da
+`llms.txt`/README → per i **pattern correnti** valida sempre sul sorgente in `lib/` (vedi sezione "Drift" sopra).
 
 ## Documenti chiave da consultare
 
-`llms.txt` (guida pattern completa), `README.md`, `MIGRATION.md` (v2→v3), `CHANGELOG.md`,
+`llms.txt` (guida pattern completa), `README.md`,
 `docs/ADVANCED_ARCHITECTURE.md` (Service/Repository pattern, `.use(req.db)`), `docs/SECURITY_MFA.md`,
 `docs/SCHEMA_OVERRIDING.md`, `docs/DATA_LAYER_MAGIC.md`, `docs/configuration.md` (config data layer),
 `docs/TYPESCRIPT_GUIDE.md`, `DOCKER.md`.

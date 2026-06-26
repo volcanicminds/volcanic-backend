@@ -3,11 +3,11 @@
 > Read this entirely before proposing architecture changes, generating services, or debugging.
 >
 > **⚠️ DOC STATUS (updated 2026-06) — CANONICAL DATA-ACCESS PATTERN**:
-> The official v2 pattern is the **context-aware Service Layer: `service.use(req.db)`** (required for strong
+> The official, canonical pattern is the **context-aware Service Layer: `service.use(req.db)`** (required for strong
 > multi-tenancy; RLS enforced in `applyPermissions` on `BaseService`). Direct access to
-> **`global.repository.X` is LEGACY and FORBIDDEN at runtime** (`@volcanicminds/backend/typeorm` throws a fail-fast
+> **`global.repository.X` is FORBIDDEN at runtime** (`@volcanicminds/backend/typeorm` throws a fail-fast
 > `[Volcanic Architecture 2.0] FATAL ... FORBIDDEN`). Any snippet below still showing `repository.orders…`
-> direct access reflects the old (v1/legacy) pattern — prefer `service.use(req.db)`. Canonical reference:
+> direct access reflects the old/superseded pattern — prefer `service.use(req.db)`. Canonical reference:
 > `docs/ADVANCED_ARCHITECTURE.md`. **In any conflict, the package source code wins.**
 >
 > **Core Paradigms (MANDATORY)**:
@@ -16,6 +16,55 @@
 > 3. **Data Layer**: `@volcanicminds/backend/typeorm` (Active Record pattern via `BaseEntity`). Access data ONLY through the context-aware Service Layer (`service.use(req.db)`), never via `global.repository.X` (legacy/forbidden). NEVER use raw SQL unless for extreme reporting (`@ViewEntity`). Use "Magic Queries" (`req.data()`) for filtering.
 > 4. **Security**: Row Level Security (RLS) is enforced in `applyPermissions` on the `BaseService`. Do not bypass it.
 > 5. **TypeScript**: Strict typing required. Always use provided types (`FastifyRequest`, `FastifyReply`, `UserContext`).
+
+## How to read this document (3 audiences)
+
+This file is the **single, self-contained source of truth** for `@volcanicminds/backend` **v3**. It is written so
+that three different readers can use it without any other source:
+
+1. **A developer new to the project** who only ever sees v3 — wants to start a server, expose public and private
+   routes, choose an auth mode, optionally add a database, optionally add `@volcanicminds/tools`, in single- or
+   multi-tenant mode. → Start at **Part 0 (Mental Model)**, then **Part 12 (Usage Scenarios & Recipes)**.
+2. **An LLM coding agent reading the repository directly** — needs exact, code-accurate API surface, types, and
+   contracts to generate or modify code. → Treat **Part 10 (Manager contract)**, **Part 11 (Native API surface)**
+   and the package source in `lib/` as authoritative; this doc summarizes them, the source wins on conflict.
+3. **An LLM using only the Context7 MCP tool** (no repo access) — receives chunks of this file. Each Part is
+   self-describing and cross-links the others, so a single retrieved Part is still actionable.
+
+## Part 0 — Mental Model (Core vs Data Layer)
+
+`@volcanicminds/backend` ships **two cleanly separated layers** in one npm package:
+
+- **The HTTP Core** (`@volcanicminds/backend`) — Fastify wrapper: routing autodiscovery, JSON-Schema validation,
+  hooks, JWT/cookie auth, RBAC, MFA gatekeeper, Swagger, scheduler, and the **native API** (`/auth`, `/users`,
+  `/token`, `/tenants`, `/health`, `/tool`). **The core needs no database to run.** With no managers injected it
+  boots on **Null-Object defaults** (every manager reports `isImplemented() === false`) — perfect for a pure
+  public API.
+- **The Data Layer** (subpath `@volcanicminds/backend/typeorm`) — TypeORM wrapper: Magic Query, base entities,
+  multi-tenant context, and the concrete **managers** you inject into the core. Its deps (`typeorm`, `pg`,
+  `bcrypt`, `pluralize`, `reflect-metadata`) are **optional peer dependencies** — installed only if you use it.
+
+The two layers meet at exactly **one seam**: you call `start(decorators)` on the core and pass it **managers**
+(plain objects implementing a known interface). The data layer provides ready-made managers; you can also write
+your own, mix-and-match, or replace the data layer entirely (see Part 10.4). This is the whole integration
+contract — there is no hidden coupling (the core ↛ data-layer boundary is enforced in CI by `dependency-cruiser`).
+
+```
+┌─────────────────────────── @volcanicminds/backend ───────────────────────────┐
+│  HTTP CORE  (always present, DB-agnostic)                                     │
+│    Fastify · routes · auth (Bearer/Cookie) · RBAC · MFA · native API · jobs   │
+│                              ▲  start(decorators)                             │
+│                              │  injects managers (Null-Object if omitted)     │
+│  DATA LAYER  (optional, subpath /typeorm, optional peer deps)                 │
+│    TypeORM · Magic Query · base entities · multi-tenant · managers            │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Decision shortcuts:**
+- *No persistence?* Use the core alone, expose public routes, inject nothing. (Part 12, Scenario A)
+- *Need users/login/persistence?* Add the `/typeorm` subpath, inject `userManager` (+ `tokenManager`, …). (Scenarios C–F)
+- *Need MFA / file upload / mail?* Add `@volcanicminds/tools` and inject `mfaManager` / `transferManager`. (Part 12.7)
+- *Need tenant isolation?* Flip `multi_tenant.enabled` and inject `tenantManager`. (Part 12.6)
 
 # Index: The Volcanic Stack - Definitive Backend Guide
 
@@ -153,6 +202,26 @@ The system supports two mutually exclusive authentication modes, configurable vi
     - **9.3 Troubleshooting: Common Errors and Solutions**
       - Circular Dependency, Relation Not Found, Access Denied
     - **9.4 Production Release Checklist**
+
+6.  **[Part 10: Manager Injection & the Core/Data-Layer Contract](#part-10-manager-injection--the-coredata-layer-contract)**
+    - **10.1 `start(decorators)` and the Null-Object default**
+    - **10.2 The six managers (reference)**
+    - **10.3 Wiring recipes (core-only, +DB, +tools, +tenant)**
+    - **10.4 Replacing or customizing the data layer**
+
+7.  **[Part 11: Native API Surface (built-in routes)](#part-11-native-api-surface-built-in-routes)**
+    - **11.1 `/health`, `/auth/*`, `/users/*`, `/token/*`, `/tenants/*`, `/tool/*`**
+    - **11.2 Auth modes (Bearer vs Cookie) and `embedded_auth`**
+    - **11.3 Public vs private routes and the `roles` gate**
+
+8.  **[Part 12: Usage Scenarios & Recipes](#part-12-usage-scenarios--recipes)**
+    - **A. Pure public API (no DB, no auth)**
+    - **B. Public API with a database**
+    - **C. Private API — Bearer (single-tenant)**
+    - **D. Private API — Cookie (browser)**
+    - **E. Machine-to-machine — API tokens**
+    - **F. Multi-tenant (single ↔ multi)**
+    - **G. With `@volcanicminds/tools` (MFA, mailer, TUS upload)**
 
 # Part 1: Foundations and Infrastructure
 
@@ -3122,3 +3191,286 @@ Before deploying `volcanic-sample-backend`, verify:
 4.  [ ] **Auth**: `JWT_SECRET` and `JWT_REFRESH_SECRET` are long, complex, and different from each other.
 5.  [ ] **MFA**: Policy set according to business requirements (`OPTIONAL` or `MANDATORY`).
 6.  [ ] **Admin**: Verify Admin user has strong password and active MFA.
+
+---
+
+# Part 10: Manager Injection & the Core/Data-Layer Contract
+
+This is the **only seam** between the HTTP core and any persistence/feature backend. Master this and you can run
+the core with no database, with the bundled TypeORM data layer, with `@volcanicminds/tools`, or with your own
+hand-written backend — all through the same mechanism.
+
+## 10.1 `start(decorators)` and the Null-Object default
+
+The core entry point is:
+
+```typescript
+import { start } from '@volcanicminds/backend'
+
+const server = await start(decorators) // decorators is an object of managers; returns the Fastify instance
+```
+
+- `start()` registers Fastify plugins (cookie, helmet, rate-limit, multipart, cors, compress, raw-body), JWT
+  (+ a separate `refreshToken` namespace), Swagger (if `SWAGGER=true`), the loaders (**tenant → hooks → schemas →
+  router**), the scheduler (if enabled), then **decorates the server with the managers** and finally
+  `listen()`s. It also mounts the TUS transfer route (if `transferManager` is implemented) and runs the
+  "Admin MFA forced reset" startup check.
+- `preload()` (also exported) loads `config`, translations (`t`), and `roles` into globals; `start()` calls it
+  automatically if not already done. Call it yourself only if you need globals before `start()`.
+
+**Null-Object Pattern.** Every manager you do **not** pass is replaced by a default whose `isImplemented()`
+returns `false` and whose methods throw `"Not implemented."`. So:
+
+```typescript
+await start() // 100% valid: the server boots. Public routes work. Any route that NEEDS a manager
+              // (e.g. POST /auth/login needs userManager) returns a "Not implemented" error at call time,
+              // not at boot. Nothing crashes at startup.
+```
+
+The six decorator keys (all optional): `userManager`, `tokenManager`, `dataBaseManager`, `mfaManager`,
+`transferManager`, `tenantManager`. Each maps 1:1 to an exported interface
+(`UserManagement`, `TokenManagement`, `DataBaseManagement`, `MfaManagement`, `TransferManagement`,
+`TenantManagement` — all re-exported from `@volcanicminds/backend`).
+
+## 10.2 The six managers (reference)
+
+| Manager | Interface | Typical source | Enables (native routes / features) | Key methods (non-exhaustive) |
+| :--- | :--- | :--- | :--- | :--- |
+| `userManager` | `UserManagement` | `@volcanicminds/backend/typeorm` (`userManager`) — or your own | All of `/auth/*` and `/users/*`; user resolution in `onRequest` (`retrieveUserByExternalId`) | `retrieveUserByPassword`, `retrieveUserByExternalId`, `createUser`, `changePassword`, `forgotPassword`, `resetPassword`, `userConfirmation`, `isValidUser`, `blockUserById`, `saveMfaSecret`/`retrieveMfaSecret`/`enableMfa`/`disableMfa`, `forceDisableMfaForAdmin`, `findQuery`/`countQuery`, `isImplemented` |
+| `tokenManager` | `TokenManagement` | `@volcanicminds/backend/typeorm` (`tokenManager`) | `/token/*` (machine-to-machine API tokens); token-subject resolution in `onRequest` (`retrieveTokenByExternalId`) | `createToken`, `retrieveTokenByExternalId`, `isValidToken`, `blockTokenById`/`unblockTokenById`, `removeTokenById`, `findQuery`/`countQuery` |
+| `dataBaseManager` | `DataBaseManagement` | `@volcanicminds/backend/typeorm` (`dataBaseManager`) | `POST /tool/synchronize-schemas`; audit tracking writes (`addChange`); generic `retrieveBy` | `synchronizeSchemas`, `retrieveBy`, `addChange` |
+| `mfaManager` | `MfaManagement` | `@volcanicminds/tools` (mfa) wrapped in an adapter | TOTP setup/verify used by `/auth/mfa/*` | `generateSetup(appName, email)`, `verify(token, secret)` |
+| `transferManager` | `TransferManagement` | `@volcanicminds/tools` (transfer/TUS) | Mounts a TUS upload endpoint at `getPath()`; streamed uploads | `getPath`, `getServer`, `handle(req,res)`, `isValid`, `onUploadCreate/Finish/Terminate`, `isImplemented` |
+| `tenantManager` | `TenantManagement` | `@volcanicminds/backend/typeorm` (`TenantManager`) | Multi-tenant resolution + schema switch + `/tenants/*` CRUD | `resolveTenant`, `switchContext`, `createTenant`/`getTenant`/`listTenants`/`updateTenant`/`deleteTenant`/`restoreTenant`, `runInTenantContext`, `isImplemented` (see Part 3.11) |
+
+> **Rule of thumb:** a native route only works if the manager it depends on is injected **and** its
+> `isImplemented()` is `true`. The TypeORM data layer's managers report `true`; the core defaults report `false`.
+
+## 10.3 Wiring recipes
+
+```typescript
+// (a) Core only — no DB, no managers. Public API. (see Part 12 Scenario A)
+import { start as startServer } from '@volcanicminds/backend'
+await startServer()
+
+// (b) Core + database — users, login, persistence. (Scenarios B–F)
+import { start as startServer } from '@volcanicminds/backend'
+import { start as startDatabase, userManager, tokenManager } from '@volcanicminds/backend/typeorm'
+import { database } from './src/config/database.js'
+await startDatabase(database.default)
+await startServer({ userManager, tokenManager })
+
+// (c) Core + database + tools (MFA, file upload). (Scenario G)
+import { mfaAdapter } from './src/services/mfa.adapter.js'        // wraps @volcanicminds/tools mfa
+import { transferManager } from './src/services/transfer.adapter.js' // wraps @volcanicminds/tools transfer
+await startServer({ userManager, tokenManager, mfaManager: mfaAdapter, transferManager })
+
+// (d) Multi-tenant — add the tenantManager and flip the config (Scenario F / Part 3.11 / Part 12.6)
+import { TenantManager, DataSource } from '@volcanicminds/backend/typeorm'
+const ds = await startDatabase(database.default)
+await startServer({ userManager, tokenManager, tenantManager: new TenantManager(ds as DataSource) })
+```
+
+## 10.4 Replacing or customizing the data layer
+
+Because the seam is "a plain object implementing an interface", you are **not** tied to TypeORM:
+
+- **Write your own manager** (any storage — Prisma, Mongo, an HTTP service, in-memory). Implement the interface
+  methods you need and return `isImplemented() => true`. Minimal `userManager` skeleton:
+
+  ```typescript
+  import type { UserManagement } from '@volcanicminds/backend'
+
+  const users = new Map<string, any>() // demo store
+  export const userManager: UserManagement = {
+    isImplemented: () => true,
+    async retrieveUserByPassword(email, password) { /* verify, return user or null */ },
+    async retrieveUserByExternalId(externalId /*, db */) { return users.get(externalId) ?? null },
+    async isValidUser(user) { return !!user && !user.blocked },
+    async createUser(data) { /* persist, return user */ },
+    // …implement only what the routes you expose actually call; the rest can throw.
+  }
+  await startServer({ userManager })
+  ```
+
+  You only need to implement the methods exercised by the routes you enable (e.g. a login-only API needs
+  `retrieveUserByPassword`, `retrieveUserByExternalId`, `isValidUser`).
+
+- **Add an alternative adapter under `lib/database/`** (framework-internal): the bundled implementation lives in
+  `lib/database/typeorm/**` and is exposed via the subpath `@volcanicminds/backend/typeorm`. A future adapter
+  (e.g. `lib/database/<other>/`) can ship its own subpath and export equivalent managers; the core never imports
+  any of them (CI-enforced), so adapters are swappable without touching the core.
+
+- **Mix-and-match**: e.g. real `userManager` from the data layer, but a custom `transferManager` pointing at S3,
+  and no `tokenManager` at all. The Null-Object default fills every gap.
+
+---
+
+# Part 11: Native API Surface (built-in routes)
+
+The core ships a set of ready-made routes (loaded by autodiscovery from `lib/api/*`). They are always present;
+each becomes *functional* only when its backing manager is implemented (Part 10.2). Consumer routes under
+`src/api/*` are merged with these.
+
+## 11.1 Built-in endpoints
+
+| Group | Method & Path | Roles (gate) | Auth required | Backing manager |
+| :--- | :--- | :--- | :--- | :--- |
+| Health | `GET /health` | public | no | — |
+| Auth | `POST /auth/register` · `/unregister` · `/login` | public | no | `userManager` |
+| Auth | `POST /auth/validate-password` · `/confirm-email` · `/forgot-password` · `/reset-password` | public | no | `userManager` |
+| Auth | `POST /auth/change-password` · `/invalidate-tokens` | any authenticated | **yes** | `userManager` |
+| Auth | `POST /auth/logout` · `/refresh-token` | public¹ | no | `userManager` |
+| Auth (MFA) | `POST /auth/mfa/setup` · `/mfa/enable` · `/mfa/disable` | any authenticated | **yes** | `userManager` + `mfaManager` |
+| Auth (MFA) | `POST /auth/mfa/verify` | public (during login) | no² | `userManager` + `mfaManager` |
+| Users | `GET /users/me` · `PUT /users/me` · `GET /users/roles` · `GET /users/is-admin` | any authenticated | **yes** | `userManager` |
+| Users | `GET /users` · `GET /users/count` · `GET /users/:id` · `PUT /users/:id` · `POST /users` · `DELETE /users/:id` | `admin` | **yes** | `userManager` |
+| Users | `POST /users/:id/block` · `/unblock` | `admin`, `backoffice` | **yes** | `userManager` |
+| Users | `POST /users/:id/mfa/reset` · `/password/reset` | `admin` | **yes** | `userManager` |
+| Token | `GET /token` · `/count` · `/:id` | `admin`, `backoffice` | (read)³ | `tokenManager` |
+| Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/block/:id` · `/unblock/:id` | `admin`, `backoffice` | **yes** | `tokenManager` |
+| Tenants | `GET /tenants` · `POST /tenants` · `GET/PUT/DELETE /tenants/:id` · `POST /tenants/:id/restore` · `POST /tenants/impersonate` | `admin` | **yes** | `tenantManager` |
+| Tool | `POST /tool/synchronize-schemas` | `admin` | **yes** | `dataBaseManager` |
+
+¹ `/refresh-token` consumes the refresh token (body or cookie); `/logout` clears the auth cookie in COOKIE mode.
+² `/auth/mfa/verify` is reached with the **pre-auth MFA temp token** issued by login (`202`); see Part 6.2.
+³ Token read routes declare roles but no `isAuthenticated` middleware — gate by roles; harden with the middleware if exposing publicly.
+
+## 11.2 Auth modes (Bearer vs Cookie) and `embedded_auth`
+
+Authentication is handled by the core's `onRequest` hook and controlled by two switches:
+
+- **`embedded_auth`** (`src/config/general.ts` → `options.embedded_auth`, default `true`). If set to **`false`**,
+  the core performs **no** token parsing or RBAC at all — every route is effectively public. Use this for a pure
+  public API or when you front the service with an external gateway that handles auth. (Scenario A.)
+- **`AUTH_MODE`** env (default `BEARER`):
+  - **`BEARER`** — token read from `Authorization: Bearer <jwt>`. Ideal for SPAs storing tokens, mobile, and S2S.
+  - **`COOKIE`** — token read from a **signed, HttpOnly** `auth_token` cookie. Requires `COOKIE_SECRET` (asserted
+    strong at boot). Login does not return the token in the body; `/auth/logout` clears the cookie. Ideal for
+    browsers (mitigates XSS token theft).
+
+In multi-tenant mode the hook additionally enforces that the JWT's `tid` matches the resolved tenant (`403`
+`TENANT_MISMATCH`/`TENANT_NOT_FOUND`) unless the route opts out with `config.tenantContext: false`.
+
+## 11.3 Public vs private routes and the `roles` gate
+
+A route's access is declared by its `roles` array in `routes.ts`:
+
+- `roles: []` (or omitted) → **public** (normalized to the `public` role). No token required.
+- `roles: [roles.admin]` / `[roles.admin, roles.backoffice]` → **private**: the caller must be authenticated and
+  carry at least one matching role, else `403 FORBIDDEN`. A missing/expired token on a non-public route → `401`.
+- Add `middlewares: ['global.isAuthenticated']` to require a valid subject regardless of role (returns `401` if
+  anonymous). `global.isAdmin` requires the `admin` role (`403` otherwise).
+
+Inside handlers you read the identity via: `req.user` (human, from `userManager`), `req.token` (machine, from
+`tokenManager`), `req.roles()` (string[] of role codes), `req.hasRole(roles.admin)`, plus `req.tenant` and
+`req.db` (Part 12.6). See Part 6 for the full auth/JWT/MFA lifecycle.
+
+---
+
+# Part 12: Usage Scenarios & Recipes
+
+End-to-end recipes for a developer who only knows v3. Every scenario states the **packages**, **config**,
+**managers**, and a **minimal `index.ts`**. All work in **single- or multi-tenant** mode — the tenant delta is
+isolated in Scenario F so it composes with A–E and G.
+
+### A. Pure public API — no database, no auth
+
+**Use when:** stateless/public endpoints, or auth handled by an upstream gateway.
+**Packages:** `@volcanicminds/backend` only. **Managers:** none. **Config:** `embedded_auth: false` (optional but
+recommended); routes declare `roles: []`.
+
+```typescript
+import { start as startServer } from '@volcanicminds/backend'
+await startServer() // no decorators → Null-Object managers; public routes serve immediately
+```
+
+Your `src/api/hello/routes.ts` uses `roles: []`. No peer deps installed. `/health` works out of the box.
+
+### B. Public API backed by a database (read-only or open writes)
+
+**Use when:** public data served from Postgres, no login.
+**Packages:** `+ @volcanicminds/backend/typeorm` and its peer deps. **Managers:** inject what you read/write
+(often just nothing for the auth routes — you call the data layer directly in your controllers via Magic Query).
+
+```typescript
+import { start as startServer } from '@volcanicminds/backend'
+import { start as startDatabase } from '@volcanicminds/backend/typeorm'
+import { database } from './src/config/database.js'
+await startDatabase(database.default)
+await startServer() // public routes; controllers use executeFindQuery(req.db.getRepository(X), …) — Part 3
+```
+
+### C. Private API — Bearer, single-tenant (the common case)
+
+**Use when:** SPA/mobile/S2S with JWT in the `Authorization` header.
+**Packages:** `+ /typeorm`. **Managers:** `userManager` (+ `tokenManager` if you also issue API tokens).
+**Config/env:** `AUTH_MODE=BEARER` (default), strong `JWT_SECRET` (+ `JWT_REFRESH_SECRET`).
+
+```typescript
+import { start as startServer } from '@volcanicminds/backend'
+import { start as startDatabase, userManager, tokenManager } from '@volcanicminds/backend/typeorm'
+import { database } from './src/config/database.js'
+await startDatabase(database.default)
+await startServer({ userManager, tokenManager })
+```
+
+Flow: `POST /auth/login` → `{ token, refreshToken }`; client sends `Authorization: Bearer <token>`; private
+routes (`roles: [roles.admin]`, …) are enforced by the core. Refresh via `POST /auth/refresh-token`.
+
+### D. Private API — Cookie mode (browser-first)
+
+**Same as C** but set **`AUTH_MODE=COOKIE`** and provide a strong **`COOKIE_SECRET`**, and enable the cookie
+plugin in `src/config/plugins.ts`. Login sets an HttpOnly `auth_token` cookie (no token in the body); the browser
+sends it automatically; `/auth/logout` clears it. Everything else (managers, routes, RBAC) is identical to C.
+
+### E. Machine-to-machine — API tokens
+
+**Use when:** other services authenticate without a user/password.
+**Managers:** `tokenManager` (with or without `userManager`). Admin/backoffice create tokens via `POST /token`;
+the subject is resolved in `onRequest` through `tokenManager.retrieveTokenByExternalId`, so the bearer of an API
+token populates `req.token` (not `req.user`) and is gated by the token's roles. Revoke via `/token/block/:id` or
+by rotating its `externalId` (Part 6.1).
+
+### F. Multi-tenant (turns any of A–E/G tenant-aware)
+
+**Use when:** one deployment serves isolated tenants (Postgres schema-per-tenant).
+**Add:** `tenantManager` + `multi_tenant.enabled: true` in `src/config/general.ts` (choose `resolver`:
+`subdomain` | `header` | `query`, and `header_key`/`query_key`).
+
+```typescript
+import { start as startServer } from '@volcanicminds/backend'
+import { start as startDatabase, userManager, tokenManager, TenantManager, DataSource } from '@volcanicminds/backend/typeorm'
+import { database } from './src/config/database.js'
+const ds = await startDatabase(database.default)
+await startServer({ userManager, tokenManager, tenantManager: new TenantManager(ds as DataSource) })
+```
+
+What changes at runtime (see Part 3.11 for the security rules):
+- Each request resolves a tenant; a per-request `QueryRunner` is created, `SET search_path` switches the schema,
+  and `req.db` / `req.runner` are bound to it (released on response). **Single-tenant** instead binds `req.db` to
+  the global connection manager — same controller code, zero changes.
+- The JWT carries `tid`; the core rejects cross-tenant tokens (`403`). Public/login routes that must skip tenant
+  context set `config.tenantContext: false` on the route.
+- Manage tenants via `/tenants/*`; run background jobs safely with `tenantManager.runInTenantContext(id, cb)`.
+
+### G. Adding `@volcanicminds/tools` (MFA, mailer, file upload)
+
+`@volcanicminds/tools` is the **utility pillar**; you wrap its features in managers/adapters and inject them.
+
+- **MFA (TOTP):** wrap `tools` mfa in an adapter implementing `MfaManagement` (`generateSetup`, `verify`) and
+  inject as `mfaManager`. Enables `/auth/mfa/*`. Enforce globally with `MFA_POLICY=MANDATORY`. See Part 6.2 and
+  `docs/SECURITY_MFA.md`.
+- **File upload (TUS):** wrap `tools` transfer in a `TransferManagement` adapter and inject as `transferManager`;
+  the core mounts a streaming TUS endpoint at `getPath()`. See Part 1.6 (raw-body/multipart) for related plugins.
+- **Mailer / Logger / Storage:** used directly inside your services (no manager needed) — e.g. send the
+  forgot-password mail from your `userManager.forgotPassword` implementation. See Part 7.2.
+
+> None of the `tools` features are required by the core: omit them and the matching native routes simply report
+> "not implemented" (MFA) or are not mounted (TUS).
+
+---
+
+> **Cross-references:** Mental model → **Part 0**. Auth/JWT/MFA lifecycle → **Part 6**. Magic Query, data-layer
+> config, security hardening, multi-tenant context, standalone use → **Part 3**. Service Layer / RLS →
+> **Part 5** & `docs/ADVANCED_ARCHITECTURE.md`. Data-layer env/options → `docs/configuration.md`.

@@ -1,8 +1,7 @@
 # Configuration — Data layer (`@volcanicminds/backend/typeorm`)
 
-> Il data layer (Magic Query + multi-tenant) è incluso in `@volcanicminds/backend` dalla **v3** ed è esposto
-> come subpath `@volcanicminds/backend/typeorm`. Questa pagina ne documenta la configurazione (ex
-> `@volcanicminds/typeorm`, ora EOL). Le opzioni e le env **non cambiano** rispetto al pacchetto separato.
+> Il data layer (Magic Query + multi-tenant) è incluso in `@volcanicminds/backend` ed è esposto
+> come subpath `@volcanicminds/backend/typeorm`. Questa pagina ne documenta la configurazione.
 
 Il data layer si configura tramite variabili d'ambiente e opzioni di inizializzazione passate a `start()`.
 
@@ -43,4 +42,4 @@ await start({
 ## Peer dependencies
 
 Il data layer richiede queste **peer dependencies opzionali** (da installare nel consumer solo se si usa il subpath `/typeorm`):
-`typeorm`, `bcrypt`, `pluralize`, `reflect-metadata`, `pg`. Vedi `MIGRATION.md`.
+`typeorm`, `bcrypt`, `pluralize`, `reflect-metadata`, `pg`.

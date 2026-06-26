@@ -8,19 +8,32 @@
 
 A Node.js framework based on Fastify to build robust APIs quickly, featuring an automatic routing system, integrated authentication, and a powerful data access layer.
 
-## ⚠️ Breaking Changes in v2.x
+## Two layers in one package
 
-- Change package manager from yarn to npm.
-- Updated all dependencies to their latest versions.
-- Increase minimum Node.js version to 24.x.
-- Switched to pure ECMAScript Modules (`NodeNext`). CommonJS/`require` is no longer supported.
-- **(v2.4.0)** Removed the optional GraphQL/Apollo integration (the `GRAPHQL` flag and the `@apollo/server` dependency). It was a demo stub disabled by default; the framework is now REST-only.
-- **(v2.4.0)** `helmet` security headers are now enabled by default (previously opt-in).
-- **(v2.4.0)** Startup now fails fast on a missing or weak signing secret (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `COOKIE_SECRET`): minimum 32 characters — fatal in production, a warning otherwise.
+`@volcanicminds/backend` ships a **DB-agnostic HTTP core** and an **optional data layer**, cleanly separated:
+
+- **HTTP Core** (`@volcanicminds/backend`) — Fastify wrapper: routing autodiscovery, JSON-Schema validation,
+  JWT/cookie auth, RBAC, MFA gatekeeper, scheduler, and a native API (`/auth`, `/users`, `/token`, `/tenants`,
+  `/health`, `/tool`). **Runs with no database.**
+- **Data Layer** (subpath `@volcanicminds/backend/typeorm`) — TypeORM wrapper: Magic Query, base entities,
+  multi-tenant context, and the managers you inject. Its deps are **optional peer dependencies**.
+
+The layers meet at one seam: `start(decorators)` on the core, into which you inject **managers** (or nothing — it
+falls back to Null-Object defaults). See `llms.txt` **Part 0** for the model and **Part 12** for end-to-end
+scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, with `@volcanicminds/tools`).
+
+## Runtime requirements & notable behavior (v3)
+
+- **Node.js ≥ 24**, **pure ESM** (`NodeNext`); CommonJS/`require` is not supported. REST-only (no GraphQL).
+- `helmet` security headers are enabled by default.
+- Startup **fails fast** on a missing or weak signing secret (`JWT_SECRET`, `JWT_REFRESH_SECRET`, and
+  `COOKIE_SECRET` in cookie mode): minimum 32 characters — fatal in production, a warning otherwise.
 
 ## Documentation & Guides
 
-For advanced usage and enterprise architecture patterns, please refer to the detailed documentation:
+**`llms.txt`** is the single, exhaustive, self-contained guide (for humans **and** LLM/Context7 agents): mental
+model, configuration, Magic Query, auth, the manager contract, the native API surface, and usage scenarios. The
+focused docs below drill into specific topics:
 
 - **[Advanced Architecture](docs/ADVANCED_ARCHITECTURE.md)**: Service Layer pattern, BaseService abstraction, and dependency injection.
 - **[Data Layer Magic](docs/DATA_LAYER_MAGIC.md)**: How `req.data()` works and how to turn URLs into complex SQL queries with `@volcanicminds/backend/typeorm`.
@@ -55,8 +68,8 @@ And, what you see in [package.json](package.json).
 npm install @volcanicminds/backend
 ```
 
-For database interactions, the data layer is included in v3 as the subpath `@volcanicminds/backend/typeorm`
-(no separate package). Install its optional **peer dependencies** only if you use it:
+For database interactions, the data layer is the subpath `@volcanicminds/backend/typeorm`. Install its
+optional **peer dependencies** only if you use it:
 
 ```sh
 npm install typeorm bcrypt pluralize reflect-metadata pg
@@ -667,8 +680,7 @@ roles: [roles.admin, roles.public]
 
 ## Database (data layer)
 
-The data layer is bundled as the subpath **`@volcanicminds/backend/typeorm`** (in v3; previously the standalone,
-now-EOL `@volcanicminds/backend/typeorm`). Import it directly:
+The data layer (Magic Query + multi-tenant) is the subpath **`@volcanicminds/backend/typeorm`**. Import it directly:
 
 ```ts
 import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
@@ -680,7 +692,7 @@ Install its optional **peer dependencies** in your app (only if you use the data
 npm install typeorm bcrypt pluralize reflect-metadata pg
 ```
 
-See `docs/configuration.md` for options and environment variables, and `MIGRATION.md` for the v2→v3 upgrade.
+See `docs/configuration.md` for options and environment variables, and `llms.txt` (Part 3) for the full data-layer reference.
 
 ## Hooks
 

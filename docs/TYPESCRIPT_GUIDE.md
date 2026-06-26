@@ -134,9 +134,9 @@ declare global {
 }
 ```
 
-## Data layer & tsconfig (v3)
+## Data layer & tsconfig
 
-Il data layer è incluso come subpath `@volcanicminds/backend/typeorm` (ex `@volcanicminds/typeorm`):
+Il data layer è incluso come subpath `@volcanicminds/backend/typeorm`:
 
 ```typescript
 import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
