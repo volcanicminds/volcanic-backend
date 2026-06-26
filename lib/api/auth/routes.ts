@@ -195,6 +195,8 @@ export default {
       roles: [],
       handler: 'auth.mfaEnable',
       middlewares: ['global.isAuthenticated'],
+      // Throttle TOTP attempts to curb online brute-force of the 6-digit code (S11).
+      rateLimit: { max: 10, timeWindow: 60000 },
       config: {
         title: 'Enable MFA',
         description: 'Enable MFA by verifying a token against the generated secret. Returns tokens on success.',
@@ -210,6 +212,8 @@ export default {
       roles: [],
       handler: 'auth.mfaVerify',
       middlewares: [],
+      // Throttle TOTP attempts to curb online brute-force of the 6-digit code (S11).
+      rateLimit: { max: 10, timeWindow: 60000 },
       config: {
         title: 'Verify MFA',
         description: 'Verify MFA token during login to obtain final JWT',

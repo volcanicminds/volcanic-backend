@@ -27,6 +27,8 @@ export abstract class User extends BaseEntity {
   abstract mfaSecret: string
   abstract mfaType: string
   abstract mfaRecoveryCodes: string[]
+  // Absolute TOTP time-step last consumed, used to reject replayed codes within their validity window.
+  abstract mfaLastUsedCounter: number
 
   abstract setId(id: any): void
   abstract getId(): any

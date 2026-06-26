@@ -39,8 +39,11 @@ export default [
   },
   {
     name: 'rateLimit',
-    enable: false,
-    options: {}
+    // Registered with `global: false` so it limits ONLY routes that opt in via `config.rateLimit`
+    // (currently the MFA endpoints, see S11). Turning on global throttling + per-route limits on
+    // login/forgot/reset is tracked separately under S5.
+    enable: true,
+    options: { global: false }
   },
   {
     name: 'helmet',

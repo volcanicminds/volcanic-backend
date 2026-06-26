@@ -182,7 +182,7 @@ export const defaultMfaManager: MfaManagement = {
   generateSetup(_appName: string, _email: string) {
     throw new Error('Not implemented.')
   },
-  verify(_token: string, _secret: string) {
+  verify(_token: string, _secret: string): number | null {
     throw new Error('Not implemented.')
   }
 }

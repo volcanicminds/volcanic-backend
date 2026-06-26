@@ -211,7 +211,10 @@ export interface DataBaseManagement {
 
 export interface MfaManagement {
   generateSetup(appName: string, email: string): Promise<{ secret: string; uri: string; qrCode: string }>
-  verify(token: string, secret: string): boolean
+  // Returns the matched time-step delta (integer) when valid, or null when invalid.
+  // The delta enables anti-replay protection (track the consumed step). Legacy managers returning a
+  // boolean are still tolerated at runtime (treated as valid/invalid without replay tracking).
+  verify(token: string, secret: string): number | null
 }
 
 // Callback type signature: (uploadOrId, req, res) => void

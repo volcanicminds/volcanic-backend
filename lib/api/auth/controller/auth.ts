@@ -7,6 +7,28 @@ import { MfaPolicy } from '../../../config/constants.js'
 // payloads. Complexity is enforced only when a password is set, not at login.
 const MAX_PASSWORD_LENGTH = 256
 
+// TOTP period in seconds — must match the period used by the MFA manager (tools default: 30).
+const TOTP_PERIOD_SECONDS = 30
+
+/**
+ * Normalizes the MFA manager `verify` result and turns the relative time-step delta into the
+ * absolute step consumed, so it can be persisted for anti-replay.
+ *
+ * - New managers return `number | null` (delta or invalid).
+ * - Legacy managers returning a boolean are tolerated: valid/invalid without a usable counter.
+ *
+ * @returns `{ valid, counter }` — `counter` is the absolute TOTP step, or `null` when unknown.
+ */
+function evaluateMfaResult(result: number | boolean | null): { valid: boolean; counter: number | null } {
+  if (result === null || result === false) return { valid: false, counter: null }
+  if (typeof result === 'number') {
+    const currentStep = Math.floor(Date.now() / 1000 / TOTP_PERIOD_SECONDS)
+    return { valid: true, counter: currentStep + result }
+  }
+  // Legacy boolean `true`: valid, but no delta to track replays with.
+  return { valid: true, counter: null }
+}
+
 export async function register(req: FastifyRequest, reply: FastifyReply) {
   const { password1: password, password2, ...data } = req.data()
 
@@ -413,14 +435,19 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
 
   try {
     // 1. Verify using mfaManager (tools)
-    const isValid = req.server['mfaManager'].verify(token, secret)
-    if (!isValid) {
+    const { valid, counter } = evaluateMfaResult(req.server['mfaManager'].verify(token, secret))
+    if (!valid) {
       return reply.status(400).send(new Error('Invalid token'))
     }
 
     // 2. Save using userManager (typeorm)
     await req.server['userManager'].saveMfaSecret(user.getId(), secret, req.runner)
     await req.server['userManager'].enableMfa(user.getId(), req.runner)
+
+    // Record the consumed time-step so the same code cannot be replayed on the first /mfa/verify.
+    if (counter !== null) {
+      await req.server['userManager'].updateUserById(user.getId(), { mfaLastUsedCounter: counter }, req.runner)
+    }
 
     // IMPORTANT: Return full tokens upon enablement if user was in pending state
     // BUT usually user is already logged in via temp token or full token.
@@ -477,8 +504,17 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   if (!secret) return reply.status(403).send(new Error('MFA not configured for user'))
 
   // 2. Verify via mfaManager
-  const isValid = req.server['mfaManager'].verify(token, secret)
-  if (!isValid) return reply.status(403).send(new Error('Invalid MFA token'))
+  const { valid, counter } = evaluateMfaResult(req.server['mfaManager'].verify(token, secret))
+  if (!valid) return reply.status(403).send(new Error('Invalid MFA token'))
+
+  // 3. Anti-replay: reject a code whose time-step was already consumed (same or earlier than the last).
+  const lastCounter = user.mfaLastUsedCounter
+  if (counter !== null && lastCounter != null && counter <= lastCounter) {
+    return reply.status(403).send(new Error('MFA token already used'))
+  }
+  if (counter !== null) {
+    await req.server['userManager'].updateUserById(user.getId(), { mfaLastUsedCounter: counter }, req.runner)
+  }
 
   if (config.options.reset_external_id_on_login) {
     await req.server['userManager'].resetExternalId(user.getId(), req.runner)

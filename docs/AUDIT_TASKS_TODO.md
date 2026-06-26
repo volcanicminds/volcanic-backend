@@ -71,18 +71,27 @@
   - **Done:** replaced `jwt.decode(token)` with `jwt.verify(token, { ignoreExpiration: true })` (in try/catch → `403 Invalid token` on invalid signature): the signature is now verified, but the expired access token is still accepted (that's the point of refresh). Rewrote the "Token too old" check on the real `iat` time claim (the token is signed with `expiresIn`, so it carries `iat`+`exp`): rejects if `iat` is missing or older than now−30d. The old `sub > minAcceptable` comparison (user id vs unix timestamp) was dead code.
   - **Verification:** `check-all` (lint + type-check) OK.
 
-- [ ] **S9 — Crypto: unauthenticated legacy AES-256-CBC fallback + weak key derivation** · `DB`
-  - File: `lib/util/crypto.ts:29-36, 8-13`
+- [x] **S9 — Crypto: unauthenticated legacy AES-256-CBC fallback + weak key derivation** · `DB` ✅ *(2026-06-26)*
+  - File: `lib/database/typeorm/util/crypto.ts` (data layer now lives under `volcanic-backend/lib/database/typeorm`)
   - Malleable CBC (downgrade); key = first 32 chars of `base64(sha256(secret))` (no salt/HKDF). Migrate to GCM only; HKDF/scrypt; deprecate/migrate CBC records.
+  - **Done (full versioned fix, backward compatible):** new write format `v2:salt:iv:authTag:ciphertext` (hex). Each record carries a random 16-byte salt and a per-record key derived with **scrypt** (`N=2^15, r=8, p=1`, `maxmem` raised to 64MB) — replaces the weak truncated-base64 derivation. New writes are **always** authenticated GCM. `decrypt` stays 100% backward compatible in **read**: v2 (5 parts, scrypt key) + legacy GCM (3 parts, old key) + legacy CBC (2 parts, old key, read-only, never written again) → **no MFA-secret lockout**, records migrate to v2 on the next re-encrypt. Removed the redundant getKey duplication.
+  - **Verification:** `check-all` (lint + type-check + depcruise) OK; typeorm tests **34 passing** including new cases: v2 roundtrip, random salt/IV, auth-tag tamper rejection, and **decrypt of legacy GCM + legacy CBC** records.
+  - **Note:** scrypt adds ~160ms per encrypt/decrypt; acceptable since the MFA secret is decrypted only at MFA setup/verify (rare, login-time), not on hot paths.
 
 - [x] **S10 — Possible ReDoS in the email regexes** · `BE`
   - File: `lib/util/regexp.ts:7,14`
   - Nested quantifiers (`\w+([.+-]?\w+)*`). Simplify the regexes; bound the input length before matching.
   - **Done:** confirmed the exponential ReDoS (len 34 = ~20s of event-loop blocking). Made the separator **mandatory** (`[.+-]`/`[.-]` instead of `[.+-]?`/`[.-]?`) → unique partition → linear time (50k chars = 0.24ms), validation semantics unchanged on the test corpus. Added `MAX_EMAIL_LENGTH = 254` (RFC 5321) and an `isEmail()` helper that does the length-guard **before** matching; the 3 call sites in `auth.ts` (register/forgot/check) now use `isEmail`. `emailAlt` verified safe (separators already mandatory), note added. Regression tests in `test/unit/regexp.ts` (length-bound + linearity on adversarial input).
 
-- [ ] **S11 — No TOTP anti-replay protection + no MFA rate-limit** · `TO`, `BE`
-  - File: `lib/mfa/index.ts:60-73` (TO), `lib/api/auth/controller/auth.ts:430-461` (BE)
+- [x] **S11 — No TOTP anti-replay protection + no MFA rate-limit** · `TO`, `BE` ✅ *(2026-06-26)*
+  - File: `lib/mfa/index.ts:60-73` (TO), `lib/api/auth/controller/auth.ts` (BE)
   - TOTP code reusable within the window. Track the last `delta` used per user; add rate-limit.
+  - **Done — anti-replay:**
+    - **TO (`volcanic-tools`):** added `verifyTokenDelta(token, secret, window)` returning the matched time-step `delta` (`number | null`); `verifyToken` now delegates to it (boolean contract unchanged → no break for tools consumers). Version `0.1.1 → 0.1.2`, `dist` rebuilt, MFA tests **10 passing** (+2 delta cases).
+    - **BE (this repo):** `MfaManagement.verify` contract changed to return `number | null` (delta); legacy boolean still tolerated at runtime. New persistent field `mfaLastUsedCounter` on the abstract `User` entity (+ concrete column in the sample, `int`). In `auth.ts` a helper `evaluateMfaResult` converts the delta into the absolute consumed step (`floor(now/30)+delta`); `mfaVerify` and `mfaEnable` now **reject a code whose step was already used** (`counter <= mfaLastUsedCounter`) and persist the new counter. Note: `delta` can be `0` → checks use `!== null`, not truthiness.
+  - **Done — MFA rate-limit:** `@fastify/rate-limit` registered with `global: false` (limits only opted-in routes, doesn't pre-empt S5's global throttling); `/mfa/enable` and `/mfa/verify` opt in with `max: 10 / 60s` to curb online brute-force of the 6-digit code.
+  - **Verification:** backend `check-all` OK; tests **49 core + 34 typeorm** passing.
+  - **Boundary with [[S5]]:** S5 still owns flipping global rate-limit on + tight limits on login/forgot/reset. Here only the MFA opt-in limits were added.
 
 - [x] **S12 — `SET search_path` interpolated without re-sanitization** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts:114`
