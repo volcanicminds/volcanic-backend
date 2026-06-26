@@ -118,3 +118,4 @@ data
 !.yarn/versions
 
 OUTPUT.md
+.playwright-mcp
