@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { FastifyReply, FastifyRequest } from 'fastify'
+import { httpError } from '../util/httpError.js'
 
 export function preHandler(req: FastifyRequest, res: FastifyReply, done: any) {
   try {
@@ -11,6 +12,6 @@ export function preHandler(req: FastifyRequest, res: FastifyReply, done: any) {
   } catch (err) {
     if (log.e) log.error(`Upps, something just happened ${err}`)
     // Structured body so the 403 status is preserved (see isAuthenticated note).
-    res.code(403).send({ statusCode: 403, error: 'Forbidden', message: 'User without this privilege' })
+    res.code(403).send(httpError(403, 'User without this privilege', 'FORBIDDEN'))
   }
 }

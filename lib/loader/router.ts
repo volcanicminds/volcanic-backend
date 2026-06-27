@@ -90,6 +90,9 @@ function processRoute(
   let requiredRoles: Role[] = []
 
   try {
+    // `admin` is a global superuser: it is appended to EVERY route's allowed roles,
+    // so an admin can access any endpoint (even ones restricted to e.g. backoffice).
+    // This is intentional. Remove this append if admin should NOT be a universal role.
     requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin]
   } catch (err) {
     if (log.e) log.error(`Error in loading roles for ${methodCase} ${pathName} (${handler})`)

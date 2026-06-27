@@ -685,8 +685,13 @@ This powerful synergy allows you to build complex, high-performance data endpoin
 By default, there are some basic roles:
 
 - **public**
-- **admin**
+- **admin** — **global superuser**: `admin` is implicitly added to every route's allowed roles, so an admin can
+  access any endpoint (even those restricted to other roles). This is by design.
 - **backoffice**
+
+> **Authorization responses:** a request with no authenticated subject gets **401** (must log in); an
+> authenticated user lacking the required role gets **403**. Error bodies follow a single shape:
+> `{ statusCode, error, code?, message? }`.
 
 In this way you can add custom roles:
 

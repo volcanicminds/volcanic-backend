@@ -75,12 +75,10 @@ describe('E2E — auth, authorization & security', () => {
   })
 
   describe('authorization (role-protected GET /users)', () => {
-    // No token => resolved as the public role => 403 by the requiredRoles gate
-    // (the framework enforces authorization in the onRequest hook, not via a
-    // separate isAuthenticated layer for role routes).
-    it('denies access without a token (403)', async () => {
+    // No authenticated subject => 401 (must log in). Authenticated-but-wrong-role => 403.
+    it('returns 401 without a token', async () => {
       const res = await inject({ method: 'GET', url: '/users' })
-      expect(res.statusCode).toBe(403)
+      expect(res.statusCode).toBe(401)
     })
 
     it('returns 401 for a malformed bearer token', async () => {

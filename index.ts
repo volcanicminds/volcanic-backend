@@ -210,6 +210,7 @@ const start = async (decorators = {}) => {
     const body = {
       statusCode,
       error: errorType,
+      ...(err?.code && typeof err.code === 'string' ? { code: err.code } : {}),
       ...(!hide && err?.message ? { message: err.message } : {})
     }
 

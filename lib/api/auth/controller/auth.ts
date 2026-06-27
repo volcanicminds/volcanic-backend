@@ -2,6 +2,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import * as regExp from '../../../util/regexp.js'
 import { MfaPolicy } from '../../../config/constants.js'
+import { httpError } from '../../../util/httpError.js'
 
 // Upper bound for the password accepted at login: a cheap guard against oversized
 // payloads. Complexity is enforced only when a password is set, not at login.
@@ -281,7 +282,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
 
   const isPasswordToBeChanged = req.server['userManager'].isPasswordToBeChanged(user)
   if (isPasswordToBeChanged) {
-    return reply.status(403).send({ statusCode: 403, code: 'PASSWORD_TO_BE_CHANGED', message: 'Password is expired' })
+    return reply.status(403).send(httpError(403, 'Password is expired', 'PASSWORD_TO_BE_CHANGED'))
   }
 
   if (user.blocked) {

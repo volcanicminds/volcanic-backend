@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getParams, getData } from '../util/common.js'
+import { httpError } from '../util/httpError.js'
 import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } from '../../types/global.js'
 
 const MFA_SETUP_WHITELIST = ['/auth/mfa/setup', '/auth/mfa/enable', '/auth/mfa/verify', '/auth/logout']
@@ -78,18 +79,10 @@ export default async (req, reply) => {
         const { multi_tenant } = global.config?.options || {}
         if (multi_tenant?.enabled && cfg.tenantContext !== false) {
           if (!req.tenant || !tokenData.tid) {
-            return reply.status(403).send({
-              statusCode: 403,
-              code: 'TENANT_NOT_FOUND',
-              message: 'Token does not belong to this tenant'
-            })
+            return reply.status(403).send(httpError(403, 'Token does not belong to this tenant', 'TENANT_NOT_FOUND'))
           }
           if (tokenData.tid !== req.tenant.id) {
-            return reply.status(403).send({
-              statusCode: 403,
-              code: 'TENANT_MISMATCH',
-              message: 'Token does not belong to this tenant'
-            })
+            return reply.status(403).send(httpError(403, 'Token does not belong to this tenant', 'TENANT_MISMATCH'))
           }
         }
 
@@ -100,11 +93,9 @@ export default async (req, reply) => {
 
           if (!isAllowed) {
             if (log.w) log.warn(`Security Block: User attempted to access ${currentUrl} with pre-auth MFA token`)
-            return reply.status(403).send({
-              statusCode: 403,
-              code: 'MFA_REQUIRED',
-              message: 'MFA verification or setup required to access this resource'
-            })
+            return reply
+              .status(403)
+              .send(httpError(403, 'MFA verification or setup required to access this resource', 'MFA_REQUIRED'))
           }
         }
 
@@ -122,9 +113,7 @@ export default async (req, reply) => {
           if (user) {
             const isValid = await req.server['userManager'].isValidUser(user)
             if (!isValid) {
-              return reply
-                .status(403)
-                .send({ statusCode: 403, code: 'USER_NOT_VALID', message: 'User is not valid or blocked' })
+              return reply.status(403).send(httpError(403, 'User is not valid or blocked', 'USER_NOT_VALID'))
             }
             req.user = user
           }
@@ -135,16 +124,14 @@ export default async (req, reply) => {
           if (token) {
             const isValid = await req.server['tokenManager'].isValidToken(token)
             if (!isValid) {
-              return reply
-                .status(403)
-                .send({ statusCode: 403, code: 'TOKEN_NOT_VALID', message: 'Token is not valid or blocked' })
+              return reply.status(403).send(httpError(403, 'Token is not valid or blocked', 'TOKEN_NOT_VALID'))
             }
             req.token = token
           }
         }
 
         if (!req.user && !req.token) {
-          return reply.status(404).send({ statusCode: 404, code: 'SUBJECT_NOT_FOUND', message: 'Subject not found' })
+          return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
         }
 
         const freshNormalizedRoles = normalizeRoles(req.user?.roles || req.token?.roles)
@@ -152,11 +139,7 @@ export default async (req, reply) => {
       } catch (error) {
         const isRoutePublic = (cfg.requiredRoles || []).some((role: Role) => role.code === roles.public.code)
         if (!isRoutePublic) {
-          return reply.status(401).send({
-            statusCode: 401,
-            code: 'UNAUTHORIZED',
-            message: (error as any)?.message || 'Invalid or expired token'
-          })
+          return reply.status(401).send(httpError(401, (error as any)?.message || 'Invalid or expired token', 'UNAUTHORIZED'))
         }
       }
     }
@@ -167,8 +150,13 @@ export default async (req, reply) => {
       const hasPermission = requiredRoles.some((r) => authorizedRoles.includes(r.code))
 
       if (!hasPermission) {
-        if (log.w) log.warn(`Forbidden: ${req.user?.email || 'anonymous'} cannot call ${method.toUpperCase()} ${url}`)
-        return reply.status(403).send({ statusCode: 403, code: 'FORBIDDEN', message: 'Authorization denied' })
+        // 401 when there is no authenticated subject (must log in first); 403 when
+        // authenticated but lacking the required role.
+        const anonymous = !req.user && !req.token
+        if (log.w) log.warn(`Denied: ${req.user?.email || 'anonymous'} cannot call ${method.toUpperCase()} ${url}`)
+        return anonymous
+          ? reply.status(401).send(httpError(401, 'Authentication required', 'UNAUTHORIZED'))
+          : reply.status(403).send(httpError(403, 'Authorization denied', 'FORBIDDEN'))
       }
     }
   }
