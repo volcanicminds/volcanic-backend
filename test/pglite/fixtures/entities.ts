@@ -43,6 +43,23 @@ export const User = new EntitySchema<any>({
   }
 })
 
+export const Token = new EntitySchema<any>({
+  name: 'Token',
+  columns: {
+    id: { type: 'uuid', primary: true, generated: 'uuid' },
+    externalId: { type: String, nullable: true },
+    name: { type: String },
+    description: { type: String, nullable: true },
+    blocked: { type: Boolean, default: false },
+    blockedReason: { type: String, nullable: true },
+    blockedAt: { type: 'timestamp', nullable: true },
+    roles: { type: 'simple-array', nullable: true },
+    createdAt: { type: 'timestamp', createDate: true },
+    updatedAt: { type: 'timestamp', updateDate: true },
+    deletedAt: { type: 'timestamp', deleteDate: true, nullable: true }
+  }
+})
+
 export const Tenant = new EntitySchema<any>({
   name: 'Tenant',
   columns: {

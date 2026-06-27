@@ -13,9 +13,10 @@ import {
   TenantManager,
   executeFindQuery,
   executeCountQuery,
-  userManager
+  userManager,
+  tokenManager
 } from '../../typeorm.js'
-import { Product, User, Tenant } from './fixtures/entities.js'
+import { Product, User, Tenant, Token } from './fixtures/entities.js'
 
 let ds: any
 
@@ -25,12 +26,12 @@ describe('Embedded PGlite engine', () => {
       type: 'pglite',
       vector: true, // enable pgvector
       synchronize: false,
-      entities: [Product, User, Tenant]
+      entities: [Product, User, Tenant, Token]
     })
     // The public schema is built explicitly here (startup sync is env-gated).
     await ds.synchronize()
-    // userManager.createUser resolves the concrete entity via global.entity.User.
-    ;(global as any).entity = { User, Tenant }
+    // userManager/tokenManager resolve the concrete entities via global.entity.*.
+    ;(global as any).entity = { User, Tenant, Token }
   })
 
   after(async () => {
@@ -265,6 +266,56 @@ describe('Embedded PGlite engine', () => {
       await userManager.changePassword(email, 'New-pw-2', 'Initial-pw-1')
       expect(await userManager.retrieveUserByPassword(email, 'New-pw-2')).not.toBeNull()
       expect(await userManager.retrieveUserByPassword(email, 'Initial-pw-1')).toBeNull()
+    })
+  })
+
+  // tokenManager (API tokens) end-to-end on a real DB — previously untested.
+  describe('tokenManager end-to-end', () => {
+    let id: string
+    let externalId: string
+
+    it('createToken assigns an externalId and defaults blocked=false', async () => {
+      const t: any = await tokenManager.createToken({ name: 'ci-token', description: 'for CI', roles: ['ci'] } as any)
+      expect(t.id).toMatch(/^[0-9a-f-]{36}$/)
+      expect(t.externalId).toBeTruthy()
+      expect(t.blocked).toBe(false)
+      id = t.id
+      externalId = t.externalId
+    })
+
+    it('rejects creation without a name', async () => {
+      await expect(tokenManager.createToken({ description: 'no name' } as any)).rejects.toThrow()
+    })
+
+    it('retrieves by id and by externalId', async () => {
+      expect((await tokenManager.retrieveTokenById(id))?.name).toBe('ci-token')
+      expect((await tokenManager.retrieveTokenByExternalId(externalId))?.id).toBe(id)
+    })
+
+    it('updateTokenById merges fields', async () => {
+      const updated: any = await tokenManager.updateTokenById(id, { description: 'updated' } as any)
+      expect(updated.description).toBe('updated')
+      expect(updated.name).toBe('ci-token') // untouched
+    })
+
+    it('block / unblock toggles the flag with a reason', async () => {
+      const blocked: any = await tokenManager.blockTokenById(id, 'abuse')
+      expect(blocked.blocked).toBe(true)
+      expect(blocked.blockedReason).toBe('abuse')
+      const unblocked: any = await tokenManager.unblockTokenById(id)
+      expect(unblocked.blocked).toBe(false)
+      expect(unblocked.blockedReason).toBeNull()
+    })
+
+    it('findQuery / countQuery use the Magic Query layer', async () => {
+      expect(await tokenManager.countQuery({ name: 'ci-token' })).toBe(1)
+      const { records } = await tokenManager.findQuery({ 'name:containsi': 'ci' })
+      expect(records.some((r: any) => r.id === id)).toBe(true)
+    })
+
+    it('removeTokenById deletes the row', async () => {
+      await tokenManager.removeTokenById(id)
+      expect(await tokenManager.retrieveTokenById(id)).toBeNull()
     })
   })
 })
