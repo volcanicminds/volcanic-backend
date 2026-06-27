@@ -61,6 +61,9 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
   multi-tenant mode they queried the global/public schema instead of the resolved tenant schema (cross-tenant
   exposure). They now pass `req.runner` (a no-op in single-tenant mode). `create` also no longer double-saves via
   the active-record `entity.User.save()` (which always hit the global connection). See `npm run test:e2e:mt:pglite`.
+- **Router — duplicate-route detection fixed.** The startup check compared a key without a leading slash
+  (`GETusers`) against the stored path (`GET/users`), so duplicate `method`+`path`+`version` routes were never
+  flagged. They are now detected and reported at load time.
 - Internal: the operator catalog moved to `lib/database/typeorm/query/operators.ts`.
 
 ## Documentation & Guides

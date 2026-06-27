@@ -65,7 +65,7 @@ async function loadMiddlewares(base: string, middlewares: string[] = []) {
 }
 
 
-function processRoute(
+export function processRoute(
   route: Route,
   index: number,
   file: string,
@@ -135,7 +135,10 @@ function processRoute(
     if (!methods.includes(method)) errors.push(`Error in [${file}] bad method [${method}] at route n. ${num}`)
     if (handlerParts.length !== 2) errors.push(`Error in [${file}] bad handler [${handler}] at route n. ${num}`)
 
-    const key = method + endpoint + version
+    // Stored routes keep a leading slash in `path` ('/' + endpoint), so the key
+    // must include it too — otherwise 'GETusers' never equals 'GET/users' and the
+    // duplicate check silently never fires.
+    const key = `${method}/${endpoint}${version}`
     if (validRoutes.some((r) => `${r.method}${r.path}${r.doc?.version}` === key)) {
       errors.push(`Error in [${file}] duplicated path [${pathName}] at route n. ${num}`)
     }
