@@ -537,4 +537,58 @@ describe('Embedded PGlite engine', () => {
       expect(found?.name).toBe('audited')
     })
   })
+
+  // Operator names are case-insensitive, between/nbetween cover dates, and JSONB
+  // key-existence operators work — all on a real DB.
+  describe('Magic Query: case-insensitive names, dates, JSONB', () => {
+    let repo: any
+
+    before(async () => {
+      repo = ds.getRepository(Product)
+      await ds.query('DELETE FROM product')
+      await ds.query('DELETE FROM category')
+      await repo.save([
+        repo.create({ name: 'Alpha', price: 10, releasedAt: new Date('2024-02-01'), meta: { color: 'red', size: 'L' } }),
+        repo.create({ name: 'Bravo', price: 20, releasedAt: new Date('2024-08-01'), meta: { color: 'blue' } }),
+        repo.create({ name: 'Charlie', price: 30, releasedAt: new Date('2025-01-01'), meta: { size: 'M' } })
+      ])
+    })
+
+    it('operator names are case-insensitive (:contains/:CONTAINS/:CoNtAiNs equivalent)', async () => {
+      const lower = await executeFindQuery(repo, {}, { 'name:contains': 'r' })
+      const upper = await executeFindQuery(repo, {}, { 'name:CONTAINS': 'r' })
+      const mixed = await executeFindQuery(repo, {}, { 'name:CoNtAiNs': 'r' })
+      const names = (r: any) => r.records.map((p: any) => p.name).sort()
+      expect(names(lower)).toEqual(['Bravo', 'Charlie']) // both contain "r" (Alpha does not)
+      expect(names(upper)).toEqual(names(lower))
+      expect(names(mixed)).toEqual(names(lower))
+    })
+
+    it('case-insensitive name works for symbolic/mixed operators too (:GT, :Between)', async () => {
+      expect((await executeFindQuery(repo, {}, { 'price:GT': '15' })).records.map((p: any) => p.name).sort()).toEqual([
+        'Bravo',
+        'Charlie'
+      ])
+      const between = await executeFindQuery(repo, {}, { 'price:BeTwEeN': '10:20' })
+      expect(between.records.map((p: any) => p.name).sort()).toEqual(['Alpha', 'Bravo'])
+    })
+
+    it('between / nbetween work on dates', async () => {
+      const inH1 = await executeFindQuery(repo, {}, { 'releasedAt:between': '2024-01-01:2024-06-30' })
+      expect(inH1.records.map((p: any) => p.name)).toEqual(['Alpha'])
+      const outH1 = await executeFindQuery(repo, {}, { 'releasedAt:nbetween': '2024-01-01:2024-06-30' })
+      expect(outH1.records.map((p: any) => p.name).sort()).toEqual(['Bravo', 'Charlie'])
+    })
+
+    it('JSONB: jsonHasKey / jsonHasAnyKey / jsonHasAllKeys', async () => {
+      const hasColor = await executeFindQuery(repo, {}, { 'meta:jsonHasKey': 'color' })
+      expect(hasColor.records.map((p: any) => p.name).sort()).toEqual(['Alpha', 'Bravo'])
+
+      const anyKey = await executeFindQuery(repo, {}, { 'meta:jsonHasAnyKey': 'size,weight' })
+      expect(anyKey.records.map((p: any) => p.name).sort()).toEqual(['Alpha', 'Charlie'])
+
+      const allKeys = await executeFindQuery(repo, {}, { 'meta:jsonHasAllKeys': 'color,size' })
+      expect(allKeys.records.map((p: any) => p.name)).toEqual(['Alpha']) // only Alpha has both
+    })
+  })
 })

@@ -1,24 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable prefer-const */
-import {
-  Not,
-  Like,
-  ILike,
-  Raw,
-  Equal,
-  IsNull,
-  In,
-  Between,
-  MoreThan,
-  MoreThanOrEqual,
-  LessThan,
-  LessThanOrEqual,
-  QueryRunner
-} from 'typeorm'
+import { QueryRunner } from 'typeorm'
 import yn from './util/yn.js'
 import * as log from './util/logger.js'
 import { parseLogicExpression } from './query/parser.js'
 import { buildWhereFromAst } from './query/builder.js'
+import { buildReservedOperators } from './query/operators.js'
 
 let sensitiveFields = ['password', 'mfaSecret', 'resetPasswordToken', 'confirmationToken']
 
@@ -43,10 +30,6 @@ export const configureCaseInsensitiveDefault = (flag: boolean) => {
 }
 
 const evalOrder = (val: string = '') => (['desc', 'd', 'false', '1'].includes(val.toLowerCase()) ? 'desc' : 'asc')
-
-const escapeRegExp = (str: string) => {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
 
 const isValidIdentifier = (str: string) => /^[a-zA-Z0-9_.]+$/.test(str)
 
@@ -89,127 +72,26 @@ export const useOrder = (order: string[] = []) => {
   return result
 }
 
-const typecastValue = (value: any) => {
-  if (typeof value !== 'string') return value
-  const lowerValue = value.toLowerCase()
-  if (lowerValue === 'true') return true
-  if (lowerValue === 'false') return false
-  if (lowerValue === 'null') return null
-  return value
-}
-
 export const useWhere = (where: any, repo?: any) => {
   const aliasMap = new Map<string, any>()
   const isTargetMongo = isMongo(repo)
-  const val = (v) => v || 'notFound'
 
-  const ci = caseInsensitiveByDefault
-  const isNumericString = (v: any) => typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v)
-
-  // Case-insensitive equality, but numeric/boolean/null-safe: only genuine text
-  // values use ILIKE (which would fail on numeric columns). Mongo uses anchored
-  // case-insensitive RegExp.
-  const eqInsensitive = (v: any) => {
-    const t = typecastValue(v)
-    if (t === null) return IsNull()
-    if (typeof t === 'boolean') return isTargetMongo ? t : Equal(t)
-    if (isNumericString(t)) return isTargetMongo ? t : Equal(t)
-    return isTargetMongo ? new RegExp(`^${escapeRegExp(t)}$`, 'i') : ILike(t)
-  }
-  const eqSensitive = (v: any) => {
-    const t = typecastValue(v)
-    if (t === null) return IsNull()
-    return isTargetMongo ? t : Equal(t)
-  }
-
-  // Partial-match builders (sensitive vs insensitive). Mongo gets RegExp.
-  const containsS = (v: any) => (isTargetMongo ? new RegExp(escapeRegExp(val(v))) : Like(`%${val(v)}%`))
-  const containsI = (v: any) => (isTargetMongo ? new RegExp(escapeRegExp(val(v)), 'i') : ILike(`%${val(v)}%`))
-  const startsS = (v: any) => (isTargetMongo ? new RegExp(`^${escapeRegExp(val(v))}`) : Like(`${val(v)}%`))
-  const startsI = (v: any) => (isTargetMongo ? new RegExp(`^${escapeRegExp(val(v))}`, 'i') : ILike(`${val(v)}%`))
-  const endsS = (v: any) => (isTargetMongo ? new RegExp(`${escapeRegExp(val(v))}$`) : Like(`%${val(v)}`))
-  const endsI = (v: any) => (isTargetMongo ? new RegExp(`${escapeRegExp(val(v))}$`, 'i') : ILike(`%${val(v)}`))
-  const likeS = (v: any) => (isTargetMongo ? new RegExp(escapeRegExp(val(v))) : Like(`${val(v)}`))
-  const likeI = (v: any) => (isTargetMongo ? new RegExp(escapeRegExp(val(v)), 'i') : ILike(`${val(v)}`))
-  const not = (fn: (v: any) => any) => (v: any) => Not(fn(v))
-
-  const arrayOp = (sqlOp: string, paramName: string) => (v: any) => {
-    const values = val(v).split(',').map(typecastValue)
-    if (isTargetMongo) return { $in: values }
-    return Raw((alias) => `${alias} ${sqlOp} ARRAY[:...${paramName}]::text[]`, { [paramName]: values })
-  }
-
-  const reservedOperators = {
-    ':null': (v) => (typecastValue(v) === false ? Not(IsNull()) : IsNull()),
-    ':notNull': (v) => (typecastValue(v) === true ? Not(IsNull()) : IsNull()),
-    ':isNotEmpty': () => (isTargetMongo ? { $ne: '' } : Not(Equal(''))),
-    ':isEmpty': () => (isTargetMongo ? '' : Equal('')),
-    ':nin': (v) => Not(In(val(v).split(',').map(typecastValue))),
-    ':in': (v) => In(val(v).split(',').map(typecastValue)),
-
-    // --- equality (base follows caseInsensitiveByDefault; *s strict, *i insensitive) ---
-    ':eqs': eqSensitive,
-    ':eqi': eqInsensitive,
-    ':eq': ci ? eqInsensitive : eqSensitive,
-    ':neqs': not(eqSensitive),
-    ':neqi': not(eqInsensitive),
-    ':neq': ci ? not(eqInsensitive) : not(eqSensitive),
-
-    // --- contains ---
-    ':ncontainss': not(containsS),
-    ':ncontainsi': not(containsI),
-    ':ncontains': ci ? not(containsI) : not(containsS),
-    ':containss': containsS,
-    ':containsi': containsI,
-    ':contains': ci ? containsI : containsS,
-
-    // --- starts ---
-    ':nstartss': not(startsS),
-    ':nstartsi': not(startsI),
-    ':nstarts': ci ? not(startsI) : not(startsS),
-    ':startss': startsS,
-    ':startsi': startsI,
-    ':starts': ci ? startsI : startsS,
-
-    // --- ends ---
-    ':nendss': not(endsS),
-    ':nendsi': not(endsI),
-    ':nends': ci ? not(endsI) : not(endsS),
-    ':endss': endsS,
-    ':endsi': endsI,
-    ':ends': ci ? endsI : endsS,
-
-    // --- like ---
-    ':nlikes': not(likeS),
-    ':nlikei': not(likeI),
-    ':nlike': ci ? not(likeI) : not(likeS),
-    ':likes': likeS,
-    ':likei': likeI,
-    ':like': ci ? likeI : likeS,
-
-    // --- comparison ---
-    ':gt': (v) => MoreThan(v),
-    ':ge': (v) => MoreThanOrEqual(v),
-    ':lt': (v) => LessThan(v),
-    ':le': (v) => LessThanOrEqual(v),
-    ':nbetween': (v) => {
-      const s = v?.split(':')
-      return s?.length == 2 ? Not(Between(s[0], s[1])) : v
-    },
-    ':between': (v) => {
-      const s = v?.split(':')
-      return s?.length == 2 ? Between(s[0], s[1]) : v
-    },
-
-    // --- array (Postgres) ---
-    ':arrayContainedBy': arrayOp('<@', 'arrayContainedByValues'),
-    ':arrayContains': arrayOp('@>', 'arrayContainsValues'),
-    ':overlap': arrayOp('&&', 'overlapValues')
-  }
-
-  if (yn(process.env.VOLCANIC_CUSTOM_QUERY_OPERATORS, false)) {
+  const allowRaw = yn(process.env.VOLCANIC_CUSTOM_QUERY_OPERATORS, false)
+  if (allowRaw) {
     log.warn('Volcanic-TypeORM: Custom query operators (:raw) enabled. SECURITY RISK!')
-    reservedOperators[':raw'] = (v) => Raw((alias) => `${alias} ${v}`)
+  }
+
+  const reservedOperators = buildReservedOperators({
+    isTargetMongo,
+    caseInsensitive: caseInsensitiveByDefault,
+    allowRaw
+  })
+
+  // Operator NAMES are case-insensitive: `:isEmpty`, `:isempty`, `:ISEMPTY` all
+  // resolve to the same handler via this lowercased lookup.
+  const operatorLookup: Record<string, (v: any) => any> = {}
+  for (const k of Object.keys(reservedOperators)) {
+    operatorLookup[k.toLowerCase()] = reservedOperators[k]
   }
 
   const reservedWords = Object.keys(reservedOperators).join('|')
@@ -235,6 +117,7 @@ export const useWhere = (where: any, repo?: any) => {
     const m = key.match(new RegExp(`(${reservedWords})\\b`, 'ig'))
     const operator = m?.length ? m[0] : ':eq'
     const fullPath = key.replace(operator, '')
+    const handler = operatorLookup[operator.toLowerCase()]
 
     if (!isValidIdentifier(fullPath)) {
       log.warn(`Volcanic-TypeORM: Invalid filter field skipped: ${fullPath}`)
@@ -248,8 +131,8 @@ export const useWhere = (where: any, repo?: any) => {
     }
 
     let value = where[rawKey]
-    if (operator && reservedOperators[operator]) {
-      value = reservedOperators[operator](value)
+    if (handler) {
+      value = handler(value)
     }
 
     let condition = {}

@@ -77,6 +77,24 @@ describe('Magic Query', () => {
       configureSensitiveFields(undefined as any)
       expect((useWhere({ password: 'p' }).allConditions as any).password).toBeUndefined()
     })
+
+    it('operator names are case-insensitive (gt/GT/Gt are equivalent)', () => {
+      const lower: any = useWhere({ 'age:gt': 5 }).allConditions
+      const upper: any = useWhere({ 'age:GT': 5 }).allConditions
+      const mixed: any = useWhere({ 'age:Gt': 5 }).allConditions
+      expect(lower.age?.type).toBe('moreThan')
+      expect(upper.age?.type).toBe('moreThan')
+      expect(mixed.age?.type).toBe('moreThan')
+      expect(upper.age?.value).toBe(5)
+    })
+
+    it('case-insensitive names resolve multi-word operators (isEmpty/ISEMPTY)', () => {
+      const a: any = useWhere({ 'note:isEmpty': '1' }).allConditions
+      const b: any = useWhere({ 'note:ISEMPTY': '1' }).allConditions
+      expect(a.note?.value).toBe('')
+      expect(b.note?.value).toBe('')
+      expect(b.note?.type).toBe('equal')
+    })
   })
 
   describe('parseLogicExpression', () => {

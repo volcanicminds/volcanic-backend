@@ -23,7 +23,9 @@ export const Product = new EntitySchema<any>({
     price: { type: 'int', default: 0 },
     active: { type: Boolean, default: true },
     note: { type: String, nullable: true },
-    tags: { type: 'text', array: true, nullable: true }
+    tags: { type: 'text', array: true, nullable: true },
+    meta: { type: 'jsonb', nullable: true },
+    releasedAt: { type: 'timestamp', nullable: true }
   },
   relations: {
     category: { type: 'many-to-one', target: 'Category', nullable: true, joinColumn: true }

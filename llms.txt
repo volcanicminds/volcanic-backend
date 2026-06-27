@@ -1100,9 +1100,19 @@ This table is the "Rosetta Stone" for the frontend developer. Every key in the J
 | `:arrayContains`    | `@> ARRAY[…]`  | Array contains ALL given elements. `tags:arrayContains=fruit,red`                                   |
 | `:arrayContainedBy` | `<@ ARRAY[…]`  | Array is contained by the given set. `tags:arrayContainedBy=a,b,c`                                  |
 
-> Note: `:in`/`:nin` remain exact (case-sensitive) — set membership for ids/enums. The array operators target real
-> Postgres array columns (`text[]`), not `simple-array` string columns. Each Raw-based array operator uses one
-> bound param name, so a single occurrence per query is supported.
+### JSONB Operators (Postgres)
+
+| Operator           | SQL  | Description                                                              |
+| :----------------- | :--- | :---------------------------------------------------------------------- |
+| `:jsonHasKey`      | `?`  | JSONB column has the given top-level key. `meta:jsonHasKey=color`       |
+| `:jsonHasAnyKey`   | `?\|`| JSONB has ANY of the keys (CSV). `meta:jsonHasAnyKey=color,size`        |
+| `:jsonHasAllKeys`  | `?&` | JSONB has ALL of the keys (CSV). `meta:jsonHasAllKeys=color,size`       |
+
+> Notes: **Operator names are case-insensitive** — `:isEmpty`, `:isempty`, `:ISEMPTY` are equivalent (any
+> operator). `:between`/`:nbetween` work on numbers AND dates (value `min:max`; date values must not contain `:`,
+> i.e. use `YYYY-MM-DD`). `:in`/`:nin` remain exact set membership. Array/JSONB operators target real Postgres
+> `text[]`/`jsonb` columns (not `simple-array`); each Raw-based operator binds one param name → one occurrence per
+> query.
 
 ### Raw / Dangerous Operator (off by default)
 

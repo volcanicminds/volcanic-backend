@@ -29,6 +29,24 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
 - Startup **fails fast** on a missing or weak signing secret (`JWT_SECRET`, `JWT_REFRESH_SECRET`, and
   `COOKIE_SECRET` in cookie mode): minimum 32 characters — fatal in production, a warning otherwise.
 
+## Changelog
+
+### 3.1.0
+
+- **Embedded database (PGlite)** — opt-in `type: 'pglite'` engine: zero-setup, in-process Postgres for
+  dev/test/demos, with optional `pgvector`. A real Postgres server stays the production choice. See
+  [docs/PGLITE.md](docs/PGLITE.md).
+- **Magic Query — case-insensitive by default.** Base text operators (`eq`, `contains`, `starts`, `ends`, `like`
+  and negations) now match **case-insensitively** on strings (`?name=mario` finds "Mario"). Convention: base =
+  insensitive, `*s` = strict/sensitive, `*i` = insensitive alias. `eq`/`neq` stay type-aware (numbers/booleans/null
+  match exactly). Restore the legacy behavior with `caseInsensitiveByDefault: false` (or
+  `VOLCANIC_CASE_INSENSITIVE_DEFAULT=false`). _Behavioral change — labeled 3.1.0, no breaking major since v3 is new._
+- **New operators**: completed negations (`nstarts`, `nends`, `nlike` + `s`/`i` variants), `nbetween`, `isEmpty` /
+  `isNotEmpty`, array `arrayContains` (`@>`) / `arrayContainedBy` (`<@`), and JSONB `jsonHasKey` (`?`) /
+  `jsonHasAnyKey` (`?|`) / `jsonHasAllKeys` (`?&`).
+- **Operator names are case-insensitive**: `:isEmpty`, `:isempty`, `:ISEMPTY` are equivalent.
+- Internal: the operator catalog moved to `lib/database/typeorm/query/operators.ts`.
+
 ## Documentation & Guides
 
 **`llms.txt`** is the single, exhaustive, self-contained guide (for humans **and** LLM/Context7 agents): mental
@@ -814,9 +832,14 @@ app.get('/users', async (req, reply) => {
 | `:overlap` | Array overlap `&&` (common elements) | `...&tags:overlap=acme,globex` | ✅ | ✅ |
 | `:arrayContains` | Array contains all `@>` | `...&tags:arrayContains=fruit,red` | ✅ | ✅ |
 | `:arrayContainedBy` | Array contained by `<@` | `...&tags:arrayContainedBy=a,b,c` | ✅ | ✅ |
+| `:jsonHasKey` | JSONB has key `?` | `...&meta:jsonHasKey=color` | ✅ | ✅ |
+| `:jsonHasAnyKey` | JSONB has any key `?\|` | `...&meta:jsonHasAnyKey=color,size` | ✅ | ✅ |
+| `:jsonHasAllKeys` | JSONB has all keys `?&` | `...&meta:jsonHasAllKeys=color,size` | ✅ | ✅ |
 | `:raw` | Raw SQL ⚠️ **Dangerous** — disabled by default (see security note). | `...&age:raw=> 18` | ✅ | ✅ |
 
 \* The `s`/`i` text variants map to `LIKE`/`ILIKE` on Postgres and to (case-insensitive) `RegExp` on MongoDB.
+`:between`/`:nbetween` work on numbers **and** dates. **Operator names are case-insensitive**: `:isEmpty`,
+`:isempty` and `:ISEMPTY` are all valid and equivalent.
 
 **Nested relation filters** — dot notation on related entities:
 `GET /users?company.name:eq=Volcanic Minds`
