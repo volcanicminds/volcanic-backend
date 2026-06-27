@@ -8,17 +8,17 @@ export async function getRoles(_req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function count(req: FastifyRequest, _reply: FastifyReply) {
-  return req.server['userManager'].countQuery(req.data())
+  return req.server['userManager'].countQuery(req.data(), req.runner)
 }
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
-  const { headers, records } = await req.server['userManager'].findQuery(req.data())
+  const { headers, records } = await req.server['userManager'].findQuery(req.data(), req.runner)
   return reply.type('application/json').headers(headers).send(records)
 }
 
 export async function findOne(req: FastifyRequest, reply: FastifyReply) {
   const { id } = req.parameters()
-  const user = id ? await req.server['userManager'].retrieveUserById(id) : null
+  const user = id ? await req.server['userManager'].retrieveUserById(id, req.runner) : null
   return user || reply.status(404).send()
 }
 
@@ -35,8 +35,12 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     }
   }
 
-  const user = await req.server['userManager'].createUser(data)
-  return user ? entity.User.save(user) : reply.status(400).send(Error('User not creatable'))
+  // Pass req.runner so creation lands in the resolved tenant schema (multi-tenant);
+  // createUser already persists and returns the saved entity, so do NOT re-save via
+  // entity.User.save() — that active-record call always targets the global/public
+  // connection and would both double-write and break tenant isolation.
+  const user = await req.server['userManager'].createUser(data, req.runner)
+  return user || reply.status(400).send(Error('User not creatable'))
 }
 
 export async function update(req: FastifyRequest, reply: FastifyReply) {
@@ -46,7 +50,7 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const { id: _id, ...userData } = req.data()
-  return await req.server['userManager'].updateUserById(id, userData)
+  return await req.server['userManager'].updateUserById(id, userData, req.runner)
 }
 
 export async function remove(req: FastifyRequest, reply: FastifyReply) {
@@ -54,7 +58,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
   if (!id) {
     return reply.status(404).send()
   }
-  return await req.server['userManager'].deleteUser(id)
+  return await req.server['userManager'].deleteUser(id, req.runner)
 }
 
 export async function getCurrentUser(req: FastifyRequest, reply: FastifyReply) {
@@ -82,7 +86,7 @@ export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply
   }
 
   const { id: _id, ...userData } = req.data()
-  return await req.server['userManager'].updateUserById(id, userData)
+  return await req.server['userManager'].updateUserById(id, userData, req.runner)
 }
 
 export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
@@ -164,12 +168,12 @@ export async function resetPasswordByAdmin(req: FastifyRequest, reply: FastifyRe
   }
 
   try {
-    const user = await req.server['userManager'].retrieveUserById(id)
+    const user = await req.server['userManager'].retrieveUserById(id, req.runner)
     if (!user) {
       return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'User not found' })
     }
 
-    await req.server['userManager'].resetPassword(user, password)
+    await req.server['userManager'].resetPassword(user, password, req.runner)
     return { ok: true }
   } catch (error) {
     req.log.error(error)

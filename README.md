@@ -53,6 +53,11 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
 - **Unified error body**: HTTP errors now serialize as `{ statusCode, error, code?, message? }`, and the status is
   preserved across the async error path (previously some `reply.status(4xx).send(new Error())` collapsed to `500`).
   `401` is returned for anonymous callers and `403` for an authenticated subject lacking the role.
+- **Security — multi-tenant isolation fix on `/users`.** The native user controllers (`find`, `count`, `findOne`,
+  `create`, `update`, `remove`, `updateCurrentUser`, admin password reset) did not forward `req.runner`, so in
+  multi-tenant mode they queried the global/public schema instead of the resolved tenant schema (cross-tenant
+  exposure). They now pass `req.runner` (a no-op in single-tenant mode). `create` also no longer double-saves via
+  the active-record `entity.User.save()` (which always hit the global connection). See `npm run test:e2e:mt:pglite`.
 - Internal: the operator catalog moved to `lib/database/typeorm/query/operators.ts`.
 
 ## Documentation & Guides

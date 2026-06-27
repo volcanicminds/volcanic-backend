@@ -129,6 +129,15 @@ stays alive. If you create your own secondary `DataSource` against PGlite, do **
 unless you intend to close the whole database. Use `closeEmbedded()` from `@volcanicminds/backend/typeorm` to shut
 the engine down cleanly (e.g. at the end of a test suite).
 
+> ⚠️ **Concurrency caveat — multi‑tenant on PGlite is NOT production‑safe.** Schema isolation relies on a
+> per‑request `SET search_path`, but **all** requests on PGlite multiplex a **single** connection, and that
+> connection's `search_path` is reset asynchronously (on the response `finish` event). Under concurrent traffic two
+> tenant requests can interleave and read each other's schema. On a real Postgres server each request gets its own
+> pooled connection, so the switch is naturally isolated. **Use PGlite multi‑tenancy only for sequential dev/test
+> scenarios; run real Postgres for any concurrent or production multi‑tenant workload.** (The e2e suite
+> `npm run test:e2e:mt:pglite` runs requests sequentially and resets `search_path` between them precisely because of
+> this limitation.)
+
 ## Reading records — single vs multi tenant
 
 **The controller is identical for PGlite and Postgres, and identical for single- and multi-tenant.** The engine is
