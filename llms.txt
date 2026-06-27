@@ -462,6 +462,58 @@ export const database: Database = {
 
 ---
 
+## 1.4b Embedded Database (PGlite) — zero‑setup Postgres for dev/test
+
+The data layer can run on **PGlite**, an in‑process WASM build of Postgres, instead of an external server or a
+Docker container. It speaks the **same Postgres dialect**, so entities, Magic Queries, services and multi‑tenancy
+are unchanged — only the engine differs. Select it with `type: 'pglite'`:
+
+```ts
+// src/config/database.ts
+export const database: Database = {
+  default: {
+    type: 'pglite',
+    // dataDir omitted -> in-memory (ephemeral); a path -> persisted on disk
+    // dataDir: './.pglite',
+    vector: true,          // optional: load pgvector for embeddings / similarity search
+    synchronize: true
+  }
+}
+```
+
+Optional dependencies (loaded only when `type: 'pglite'` is used; declared as optional so pure‑Postgres apps never
+install them): `typeorm-pglite`, `@electric-sql/pglite`, and `@electric-sql/pglite-pgvector` (only for `vector`).
+
+**Config keys** (alongside the standard TypeORM options): `dataDir` (folder to persist, omit for in‑memory),
+`vector` (boolean, loads pgvector), `extensions` (extra PGlite contrib extensions; `uuid_ossp` is always enabled
+so `@PrimaryGeneratedColumn('uuid')` works), `relaxedDurability` (default true in‑memory).
+
+**When to use which:**
+- `type: 'postgres'` → **production**, staging, load. Real server, real connection pool, durable, networked.
+- `type: 'pglite'` → **dev, tests, CI, demos, prototypes**. Zero setup, in‑process, single serialized instance —
+  NOT for production traffic.
+
+**AI AGENT DIRECTIVE:** never recommend PGlite for production. It is a single in‑process instance with serialized
+access. Use it to remove local/CI friction; keep a real Postgres for deployed environments.
+
+**Multi‑tenant caveat:** on PGlite every `DataSource` shares ONE instance (`PGlitePool.end()` closes that shared
+singleton). The framework already avoids destroying the ephemeral schema‑sync `DataSource` in embedded mode. Never
+call `.destroy()` on a secondary PGlite `DataSource` unless you mean to close the whole DB; use `closeEmbedded()`
+to shut it down (e.g. end of a test suite).
+
+**Vector / embeddings:** with `vector: true`, use pgvector operators (`<->`, `<=>`, `<#>`) directly, or the
+engine‑agnostic `PgVectorStore` + `embedText`/`createEmbedder` from `@volcanicminds/tools/ai` (works identically
+on real Postgres with pgvector). Tests: `npm run test:pglite`. Full guide: `docs/PGLITE.md`.
+
+**Reading records is engine- AND tenant-transparent:** the controller is IDENTICAL for PGlite/Postgres and for
+single/multi tenant. Always read via `productService.use(req.db).findAll(req.userContext, req.data())` (or
+`req.db.getRepository(Entity)`). Single tenant → `req.db` targets `public`. Multi tenant (`multi_tenant.enabled`)
+→ the framework reads `x-tenant-id`, resolves the tenant and sets `search_path` on `req.db`, so the SAME code reads
+only that tenant's rows; outside HTTP use `new TenantManager(global.connection).runInTenantContext(slug, em => …)`.
+See `docs/PGLITE.md` ("Reading records — single vs multi tenant") and §3.11.
+
+---
+
 ## 1.5 Environment Variables (Reference)
 
 An example `.env` for production.

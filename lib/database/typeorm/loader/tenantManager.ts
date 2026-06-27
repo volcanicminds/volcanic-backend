@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { DataSource, EntityManager } from 'typeorm'
 import { Tenant } from '../entities/tenant.js'
+import { isEmbeddedActive } from '../embedded.js'
 
 export class TenantManager {
   constructor(private dataSource: DataSource) {}
@@ -146,7 +147,13 @@ export class TenantManager {
           name: `sync_${safeSchema}_${Date.now()}`
         })
         await tenantDs.initialize()
-        await tenantDs.destroy()
+        // On the embedded PGlite engine every DataSource shares ONE WASM instance
+        // (PGlitePool.end() -> PGliteInstance.close()), so destroying this ephemeral
+        // one would close the PRIMARY connection too. Leave it alive: it only holds a
+        // reference to the shared singleton, which the app keeps using.
+        if (!isEmbeddedActive()) {
+          await tenantDs.destroy()
+        }
 
         if ((global as any).log?.i)
           (global as any).log.info(`[TenantManager] Schema ${safeSchema} synchronized successfully`)

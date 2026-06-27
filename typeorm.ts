@@ -9,6 +9,7 @@ import * as userManager from './lib/database/typeorm/loader/userManager.js'
 import * as tokenManager from './lib/database/typeorm/loader/tokenManager.js'
 import * as dataBaseManager from './lib/database/typeorm/loader/dataBaseManager.js'
 import { TenantManager } from './lib/database/typeorm/loader/tenantManager.js'
+import { isEmbedded, setupEmbedded, closeEmbedded } from './lib/database/typeorm/embedded.js'
 import { User } from './lib/database/typeorm/entities/user.js'
 import { Tenant } from './lib/database/typeorm/entities/tenant.js'
 import { Token } from './lib/database/typeorm/entities/token.js'
@@ -47,6 +48,13 @@ async function start(options) {
 
   if (options.sensitiveFields) {
     configureSensitiveFields(options.sensitiveFields)
+  }
+
+  // Embedded engine (PGlite): rewrites options to a Postgres-dialect DataSource backed
+  // by an in-process WASM Postgres, registering/creating extensions before synchronize.
+  // No-op for any other `type` (e.g. real 'postgres'). See lib/database/typeorm/embedded.ts.
+  if (isEmbedded(options)) {
+    await setupEmbedded(options)
   }
 
   const { LOG_DB_LEVEL = 'warn', LOG_COLORIZE = true, DB_SYNCHRONIZE_SCHEMA_AT_STARTUP = false } = process.env
@@ -116,6 +124,7 @@ async function start(options) {
 export { Database } from './types/database/typeorm/global.js'
 export {
   start,
+  closeEmbedded,
   User,
   Tenant,
   Token,

@@ -37,6 +37,7 @@ focused docs below drill into specific topics:
 
 - **[Advanced Architecture](docs/ADVANCED_ARCHITECTURE.md)**: Service Layer pattern, BaseService abstraction, and dependency injection.
 - **[Data Layer Magic](docs/DATA_LAYER_MAGIC.md)**: How `req.data()` works and how to turn URLs into complex SQL queries with `@volcanicminds/backend/typeorm`.
+- **[Embedded database (PGlite)](docs/PGLITE.md)**: Plug & play in‑process Postgres for dev/test/demos (zero setup), pgvector support, and Postgres‑vs‑PGlite trade‑offs.
 - **[Schema Customization](docs/SCHEMA_OVERRIDING.md)**: How to extend core schemas (like Login Response) without forking the framework.
 - **[Security & MFA](docs/SECURITY_MFA.md)**: Deep dive into Multi-Factor Authentication policies, Gatekeeper flow, and emergency resets.
 - **[TypeScript Guide](docs/TYPESCRIPT_GUIDE.md)**: How to properly extend Request types, global scopes, and inject User Contexts.
@@ -700,6 +701,25 @@ npm install typeorm bcrypt pluralize reflect-metadata pg
 
 For the full options and environment variables see `docs/CONFIGURATION.md`; `llms.txt` (Part 3) is the exhaustive
 reference. The essentials you need day-to-day are below.
+
+### Embedded engine (PGlite) — zero‑setup Postgres
+
+For local dev, tests, demos and prototypes you can swap the external Postgres for **PGlite**, an in‑process WASM
+Postgres — no server, no Docker. Same dialect, same code; just change the config `type`:
+
+```ts
+export const database: Database = {
+  default: { type: 'pglite', vector: true, synchronize: true } // in-memory; add dataDir to persist
+}
+```
+
+```sh
+npm install typeorm-pglite @electric-sql/pglite   # + @electric-sql/pglite-pgvector for vector:true
+```
+
+A real Postgres server stays the production‑grade choice. See **[docs/PGLITE.md](docs/PGLITE.md)** for the full
+options, the Postgres‑vs‑PGlite trade‑off table, pgvector usage and multi‑tenant caveats. Run the embedded
+integration suite with `npm run test:pglite`.
 
 ### Core features
 
