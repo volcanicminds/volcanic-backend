@@ -2,8 +2,15 @@ export const currentUserBodySchema = {
   $id: 'currentUserBodySchema',
   type: 'object',
   nullable: true,
+  // Self-service profile edit only. `additionalProperties: false` rejects any other
+  // field (roles, blocked, confirmed, password, externalId, mfa*) so a user cannot
+  // mass-assign their way to privilege escalation. The controller also whitelists
+  // these same fields as the real security boundary (defense in depth).
+  additionalProperties: false,
   properties: {
-    username: { type: 'string' }
+    username: { type: 'string' },
+    firstName: { type: 'string' },
+    lastName: { type: 'string' }
   }
 }
 

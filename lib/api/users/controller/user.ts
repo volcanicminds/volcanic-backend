@@ -78,6 +78,11 @@ export async function getCurrentUser(req: FastifyRequest, reply: FastifyReply) {
   )
 }
 
+// Fields a user is allowed to change on themselves. Everything else (roles,
+// blocked, confirmed, password, externalId, mfa*, ...) is off-limits: spreading the
+// raw body here would let a normal user mass-assign roles:['admin'] and escalate.
+const SELF_EDITABLE_FIELDS = ['username', 'firstName', 'lastName']
+
 export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply) {
   const user: AuthenticatedUser | undefined = req.user
   const id = user?.getId()
@@ -85,7 +90,11 @@ export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply
     return reply.status(403).send('Cannot update current user')
   }
 
-  const { id: _id, ...userData } = req.data()
+  const incoming = req.data() || {}
+  const userData: any = {}
+  for (const f of SELF_EDITABLE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(incoming, f)) userData[f] = incoming[f]
+  }
   return await req.server['userManager'].updateUserById(id, userData, req.runner)
 }
 

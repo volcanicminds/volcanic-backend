@@ -53,6 +53,11 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
 - **Unified error body**: HTTP errors now serialize as `{ statusCode, error, code?, message? }`, and the status is
   preserved across the async error path (previously some `reply.status(4xx).send(new Error())` collapsed to `500`).
   `401` is returned for anonymous callers and `403` for an authenticated subject lacking the role.
+- **Security — privilege-escalation / mass-assignment fix on `PUT /users/me`.** `currentUserBodySchema` allowed
+  extra properties and the controller spread the whole body into the update, so a normal user could send
+  `roles: ['admin']` (or `blocked`, `confirmed`, `password`, `externalId`, `mfa*`) and **escalate to admin** /
+  overwrite their credential. The schema is now `additionalProperties: false` and the controller whitelists only
+  self-editable fields (`username`, `firstName`, `lastName`). (OWASP API3:2023.)
 - **`/auth/refresh-token` robustness**: when refresh tokens are disabled (`JWT_REFRESH=false`) the endpoint now
   returns a clean `404` (`code: NOT_FOUND`) instead of throwing an unhandled `500`; it also validates that both
   `token` and `refreshToken` are present (`400`).
