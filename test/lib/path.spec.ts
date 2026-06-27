@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { expect } from 'expect'
 import { normalizePatterns } from '../../lib/util/path.js'
 

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { expect } from 'expect'
 import { httpError } from '../../lib/util/httpError.js'
 

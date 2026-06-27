@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 // Consumer-app CUSTOM routes, auto-discovered from src/api/**/routes.ts alongside
 // the framework's own routes. Demonstrates: a custom-role-gated endpoint
 // (roles: ['editor']), a custom global middleware (global.auditStamp), and a
