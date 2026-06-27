@@ -53,6 +53,12 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
 - **Unified error body**: HTTP errors now serialize as `{ statusCode, error, code?, message? }`, and the status is
   preserved across the async error path (previously some `reply.status(4xx).send(new Error())` collapsed to `500`).
   `401` is returned for anonymous callers and `403` for an authenticated subject lacking the role.
+- **Security — rate limiting on auth endpoints.** `POST /auth/login`, `/register`, `/forgot-password` and
+  `/reset-password` are now throttled per IP to blunt brute-force / credential-stuffing / password-spray (OWASP
+  API2/API4). Defaults to 10 requests / 60s, configurable via `AUTH_RATELIMIT_MAX` and `AUTH_RATELIMIT_WINDOW`.
+- **Security — Magic Query page-size cap.** A request can no longer pull unbounded rows (`?take=10000000`): `take`/
+  `pageSize` are clamped to a maximum (default **100**, OWASP API4). Configure via the data-layer option
+  `maxPageSize`, the env `VOLCANIC_MAX_PAGE_SIZE`, or `configureMaxPageSize()`. Set `<= 0` to disable (not advised).
 - **Security — privilege-escalation / mass-assignment fix on `PUT /users/me`.** `currentUserBodySchema` allowed
   extra properties and the controller spread the whole body into the update, so a normal user could send
   `roles: ['admin']` (or `blocked`, `confirmed`, `password`, `externalId`, `mfa*`) and **escalate to admin** /

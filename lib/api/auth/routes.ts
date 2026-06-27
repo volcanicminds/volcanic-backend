@@ -1,3 +1,12 @@
+// Throttle credential-sensitive endpoints (login, register, forgot/reset password)
+// to blunt brute-force / credential-stuffing / password-spray (OWASP API2/API4).
+// Per-IP, configurable via env. The rateLimit plugin is registered global:false,
+// so only routes carrying this opt in.
+const authRateLimit = {
+  max: Math.floor(Number(process.env.AUTH_RATELIMIT_MAX) || 10),
+  timeWindow: Math.floor(Number(process.env.AUTH_RATELIMIT_WINDOW) || 60000)
+}
+
 export default {
   config: {
     title: 'Authentication functions',
@@ -15,6 +24,7 @@ export default {
       roles: [],
       handler: 'auth.register',
       middlewares: ['global.preAuth', 'global.postAuth'],
+      rateLimit: authRateLimit,
       config: {
         title: 'Register new user',
         description: 'Register a new user',
@@ -90,6 +100,7 @@ export default {
       roles: [],
       handler: 'auth.forgotPassword',
       middlewares: ['global.preForgotPassword', 'global.postForgotPassword'],
+      rateLimit: authRateLimit,
       config: {
         title: 'Forgot password',
         description:
@@ -106,6 +117,7 @@ export default {
       roles: [],
       handler: 'auth.resetPassword',
       middlewares: [],
+      rateLimit: authRateLimit,
       config: {
         title: 'Reset password',
         description:
@@ -122,6 +134,7 @@ export default {
       roles: [],
       handler: 'auth.login',
       middlewares: ['global.preAuth', 'global.postAuth'],
+      rateLimit: authRateLimit,
       config: {
         title: 'Login',
         description: 'Login authentication',

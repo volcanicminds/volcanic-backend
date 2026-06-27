@@ -23,7 +23,8 @@ import {
   useOrder,
   useWhere,
   configureSensitiveFields,
-  configureCaseInsensitiveDefault
+  configureCaseInsensitiveDefault,
+  configureMaxPageSize
 } from './lib/database/typeorm/query.js'
 import * as log from './lib/database/typeorm/util/logger.js'
 import yn from './lib/database/typeorm/util/yn.js'
@@ -54,6 +55,11 @@ async function start(options) {
   if (typeof options.caseInsensitiveByDefault === 'boolean') {
     configureCaseInsensitiveDefault(options.caseInsensitiveByDefault)
     delete options.caseInsensitiveByDefault // custom option, keep it out of TypeORM
+  }
+
+  if (typeof options.maxPageSize === 'number') {
+    configureMaxPageSize(options.maxPageSize)
+    delete options.maxPageSize // custom option, keep it out of TypeORM
   }
 
   // Embedded engine (PGlite): rewrites options to a Postgres-dialect DataSource backed
@@ -148,5 +154,6 @@ export {
   useOrder,
   useWhere,
   configureSensitiveFields,
-  configureCaseInsensitiveDefault
+  configureCaseInsensitiveDefault,
+  configureMaxPageSize
 }

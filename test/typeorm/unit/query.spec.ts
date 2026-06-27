@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { expect } from 'expect'
-import { useOrder, useWhere, configureSensitiveFields } from '../../../lib/database/typeorm/query.js'
+import {
+  useOrder,
+  useWhere,
+  configureSensitiveFields,
+  applyQuery,
+  configureMaxPageSize
+} from '../../../lib/database/typeorm/query.js'
 import { parseLogicExpression } from '../../../lib/database/typeorm/query/parser.js'
 
 const DEFAULT_SENSITIVE = ['password', 'mfaSecret', 'resetPasswordToken', 'confirmationToken']
@@ -94,6 +100,31 @@ describe('Magic Query', () => {
       expect(a.note?.value).toBe('')
       expect(b.note?.value).toBe('')
       expect(b.note?.type).toBe('equal')
+    })
+  })
+
+  describe('applyQuery — page-size cap (resource-consumption guard)', () => {
+    // repo is only consulted for dialect detection; undefined -> defaults to 'pg'.
+    const q = (data: any) => applyQuery(data, null, undefined) as any
+
+    afterEach(() => configureMaxPageSize(100)) // restore default
+
+    it('clamps an oversized take to the default max (100)', () => {
+      expect(q({ take: 10_000_000 }).take).toBe(100)
+    })
+
+    it('clamps an oversized pageSize to the default max (100)', () => {
+      expect(q({ pageSize: 5000 }).take).toBe(100)
+    })
+
+    it('leaves a take under the cap untouched', () => {
+      expect(q({ take: 25 }).take).toBe(25)
+    })
+
+    it('honours a custom configured max', () => {
+      configureMaxPageSize(50)
+      expect(q({ take: 10_000 }).take).toBe(50)
+      expect(q({ take: 30 }).take).toBe(30)
     })
   })
 

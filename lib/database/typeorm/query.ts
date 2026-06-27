@@ -29,6 +29,19 @@ export const configureCaseInsensitiveDefault = (flag: boolean) => {
   log.info(`Volcanic-TypeORM: caseInsensitiveByDefault = ${caseInsensitiveByDefault}`)
 }
 
+// Upper bound for how many rows a single Magic Query can return. Prevents a caller
+// from requesting `?take=10000000` and exhausting memory/DB (OWASP API4). Default
+// 100; override per-app via the data-layer option `maxPageSize` or the env
+// `VOLCANIC_MAX_PAGE_SIZE`. A value <= 0 disables the cap (not recommended).
+let maxPageSize = Math.floor(Number(process.env.VOLCANIC_MAX_PAGE_SIZE) || 100)
+
+export const configureMaxPageSize = (size: number) => {
+  if (typeof size === 'number' && Number.isFinite(size)) {
+    maxPageSize = Math.floor(size)
+    log.info(`Volcanic-TypeORM: maxPageSize = ${maxPageSize}`)
+  }
+}
+
 const evalOrder = (val: string = '') => (['desc', 'd', 'false', '1'].includes(val.toLowerCase()) ? 'desc' : 'asc')
 
 const isValidIdentifier = (str: string) => /^[a-zA-Z0-9_.]+$/.test(str)
@@ -160,7 +173,9 @@ export const useWhere = (where: any, repo?: any) => {
 export function applyQuery(data, extraWhere, repo) {
   const { page: p = 1, pageSize = 25, skip: sk = 0, take: tk = 0, sort: s, _logic, ...where } = data
   const page: number = (p < 1 ? 1 : p) - 1
-  const take: number = tk || pageSize
+  // Clamp the requested page size to maxPageSize (resource-consumption guard).
+  const requestedTake: number = tk || pageSize
+  const take: number = maxPageSize > 0 ? Math.min(requestedTake, maxPageSize) : requestedTake
   const skip: number = sk || page * pageSize
   const order: string[] = !Array.isArray(s) ? [s] : s
 
