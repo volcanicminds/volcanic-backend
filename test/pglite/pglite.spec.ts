@@ -7,7 +7,14 @@
 // against the same DataSource, using distinct table/schema names to avoid
 // cross-test interference.
 import { expect } from 'expect'
-import { start, closeEmbedded, TenantManager } from '../../typeorm.js'
+import {
+  start,
+  closeEmbedded,
+  TenantManager,
+  executeFindQuery,
+  executeCountQuery,
+  userManager
+} from '../../typeorm.js'
 import { Product, User, Tenant } from './fixtures/entities.js'
 
 let ds: any
@@ -166,6 +173,98 @@ describe('Embedded PGlite engine', () => {
         "SELECT content, embedding <=> '[1,0,0]' AS cos FROM doc_embeddings ORDER BY cos ASC LIMIT 1"
       )
       expect(near[0].content).toBe('cat')
+    })
+  })
+
+  // End-to-end Magic Query: the HTTP-query-string -> SQL -> results pipeline,
+  // previously only unit-tested at the parsing level (no real DB). PGlite lets us
+  // run it against a real Postgres dialect with zero setup.
+  describe('Magic Query (executeFindQuery / executeCountQuery) end-to-end', () => {
+    let repo: any
+
+    before(async () => {
+      repo = ds.getRepository(Product)
+      await repo.clear()
+      await repo.save([
+        repo.create({ name: 'apple', price: 10, active: true }),
+        repo.create({ name: 'banana', price: 20, active: true }),
+        repo.create({ name: 'cherry', price: 30, active: false }),
+        repo.create({ name: 'orange', price: 40, active: true })
+      ])
+    })
+
+    it('equality filter (default operator)', async () => {
+      const { records } = await executeFindQuery(repo, {}, { name: 'banana' })
+      expect(records.map((p: any) => p.name)).toEqual(['banana'])
+    })
+
+    it('comparison operator (:gt) with typecasting', async () => {
+      const { records } = await executeFindQuery(repo, {}, { 'price:gt': '20' })
+      expect(records.map((p: any) => p.name).sort()).toEqual(['cherry', 'orange'])
+    })
+
+    it(':in operator (comma list)', async () => {
+      const { records } = await executeFindQuery(repo, {}, { 'price:in': '10,40' })
+      expect(records.map((p: any) => p.name).sort()).toEqual(['apple', 'orange'])
+    })
+
+    it('case-insensitive contains (:containsi -> ILIKE)', async () => {
+      const { records } = await executeFindQuery(repo, {}, { 'name:containsi': 'AN' })
+      // 'banana' and 'orange' contain "an"
+      expect(records.map((p: any) => p.name).sort()).toEqual(['banana', 'orange'])
+    })
+
+    it('boolean filter with typecasting', async () => {
+      const { records } = await executeFindQuery(repo, {}, { active: 'false' })
+      expect(records.map((p: any) => p.name)).toEqual(['cherry'])
+    })
+
+    it('sorting + pagination + pagination headers', async () => {
+      const { records, headers } = await executeFindQuery(repo, {}, { sort: 'price:desc', page: 1, pageSize: 2 })
+      expect(records.map((p: any) => p.price)).toEqual([40, 30])
+      expect(headers['v-total']).toBe(4)
+      expect(headers['v-pageSize']).toBe(2)
+      expect(headers['v-pageCount']).toBe(2)
+    })
+
+    it('executeCountQuery honours filters', async () => {
+      expect(await executeCountQuery(repo, { active: 'true' })).toBe(3)
+      expect(await executeCountQuery(repo, { 'price:ge': '30' })).toBe(2)
+    })
+
+    it('extraWhere (RLS) is AND-ed to the user filter', async () => {
+      const { records } = await executeFindQuery(repo, {}, { 'price:gt': '5' }, { active: true })
+      expect(records.every((p: any) => p.active === true)).toBe(true)
+      expect(records.find((p: any) => p.name === 'cherry')).toBeUndefined()
+    })
+  })
+
+  // userManager auth core, end-to-end against a real DB (previously only the
+  // constant-time password check was unit-tested with a stubbed runner).
+  describe('userManager auth flows end-to-end', () => {
+    const email = 'flow@acme.test'
+
+    it('createUser hashes the password and persists the user', async () => {
+      const u: any = await userManager.createUser({ email, password: 'Initial-pw-1', roles: ['user'] } as any)
+      expect(u.id).toMatch(/^[0-9a-f-]{36}$/)
+      expect(u.password).not.toBe('Initial-pw-1') // stored as a bcrypt hash
+      expect(u.externalId).toBeTruthy()
+    })
+
+    it('retrieveUserByEmail finds the persisted user', async () => {
+      const u: any = await userManager.retrieveUserByEmail(email)
+      expect(u?.email).toBe(email)
+    })
+
+    it('retrieveUserByPassword validates credentials', async () => {
+      expect(await userManager.retrieveUserByPassword(email, 'Initial-pw-1')).not.toBeNull()
+      expect(await userManager.retrieveUserByPassword(email, 'wrong-pw')).toBeNull()
+    })
+
+    it('changePassword rotates the credential', async () => {
+      await userManager.changePassword(email, 'New-pw-2', 'Initial-pw-1')
+      expect(await userManager.retrieveUserByPassword(email, 'New-pw-2')).not.toBeNull()
+      expect(await userManager.retrieveUserByPassword(email, 'Initial-pw-1')).toBeNull()
     })
   })
 })
