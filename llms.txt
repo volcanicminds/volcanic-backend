@@ -1042,17 +1042,28 @@ This table is the "Rosetta Stone" for the frontend developer. Every key in the J
 
 **Syntax:** `field:operator=value`
 
+> **CASE SENSITIVITY (v3): base text operators are CASE-INSENSITIVE BY DEFAULT.** Convention: **base = insensitive**,
+> suffix **`s` = strict/case-sensitive**, suffix **`i` = insensitive (explicit alias)**. So `:eq` ≡ `:eqi`
+> (insensitive) and `:eqs` is strict; same for `contains`/`starts`/`ends`/`like` and their `n*` negations.
+> `:eq`/`:neq` stay **type-aware**: numeric/boolean/null values use exact matching (no `ILIKE` on non-text columns);
+> only genuine strings become case-insensitive. Toggle globally via the data-layer option
+> `caseInsensitiveByDefault: false` or env `VOLCANIC_CASE_INSENSITIVE_DEFAULT=false` (restores legacy
+> base=case-sensitive). Perf note: insensitive matching cannot use a plain B-tree index → use `*s` for indexed
+> exact lookups.
+
 ### Equality and Basic Logic Operators
 
-| Operator   | Type    | SQL                       | Description                                                     |
-| :--------- | :------ | :------------------------ | :-------------------------------------------------------------- |
-| **(none)** | Any     | `=`                       | Implicit equality. `status=active` → `status = 'active'`        |
-| `:eq`      | Any     | `=`                       | Explicit equality. `id:eq=123`                                  |
-| `:eqi`     | String  | `ILIKE`                   | Case-insensitive equality. `country:eqi=it` matches `IT`/`It`   |
-| `:neq`     | Any     | `!=`                      | Not equal to. `type:neq=guest`                                  |
-| `:neqi`    | String  | `NOT ILIKE`               | Case-insensitive not-equal. `country:neqi=it`                   |
-| `:null`    | Boolean | `IS NULL` / `IS NOT NULL` | `deleted:null=true` (is null) / `deleted:null=false` (not null) |
-| `:notNull` | Boolean | `IS NOT NULL`             | `code:notNull=true` (readability alias)                         |
+| Operator   | Type    | SQL                       | Description                                                            |
+| :--------- | :------ | :------------------------ | :-------------------------------------------------------------------- |
+| **(none)** | Any     | `= / ILIKE`               | Implicit equality (= `:eq`). Insensitive on strings, exact otherwise. |
+| `:eq`      | Any     | `= / ILIKE`               | Equality. Insensitive on strings by default; exact for number/bool/null. |
+| `:eqs`     | Any     | `=`                       | **Strict** equality, case-sensitive. `code:eqs=AbC`                    |
+| `:eqi`     | String  | `ILIKE`                   | Case-insensitive equality (explicit alias). `country:eqi=it`          |
+| `:neq` · `:neqs` · `:neqi` | Any | `!= / NOT ILIKE` | Not-equal (same insensitive/strict/insensitive scheme).           |
+| `:isEmpty` | String  | `= ''`                    | Equals the empty string. `note:isEmpty=1`                             |
+| `:isNotEmpty` | String | `!= ''`                | Not the empty string. `note:isNotEmpty=1`                            |
+| `:null`    | Boolean | `IS NULL` / `IS NOT NULL` | `deleted:null=true` (is null) / `deleted:null=false` (not null)       |
+| `:notNull` | Boolean | `IS NOT NULL`             | `code:notNull=true` (readability alias)                               |
 
 ### Numeric and Date Operators
 
@@ -1063,26 +1074,35 @@ This table is the "Rosetta Stone" for the frontend developer. Every key in the J
 | `:lt`      | Number/Date | `<`       | Less Than. `qty:lt=10`                                                          |
 | `:le`      | Number/Date | `<=`      | Less or Equal. `qty:le=10`                                                      |
 | `:between` | String      | `BETWEEN` | Inclusive Range. Syntax `min:max`. <br>Ex: `date:between=2024-01-01:2024-01-31` |
+| `:nbetween`| String      | `NOT BETWEEN` | Outside an inclusive range. <br>Ex: `price:nbetween=10:20`                  |
 
 ### String Operators (Pattern Matching)
 
-> **Note:** Operators ending with `i` (e.g., `:likei`) are **Case Insensitive** (use `ILIKE` in Postgres).
+> **Scheme:** base = **case-insensitive** (default); suffix `s` = case-**s**ensitive (`LIKE`); suffix `i` =
+> case-**i**nsensitive (`ILIKE`, explicit alias). Each has an `n…` negation. e.g. `:contains` (insensitive),
+> `:containss` (sensitive), `:containsi` (insensitive), and `:ncontains`/`:ncontainss`/`:ncontainsi`.
 
-| Operator                     | SQL              | Description                                                                           |
-| :--------------------------- | :--------------- | :------------------------------------------------------------------------------------ |
-| `:like` / `:likei`           | `LIKE` / `ILIKE` | Manual pattern. Requires wildcards `%`. <br>Ex: `code:like=A-%`                       |
-| `:contains` / `:containsi`   | `LIKE` / `ILIKE` | Contains. Adds `%` automatically to sides. <br>Ex: `name:containsi=rossi` → `%rossi%` |
-| `:ncontains` / `:ncontainsi` | `NOT LIKE`       | Does not contain. <br>Ex: `tag:ncontainsi=deprecated`                                 |
-| `:starts` / `:startsi`       | `LIKE`           | Starts with. Adds `%` at the end. <br>Ex: `sku:starts=ABC` → `ABC%`                   |
-| `:ends` / `:endsi`           | `LIKE`           | Ends with. Adds `%` at the start. <br>Ex: `file:ends=.pdf` → `%.pdf`                  |
+| Operator (base · `s` · `i`)                         | SQL              | Description                                                           |
+| :-------------------------------------------------- | :--------------- | :------------------------------------------------------------------- |
+| `:like` · `:likes` · `:likei`                       | `ILIKE`/`LIKE`   | Manual pattern. Requires wildcards `%`. <br>Ex: `code:like=a-%`      |
+| `:contains` · `:containss` · `:containsi`           | `ILIKE`/`LIKE`   | Contains. Adds `%` on both sides. <br>Ex: `name:contains=rossi`      |
+| `:starts` · `:startss` · `:startsi`                 | `ILIKE`/`LIKE`   | Starts with. Adds trailing `%`. <br>Ex: `sku:starts=abc` → `abc%`    |
+| `:ends` · `:endss` · `:endsi`                       | `ILIKE`/`LIKE`   | Ends with. Adds leading `%`. <br>Ex: `file:ends=.pdf` → `%.pdf`      |
+| Negations: `:ncontains*`, `:nstarts*`, `:nends*`, `:nlike*` | `NOT (I)LIKE` | Same scheme, negated. <br>Ex: `tag:ncontains=deprecated`         |
 
-### List Operators (Array)
+### List / Array Operators
 
-| Operator   | SQL            | Description                                                                                         |
-| :--------- | :------------- | :-------------------------------------------------------------------------------------------------- |
-| `:in`      | `IN (...)`     | Included in list. <br>URL: `status:in=open,pending` (CSV)<br>Body: `status:in: ["open", "pending"]` |
-| `:nin`     | `NOT IN (...)` | Excluded from list. `role:nin=admin,root`                                                           |
-| `:overlap` | `&& ARRAY[…]`  | Array overlap (has at least one element in common). Postgres array column. <br>URL: `companies:overlap=acme,globex`. On MongoDB it degrades to `$in`. |
+| Operator            | SQL            | Description                                                                                         |
+| :------------------ | :------------- | :------------------------------------------------------------------------------------------------- |
+| `:in`               | `IN (...)`     | Included in list. <br>URL: `status:in=open,pending` (CSV)<br>Body: `status:in: ["open", "pending"]` |
+| `:nin`              | `NOT IN (...)` | Excluded from list. `role:nin=admin,root`                                                           |
+| `:overlap`          | `&& ARRAY[…]`  | Array overlap — at least one common element. Postgres array column. On MongoDB degrades to `$in`.   |
+| `:arrayContains`    | `@> ARRAY[…]`  | Array contains ALL given elements. `tags:arrayContains=fruit,red`                                   |
+| `:arrayContainedBy` | `<@ ARRAY[…]`  | Array is contained by the given set. `tags:arrayContainedBy=a,b,c`                                  |
+
+> Note: `:in`/`:nin` remain exact (case-sensitive) — set membership for ids/enums. The array operators target real
+> Postgres array columns (`text[]`), not `simple-array` string columns. Each Raw-based array operator uses one
+> bound param name, so a single occurrence per query is supported.
 
 ### Raw / Dangerous Operator (off by default)
 
@@ -1093,11 +1113,12 @@ This table is the "Rosetta Stone" for the frontend developer. Every key in the J
 ### Database Compatibility (Postgres vs MongoDB)
 
 The translation engine is **hybrid**: the same endpoint works against PostgreSQL and MongoDB for the common
-operators. Case-insensitive operators (`:eqi`, `:neqi`, `:likei`, `:containsi`, `:startsi`, `:endsi`,
-`:ncontainsi`) compile to `ILIKE` on Postgres and to anchored case-insensitive `RegExp` on MongoDB. The
-case-sensitive `LIKE`-family operators (`:like`, `:contains`, `:starts`, `:ends`, `:ncontains`) are Postgres-only
-— on MongoDB prefer their `i` variants. `:overlap` maps to a Postgres array operator and degrades to `$in` on
-MongoDB. When in doubt, use the case-insensitive variants for portable APIs.
+operators. Insensitive operators (the base text operators and the `i` variants) compile to `ILIKE` on Postgres and
+to case-insensitive `RegExp` on MongoDB. The strict `s` variants (`:eqs`, `:containss`, `:startss`, `:endss`,
+`:likes`, …) map to `LIKE`/exact on Postgres and to case-sensitive `RegExp` on MongoDB. Array operators
+(`:overlap`/`:arrayContains`/`:arrayContainedBy`) map to Postgres array operators and degrade to `$in` on MongoDB.
+Since base text operators are insensitive by default, plain APIs are portable out of the box; use `*s` only when
+you explicitly need case-sensitive/indexed matching.
 
 ---
 
@@ -1281,6 +1302,7 @@ in `docs/configuration.md`; summarized here.
 | Option            | Type       | Default                                                              | Description                                            |
 | :---------------- | :--------- | :------------------------------------------------------------------ | :----------------------------------------------------- |
 | `sensitiveFields` | `string[]` | `['password', 'mfaSecret', 'resetPasswordToken', 'confirmationToken']` | Fields blocked from filtering (see 3.7).            |
+| `caseInsensitiveByDefault` | `boolean` | `true`                                                     | Base text operators (`eq`/`contains`/`starts`/`ends`/`like` + negations) are case-insensitive on strings. Set `false` for legacy case-sensitive base operators (the `s`/`i` variants are always available). |
 | `cacheTimeout`    | `number`   | `30000`                                                             | Global query cache timeout (ms).                       |
 | `logging`         | `boolean`  | `true`                                                             | Enables global TypeORM logging.                        |
 | _…TypeORM options_ |            |                                                                     | All standard TypeORM `DataSourceOptions` are accepted (`type`, `host`, `port`, `entities`, `synchronize`, …). |
@@ -1298,6 +1320,7 @@ in `docs/configuration.md`; summarized here.
 | `LOG_COLORIZE`                     | `boolean` | `true`      | Colorize console output.                                                                     |
 | `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` | `boolean` | `false`     | Auto-synchronize schema at startup. **Ignored when multi-tenant mode is enabled.**          |
 | `VOLCANIC_CUSTOM_QUERY_OPERATORS`  | `boolean` | `false`     | Enables the `:raw` operator. ⚠️ SQL injection risk — see 3.7.                                |
+| `VOLCANIC_CASE_INSENSITIVE_DEFAULT` | `boolean` | `true`     | Default case sensitivity of base text operators (overridden by the `caseInsensitiveByDefault` init option). |
 
 > See Part 1.4/1.5 for the production-grade connection pool, SSL, and timeout variables (`DB_SSL`,
 > `DB_MAX_CONNECTING`, `DB_STATEMENT_TIMEOUT`, …).

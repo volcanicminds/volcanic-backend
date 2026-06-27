@@ -29,6 +29,19 @@ export const configureSensitiveFields = (fields: string[]) => {
   }
 }
 
+// When true, the base text operators (eq, contains, starts, ends, like and their
+// negations) are CASE-INSENSITIVE for string values; the `*s` variants force
+// case-sensitive. When false, the legacy behavior is restored (base = sensitive,
+// `*i` variants = insensitive). Default: true (matches the common expectation
+// that `?name=mario` finds "Mario"). Override per-app via the data-layer option
+// `caseInsensitiveByDefault` or the env `VOLCANIC_CASE_INSENSITIVE_DEFAULT`.
+let caseInsensitiveByDefault = yn(process.env.VOLCANIC_CASE_INSENSITIVE_DEFAULT, true)
+
+export const configureCaseInsensitiveDefault = (flag: boolean) => {
+  caseInsensitiveByDefault = !!flag
+  log.info(`Volcanic-TypeORM: caseInsensitiveByDefault = ${caseInsensitiveByDefault}`)
+}
+
 const evalOrder = (val: string = '') => (['desc', 'd', 'false', '1'].includes(val.toLowerCase()) ? 'desc' : 'asc')
 
 const escapeRegExp = (str: string) => {
@@ -90,44 +103,108 @@ export const useWhere = (where: any, repo?: any) => {
   const isTargetMongo = isMongo(repo)
   const val = (v) => v || 'notFound'
 
+  const ci = caseInsensitiveByDefault
+  const isNumericString = (v: any) => typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v)
+
+  // Case-insensitive equality, but numeric/boolean/null-safe: only genuine text
+  // values use ILIKE (which would fail on numeric columns). Mongo uses anchored
+  // case-insensitive RegExp.
+  const eqInsensitive = (v: any) => {
+    const t = typecastValue(v)
+    if (t === null) return IsNull()
+    if (typeof t === 'boolean') return isTargetMongo ? t : Equal(t)
+    if (isNumericString(t)) return isTargetMongo ? t : Equal(t)
+    return isTargetMongo ? new RegExp(`^${escapeRegExp(t)}$`, 'i') : ILike(t)
+  }
+  const eqSensitive = (v: any) => {
+    const t = typecastValue(v)
+    if (t === null) return IsNull()
+    return isTargetMongo ? t : Equal(t)
+  }
+
+  // Partial-match builders (sensitive vs insensitive). Mongo gets RegExp.
+  const containsS = (v: any) => (isTargetMongo ? new RegExp(escapeRegExp(val(v))) : Like(`%${val(v)}%`))
+  const containsI = (v: any) => (isTargetMongo ? new RegExp(escapeRegExp(val(v)), 'i') : ILike(`%${val(v)}%`))
+  const startsS = (v: any) => (isTargetMongo ? new RegExp(`^${escapeRegExp(val(v))}`) : Like(`${val(v)}%`))
+  const startsI = (v: any) => (isTargetMongo ? new RegExp(`^${escapeRegExp(val(v))}`, 'i') : ILike(`${val(v)}%`))
+  const endsS = (v: any) => (isTargetMongo ? new RegExp(`${escapeRegExp(val(v))}$`) : Like(`%${val(v)}`))
+  const endsI = (v: any) => (isTargetMongo ? new RegExp(`${escapeRegExp(val(v))}$`, 'i') : ILike(`%${val(v)}`))
+  const likeS = (v: any) => (isTargetMongo ? new RegExp(escapeRegExp(val(v))) : Like(`${val(v)}`))
+  const likeI = (v: any) => (isTargetMongo ? new RegExp(escapeRegExp(val(v)), 'i') : ILike(`${val(v)}`))
+  const not = (fn: (v: any) => any) => (v: any) => Not(fn(v))
+
+  const arrayOp = (sqlOp: string, paramName: string) => (v: any) => {
+    const values = val(v).split(',').map(typecastValue)
+    if (isTargetMongo) return { $in: values }
+    return Raw((alias) => `${alias} ${sqlOp} ARRAY[:...${paramName}]::text[]`, { [paramName]: values })
+  }
+
   const reservedOperators = {
     ':null': (v) => (typecastValue(v) === false ? Not(IsNull()) : IsNull()),
     ':notNull': (v) => (typecastValue(v) === true ? Not(IsNull()) : IsNull()),
-    ':in': (v) => In(val(v).split(',').map(typecastValue)),
+    ':isNotEmpty': () => (isTargetMongo ? { $ne: '' } : Not(Equal(''))),
+    ':isEmpty': () => (isTargetMongo ? '' : Equal('')),
     ':nin': (v) => Not(In(val(v).split(',').map(typecastValue))),
-    ':likei': (v) => (isTargetMongo ? new RegExp(escapeRegExp(val(v)), 'i') : ILike(`%${val(v)}%`)),
-    ':containsi': (v) => (isTargetMongo ? new RegExp(escapeRegExp(val(v)), 'i') : ILike(`%${val(v)}%`)),
-    ':ncontainsi': (v) => (isTargetMongo ? Not(new RegExp(escapeRegExp(val(v)), 'i')) : Not(ILike(`%${val(v)}%`))),
-    ':startsi': (v) => (isTargetMongo ? new RegExp(`^${escapeRegExp(val(v))}`, 'i') : ILike(`${val(v)}%`)),
-    ':endsi': (v) => (isTargetMongo ? new RegExp(`${escapeRegExp(val(v))}$`, 'i') : ILike(`%${val(v)}`)),
-    ':eqi': (v) => (isTargetMongo ? new RegExp(`^${escapeRegExp(val(v))}$`, 'i') : ILike(v)),
-    ':neqi': (v) => (isTargetMongo ? Not(new RegExp(`^${escapeRegExp(val(v))}$`, 'i')) : Not(ILike(v))),
-    ':like': (v) => Like(`${val(v)}`),
-    ':contains': (v) => Like(`%${val(v)}%`),
-    ':ncontains': (v) => Not(Like(`%${val(v)}%`)),
-    ':starts': (v) => Like(`${val(v)}%`),
-    ':ends': (v) => Like(`%${val(v)}`),
-    ':eq': (v) => {
-      const typedValue = typecastValue(v)
-      if (typedValue === null) return IsNull()
-      return isTargetMongo ? typedValue : Equal(typedValue)
-    },
-    ':neq': (v) => Not(Equal(typecastValue(v))),
+    ':in': (v) => In(val(v).split(',').map(typecastValue)),
+
+    // --- equality (base follows caseInsensitiveByDefault; *s strict, *i insensitive) ---
+    ':eqs': eqSensitive,
+    ':eqi': eqInsensitive,
+    ':eq': ci ? eqInsensitive : eqSensitive,
+    ':neqs': not(eqSensitive),
+    ':neqi': not(eqInsensitive),
+    ':neq': ci ? not(eqInsensitive) : not(eqSensitive),
+
+    // --- contains ---
+    ':ncontainss': not(containsS),
+    ':ncontainsi': not(containsI),
+    ':ncontains': ci ? not(containsI) : not(containsS),
+    ':containss': containsS,
+    ':containsi': containsI,
+    ':contains': ci ? containsI : containsS,
+
+    // --- starts ---
+    ':nstartss': not(startsS),
+    ':nstartsi': not(startsI),
+    ':nstarts': ci ? not(startsI) : not(startsS),
+    ':startss': startsS,
+    ':startsi': startsI,
+    ':starts': ci ? startsI : startsS,
+
+    // --- ends ---
+    ':nendss': not(endsS),
+    ':nendsi': not(endsI),
+    ':nends': ci ? not(endsI) : not(endsS),
+    ':endss': endsS,
+    ':endsi': endsI,
+    ':ends': ci ? endsI : endsS,
+
+    // --- like ---
+    ':nlikes': not(likeS),
+    ':nlikei': not(likeI),
+    ':nlike': ci ? not(likeI) : not(likeS),
+    ':likes': likeS,
+    ':likei': likeI,
+    ':like': ci ? likeI : likeS,
+
+    // --- comparison ---
     ':gt': (v) => MoreThan(v),
     ':ge': (v) => MoreThanOrEqual(v),
     ':lt': (v) => LessThan(v),
     ':le': (v) => LessThanOrEqual(v),
+    ':nbetween': (v) => {
+      const s = v?.split(':')
+      return s?.length == 2 ? Not(Between(s[0], s[1])) : v
+    },
     ':between': (v) => {
       const s = v?.split(':')
       return s?.length == 2 ? Between(s[0], s[1]) : v
     },
-    ':overlap': (v) => {
-      const values = val(v).split(',').map(typecastValue)
-      if (isTargetMongo) {
-        return { $in: values }
-      }
-      return Raw((alias) => `${alias} && ARRAY[:...overlapValues]::text[]`, { overlapValues: values })
-    }
+
+    // --- array (Postgres) ---
+    ':arrayContainedBy': arrayOp('<@', 'arrayContainedByValues'),
+    ':arrayContains': arrayOp('@>', 'arrayContainsValues'),
+    ':overlap': arrayOp('&&', 'overlapValues')
   }
 
   if (yn(process.env.VOLCANIC_CUSTOM_QUERY_OPERATORS, false)) {

@@ -787,28 +787,36 @@ app.get('/users', async (req, reply) => {
 **Sorting** — `sort=field` (asc) or `sort=field:desc`; repeat for multi-field sorting.
 `GET /users?sort=lastName:asc&sort=createdAt:desc`
 
-**Filtering** — `field:operator=value`. With no operator it defaults to equality.
+**Filtering** — `field:operator=value`. With no operator it defaults to equality (`:eq`).
 
-| Operator     | Description                                                               | Example URL                                   | PostgreSQL | MongoDB |
-| :----------- | :------------------------------------------------------------------------ | :-------------------------------------------- | :--------: | :-----: |
-| `:eq`        | Equals                                                                    | `...&status:eq=active`                        |     ✅     |   ✅    |
-| `:neq`       | Not equals                                                                | `...&status:neq=archived`                     |     ✅     |   ✅    |
-| `:eqi`       | Equals (case-insensitive)                                                 | `...&country:eqi=it`                          |     ✅     |   ✅    |
-| `:gt`, `:ge` | Greater than / Greater than or equal                                      | `...&visits:gt=100`                           |     ✅     |   ✅    |
-| `:lt`, `:le` | Less than / Less than or equal                                            | `...&price:lt=99.99`                          |     ✅     |   ✅    |
-| `:in`        | Included in an array (comma-sep.)                                         | `...&status:in=active,pending`                |     ✅     |   ✅    |
-| `:nin`       | Not included in an array                                                  | `...&category:nin=old,obsolete`               |     ✅     |   ✅    |
-| `:overlap`   | Array overlap (has common elements)                                       | `...&companies:overlap=acme,globex`           |     ✅     |   ✅    |
-| `:between`   | Is between two values (colon-sep.)                                        | `...&createdAt:between=2024-01-01:2024-12-31` |     ✅     |   ✅    |
-| `:null`      | Is null                                                                   | `...&deletedAt:null=true`                     |     ✅     |   ✅    |
-| `:notNull`   | Is not null                                                               | `...&updatedAt:notNull=true`                  |     ✅     |   ✅    |
-| `:contains`  | Contains (case-sensitive)                                                 | `...&name:contains=Corp`                      |     ✅     |   ❌    |
-| `:containsi` | Contains (case-insensitive)                                               | `...&name:containsi=corp`                     |     ✅     |   ✅    |
-| `:starts`    | Starts with (case-sensitive)                                              | `...&code:starts=INV-`                        |     ✅     |   ❌    |
-| `:startsi`   | Starts with (case-insensitive)                                            | `...&code:startsi=inv-`                       |     ✅     |   ✅    |
-| `:ends`      | Ends with (case-sensitive)                                                | `...&file:ends=.pdf`                          |     ✅     |   ❌    |
-| `:endsi`     | Ends with (case-insensitive)                                              | `...&file:endsi=.pdf`                         |     ✅     |   ✅    |
-| `:raw`       | Raw SQL ⚠️ **Dangerous** — disabled by default (see security note below). | `...&age:raw=> 18`                            |     ✅     |   ✅    |
+> **Case sensitivity (since v3).** The text operators are **case-INsensitive by default**: `?name=mario` matches
+> "Mario". The convention is **base = insensitive**, suffix **`s` = strict/case-sensitive**, suffix **`i` =
+> insensitive (explicit alias)**. So `:eq` ⇄ `:eqi` (insensitive) and `:eqs` (sensitive). `:eq` stays
+> **type-aware**: numbers/booleans/null use exact matching (no `ILIKE` on an `int` column). Flip the global default
+> with the data-layer option `caseInsensitiveByDefault: false` (or env `VOLCANIC_CASE_INSENSITIVE_DEFAULT=false`)
+> to restore legacy case-sensitive base operators. Note: insensitive matching can't use a plain B-tree index —
+> prefer `*s` for indexed exact lookups.
+
+| Operator | Description | Example | PostgreSQL | MongoDB |
+| :--- | :--- | :--- | :--: | :--: |
+| `:eq` · `:eqi` · `:eqs` | Equals — insensitive · insensitive · **strict** | `...&country=it` | ✅ | ✅ |
+| `:neq` · `:neqi` · `:neqs` | Not equals (same scheme) | `...&status:neq=archived` | ✅ | ✅ |
+| `:gt` `:ge` `:lt` `:le` | Greater/less than (or equal) | `...&visits:gt=100` | ✅ | ✅ |
+| `:between` · `:nbetween` | (NOT) between two values, colon-sep. | `...&created:between=2024-01-01:2024-12-31` | ✅ | ✅ |
+| `:in` · `:nin` | (NOT) included in a comma list | `...&status:in=active,pending` | ✅ | ✅ |
+| `:null` · `:notNull` | Is (not) null | `...&deletedAt:null=true` | ✅ | ✅ |
+| `:isEmpty` · `:isNotEmpty` | Equals (not) empty string `''` | `...&note:isEmpty=1` | ✅ | ✅ |
+| `:contains` · `:containss` · `:containsi` | Contains — insensitive · **strict** · insensitive | `...&name:contains=corp` | ✅ | ✅* |
+| `:ncontains` · `:ncontainss` · `:ncontainsi` | Does NOT contain | `...&tag:ncontains=old` | ✅ | ✅* |
+| `:starts` · `:startss` · `:startsi` · `:nstarts…` | (NOT) starts with | `...&code:starts=inv-` | ✅ | ✅* |
+| `:ends` · `:endss` · `:endsi` · `:nends…` | (NOT) ends with | `...&file:ends=.pdf` | ✅ | ✅* |
+| `:like` · `:likes` · `:likei` · `:nlike…` | (NOT) manual `LIKE` pattern | `...&code:like=a-%` | ✅ | ✅* |
+| `:overlap` | Array overlap `&&` (common elements) | `...&tags:overlap=acme,globex` | ✅ | ✅ |
+| `:arrayContains` | Array contains all `@>` | `...&tags:arrayContains=fruit,red` | ✅ | ✅ |
+| `:arrayContainedBy` | Array contained by `<@` | `...&tags:arrayContainedBy=a,b,c` | ✅ | ✅ |
+| `:raw` | Raw SQL ⚠️ **Dangerous** — disabled by default (see security note). | `...&age:raw=> 18` | ✅ | ✅ |
+
+\* The `s`/`i` text variants map to `LIKE`/`ILIKE` on Postgres and to (case-insensitive) `RegExp` on MongoDB.
 
 **Nested relation filters** — dot notation on related entities:
 `GET /users?company.name:eq=Volcanic Minds`

@@ -14,7 +14,8 @@ import {
   executeFindQuery,
   executeCountQuery,
   userManager,
-  tokenManager
+  tokenManager,
+  configureCaseInsensitiveDefault
 } from '../../typeorm.js'
 import { Product, User, Tenant, Token } from './fixtures/entities.js'
 
@@ -316,6 +317,91 @@ describe('Embedded PGlite engine', () => {
     it('removeTokenById deletes the row', async () => {
       await tokenManager.removeTokenById(id)
       expect(await tokenManager.retrieveTokenById(id)).toBeNull()
+    })
+  })
+
+  // New operator semantics: case-insensitive-by-default (i/s scheme),
+  // completed negations, array and empty operators — verified on a real DB.
+  describe('Magic Query operators (case sensitivity, negations, arrays)', () => {
+    let repo: any
+
+    before(async () => {
+      repo = ds.getRepository(Product)
+      await repo.clear()
+      await repo.save([
+        repo.create({ name: 'Apple', price: 10, active: true, tags: ['fruit', 'red'] }),
+        repo.create({ name: 'Banana', price: 20, active: true, tags: ['fruit', 'yellow'] }),
+        repo.create({ name: 'Carrot', price: 30, active: false, tags: ['veg', 'orange'] }),
+        repo.create({ name: '', price: 0, active: true, tags: [] }) // empty-name row
+      ])
+    })
+
+    it('eq is case-INsensitive by default (string)', async () => {
+      const { records } = await executeFindQuery(repo, {}, { name: 'apple' }) // lower-case query
+      expect(records.map((p: any) => p.name)).toEqual(['Apple'])
+    })
+
+    it('eqs forces case-sensitive', async () => {
+      expect((await executeFindQuery(repo, {}, { 'name:eqs': 'apple' })).records).toHaveLength(0)
+      expect((await executeFindQuery(repo, {}, { 'name:eqs': 'Apple' })).records).toHaveLength(1)
+    })
+
+    it('eqi is an explicit insensitive alias', async () => {
+      expect((await executeFindQuery(repo, {}, { 'name:eqi': 'APPLE' })).records).toHaveLength(1)
+    })
+
+    it('eq stays exact for numeric values (no ILIKE on int column)', async () => {
+      const { records } = await executeFindQuery(repo, {}, { price: '20' })
+      expect(records.map((p: any) => p.name)).toEqual(['Banana'])
+    })
+
+    it('contains is insensitive by default; containss is sensitive', async () => {
+      expect((await executeFindQuery(repo, {}, { 'name:contains': 'app' })).records).toHaveLength(1)
+      expect((await executeFindQuery(repo, {}, { 'name:containss': 'app' })).records).toHaveLength(0)
+      expect((await executeFindQuery(repo, {}, { 'name:containss': 'App' })).records).toHaveLength(1)
+    })
+
+    it('new negations: nstarts / nends', async () => {
+      const { records } = await executeFindQuery(repo, {}, { 'name:nstarts': 'ba' }) // exclude Banana (insensitive)
+      const names = records.map((p: any) => p.name)
+      expect(names).toContain('Apple')
+      expect(names).not.toContain('Banana')
+    })
+
+    it('nbetween (NOT BETWEEN)', async () => {
+      const { records } = await executeFindQuery(repo, {}, { 'price:nbetween': '10:20' })
+      const names = records.map((p: any) => p.name).sort()
+      expect(names).toEqual(['', 'Carrot']) // price 0 and 30 are outside [10,20]
+    })
+
+    it('isEmpty / isNotEmpty', async () => {
+      expect((await executeFindQuery(repo, {}, { 'name:isEmpty': '1' })).records.map((p: any) => p.price)).toEqual([0])
+      const notEmpty = await executeFindQuery(repo, {}, { 'name:isNotEmpty': '1' })
+      expect(notEmpty.records.every((p: any) => p.name !== '')).toBe(true)
+    })
+
+    it('array operators: arrayContains / overlap / arrayContainedBy', async () => {
+      const contains = await executeFindQuery(repo, {}, { 'tags:arrayContains': 'fruit' })
+      expect(contains.records.map((p: any) => p.name).sort()).toEqual(['Apple', 'Banana'])
+
+      const overlap = await executeFindQuery(repo, {}, { 'tags:overlap': 'veg,yellow' })
+      expect(overlap.records.map((p: any) => p.name).sort()).toEqual(['Banana', 'Carrot'])
+
+      const containedBy = await executeFindQuery(repo, {}, { 'tags:arrayContainedBy': 'fruit,red,extra' })
+      expect(containedBy.records.map((p: any) => p.name)).toContain('Apple')
+      expect(containedBy.records.map((p: any) => p.name)).not.toContain('Banana')
+    })
+
+    it('the caseInsensitiveByDefault flag flips base-operator behavior', async () => {
+      try {
+        configureCaseInsensitiveDefault(false) // legacy: base = case-sensitive
+        expect((await executeFindQuery(repo, {}, { name: 'apple' })).records).toHaveLength(0)
+        expect((await executeFindQuery(repo, {}, { name: 'Apple' })).records).toHaveLength(1)
+        // explicit *i still works regardless of the flag
+        expect((await executeFindQuery(repo, {}, { 'name:eqi': 'apple' })).records).toHaveLength(1)
+      } finally {
+        configureCaseInsensitiveDefault(true) // restore default for other tests
+      }
     })
   })
 })

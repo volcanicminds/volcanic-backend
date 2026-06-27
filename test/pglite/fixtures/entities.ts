@@ -12,7 +12,8 @@ export const Product = new EntitySchema<any>({
     id: { type: 'uuid', primary: true, generated: 'uuid' },
     name: { type: String },
     price: { type: 'int', default: 0 },
-    active: { type: Boolean, default: true }
+    active: { type: Boolean, default: true },
+    tags: { type: 'text', array: true, nullable: true }
   }
 })
 
