@@ -10,6 +10,8 @@ export function preHandler(req: FastifyRequest, res: FastifyReply, done: any) {
     throw new Error('Unauthorized')
   } catch (err) {
     if (log.e) log.error(`Upps, something just happened ${err}`)
-    return res.code(401).send(new Error('Unauthorized')) // must be authorized first
+    // Send a structured body (not a raw Error): `reply.code(x).send(new Error())`
+    // loses the status in Fastify's async error path and collapses to 500/403.
+    return res.code(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Unauthorized' }) // must be authorized first
   }
 }

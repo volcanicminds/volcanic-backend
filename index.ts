@@ -197,20 +197,24 @@ const start = async (decorators = {}) => {
   }
 
   server.setErrorHandler(function (error, _req, reply) {
-    if (yn(process.env.HIDE_ERROR_DETAILS, process.env.NODE_ENV === 'production')) {
-      const err = error as {
-        statusCode: number
-        status: number
-        error: string
-        err: { statusCode: number; status: number; error: string }
-      }
-      const statusCode = err.statusCode || err.status || err.err?.statusCode || err.err?.status || 500
-      const errorType = err.error || err.err?.error || 'Internal Server Error'
-      reply.code(statusCode).send({ statusCode, error: errorType })
-      log.error(error)
-    } else {
-      reply.send(error)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err = error as any
+    // Preserve the status a controller already set via `reply.status(4xx)` before
+    // sending an Error. Without this, `reply.status(403).send(new Error(...))`
+    // collapses to 500 (Fastify only auto-derives the status when it is still 200).
+    const fromReply = reply.statusCode && reply.statusCode >= 400 ? reply.statusCode : 0
+    const statusCode = err.statusCode || err.status || err.err?.statusCode || err.err?.status || fromReply || 500
+    const errorType = err.error || err.err?.error || err.code || err.name || 'Error'
+    const hide = yn(process.env.HIDE_ERROR_DETAILS, process.env.NODE_ENV === 'production')
+
+    const body = {
+      statusCode,
+      error: errorType,
+      ...(!hide && err?.message ? { message: err.message } : {})
     }
+
+    if (statusCode >= 500) log.error(error)
+    reply.code(statusCode).send(body)
   })
 
   if (plugins?.multipart) await server.register(multipart, plugins.multipart || {})

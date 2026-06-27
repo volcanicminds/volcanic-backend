@@ -37,27 +37,27 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   }
 
   if (!data.username) {
-    return reply.status(400).send(new Error('Username not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Username not valid' })
   }
   if (!regExp.isEmail(data.email)) {
-    return reply.status(400).send(new Error('Email not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Email not valid' })
   }
   if (!password || !regExp.password.test(password)) {
-    return reply.status(400).send(new Error('Password not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Password not valid' })
   }
   if (!password2 || password2 !== password) {
-    return reply.status(400).send(new Error('Repeated password not match'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Repeated password not match' })
   }
 
   let existings = await req.server['userManager'].retrieveUserByEmail(data.email, req.runner)
   if (existings) {
-    return reply.status(400).send(new Error('Email already registered'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Email already registered' })
   }
 
   if ((data.requiredRoles || []).includes('admin')) {
     existings = await req.server['userManager'].findQuery({ 'roles:in': 'admin' }, req.runner)
     if (existings?.records?.length) {
-      return reply.status(400).send(new Error('User admin already registered'))
+      return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User admin already registered' })
     }
   }
 
@@ -70,7 +70,7 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
 
   const user = await req.server['userManager'].createUser({ ...data, password: password }, req.runner)
   if (!user) {
-    return reply.status(400).send(new Error('User not registered'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not registered' })
   }
 
   return user
@@ -83,18 +83,18 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(403).send(new Error('Wrong credentials'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
 
   if (user.blocked) {
-    return reply.status(403).send(new Error('User blocked'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   user = await req.server['userManager'].disableUserById(user.getId(), req.runner)
   isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(400).send(new Error('User not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not valid' })
   }
 
   return { ok: true }
@@ -104,12 +104,12 @@ export async function validatePassword(req: FastifyRequest, reply: FastifyReply)
   const { password } = req.data()
 
   if (!password) {
-    return reply.status(400).send(new Error('Password cannot be null'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Password cannot be null' })
   }
 
   const match = regExp.password.test(password)
   if (!match) {
-    return reply.status(400).send(new Error('Password is not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Password is not valid' })
   }
 
   return { ok: match }
@@ -122,32 +122,32 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
 
   const _user = req.user
   if (!_user) {
-    return reply.status(401).send(new Error('Unauthorized'))
+    return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Unauthorized' })
   }
 
   const { email, oldPassword, newPassword1, newPassword2 } = req.data()
 
   if (_user.email !== email && (!req.hasRole(roles.admin) || !global.config.options.admin_can_change_passwords)) {
-    return reply.status(400).send(new Error('Email not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Email not valid' })
   }
 
   if (!newPassword1 || !regExp.password.test(newPassword1)) {
-    return reply.status(400).send(new Error('New password is not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'New password is not valid' })
   }
 
   if (!newPassword2 || newPassword2 !== newPassword1) {
-    return reply.status(400).send(new Error('Repeated new password not match'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Repeated new password not match' })
   }
 
   let user = await req.server['userManager'].retrieveUserByPassword(email, oldPassword, req.runner)
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(403).send(new Error('Wrong credentials'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
 
   if (user.blocked) {
-    return reply.status(403).send(new Error('User blocked'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   user = await req.server['userManager'].changePassword(email, newPassword1, oldPassword, req.runner)
@@ -163,7 +163,7 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
   }
 
   if (!username && !regExp.isEmail(email)) {
-    return reply.status(400).send(new Error('Missing a valid user identifier'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing a valid user identifier' })
   }
 
   let user = null as any
@@ -176,11 +176,11 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(403).send(new Error('Wrong credentials'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
 
   if (user?.blocked) {
-    return reply.status(403).send(new Error('User blocked'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   user = await req.server['userManager'].forgotPassword(user.email, req.runner)
@@ -193,18 +193,18 @@ export async function confirmEmail(req: FastifyRequest, reply: FastifyReply) {
   const { code } = req.data()
 
   if (!code) {
-    return reply.status(400).send(new Error('Missing the confirm email token'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing the confirm email token' })
   }
 
   let user = await req.server['userManager'].retrieveUserByConfirmationToken(code, req.runner)
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(403).send(new Error('Wrong credentials'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
 
   if (user.blocked) {
-    return reply.status(403).send(new Error('User blocked'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   user = await req.server['userManager'].userConfirmation(user, req.runner)
@@ -221,22 +221,22 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
   }
 
   if (!newPassword1 || !regExp.password.test(newPassword1)) {
-    return reply.status(400).send(new Error('New password not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'New password not valid' })
   }
 
   if (!newPassword2 || newPassword2 !== newPassword1) {
-    return reply.status(400).send(new Error('Repeated new password not match'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Repeated new password not match' })
   }
 
   let user = await req.server['userManager'].retrieveUserByResetPasswordToken(code, req.runner)
   let isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(403).send(new Error('Wrong credentials'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
 
   if (user.blocked) {
-    return reply.status(403).send(new Error('User blocked'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   user = await req.server['userManager'].resetPassword(user, newPassword1, req.runner)
@@ -253,7 +253,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   }
 
   if (!regExp.isEmail(email)) {
-    return reply.status(400).send(new Error('Email not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Email not valid' })
   }
   // At login we do NOT re-validate the password complexity policy: the password
   // was already validated when it was set (register/change/reset), and bcrypt is
@@ -261,22 +261,22 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   // would lock out existing users whenever the policy changes. We only bound the
   // input length as a cheap guard against oversized payloads.
   if (!password || password.length > MAX_PASSWORD_LENGTH) {
-    return reply.status(400).send(new Error('Password not valid'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Password not valid' })
   }
 
   let user = await req.server['userManager'].retrieveUserByPassword(email, password, req.runner)
   if (!user) {
-    return reply.status(403).send(new Error('Wrong credentials'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
 
   const isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(403).send(new Error('Invalid user'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid user' })
   }
 
   if (!(user.confirmed === true)) {
-    return reply.status(403).send(new Error('User email unconfirmed'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User email unconfirmed' })
   }
 
   const isPasswordToBeChanged = req.server['userManager'].isPasswordToBeChanged(user)
@@ -285,7 +285,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   }
 
   if (user.blocked) {
-    return reply.status(403).send(new Error('User blocked'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   // MFA Logic Interception
@@ -371,7 +371,7 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
   try {
     tokenData = (await reply.server.jwt.verify(token, { ignoreExpiration: true })) as { sub: number; iat?: number }
   } catch {
-    return reply.status(403).send(new Error('Invalid token'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid token' })
   }
 
   // Reject refresh of access tokens issued too long ago. Use the real temporal
@@ -379,19 +379,19 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
   // against a unix timestamp and was effectively dead code.
   const minAccettable = Math.floor(Date.now() / 1000) - 2592000 // 30 days
   if (!tokenData?.iat || tokenData.iat < minAccettable) {
-    return reply.status(403).send(new Error('Token too old'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Token too old' })
   }
 
   const refreshTokenData = await reply.server.jwt['refreshToken'].verify(refreshToken)
   if (tokenData?.sub && tokenData?.sub !== refreshTokenData?.sub) {
-    return reply.status(403).send(new Error('Mismatched tokens'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Mismatched tokens' })
   }
 
   const user = await req.server['userManager'].retrieveUserByExternalId(tokenData.sub, req.runner)
   const isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(403).send(new Error('Wrong refresh token'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong refresh token' })
   }
 
   const newToken = await reply.jwtSign({ sub: user.externalId, tid: req.tenant?.id })
@@ -403,7 +403,7 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
 export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply) {
   let isValid = await req.server['userManager'].isValidUser(req.user)
   if (!req.user || !isValid) {
-    return reply.status(403).send(new Error('User not linked'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User not linked' })
   }
 
   const user = await req.server['userManager'].resetExternalId(req.user.getId(), req.runner)
@@ -413,7 +413,7 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
 
 export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
-  if (!user) return reply.status(401).send(new Error('Unauthorized'))
+  if (!user) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Unauthorized' })
 
   try {
     // Use mfaManager (injected) for logic
@@ -422,7 +422,7 @@ export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
     return setupData
   } catch (error: any) {
     req.log.error({ err: error }, 'MFA Setup failed')
-    return reply.status(500).send(new Error('Failed to generate MFA setup'))
+    return reply.status(500).send({ statusCode: 500, error: 'Internal Server Error', message: 'Failed to generate MFA setup' })
   }
 }
 
@@ -431,13 +431,13 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   const { secret, token } = req.data()
   const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
 
-  if (!user || !secret || !token) return reply.status(400).send(new Error('Missing parameters'))
+  if (!user || !secret || !token) return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing parameters' })
 
   try {
     // 1. Verify using mfaManager (tools)
     const { valid, counter } = evaluateMfaResult(req.server['mfaManager'].verify(token, secret))
     if (!valid) {
-      return reply.status(400).send(new Error('Invalid token'))
+      return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Invalid token' })
     }
 
     // 2. Save using userManager (typeorm)
@@ -470,7 +470,7 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     }
   } catch (error: any) {
     req.log.error({ err: error }, 'MFA Enable failed')
-    return reply.status(500).send(new Error('Failed to enable MFA'))
+    return reply.status(500).send({ statusCode: 500, error: 'Internal Server Error', message: 'Failed to enable MFA' })
   }
 }
 
@@ -478,39 +478,39 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   const authHeader = req.headers.authorization
   const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
 
-  if (!authHeader) return reply.status(401).send(new Error('Missing authorization'))
+  if (!authHeader) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Missing authorization' })
 
   const tokenStr = authHeader.split(' ')[1]
   let decoded: any
   try {
     decoded = req.server.jwt.verify(tokenStr)
   } catch (_e) {
-    return reply.status(401).send(new Error('Invalid token'))
+    return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Invalid token' })
   }
 
   if (decoded.role !== 'pre-auth-mfa' && (!req.user || !req.user.getId())) {
-    return reply.status(403).send(new Error('Invalid token scope'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid token scope' })
   }
 
   const subjectId = decoded.sub
   const { token } = req.data()
-  if (!token) return reply.status(400).send(new Error('Missing token'))
+  if (!token) return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing token' })
 
   // 1. Retrieve secret via userManager
   const user = await req.server['userManager'].retrieveUserByExternalId(subjectId, req.runner)
-  if (!user) return reply.status(404).send(new Error('User not found'))
+  if (!user) return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'User not found' })
 
   const secret = await req.server['userManager'].retrieveMfaSecret(user.getId(), req.runner)
-  if (!secret) return reply.status(403).send(new Error('MFA not configured for user'))
+  if (!secret) return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA not configured for user' })
 
   // 2. Verify via mfaManager
   const { valid, counter } = evaluateMfaResult(req.server['mfaManager'].verify(token, secret))
-  if (!valid) return reply.status(403).send(new Error('Invalid MFA token'))
+  if (!valid) return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid MFA token' })
 
   // 3. Anti-replay: reject a code whose time-step was already consumed (same or earlier than the last).
   const lastCounter = user.mfaLastUsedCounter
   if (counter !== null && lastCounter != null && counter <= lastCounter) {
-    return reply.status(403).send(new Error('MFA token already used'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA token already used' })
   }
   if (counter !== null) {
     await req.server['userManager'].updateUserById(user.getId(), { mfaLastUsedCounter: counter }, req.runner)
@@ -538,11 +538,11 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
 
 export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
-  if (!user) return reply.status(401).send(new Error('Unauthorized'))
+  if (!user) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Unauthorized' })
 
   const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
   if (mfa_policy === MfaPolicy.MANDATORY || mfa_policy === MfaPolicy.ONE_WAY) {
-    return reply.status(403).send(new Error('MFA disable is not allowed by security policy'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA disable is not allowed by security policy' })
   }
 
   try {
@@ -550,6 +550,6 @@ export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
     return { ok: true }
   } catch (error: any) {
     req.log.error({ err: error }, 'MFA Disable failed')
-    return reply.status(500).send(new Error('Failed to disable MFA'))
+    return reply.status(500).send({ statusCode: 500, error: 'Internal Server Error', message: 'Failed to disable MFA' })
   }
 }

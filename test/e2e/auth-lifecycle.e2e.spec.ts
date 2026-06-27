@@ -46,17 +46,14 @@ describe('E2E — auth lifecycle', () => {
       expect(confirmationToken).toBeTruthy()
     })
 
-    // (rejected; the framework currently returns 500 instead of 403 here — see findings)
-    it('cannot log in before confirming', async () => {
+    it('cannot log in before confirming (403)', async () => {
       const res = await inject({ method: 'POST', url: '/auth/login', payload: { email, password: VALID_PW } })
-      expect(res.statusCode).toBeGreaterThanOrEqual(400)
-      expect(res.statusCode).not.toBe(200)
+      expect(res.statusCode).toBe(403)
     })
 
-    it('rejects duplicate registration', async () => {
+    it('rejects duplicate registration (400)', async () => {
       const res = await register({ username: 'dup', email, password1: VALID_PW, password2: VALID_PW })
-      expect(res.statusCode).toBeGreaterThanOrEqual(400)
-      expect(res.statusCode).not.toBe(200)
+      expect(res.statusCode).toBe(400)
     })
 
     it('confirms the email with the token', async () => {
@@ -87,17 +84,13 @@ describe('E2E — auth lifecycle', () => {
       expect(typeof JSON.parse(res.body).token).toBe('string')
     })
 
-    // FINDING: a forged token is rejected, but with 500 instead of 403 — same
-    // `reply.status(4xx).send(new Error())` status-not-preserved inconsistency seen
-    // on login. Asserted as "rejected" (>=400) here.
-    it('rejects a forged access token on refresh', async () => {
+    it('rejects a forged access token on refresh (403)', async () => {
       const res = await inject({
         method: 'POST',
         url: '/auth/refresh-token',
         payload: { token: 'forged.jwt.token', refreshToken: 'whatever' }
       })
-      expect(res.statusCode).toBeGreaterThanOrEqual(400)
-      expect(res.statusCode).not.toBe(200)
+      expect(res.statusCode).toBe(403)
     })
   })
 
@@ -121,15 +114,14 @@ describe('E2E — auth lifecycle', () => {
       expect(JSON.parse(res.body)).toMatchObject({ ok: true })
 
       const after = await inject({ method: 'POST', url: '/auth/login', payload: { email, password: VALID_PW } })
-      expect(after.statusCode).toBeGreaterThanOrEqual(400) // blocked (currently 500, should be 403)
-      expect(after.statusCode).not.toBe(200)
+      expect(after.statusCode).toBe(403) // blocked
     })
   })
 
   describe('invalidate-tokens', () => {
-    it('requires authentication (denied without token)', async () => {
+    it('requires authentication (401 without token)', async () => {
       const res = await inject({ method: 'POST', url: '/auth/invalidate-tokens' })
-      expect([401, 403]).toContain(res.statusCode)
+      expect(res.statusCode).toBe(401)
     })
 
     it('rotates externalId so existing tokens stop resolving', async () => {

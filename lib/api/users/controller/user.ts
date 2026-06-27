@@ -127,11 +127,11 @@ export async function resetMfaByAdmin(req: FastifyRequest, reply: FastifyReply) 
   const { id } = req.parameters()
 
   if (!req.hasRole(roles.admin)) {
-    return reply.status(403).send(new Error('Only admins can reset MFA'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Only admins can reset MFA' })
   }
 
   if (!id) {
-    return reply.status(400).send(new Error('Missing user id'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing user id' })
   }
 
   try {
@@ -139,7 +139,7 @@ export async function resetMfaByAdmin(req: FastifyRequest, reply: FastifyReply) 
     return { ok: true }
   } catch (error) {
     req.log.error(error)
-    return reply.status(500).send(new Error('Failed to reset MFA'))
+    return reply.status(500).send({ statusCode: 500, error: 'Internal Server Error', message: 'Failed to reset MFA' })
   }
 }
 
@@ -150,29 +150,29 @@ export async function resetPasswordByAdmin(req: FastifyRequest, reply: FastifyRe
   }
 
   if (!req.hasRole(roles.admin)) {
-    return reply.status(403).send(new Error('Only admins can reset user passwords'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Only admins can reset user passwords' })
   }
 
   const { id } = req.parameters()
   if (!id) {
-    return reply.status(400).send(new Error('Missing user id'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing user id' })
   }
 
   const { password } = req.data()
   if (!password) {
-    return reply.status(400).send(new Error('Missing password in request body'))
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing password in request body' })
   }
 
   try {
     const user = await req.server['userManager'].retrieveUserById(id)
     if (!user) {
-      return reply.status(404).send(new Error('User not found'))
+      return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'User not found' })
     }
 
     await req.server['userManager'].resetPassword(user, password)
     return { ok: true }
   } catch (error) {
     req.log.error(error)
-    return reply.status(500).send(new Error('Failed to reset password'))
+    return reply.status(500).send({ statusCode: 500, error: 'Internal Server Error', message: 'Failed to reset password' })
   }
 }

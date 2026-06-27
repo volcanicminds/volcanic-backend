@@ -39,20 +39,23 @@ describe('E2E — auth, authorization & security', () => {
     // FINDING: GET /users/roles is declared public (roles: []), but it is shadowed
     // by GET /users/:id (admin) and resolves to 403 without a token. Looks like a
     // route-precedence issue worth reviewing; asserted here as the current behavior.
-    it('GET /users/roles is currently shadowed by /users/:id (403 without token)', async () => {
-      const res = await inject({ method: 'GET', url: '/users/roles' })
-      expect(res.statusCode).toBe(403)
+    // NOTE: GET /users/roles declares `roles: []` (implies public) but attaches the
+    // `global.isAuthenticated` middleware, so it actually requires a logged-in user:
+    // 401 without a token, 200 for any authenticated user. (Definition is ambiguous —
+    // see findings: pick public OR authenticated.)
+    it('GET /users/roles requires authentication (401 without token, 200 when logged in)', async () => {
+      const noTok = await inject({ method: 'GET', url: '/users/roles' })
+      expect(noTok.statusCode).toBe(401)
+      const tok = await login(ADMIN.email, ADMIN.password)
+      const withAuth = await inject({ method: 'GET', url: '/users/roles', headers: authHeader(tok) })
+      expect(withAuth.statusCode).toBe(200)
     })
   })
 
   describe('login', () => {
-    // FINDING: an invalid email is rejected, but with HTTP 500 instead of 400 — the
-    // handler `reply.status(400).send(new Error(...))` is not preserving the status
-    // in this branch (error-status inconsistency). Asserted as current behavior.
-    it('rejects an invalid email (currently 500, should be 400)', async () => {
+    it('rejects an invalid email (400)', async () => {
       const res = await inject({ method: 'POST', url: '/auth/login', payload: { email: 'nope', password: 'x' } })
-      expect(res.statusCode).toBeGreaterThanOrEqual(400)
-      expect(res.statusCode).not.toBe(200)
+      expect(res.statusCode).toBe(400)
     })
 
     it('rejects wrong credentials (403)', async () => {
