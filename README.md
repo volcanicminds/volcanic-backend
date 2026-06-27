@@ -53,6 +53,9 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
 - **Unified error body**: HTTP errors now serialize as `{ statusCode, error, code?, message? }`, and the status is
   preserved across the async error path (previously some `reply.status(4xx).send(new Error())` collapsed to `500`).
   `401` is returned for anonymous callers and `403` for an authenticated subject lacking the role.
+- **`/auth/refresh-token` robustness**: when refresh tokens are disabled (`JWT_REFRESH=false`) the endpoint now
+  returns a clean `404` (`code: NOT_FOUND`) instead of throwing an unhandled `500`; it also validates that both
+  `token` and `refreshToken` are present (`400`).
 - **Security — multi-tenant isolation fix on `/users`.** The native user controllers (`find`, `count`, `findOne`,
   `create`, `update`, `remove`, `updateCurrentUser`, admin password reset) did not forward `req.runner`, so in
   multi-tenant mode they queried the global/public schema instead of the resolved tenant schema (cross-tenant

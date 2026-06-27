@@ -362,6 +362,18 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
     throw new Error('Not implemented')
   }
 
+  // Refresh tokens are optional (JWT_REFRESH). When disabled there is no refresh
+  // verifier registered — answer a clean 404 instead of throwing a 500 later.
+  if (!reply.server.jwt['refreshToken']) {
+    return reply.status(404).send(httpError(404, 'Refresh tokens are disabled', 'NOT_FOUND'))
+  }
+
+  if (!token || !refreshToken) {
+    return reply
+      .status(400)
+      .send({ statusCode: 400, error: 'Bad Request', message: 'Missing token or refreshToken' })
+  }
+
   // Verify the signature of the (possibly expired) access token: `ignoreExpiration`
   // lets a stale token through — which is the whole point of refresh — but a forged
   // or tampered token is now rejected (previously `decode` skipped signature checks).
