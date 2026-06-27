@@ -11,7 +11,7 @@
 // Postgres — see harness.resetSearchPath().
 //
 import { expect } from 'expect'
-import { setup, teardown, app, login, authHeader, resetSearchPath, HEADER, ACME, GLOBEX } from './harness.js'
+import { app, login, authHeader, resetSearchPath, HEADER, ACME, GLOBEX } from './harness.js'
 
 describe('E2E (multi-tenant) — schema isolation & tenant resolution', () => {
   // Deterministic inject: clear any leftover tenant search_path first.
@@ -19,12 +19,6 @@ describe('E2E (multi-tenant) — schema isolation & tenant resolution', () => {
     await resetSearchPath()
     return app().inject(opts)
   }
-
-  before(async function () {
-    this.timeout(60000)
-    await setup()
-  })
-  after(async () => await teardown())
 
   describe('tenant resolution', () => {
     it('serves a tenantContext:false route without a tenant header (/health 200)', async () => {

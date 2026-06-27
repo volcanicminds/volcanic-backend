@@ -139,6 +139,56 @@ describe('E2E — auth lifecycle', () => {
     })
   })
 
+  describe('forgot-password → reset-password (full recovery flow)', () => {
+    const email = 'recover@reg.test'
+    const OLD = 'Old-pw-123456'
+    const NEW = 'New-pw-987654'
+
+    it('issues a reset token, resets the password, and logs in with the new one', async () => {
+      await seedConfirmedUser(email, OLD)
+
+      // 1. request recovery -> a resetPasswordToken is stored on the user
+      const forgot = await inject({ method: 'POST', url: '/auth/forgot-password', payload: { email } })
+      expect(forgot.statusCode).toBe(200)
+      const withToken = await getUserByEmail(email)
+      const code = withToken.resetPasswordToken
+      expect(code).toBeTruthy()
+
+      // 2. reset using the token
+      const reset = await inject({
+        method: 'POST',
+        url: '/auth/reset-password',
+        payload: { code, newPassword1: NEW, newPassword2: NEW }
+      })
+      expect(reset.statusCode).toBe(200)
+      expect(JSON.parse(reset.body).ok).toBe(true)
+
+      // 3. old password no longer works, new one does
+      const oldLogin = await inject({ method: 'POST', url: '/auth/login', payload: { email, password: OLD } })
+      expect(oldLogin.statusCode).toBe(403)
+      const newLogin = await inject({ method: 'POST', url: '/auth/login', payload: { email, password: NEW } })
+      expect(newLogin.statusCode).toBe(200)
+    })
+
+    it('rejects reset with an invalid/unknown token (403)', async () => {
+      const res = await inject({
+        method: 'POST',
+        url: '/auth/reset-password',
+        payload: { code: 'not-a-real-token', newPassword1: NEW, newPassword2: NEW }
+      })
+      expect(res.statusCode).toBe(403)
+    })
+
+    it('rejects reset when the two new passwords differ (400)', async () => {
+      const res = await inject({
+        method: 'POST',
+        url: '/auth/reset-password',
+        payload: { code: 'whatever', newPassword1: NEW, newPassword2: 'Other-pw-111' }
+      })
+      expect(res.statusCode).toBe(400)
+    })
+  })
+
   // Account-enumeration hardening: forgot-password must not let a caller tell
   // apart an existing, a non-existing or a blocked account. Every case answers
   // with the same generic 200 / { ok: true } (only the input-shape 400 differs).

@@ -108,6 +108,53 @@ describe('E2E — admin user management (CRUD + block)', () => {
     })
   })
 
+  describe('dynamic role change takes effect', () => {
+    // An admin grants a role; the change must apply on the NEXT request (roles are
+    // read fresh from the DB in onRequest), unlocking a role-gated endpoint.
+    const actor = 'role-actor@e2e.test' // gets promoted to backoffice
+    const target = 'role-target@e2e.test' // someone the actor will block
+    let actorTok: string
+    let targetId: string
+
+    before(async () => {
+      const a: any = await seedConfirmedUser(actor, PW)
+      void a
+      const t: any = await seedConfirmedUser(target, PW)
+      targetId = t.id
+      actorTok = await login(actor, PW)
+    })
+
+    it('a plain user cannot use a backoffice-gated endpoint (block) → 403', async () => {
+      const res = await inject({
+        method: 'POST',
+        url: `/users/${targetId}/block`,
+        headers: authHeader(actorTok),
+        payload: { reason: 'nope' }
+      })
+      expect(res.statusCode).toBe(403)
+    })
+
+    it('after admin grants backoffice, the SAME token can block (200)', async () => {
+      const actorUser = await getUserByEmail(actor)
+      const grant = await inject({
+        method: 'PUT',
+        url: `/users/${actorUser.id}`,
+        headers: authHeader(adminTok),
+        payload: { roles: ['backoffice'] }
+      })
+      expect(grant.statusCode).toBe(200)
+
+      const res = await inject({
+        method: 'POST',
+        url: `/users/${targetId}/block`,
+        headers: authHeader(actorTok),
+        payload: { reason: 'now allowed' }
+      })
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body)).toMatchObject({ ok: true })
+    })
+  })
+
   describe('authorization boundary', () => {
     it('a non-admin cannot create a user (403)', async () => {
       const nonAdmin = 'crud-nonadmin@e2e.test'

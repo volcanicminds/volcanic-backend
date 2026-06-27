@@ -86,7 +86,27 @@ export async function setup() {
   // The Tenant registry lives in `public`, so reset it before serving requests.
   await resetSearchPath()
 
+  // System super-admin lives in the PUBLIC schema (not in any tenant). The
+  // /tenants routes are tenantContext:false → they run against public, so the
+  // authenticated subject must exist there. Seed it AFTER the search_path reset.
+  // In MT mode the manager forbids the implicit public fallback, so pass the
+  // global EntityManager (ds.manager, bound to public) explicitly.
+  superAdmin = await userManager.createUser(
+    { email: SUPERADMIN.email, password: SUPERADMIN.password, roles: ['admin'] } as any,
+    ds.manager
+  )
+  await userManager.updateUserById(superAdmin.id, { confirmed: true, confirmedAt: new Date() } as any, ds.manager)
+
   return server
+}
+
+export const SUPERADMIN = { email: 'super@system.test', password: 'Super-pw-123456' }
+let superAdmin: any
+
+/** A bearer for the public-schema super-admin, signed directly (login is
+ *  tenant-scoped in MT mode; the system admin belongs to no tenant). */
+export function superAdminToken(): string {
+  return server.jwt.sign({ sub: superAdmin.externalId })
 }
 
 // On embedded PGlite every request multiplexes a SINGLE connection whose
