@@ -15,9 +15,10 @@ import {
   executeCountQuery,
   userManager,
   tokenManager,
+  dataBaseManager,
   configureCaseInsensitiveDefault
 } from '../../typeorm.js'
-import { Product, User, Tenant, Token } from './fixtures/entities.js'
+import { Product, User, Tenant, Token, Category, Change } from './fixtures/entities.js'
 
 let ds: any
 
@@ -27,12 +28,12 @@ describe('Embedded PGlite engine', () => {
       type: 'pglite',
       vector: true, // enable pgvector
       synchronize: false,
-      entities: [Product, User, Tenant, Token]
+      entities: [Product, User, Tenant, Token, Category, Change]
     })
     // The public schema is built explicitly here (startup sync is env-gated).
     await ds.synchronize()
-    // userManager/tokenManager resolve the concrete entities via global.entity.*.
-    ;(global as any).entity = { User, Tenant, Token }
+    // Managers resolve concrete entities via global.entity.* (also used by retrieveBy).
+    ;(global as any).entity = { User, Tenant, Token, Product, Category, Change }
   })
 
   after(async () => {
@@ -402,6 +403,138 @@ describe('Embedded PGlite engine', () => {
       } finally {
         configureCaseInsensitiveDefault(true) // restore default for other tests
       }
+    })
+  })
+
+  // Backlog 1 — advanced Magic Query: _logic (AND/OR), relation (dotted-path)
+  // filters, :between, :null/:notNull — end-to-end.
+  describe('Magic Query advanced (_logic, relations, between, null)', () => {
+    let repo: any
+    let fruits: any
+    let veggies: any
+
+    before(async () => {
+      const catRepo = ds.getRepository(Category)
+      repo = ds.getRepository(Product)
+      // DELETE (not TRUNCATE/clear) and child-first: Product has an FK to Category.
+      await ds.query('DELETE FROM product')
+      await ds.query('DELETE FROM category')
+      fruits = await catRepo.save(catRepo.create({ name: 'Fruits' }))
+      veggies = await catRepo.save(catRepo.create({ name: 'Veggies' }))
+      await repo.save([
+        repo.create({ name: 'apple', price: 10, category: fruits, note: 'sweet' }),
+        repo.create({ name: 'banana', price: 20, category: fruits, note: null }),
+        repo.create({ name: 'carrot', price: 30, category: veggies, note: 'crunchy' }),
+        repo.create({ name: 'potato', price: 40, category: veggies, note: null })
+      ])
+    })
+
+    it('_logic OR combines aliased conditions', async () => {
+      const { records } = await executeFindQuery(repo, {}, {
+        'name:contains[a]': 'apple',
+        'price:gt[b]': '35',
+        _logic: 'a OR b'
+      })
+      expect(records.map((p: any) => p.name).sort()).toEqual(['apple', 'potato'])
+    })
+
+    it('_logic AND with parentheses', async () => {
+      const { records } = await executeFindQuery(repo, {}, {
+        'price:ge[a]': '20',
+        'name:contains[b]': 'a',
+        _logic: 'a AND b'
+      })
+      // price>=20 AND name contains 'a' -> banana, carrot, potato
+      expect(records.map((p: any) => p.name).sort()).toEqual(['banana', 'carrot', 'potato'])
+    })
+
+    it('relation (dotted-path) filter', async () => {
+      const { records } = await executeFindQuery(repo, { category: true }, { 'category.name:eq': 'fruits' })
+      expect(records.map((p: any) => p.name).sort()).toEqual(['apple', 'banana'])
+    })
+
+    it(':between (inclusive range)', async () => {
+      const { records } = await executeFindQuery(repo, {}, { 'price:between': '20:30' })
+      expect(records.map((p: any) => p.name).sort()).toEqual(['banana', 'carrot'])
+    })
+
+    it(':null / :notNull', async () => {
+      const isNull = await executeFindQuery(repo, {}, { 'note:null': 'true' })
+      expect(isNull.records.map((p: any) => p.name).sort()).toEqual(['banana', 'potato'])
+      const notNull = await executeFindQuery(repo, {}, { 'note:notNull': 'true' })
+      expect(notNull.records.map((p: any) => p.name).sort()).toEqual(['apple', 'carrot'])
+    })
+  })
+
+  // Backlog 2 — userManager: forgot/reset password, block/unblock, MFA persistence.
+  describe('userManager: password recovery, block, MFA', () => {
+    const email = 'recover@acme.test'
+    let userId: string
+
+    before(async () => {
+      const u: any = await userManager.createUser({ email, password: 'Start-pw-1', roles: ['user'] } as any)
+      userId = u.id
+    })
+
+    it('forgotPassword issues a reset token, retrievable by token', async () => {
+      const u: any = await userManager.forgotPassword(email)
+      expect(u.resetPasswordToken).toBeTruthy()
+      const byToken: any = await userManager.retrieveUserByResetPasswordToken(u.resetPasswordToken)
+      expect(byToken?.email).toBe(email)
+    })
+
+    it('resetPassword sets a new password and clears the token', async () => {
+      await userManager.resetPassword({ email } as any, 'Reset-pw-2')
+      expect(await userManager.retrieveUserByPassword(email, 'Reset-pw-2')).not.toBeNull()
+      const u: any = await userManager.retrieveUserByEmail(email)
+      expect(u.resetPasswordToken).toBeNull()
+      expect(u.confirmed).toBe(true)
+    })
+
+    it('block / unblock toggles the flag', async () => {
+      const blocked: any = await userManager.blockUserById(userId, 'spam')
+      expect(blocked.blocked).toBe(true)
+      expect(blocked.blockedReason).toBe('spam')
+      const unblocked: any = await userManager.unblockUserById(userId)
+      expect(unblocked.blocked).toBe(false)
+    })
+
+    it('MFA secret round-trips (encrypted at rest) and enable/disable flip the flag', async () => {
+      await userManager.saveMfaSecret(userId, 'JBSWY3DPEHPK3PXP')
+      expect(await userManager.retrieveMfaSecret(userId)).toBe('JBSWY3DPEHPK3PXP')
+
+      const enabled: any = await userManager.enableMfa(userId)
+      expect(enabled.mfaEnabled).toBe(true)
+      const disabled: any = await userManager.disableMfa(userId)
+      expect(disabled.mfaEnabled).toBe(false)
+      expect(await userManager.retrieveMfaSecret(userId)).toBeNull() // cleared on disable
+    })
+  })
+
+  // Backlog 3 — dataBaseManager: schema sync + Change audit trail.
+  describe('dataBaseManager: synchronize + Change audit', () => {
+    it('synchronizeSchemas runs without error', async () => {
+      expect(await dataBaseManager.synchronizeSchemas()).toBe(true)
+    })
+
+    it('addChange writes an audit row; retrieveBy reads the target entity', async () => {
+      const product: any = await ds.getRepository(Product).save(
+        ds.getRepository(Product).create({ name: 'audited', price: 5 })
+      )
+      const change: any = await dataBaseManager.addChange(
+        'Product',
+        product.id,
+        'created',
+        'tester',
+        { price: 5 }
+      )
+      expect(change.id).toBeTruthy()
+      expect(change.entityName).toBe('Product')
+      expect(change.contents).toEqual({ price: 5 })
+
+      // retrieveBy resolves the entity from global.entity and finds it by id
+      const found: any = await dataBaseManager.retrieveBy('Product', product.id)
+      expect(found?.name).toBe('audited')
     })
   })
 })

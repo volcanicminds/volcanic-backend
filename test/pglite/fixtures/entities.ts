@@ -5,6 +5,15 @@
 // decorator-based entities that extend the framework's abstract User/Tenant.
 import { EntitySchema } from 'typeorm'
 
+// A related entity to exercise relation (dotted-path) filters.
+export const Category = new EntitySchema<any>({
+  name: 'Category',
+  columns: {
+    id: { type: 'uuid', primary: true, generated: 'uuid' },
+    name: { type: String }
+  }
+})
+
 // Plain domain entity: exercises CRUD, boolean serialization and queries.
 export const Product = new EntitySchema<any>({
   name: 'Product',
@@ -13,7 +22,26 @@ export const Product = new EntitySchema<any>({
     name: { type: String },
     price: { type: 'int', default: 0 },
     active: { type: Boolean, default: true },
+    note: { type: String, nullable: true },
     tags: { type: 'text', array: true, nullable: true }
+  },
+  relations: {
+    category: { type: 'many-to-one', target: 'Category', nullable: true, joinColumn: true }
+  }
+})
+
+// Audit-trail entity used by dataBaseManager.addChange / retrieveBy.
+export const Change = new EntitySchema<any>({
+  name: 'Change',
+  columns: {
+    id: { type: 'uuid', primary: true, generated: 'uuid' },
+    entityName: { type: String },
+    entityId: { type: String },
+    status: { type: String },
+    userId: { type: String, nullable: true },
+    contents: { type: 'jsonb', nullable: true },
+    createdAt: { type: 'timestamp', createDate: true },
+    updatedAt: { type: 'timestamp', updateDate: true }
   }
 })
 
@@ -29,9 +57,13 @@ export const User = new EntitySchema<any>({
     password: { type: String },
     passwordChangedAt: { type: 'timestamp', nullable: true },
     confirmed: { type: Boolean, default: false },
+    confirmedAt: { type: 'timestamp', nullable: true },
     confirmationToken: { type: String, nullable: true },
+    resetPasswordToken: { type: String, nullable: true },
+    resetPasswordTokenAt: { type: 'timestamp', nullable: true },
     blocked: { type: Boolean, default: false },
     blockedReason: { type: String, nullable: true },
+    blockedAt: { type: 'timestamp', nullable: true },
     roles: { type: 'simple-array', nullable: true },
     mfaEnabled: { type: Boolean, default: false },
     mfaSecret: { type: String, nullable: true },
