@@ -246,12 +246,21 @@ When you execute `npm run dev` the server is restarted whenever a .js/.ts file i
 
 ## How to test (logic)
 
-```ts
-npm run test
-npm run test -t 'Logging'
+```sh
+npm run test          # core + typeorm units (includes loose perf GUARDRAILS)
+npm run test:pglite   # data-layer integration on embedded PGlite
+npm run test:perf     # PERFORMANCE suite (run on demand) — see below
 ```
 
-Refer to jest for more options.
+### Performance: two layers
+
+- **Guardrails (in the normal suite)** — `test/typeorm/unit/guardrails.spec.ts`. Deliberately huge budgets
+  (3–5×) that only catch **catastrophic** regressions (accidental O(n²), runaway loops, ReDoS). They never assert
+  real numbers, so they don't flake on CI.
+- **Benchmarks (`npm run test:perf`, separate / non-blocking)** — `test/perf/`. **Report** numbers and assert only
+  loose floors: Magic Query translation throughput (CPU), data-layer latency over 10k rows on PGlite, and HTTP
+  throughput via **autocannon** (`GET /health`). Indicative figures on a dev laptop: applyQuery ~50k ops/sec,
+  find/count over 10k rows ~1–4 ms, `/health` ~9k req/s (p97.5 ~1 ms). Treat CI timings as advisory, not a gate.
 
 ## Configuration Reference
 
