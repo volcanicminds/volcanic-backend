@@ -4,18 +4,10 @@
 // error handling) against the real app + embedded PGlite. Uses server.inject.
 //
 import { expect } from 'expect'
-import { setup, teardown, login, authHeader, ADMIN, USER } from './harness.js'
+import { app, login, authHeader, ADMIN, USER } from './harness.js'
 
 describe('E2E — auth, authorization & security', () => {
-  let server: any
-
-  before(async function () {
-    this.timeout(60000)
-    server = await setup()
-  })
-  after(async () => await teardown())
-
-  const inject = (opts: any) => server.inject(opts)
+  const inject = (opts: any) => app().inject(opts)
 
   describe('public surface', () => {
     it('GET /health is public (200)', async () => {

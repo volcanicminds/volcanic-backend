@@ -21,7 +21,20 @@ async function seedUser(data: { email: string; password: string; roles: string[]
   return u
 }
 
+/** Creates a confirmed throwaway user (for tests that mutate/disable a user). */
+export async function seedConfirmedUser(email: string, password: string, roles: string[] = ['public']) {
+  return seedUser({ email, password, roles })
+}
+
+/** Reads a user straight from the DB (e.g. to grab a confirmation token that the
+ *  HTTP response schema does not expose). */
+export async function getUserByEmail(email: string): Promise<any> {
+  return userManager.retrieveUserByEmail(email)
+}
+
 export async function setup() {
+  if (server) return server // idempotent: one app/DB shared across all e2e specs
+
   ds = await startDatabase({ type: 'pglite', synchronize: false, logging: false, entities: [UserSchema] })
   await ds.synchronize()
   // With a `target`, metadata is keyed by the class → expose the class.
