@@ -174,20 +174,17 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
     user = await req.server['userManager'].retrieveUserByUsername(username, req.runner)
   }
 
-  let isValid = await req.server['userManager'].isValidUser(user)
+  const isValid = await req.server['userManager'].isValidUser(user)
 
-  if (!isValid) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
+  // Account-enumeration hardening: do NOT reveal whether the account exists, is
+  // invalid or is blocked. Always answer 200 with a generic body; only actually
+  // trigger the reset flow when the user exists, is valid and not blocked.
+  // (A residual timing side-channel remains since the valid path does a DB write.)
+  if (isValid && !user?.blocked) {
+    await req.server['userManager'].forgotPassword(user.email, req.runner)
   }
 
-  if (user?.blocked) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
-  }
-
-  user = await req.server['userManager'].forgotPassword(user.email, req.runner)
-  isValid = await req.server['userManager'].isValidUser(user)
-
-  return { ok: isValid }
+  return { ok: true }
 }
 
 export async function confirmEmail(req: FastifyRequest, reply: FastifyReply) {

@@ -5,6 +5,7 @@
 //
 import { expect } from 'expect'
 import { app, login, authHeader, seedConfirmedUser, getUserByEmail } from './harness.js'
+import { userManager } from '../../typeorm.js'
 
 const VALID_PW = 'Reg-pw-123456'
 
@@ -135,6 +136,46 @@ describe('E2E — auth lifecycle', () => {
       // the old token's subject no longer exists -> 404 SUBJECT_NOT_FOUND on a protected route
       const reused = await inject({ method: 'GET', url: '/users', headers: authHeader(token) })
       expect(reused.statusCode).toBe(404)
+    })
+  })
+
+  // Account-enumeration hardening: forgot-password must not let a caller tell
+  // apart an existing, a non-existing or a blocked account. Every case answers
+  // with the same generic 200 / { ok: true } (only the input-shape 400 differs).
+  describe('forgot-password is non-enumerable', () => {
+    const forgot = (payload: any) => inject({ method: 'POST', url: '/auth/forgot-password', payload })
+
+    it('returns 400 only for a missing/invalid identifier', async () => {
+      const res = await forgot({ email: 'not-an-email' })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('returns a generic 200 for an existing account', async () => {
+      const email = 'forgot-exists@reg.test'
+      await seedConfirmedUser(email, VALID_PW)
+      const res = await forgot({ email })
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body)).toMatchObject({ ok: true })
+    })
+
+    it('returns the same 200 for a non-existing account (no leak)', async () => {
+      const res = await forgot({ email: 'forgot-nobody@reg.test' })
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body)).toMatchObject({ ok: true })
+    })
+
+    it('returns the same 200 for a blocked account (no leak)', async () => {
+      const email = 'forgot-blocked@reg.test'
+      const u: any = await seedConfirmedUser(email, VALID_PW)
+      await userManager.updateUserById(u.id, { blocked: true } as any)
+      const res = await forgot({ email })
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body)).toMatchObject({ ok: true })
+    })
+
+    it('does not actually issue a reset token for a non-existing account', async () => {
+      const before = await getUserByEmail('forgot-nobody@reg.test')
+      expect(before).toBeFalsy()
     })
   })
 })

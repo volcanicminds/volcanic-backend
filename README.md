@@ -45,6 +45,14 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
   `isNotEmpty`, array `arrayContains` (`@>`) / `arrayContainedBy` (`<@`), and JSONB `jsonHasKey` (`?`) /
   `jsonHasAnyKey` (`?|`) / `jsonHasAllKeys` (`?&`).
 - **Operator names are case-insensitive**: `:isEmpty`, `:isempty`, `:ISEMPTY` are equivalent.
+- **Security — `forgot-password` is non-enumerable.** `POST /auth/forgot-password` now always answers `200`
+  `{ ok: true }` regardless of whether the account exists, is invalid or is blocked (only a missing/invalid
+  identifier still returns `400`). Previously a `403` distinguished "not found / invalid / blocked" from a valid
+  account, allowing account enumeration. Clients should show a generic "if the account exists, a reset link was
+  sent" message. _Behavioral change — a residual timing side-channel remains (the valid path performs a DB write)._
+- **Unified error body**: HTTP errors now serialize as `{ statusCode, error, code?, message? }`, and the status is
+  preserved across the async error path (previously some `reply.status(4xx).send(new Error())` collapsed to `500`).
+  `401` is returned for anonymous callers and `403` for an authenticated subject lacking the role.
 - Internal: the operator catalog moved to `lib/database/typeorm/query/operators.ts`.
 
 ## Documentation & Guides
