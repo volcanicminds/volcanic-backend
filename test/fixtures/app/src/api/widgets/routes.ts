@@ -32,6 +32,29 @@ export default {
         title: 'Update a widget',
         description: 'Rename a widget (tracked)'
       }
+    },
+    {
+      method: 'POST',
+      path: '/upload',
+      roles: [{ code: 'editor' }],
+      handler: 'widget.upload',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Upload (multipart)',
+        description: 'Parse a multipart form (proves the multipart plugin)'
+      }
+    },
+    {
+      method: 'POST',
+      path: '/webhook',
+      roles: [{ code: 'editor' }],
+      handler: 'widget.webhook',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Webhook (raw body)',
+        description: 'Echo the raw request body (proves the rawBody plugin)',
+        rawBody: true
+      }
     }
   ]
 }
