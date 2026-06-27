@@ -69,6 +69,7 @@
     "test:e2e:norefresh:pglite": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2237 NODE_ENV=memory LOG_LEVEL=silent JWT_REFRESH=false JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-norefresh/**/*.e2e.spec.ts -t 60000 --exit",
     "test:e2e:mfa:pglite": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2238 NODE_ENV=memory LOG_LEVEL=silent JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-mfa/**/*.e2e.spec.ts -t 60000 --exit",
     "test:e2e:ratelimit:pglite": "cross-env AUTH_RATELIMIT_MAX=3 AUTH_RATELIMIT_WINDOW=60000 PORT=2239 NODE_ENV=memory LOG_LEVEL=silent JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-ratelimit/**/*.e2e.spec.ts -t 60000 --exit",
+    "test:e2e:fixture:pglite": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2240 NODE_ENV=memory LOG_LEVEL=silent JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-fixture/**/*.e2e.spec.ts -t 60000 --exit",
     "test:lib": "cross-env NODE_ENV=memory mocha --import=tsx ./test/lib/**/*.spec.ts -t 20000 --exit",
     "test:full": "npm run test:core",
     "reset": "npm install && npm update && npm run build",

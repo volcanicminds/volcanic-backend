@@ -25,7 +25,16 @@ export async function load() {
 
       if (enableAll) {
         changes.forEach((change) => {
-          const tc: TrackChanges = { primaryKey: primaryKey, changeEntity: changeEntity, ...change } as TrackChanges
+          // `enable: true` default must be PERSISTED: the runtime gate
+          // (getTrackingConfigIfEnabled) checks `tc.enable`, so a change entry
+          // without an explicit `enable` would otherwise never track despite
+          // isValid() treating it as enabled.
+          const tc: TrackChanges = {
+            primaryKey: primaryKey,
+            changeEntity: changeEntity,
+            enable: true,
+            ...change
+          } as TrackChanges
           const code = getCodeBy(tc.method, tc.path)
 
           if (code in trackChangesList) {
