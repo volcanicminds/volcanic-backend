@@ -12,8 +12,10 @@ export class TranslatedError extends Error {
     this.locale = locale
     this.status = status
     this.translationCode = translationCode
-    this.translatedMessage = global.t.__({ phrase: translationCode || defaultMessage, locale: locale || 'en' }, data)
-    this.message = this.translatedMessage || defaultMessage || 'generic error'
+    const phrase = translationCode || defaultMessage
+    this.translatedMessage = phrase ? global.t.__({ phrase, locale: locale || 'en' }, data) : null
+    // fallback: tradotto -> code grezzo -> defaultMessage -> catch-all
+    this.message = this.translatedMessage || translationCode || defaultMessage || 'generic error'
     this.data = data
 
     Error.captureStackTrace(this, this.constructor || TranslatedError)
