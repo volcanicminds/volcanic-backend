@@ -19,6 +19,7 @@ export class UserClass {
   blocked: boolean
   roles: string[]
   mfaEnabled: boolean
+  mfaLastUsedCounter: number
   getId() {
     return this.id
   }
@@ -47,9 +48,10 @@ export const UserSchema = new EntitySchema<any>({
     blockedAt: { type: 'timestamp', nullable: true },
     roles: { type: 'simple-array', nullable: true },
     mfaEnabled: { type: Boolean, default: false },
-    mfaSecret: { type: String, nullable: true },
+    mfaSecret: { type: String, nullable: true, select: false },
     mfaType: { type: String, nullable: true },
     mfaRecoveryCodes: { type: 'simple-array', nullable: true },
+    mfaLastUsedCounter: { type: 'int', nullable: true },
     firstName: { type: String, nullable: true },
     lastName: { type: String, nullable: true },
     createdAt: { type: 'timestamp', createDate: true },
