@@ -18,9 +18,18 @@ export const userBodySchema = {
   $id: 'userBodySchema',
   type: 'object',
   nullable: true,
+  // Admin create/update surface. `additionalProperties: false` drops anything not
+  // listed (e.g. externalId, mfaSecret, passwordChangedAt). `password` is allowed
+  // for CREATE (createUser hashes it); on UPDATE it is dropped in updateUserById so
+  // it can never be stored in plaintext — credential changes go through the
+  // dedicated hashed flows (change-password / reset-password).
+  additionalProperties: false,
   properties: {
     username: { type: 'string' },
     email: { type: 'string' },
+    password: { type: 'string' },
+    firstName: { type: 'string' },
+    lastName: { type: 'string' },
     blocked: { type: 'boolean' },
     blockedReason: { type: 'string' },
     blockedAt: { type: 'string' },

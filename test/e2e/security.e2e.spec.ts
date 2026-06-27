@@ -63,6 +63,37 @@ describe('E2E — security regressions', () => {
     })
   })
 
+  describe('admin PUT /users/:id never stores a plaintext password', () => {
+    const email = 'sec-adminpw@e2e.test'
+    const PW = 'Sec-admin-12345'
+    let adminTok: string
+    let id: string
+
+    before(async () => {
+      adminTok = await login('admin@e2e.test', 'Admin-pw-12345')
+      const u: any = await seedConfirmedUser(email, PW)
+      id = u.id
+    })
+
+    it('drops password on update: the credential is untouched and login still works', async () => {
+      const before = await getUserByEmail(email)
+      const res = await inject({
+        method: 'PUT',
+        url: `/users/${id}`,
+        headers: authHeader(adminTok),
+        payload: { username: 'renamed-by-admin', password: 'plaintext-admin-hack' }
+      })
+      expect(res.statusCode).toBe(200)
+
+      const after = await getUserByEmail(email)
+      expect(after.username).toBe('renamed-by-admin') // legit field applied
+      expect(after.password).toBe(before.password) // password NOT changed
+      // original credential still authenticates (not overwritten with plaintext)
+      const ok = await inject({ method: 'POST', url: '/auth/login', payload: { email, password: PW } })
+      expect(ok.statusCode).toBe(200)
+    })
+  })
+
   describe('Magic Query never leaks sensitive columns over HTTP', () => {
     it('filtering by password is ignored (no oracle) and admin listing hides it', async () => {
       const admin = await login('admin@e2e.test', 'Admin-pw-12345')

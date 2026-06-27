@@ -138,7 +138,12 @@ export async function updateUserById(id: string, user: typeof global.entity.User
     if (!userEx) {
       throw new ServiceError('User not found', 404)
     }
-    const merged = repo.merge(userEx, user)
+    // `password` must NEVER be set through the generic update path: it would be
+    // stored in plaintext, bypassing bcrypt (and breaking login). Credential
+    // changes go through changePassword / resetPassword, which hash. Drop it here
+    // for ALL callers (admin PUT /users/:id included).
+    const { password: _ignorePassword, ...safe } = (user as any) || {}
+    const merged = repo.merge(userEx, safe)
     return repo.save(merged)
   } catch (error) {
     throw error

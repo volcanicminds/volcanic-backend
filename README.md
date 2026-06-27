@@ -59,6 +59,11 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
 - **Security — Magic Query page-size cap.** A request can no longer pull unbounded rows (`?take=10000000`): `take`/
   `pageSize` are clamped to a maximum (default **100**, OWASP API4). Configure via the data-layer option
   `maxPageSize`, the env `VOLCANIC_MAX_PAGE_SIZE`, or `configureMaxPageSize()`. Set `<= 0` to disable (not advised).
+- **Security — no plaintext password via admin update.** `PUT /users/:id` (and any caller of `updateUserById`) can
+  no longer set `password`: it was stored in plaintext, bypassing bcrypt and breaking login. `updateUserById` now
+  drops `password`; credential changes must go through change-password / reset-password (which hash). `userBodySchema`
+  is also `additionalProperties: false` now (drops unexpected fields like `externalId`/`mfaSecret`); `password` is
+  still accepted on **create** (hashed by `createUser`).
 - **Security — privilege-escalation / mass-assignment fix on `PUT /users/me`.** `currentUserBodySchema` allowed
   extra properties and the controller spread the whole body into the update, so a normal user could send
   `roles: ['admin']` (or `blocked`, `confirmed`, `password`, `externalId`, `mfa*`) and **escalate to admin** /
