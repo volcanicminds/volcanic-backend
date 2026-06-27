@@ -1,18 +1,18 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 
 export async function count(req: FastifyRequest, _reply: FastifyReply) {
-  return await req.server['tokenManager'].countQuery(req.data())
+  return await req.server['tokenManager'].countQuery(req.data(), req.runner)
 }
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
-  const { headers, records } = await req.server['tokenManager'].findQuery(req.data())
+  const { headers, records } = await req.server['tokenManager'].findQuery(req.data(), req.runner)
   return reply.type('application/json').headers(headers).send(records)
 }
 
 export async function findOne(req: FastifyRequest, reply: FastifyReply) {
   const { id } = req.parameters()
 
-  const token = await req.server['tokenManager'].retrieveTokenById(id)
+  const token = await req.server['tokenManager'].retrieveTokenById(id, req.runner)
   return token || reply.status(404).send()
 }
 
@@ -30,7 +30,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     data.roles.push(publicRole)
   }
 
-  let token = await req.server['tokenManager'].createToken(data)
+  let token = await req.server['tokenManager'].createToken(data, req.runner)
   if (!token || !token.getId() || !token.externalId) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not registered' })
   }
@@ -45,7 +45,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not signed' })
   }
 
-  token = await req.server['tokenManager'].updateTokenById(token.getId(), { token: bearerToken })
+  token = await req.server['tokenManager'].updateTokenById(token.getId(), { token: bearerToken }, req.runner)
   return token
 }
 
@@ -55,12 +55,12 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(404).send()
   }
 
-  let token = await req.server['tokenManager'].retrieveTokenById(id)
+  let token = await req.server['tokenManager'].retrieveTokenById(id, req.runner)
   if (!token) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Token not found' })
   }
 
-  token = await req.server['tokenManager'].removeTokenById(id)
+  token = await req.server['tokenManager'].removeTokenById(id, req.runner)
   return { ok: true }
 }
 
@@ -70,13 +70,13 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(404).send()
   }
 
-  const token = await req.server['tokenManager'].retrieveTokenById(id)
+  const token = await req.server['tokenManager'].retrieveTokenById(id, req.runner)
   if (!token || !token.getId()) {
     return reply.status(404).send()
   }
 
   const data = req.data() || {}
-  return req.server['tokenManager'].updateTokenById(token.getId(), data)
+  return req.server['tokenManager'].updateTokenById(token.getId(), data, req.runner)
 }
 
 export async function block(req: FastifyRequest, reply: FastifyReply) {
@@ -87,8 +87,8 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   const { id: userId } = req.parameters()
   const { reason } = req.data()
 
-  await req.server['tokenManager'].blockTokenById(userId, reason)
-  const token = await req.server['tokenManager'].retrieveTokenById(userId)
+  await req.server['tokenManager'].blockTokenById(userId, reason, req.runner)
+  const token = await req.server['tokenManager'].retrieveTokenById(userId, req.runner)
   return { ok: !!token.getId() }
 }
 
@@ -100,7 +100,7 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const { id: userId } = req.parameters()
-  await req.server['tokenManager'].unblockTokenById(userId)
-  const token = await req.server['tokenManager'].retrieveTokenById(userId)
+  await req.server['tokenManager'].unblockTokenById(userId, req.runner)
+  const token = await req.server['tokenManager'].retrieveTokenById(userId, req.runner)
   return { ok: !!token.getId() }
 }

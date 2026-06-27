@@ -46,6 +46,9 @@ export default {
     {
       method: 'GET',
       path: '/roles',
+      // Authenticated-only BY DESIGN (any logged-in user). `roles: []` + the
+      // isAuthenticated middleware => 401 anonymous, 200 authenticated. Do NOT make
+      // this public: it exposes the role taxonomy, which anonymous callers don't need.
       roles: [],
       handler: 'user.getRoles',
       middlewares: ['global.isAuthenticated'],

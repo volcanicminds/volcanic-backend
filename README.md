@@ -56,11 +56,12 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
 - **`/auth/refresh-token` robustness**: when refresh tokens are disabled (`JWT_REFRESH=false`) the endpoint now
   returns a clean `404` (`code: NOT_FOUND`) instead of throwing an unhandled `500`; it also validates that both
   `token` and `refreshToken` are present (`400`).
-- **Security — multi-tenant isolation fix on `/users`.** The native user controllers (`find`, `count`, `findOne`,
-  `create`, `update`, `remove`, `updateCurrentUser`, admin password reset) did not forward `req.runner`, so in
+- **Security — multi-tenant isolation fix on `/users` and `/token`.** The native user controllers (`find`, `count`,
+  `findOne`, `create`, `update`, `remove`, `updateCurrentUser`, admin password reset) and the API-token controllers
+  (`find`, `count`, `findOne`, `create`, `update`, `remove`, `block`, `unblock`) did not forward `req.runner`, so in
   multi-tenant mode they queried the global/public schema instead of the resolved tenant schema (cross-tenant
-  exposure). They now pass `req.runner` (a no-op in single-tenant mode). `create` also no longer double-saves via
-  the active-record `entity.User.save()` (which always hit the global connection). See `npm run test:e2e:mt:pglite`.
+  exposure). They now pass `req.runner` (a no-op in single-tenant mode). `create` (users) also no longer double-saves
+  via the active-record `entity.User.save()` (which always hit the global connection). See `npm run test:e2e:mt:pglite`.
 - **Router — duplicate-route detection fixed.** The startup check compared a key without a leading slash
   (`GETusers`) against the stored path (`GET/users`), so duplicate `method`+`path`+`version` routes were never
   flagged. They are now detected and reported at load time.

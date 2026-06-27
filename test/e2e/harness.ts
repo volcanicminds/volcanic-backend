@@ -5,8 +5,9 @@
 // (full pipeline: hooks, plugins, routing, schemas, serialization) with no TCP.
 //
 import { start as startServer } from '../../index.js'
-import { start as startDatabase, closeEmbedded, userManager } from '../../typeorm.js'
+import { start as startDatabase, closeEmbedded, userManager, tokenManager } from '../../typeorm.js'
 import { UserSchema, UserClass } from './userEntity.js'
+import { TokenSchema, TokenClass } from './tokenEntity.js'
 
 export const ADMIN = { email: 'admin@e2e.test', password: 'Admin-pw-12345', roles: ['admin'] }
 export const USER = { email: 'user@e2e.test', password: 'User-pw-123456', roles: ['public'] }
@@ -32,18 +33,24 @@ export async function getUserByEmail(email: string): Promise<any> {
   return userManager.retrieveUserByEmail(email)
 }
 
+/** Reads a token record straight from the DB (e.g. to assert `blocked`, which the
+ *  tokenSchema response does not expose). */
+export async function getTokenById(id: string): Promise<any> {
+  return tokenManager.retrieveTokenById(id)
+}
+
 export async function setup() {
   if (server) return server // idempotent: one app/DB shared across all e2e specs
 
-  ds = await startDatabase({ type: 'pglite', synchronize: false, logging: false, entities: [UserSchema] })
+  ds = await startDatabase({ type: 'pglite', synchronize: false, logging: false, entities: [UserSchema, TokenSchema] })
   await ds.synchronize()
-  // With a `target`, metadata is keyed by the class → expose the class.
-  ;(global as any).entity = { User: UserClass }
+  // With a `target`, metadata is keyed by the class → expose the classes.
+  ;(global as any).entity = { User: UserClass, Token: TokenClass }
 
   await seedUser(ADMIN)
   await seedUser(USER)
 
-  server = await startServer({ userManager })
+  server = await startServer({ userManager, tokenManager })
   await server.ready()
   return server
 }

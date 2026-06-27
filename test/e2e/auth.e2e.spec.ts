@@ -36,13 +36,11 @@ describe('E2E — auth, authorization & security', () => {
       expect(res.headers['access-control-allow-origin']).toBeDefined()
     })
 
-    // FINDING: GET /users/roles is declared public (roles: []), but it is shadowed
-    // by GET /users/:id (admin) and resolves to 403 without a token. Looks like a
-    // route-precedence issue worth reviewing; asserted here as the current behavior.
-    // NOTE: GET /users/roles declares `roles: []` (implies public) but attaches the
-    // `global.isAuthenticated` middleware, so it actually requires a logged-in user:
-    // 401 without a token, 200 for any authenticated user. (Definition is ambiguous —
-    // see findings: pick public OR authenticated.)
+    // DECISION: GET /users/roles is authenticated-only (any logged-in user), like
+    // /users/me and /users/is-admin. It declares `roles: []` + the
+    // `global.isAuthenticated` middleware: 401 without a token, 200 for any
+    // authenticated user. Kept behind auth on purpose — it exposes the role
+    // taxonomy, which anonymous callers don't need.
     it('GET /users/roles requires authentication (401 without token, 200 when logged in)', async () => {
       const noTok = await inject({ method: 'GET', url: '/users/roles' })
       expect(noTok.statusCode).toBe(401)
