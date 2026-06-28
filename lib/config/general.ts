@@ -15,6 +15,9 @@ export default {
       resolver: 'subdomain', // subdomain, header, query
       header_key: 'x-tenant-id',
       query_key: 'tid'
+    },
+    manifest: {
+      enabled: false // opt-in: exposes GET /admin/manifest (admin-only) for the backoffice engine
     }
   }
 }

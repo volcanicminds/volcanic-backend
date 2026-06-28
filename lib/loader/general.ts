@@ -17,6 +17,9 @@ export async function load() {
       multi_tenant: {
         enabled: false,
         query_key: 'tid'
+      },
+      manifest: {
+        enabled: false
       }
     }
   }

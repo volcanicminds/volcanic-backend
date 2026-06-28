@@ -95,6 +95,10 @@ export interface GeneralConfig {
       header_key?: string
       query_key?: string
     }
+    // Admin manifest capability (opt-in): exposes GET /admin/manifest
+    manifest?: {
+      enabled: boolean
+    }
   }
 }
 
