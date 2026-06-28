@@ -316,6 +316,7 @@ declare global {
   var connection: any
   var entity: any
   var repository: any
+  var routes: ConfiguredRoute[]
 }
 
 export { global }

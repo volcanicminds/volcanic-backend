@@ -293,5 +293,8 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
 
 export async function apply(server: any): Promise<void> {
   const routes = await load()
+  // Expose the mounted routes (enabled + valid) for introspection — e.g. the admin
+  // manifest generator. Read-only by convention; rebuilt on every apply().
+  global.routes = routes
   return await applyRoutes(server, routes)
 }
