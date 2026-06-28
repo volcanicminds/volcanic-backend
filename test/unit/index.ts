@@ -9,6 +9,7 @@ import common from './common.js'
 import generate from './generate.js'
 import path from './path.js'
 import managers from './managers.js'
+import manifest from './manifest.js'
 
 export default function load() {
   describe('Unit', () => {
@@ -23,5 +24,6 @@ export default function load() {
     generate()
     path()
     managers()
+    manifest()
   })
 }
