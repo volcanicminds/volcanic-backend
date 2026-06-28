@@ -11,6 +11,7 @@ import { TranslatedError } from './lib/util/errors.js'
 import * as loaderPlugins from './lib/loader/plugins.js'
 import * as loaderRoles from './lib/loader/roles.js'
 import * as loaderRouter from './lib/loader/router.js'
+import { generateManifest } from './lib/manifest/generator.js'
 import * as loaderHooks from './lib/loader/hooks.js'
 import * as loaderSchemas from './lib/loader/schemas.js'
 import * as loaderTracking from './lib/loader/tracking.js'
@@ -342,6 +343,27 @@ const start = async (decorators = {}) => {
   }
   // -------------------------------------------------
 
+  // --- MANIFEST DUMP (CI snapshot, decoupled from a live BE) ---
+  // Opt-in via env: MANIFEST_DUMP=<path> writes the manifest to file. With
+  // MANIFEST_DUMP_EXIT=true the server skips listen() and returns (pure dump command).
+  const manifestDumpPath = process.env.MANIFEST_DUMP
+  if (manifestDumpPath) {
+    try {
+      await server.ready()
+      const { writeFileSync } = await import('node:fs')
+      writeFileSync(manifestDumpPath, JSON.stringify(generateManifest(server), null, 2))
+      if (log.i) log.info(`Manifest 📄 dumped to ${manifestDumpPath}`)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      if (log.e) log.error(`Manifest dump failed: ${message}`)
+    }
+    if (yn(process.env.MANIFEST_DUMP_EXIT, false)) {
+      await server.close()
+      return server
+    }
+  }
+  // -------------------------------------------------
+
   await server
     .listen({
       port: Number(port),
@@ -399,3 +421,4 @@ export type {
 export { MfaPolicy } from './lib/config/constants.js'
 
 export { yn, preload, start, TranslatedError }
+export { generateManifest, buildManifest } from './lib/manifest/generator.js'
