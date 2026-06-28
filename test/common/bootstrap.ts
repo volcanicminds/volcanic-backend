@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { start as startServer } from '@volcanicminds/backend'
+import { start as startServer, preload } from '@volcanicminds/backend'
 import { start as startDatabase, DataSource, userManager } from '@volcanicminds/backend/typeorm'
 
 export const DEFAULT_ADMIN_EMAIL = 'admin@user.com'
@@ -17,6 +17,9 @@ export async function startUp() {
     log.level = 'trace'
 
     if (startStuffServer) {
+      // Enable the admin manifest capability for the e2e/unit checks (BE-5).
+      await preload()
+      ;(global as any).config.options.manifest.enabled = true
       server = await startServer({ userManager: userManager })
     }
   } catch (err) {

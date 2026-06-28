@@ -10,6 +10,7 @@ import generate from './generate.js'
 import path from './path.js'
 import managers from './managers.js'
 import manifest from './manifest.js'
+import routes from './routes.js'
 
 export default function load() {
   describe('Unit', () => {
@@ -25,5 +26,6 @@ export default function load() {
     path()
     managers()
     manifest()
+    routes()
   })
 }
