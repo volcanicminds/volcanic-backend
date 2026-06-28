@@ -739,6 +739,14 @@ export class Client extends BaseEntity {
 }
 ```
 
+> ⚠️ **Always declare an explicit column `type`** (`@Column({ type: 'varchar' })`, `{ type: 'boolean' }`,
+> `{ type: 'timestamp' }`, `{ type: 'int' }`, …) — as in the example above. TypeORM can infer the type from the
+> TS property only when `emitDecoratorMetadata` is emitted, and the **`tsx`/esbuild** dev runner (`npm run dev`,
+> `npm start`) does **not** emit it. An untyped `@Column()` boots under `tsc` (`npm run build`) but throws
+> `ColumnTypeUndefinedError` under `tsx`. Explicit types keep dev and build identical. The audit decorators
+> (`@PrimaryGeneratedColumn`, `@CreateDateColumn`, `@UpdateDateColumn`, `@DeleteDateColumn`, `@VersionColumn`)
+> already have a known type and need no `type` option.
+
 ### Global Access (`global.entity`)
 
 At bootstrap, the framework populates the global `entity` object.

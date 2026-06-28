@@ -145,3 +145,25 @@ import { start as startDatabase, userManager, DataSource } from '@volcanicminds/
 **TypeORM entities** (decorated properties without an initializer) require the `tsconfig.json` to set
 `strictPropertyInitialization: false`, `useUnknownInCatchVariables: false`, `noUnusedLocals: false` — already
 set in the framework repo. A consumer that defines its own entities must replicate them in its own tsconfig.
+
+### Always set an explicit column `type`
+
+Every decorated column must declare an explicit `type`:
+
+```typescript
+@Column({ type: 'varchar', nullable: true })   name: string
+@Column({ type: 'boolean', default: false })    visible: boolean
+@Column({ type: 'timestamp', nullable: true })  publishedAt: Date
+@Column({ type: 'int', default: 0 })            importance: number
+```
+
+Do **not** rely on TypeORM inferring the column type from the property's TypeScript type. That inference
+needs `emitDecoratorMetadata`, which the **`tsx` / esbuild** dev runner (`npm run dev`, `npm start`) does
+**not** emit. An untyped `@Column()` compiles and boots fine under `tsc` (`npm run build`) but throws
+`ColumnTypeUndefinedError: Column type for X#field is not defined` at startup under `tsx`. Setting the type
+explicitly keeps dev and build identical. The special decorators (`@PrimaryGeneratedColumn`,
+`@CreateDateColumn`, `@UpdateDateColumn`, `@DeleteDateColumn`, `@VersionColumn`) already carry a known type
+and need no `type` option.
+
+Also keep `"type": "module"` in the consumer's `package.json` (the framework is ESM) — removing it breaks
+the `tsc` build.
