@@ -3459,6 +3459,33 @@ Inside handlers you read the identity via: `req.user` (human, from `userManager`
 `tokenManager`), `req.roles()` (string[] of role codes), `req.hasRole(roles.admin)`, plus `req.tenant` and
 `req.db` (Part 12.6). See Part 6 for the full auth/JWT/MFA lifecycle.
 
+## 11.4 Admin manifest capability (backoffice engine)
+
+An **opt-in** capability that exposes a JSON **manifest** describing the admin-manageable API, consumed by the
+`@volcanicminds/admin` backoffice engine to generate the panel (lists, forms, filters, actions) with no hand-written
+UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.v2.schema.json`, Manifest **v2**).
+
+- **Enable** it in `config/general.ts`: `options.manifest = { enabled: true }` (default `false`). It is a **feature
+  flag in config.options** — *not* a `start()` decorator (those are reserved for manager DI), consistent with
+  `scheduler` / `multi_tenant`. When enabled, the framework mounts `GET /admin/manifest` (`roles:[admin]`).
+- **Schema-only generation.** The manifest is derived from `global.routes` + the registered JSON Schemas
+  (`server.getSchemas()`) — **never** from entity metadata, so the core stays decoupled from the data layer
+  (enforced by `depcruise`). Consequence: relations are emitted "thin" (target only, no kind/foreign-key) and enums
+  only when declared in the schema; the rest is filled by admin-side overrides.
+- **Structural hints** (optional, domain-only) live in the `config` of a `routes.ts` (file-level, overridable
+  per-route): `group` and `resource: { name, titleField, subtitleField, globalSearch }`. `resource.name` maps the
+  schemas to a canonical resource; without it the URL segment is used.
+- **`global.routes`** holds the mounted routes (`ConfiguredRoute[]`) for introspection — populated by the router on
+  every boot.
+- **Sensitive policy** (always applied): `password` is write-only (in create/update bodies, never in read/list);
+  `token` / `externalId` / `mfaSecret` / `refreshToken` / `resetPasswordToken` / `confirmationToken` are always
+  excluded.
+- **Snapshot for CI.** `MANIFEST_DUMP=<path>` writes the manifest to a file after boot; add `MANIFEST_DUMP_EXIT=true`
+  to skip `listen()` and exit (a pure dump command, so the admin build is decoupled from a live backend).
+  `generateManifest(server)` / `buildManifest({ routes, schemas })` are exported from the package.
+- **No `autoCrud`.** The framework does **not** auto-mount a generic `/admin/<resource>` CRUD. The manifest describes
+  the project's **hand-written** endpoints (real paths); a generic-CRUD capability remains a possible future addition.
+
 ---
 
 # Part 12: Usage Scenarios & Recipes
