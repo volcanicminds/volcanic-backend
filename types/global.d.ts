@@ -37,6 +37,15 @@ export interface Data {
   [option: string]: any
 }
 
+// Structural hints (manifest L1) — domain-only, optional, additive. Usually declared
+// at the file-level `config` of a routes.ts (one file ≈ one resource), overridable per-route.
+export interface ResourceHints {
+  name?: string // canonical resource name; maps schemas → resource without heuristics
+  titleField?: string | string[]
+  subtitleField?: string | string[]
+  globalSearch?: string[] // omni-search fields (OR)
+}
+
 export interface RouteConfig {
   title: string
   description: string
@@ -52,6 +61,8 @@ export interface RouteConfig {
   response?: any
   consumes?: any
   rawBody?: boolean
+  group?: string // sidebar group hint (manifest)
+  resource?: ResourceHints // resource-level manifest hints
 }
 
 export interface Route {
@@ -134,6 +145,8 @@ export interface ConfiguredRoute {
     response?: any
     consumes?: any
   }
+  group?: string // structural hint (manifest)
+  resource?: ResourceHints // structural hints (manifest)
 }
 
 export interface TrackChanges {

@@ -189,7 +189,11 @@ export function processRoute(
       base,
       file: path.join(base, defaultConfig.controller || 'controller', handlerParts[0]),
       func: handlerParts[1],
-      doc: doc
+      doc: doc,
+      // Structural hints (manifest L1): resource-level, taken from the file-level
+      // `config` (defaultConfig) with optional per-route override.
+      group: config?.group ?? defaultConfig?.group,
+      resource: config?.resource ?? defaultConfig?.resource
     }
   }
 
