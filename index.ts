@@ -359,6 +359,13 @@ const start = async (decorators = {}) => {
     }
     if (yn(process.env.MANIFEST_DUMP_EXIT, false)) {
       await server.close()
+      // Close the data-layer connection too, otherwise it keeps the event loop alive
+      // and the process never exits. Runtime access only (no data-layer import).
+      try {
+        await (global as any).connection?.destroy?.()
+      } catch {
+        /* best-effort */
+      }
       return server
     }
   }

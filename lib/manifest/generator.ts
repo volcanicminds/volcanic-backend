@@ -311,7 +311,11 @@ function collectFields(
   for (const r of segRoutes) {
     const rest = segments(r.path).slice(1)
     const kind = crudKind(r.method, rest)
-    if (kind === 'create' || kind === 'update') addSide(r.doc?.body, 'write')
+    // Write side: create/update bodies, plus a PUT/PATCH on the BASE path — the singleton
+    // update (e.g. PUT /company), which crudKind classifies as 'action'. Restricted to the
+    // base path so sub-route action payloads (e.g. /vehicles/:id/images/reorder) don't leak in.
+    const isSingletonWrite = rest.length === 0 && (r.method === 'PUT' || r.method === 'PATCH')
+    if (kind === 'create' || kind === 'update' || isSingletonWrite) addSide(r.doc?.body, 'write')
     if (kind === 'read' || kind === 'list') {
       const resp = r.doc?.response
       const schema = resp && typeof resp === 'object' && !resp.type && !resp.$ref ? resp['200'] || resp[200] || Object.values(resp)[0] : resp

@@ -26,6 +26,20 @@ const schemas: Record<string, any> = {
       externalId: { type: 'string' },
       createdAt: { type: 'string', format: 'date-time' }
     }
+  },
+  companyBody: {
+    $id: 'companyBody',
+    type: 'object',
+    properties: { legalName: { type: 'string' }, vatNumber: { type: 'string' } }
+  },
+  company: {
+    $id: 'company',
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      legalName: { type: 'string' },
+      vatNumber: { type: 'string' }
+    }
   }
 }
 
@@ -47,7 +61,10 @@ const routes: any[] = [
   R('DELETE', '/vehicles', {}, { name: 'vehicle' }),
   R('GET', '/vehicles/count', {}, { name: 'vehicle' }),
   R('PATCH', '/vehicles/:id/status', {}, { name: 'vehicle' }),
-  R('POST', '/public/sitemap/rebuild', {})
+  R('POST', '/public/sitemap/rebuild', {}),
+  // singleton-style: GET/PUT on the base path (no :id)
+  R('GET', '/company', { response: { 200: { $ref: 'company#' } } }, { name: 'company', titleField: 'legalName' }, 'settings'),
+  R('PUT', '/company', { body: { $ref: 'companyBody#' } }, { name: 'company' })
 ]
 
 export default () => {
@@ -129,6 +146,16 @@ export default () => {
       expect(rebuild?.target).toEqual(['collection'])
       // and it is NOT a resource
       expect(m.resources.some((r) => r.name === 'public')).toBe(false)
+    })
+
+    it('collects the base PUT body so singleton fields are writable', () => {
+      const company = m.resources.find((r) => r.name === 'company')!
+      const field = (n: string) => company.fields.find((f) => f.name === n)
+      // legalName/vatNumber come from PUT /company body -> writable (not read-only)
+      expect(field('legalName')?.readOnly).toBeUndefined()
+      expect(field('vatNumber')?.readOnly).toBeUndefined()
+      // id is response-only -> read-only
+      expect(field('id')?.readOnly).toBe(true)
     })
   })
 }
