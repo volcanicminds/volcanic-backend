@@ -46,6 +46,13 @@ export interface ResourceHints {
   globalSearch?: string[] // omni-search fields (OR)
 }
 
+// Structural hints (manifest L1) authored in routes.ts, grouped under `config.manifest`
+// to keep them separate from the operational route config (Fastify schema, controller, …).
+export interface ManifestHints {
+  group?: string // sidebar group hint
+  resource?: ResourceHints // resource-level hints (name, titleField, …)
+}
+
 export interface RouteConfig {
   title: string
   description: string
@@ -61,8 +68,7 @@ export interface RouteConfig {
   response?: any
   consumes?: any
   rawBody?: boolean
-  group?: string // sidebar group hint (manifest)
-  resource?: ResourceHints // resource-level manifest hints
+  manifest?: ManifestHints // structural hints for the generated manifest (group + resource)
 }
 
 export interface Route {

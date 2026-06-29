@@ -8,7 +8,11 @@ export default {
     controller: 'controller',
     enable: isEnabled,
     tenantContext: false, // Critical: Operate on global scope (public schema), bypass tenant context
-    tags: ['tenants']
+    tags: ['tenants'],
+    manifest: {
+      group: 'system',
+      resource: { name: 'tenant', titleField: 'name' }
+    }
   },
   routes: [
     {

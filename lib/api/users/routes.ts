@@ -4,7 +4,11 @@ export default {
     description: 'User functions',
     controller: 'controller',
     tags: ['users'],
-    version: false
+    version: false,
+    manifest: {
+      group: 'system',
+      resource: { name: 'user', titleField: ['firstName', 'lastName'], subtitleField: 'email' }
+    }
   },
   routes: [
     {

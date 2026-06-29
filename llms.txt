@@ -3472,9 +3472,11 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
   (`server.getSchemas()`) — **never** from entity metadata, so the core stays decoupled from the data layer
   (enforced by `depcruise`). Consequence: relations are emitted "thin" (target only, no kind/foreign-key) and enums
   only when declared in the schema; the rest is filled by admin-side overrides.
-- **Structural hints** (optional, domain-only) live in the `config` of a `routes.ts` (file-level, overridable
-  per-route): `group` and `resource: { name, titleField, subtitleField, globalSearch }`. `resource.name` maps the
-  schemas to a canonical resource; without it the URL segment is used.
+- **Structural hints** (optional, domain-only) live under `config.manifest` of a `routes.ts` (file-level, overridable
+  per-route): `manifest: { group, resource: { name, titleField, subtitleField, globalSearch } }`. Grouping them under
+  `config.manifest` keeps the manifest hints separate from the operational route config. `resource.name` maps the
+  schemas to a canonical resource (e.g. path `users` → name `user`); without it the URL segment is used. The native
+  `users` / `tenants` APIs ship such hints (resource `user` / `tenant`, group `system`).
 - **`global.routes`** holds the mounted routes (`ConfiguredRoute[]`) for introspection — populated by the router on
   every boot.
 - **Sensitive policy** (always applied): `password` is write-only (in create/update bodies, never in read/list);

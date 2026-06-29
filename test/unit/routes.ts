@@ -33,10 +33,12 @@ export default () => {
       const base = '/abs/api/vehicles'
       const route = { method: 'GET', path: '/', handler: 'vehicle.list', roles: [], middlewares: [], config: {} }
 
-      it('inherits file-level config hints (group, resource)', () => {
+      it('inherits file-level config.manifest hints (group, resource)', () => {
         const defaultConfig = {
-          group: 'catalog',
-          resource: { name: 'vehicle', titleField: 'name', globalSearch: ['name', 'trimLevel'] }
+          manifest: {
+            group: 'catalog',
+            resource: { name: 'vehicle', titleField: 'name', globalSearch: ['name', 'trimLevel'] }
+          }
         }
         const cr: any = processRoute(route as any, 0, 'vehicles/routes.ts', 'vehicles', base, defaultConfig, authMw, [])
         expect(cr).not.toBeNull()
@@ -46,9 +48,9 @@ export default () => {
         expect(cr.resource.globalSearch).toEqual(['name', 'trimLevel'])
       })
 
-      it('lets a per-route config override the file-level hints', () => {
-        const defaultConfig = { group: 'catalog', resource: { name: 'vehicle' } }
-        const overriding = { ...route, config: { group: 'crm', resource: { name: 'lead' } } }
+      it('lets a per-route config.manifest override the file-level hints', () => {
+        const defaultConfig = { manifest: { group: 'catalog', resource: { name: 'vehicle' } } }
+        const overriding = { ...route, config: { manifest: { group: 'crm', resource: { name: 'lead' } } } }
         const cr: any = processRoute(overriding as any, 1, 'vehicles/routes.ts', 'vehicles', base, defaultConfig, authMw, [])
         expect(cr.group).toBe('crm')
         expect(cr.resource.name).toBe('lead')
