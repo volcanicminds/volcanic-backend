@@ -222,6 +222,16 @@ const start = async (decorators = {}) => {
   if (plugins?.multipart) await server.register(multipart, plugins.multipart || {})
   if (plugins?.cors) await server.register(cors, plugins.cors || {})
   if (plugins?.compress) await server.register(compress, plugins.compress || {})
+  // Static file serving (e.g. a public uploads folder in dev; behind nginx/CDN in
+  // prod). Dynamically imported so consumers that don't use it needn't install it.
+  // Accepts a single options object or an array of them (multiple roots/prefixes).
+  if (plugins?.static) {
+    const { default: fastifyStatic } = await import('@fastify/static')
+    const mounts = Array.isArray(plugins.static) ? plugins.static : [plugins.static]
+    for (let i = 0; i < mounts.length; i++) {
+      await server.register(fastifyStatic, { decorateReply: i === 0, ...mounts[i] })
+    }
+  }
 
   // Fail fast on missing/weak signing secrets before registering JWT.
   // Missing is always fatal; weak is fatal in production, a warning otherwise.

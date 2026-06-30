@@ -61,6 +61,14 @@ export default [
     options: {}
   },
   {
+    // Serve a static folder (e.g. public uploads in dev; nginx/CDN in prod).
+    // Options are @fastify/static's: { root, prefix?, decorateReply? }, or an array
+    // of them for multiple mounts. Disabled by default.
+    name: 'static',
+    enable: false,
+    options: {}
+  },
+  {
     name: 'rawBody',
     enable: false,
     options: {}
