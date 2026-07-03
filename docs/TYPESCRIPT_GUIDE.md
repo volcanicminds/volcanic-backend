@@ -29,7 +29,7 @@ export interface UserContext {
 }
 
 // 3. Extend Global scope
-// This allows TS to recognize global.entity, global.repository, etc.
+// This allows TS to recognize global.entity, global.connection, etc.
 declare global {
   var log: any
   var server: any
@@ -112,25 +112,34 @@ export class OrderService {
 
 ## 4. Global Augmentation Best Practices
 
-While the framework exposes `global.entity` and `global.repository` for convenience, using them directly can sometimes break type inference or make testing harder if dependencies aren't mocked.
+The data layer exposes `global.entity.<Pascal>` (the entity classes) and `global.connection`
+(the `DataSource`). **Do not use `global.repository.X`** — it is a fail-fast Proxy that
+**throws at runtime** on any access. The framework forbids it on purpose so every data access
+stays request-scoped and multi-tenant safe.
 
-**Recommendation**:
-Instead of using `global.repository.users` everywhere, consider "injecting" or aliasing them at the top of your service files or using a dependency injection pattern if your architecture requires it.
-
-However, for rapid development within the framework's paradigm, the global accessors are standard. Just ensure `types/index.d.ts` is kept up to date if you want stricter typing on repositories.
+**Recommendation:** access data through the Service layer bound to the request-scoped
+`EntityManager` (`req.db`). A `BaseService` resolves its repository from whatever you pass to
+`.use(req.db)`, so the same service is safe across tenants:
 
 ```typescript
-// Advanced: Typing the global repository object
-import { Repository } from 'typeorm'
+// In a controller — bind the service to req.db, then query.
+const { headers, records } = await orderService.use(req.db).findAll(req.userContext, req.data())
+```
+
+Construct services with the entity class (e.g. `super(Order)` in the service, or
+`global.connection.getRepository(Order)`), never via `global.repository`. See
+`docs/ADVANCED_ARCHITECTURE.md` for the full Service/Repository pattern.
+
+If you want stricter typing on the (valid) `global.entity`, keep `types/index.d.ts` up to date:
+
+```typescript
 import { User } from '../src/entities/user.e'
 import { Order } from '../src/entities/order.e'
 
 declare global {
-  var repository: {
-    users: Repository<User>
-    orders: Repository<Order>
-    // ... other repos
-  }
+  // Entity classes are exposed as global.entity.<Pascal>. There is NO global.repository:
+  // resolve repositories via service.use(req.db) / global.connection.getRepository(...).
+  var entity: { User: typeof User; Order: typeof Order /* … */ }
 }
 ```
 

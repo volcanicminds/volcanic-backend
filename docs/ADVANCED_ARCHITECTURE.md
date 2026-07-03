@@ -131,8 +131,9 @@ import { UserContext } from '../../types/index.js'
 
 export class OrderService extends BaseService<Order> {
   constructor() {
-    // Pass the specific repository from the global scope
-    super(repository.orders)
+    // Resolve the repository from the global connection (NOT the forbidden `global.repository` accessor);
+    // `.use(req.db)` swaps it for the request-scoped, multi-tenant-safe repository at call time.
+    super(global.connection.getRepository(Order))
   }
 
   // Automatically load related entities

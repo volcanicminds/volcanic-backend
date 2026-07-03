@@ -32,7 +32,7 @@ import { executeFindQuery } from '@volcanicminds/backend/typeorm'
 
 // In your Service or Controller
 const { headers, records } = await executeFindQuery(
-  repository.orders, // The TypeORM repository
+  req.db.getRepository(Order), // repo from the request-scoped EntityManager (multi-tenant safe)
   { client: true }, // Relations to eager load
   req.data() // The data from the request
 )
