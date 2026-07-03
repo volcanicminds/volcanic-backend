@@ -328,7 +328,8 @@ const start = async () => {
   // 1. Start Database (Conditional or Mandatory depending on ENV)
   if (yn(process.env.START_DB, true)) {
     const options = database?.default || {}
-    // startDatabase initializes TypeORM and populates global.repository / global.entity
+    // startDatabase initializes TypeORM and populates global.entity / global.connection.
+    // (global.repository is installed as a fail-fast Proxy — any access throws; use service.use(req.db).)
     db = await startDatabase(options)
 
     if (db && log.i) {
@@ -629,7 +630,7 @@ LOG_FASTIFY=false
 
 ---
 
-## 1.6 Fastify Plugin Configuration (Rate Limit, Raw Body)
+## 1.6 Fastify Plugin Configuration (Rate Limit, Raw Body, Static)
 
 You can enable and configure native Fastify plugins via the `src/config/plugins.ts` file.
 
@@ -673,6 +674,24 @@ Protects the API from abuse. Global configuration in `plugins.ts`:
 ```
 
 You can override limits per route by defining the `rateLimit` object in the route definition.
+
+### Static Files (optional, since 3.4.0)
+
+An **opt-in** named `static` plugin serves a static folder (e.g. a `public/uploads` directory in dev; typically
+fronted by nginx/CDN in prod) via `@fastify/static`. Disabled by default. `@fastify/static` is dynamically
+imported, so consumers that don't enable it needn't install it.
+
+```typescript
+{
+  name: 'static',
+  enable: true,
+  // @fastify/static options: { root, prefix?, decorateReply? }
+  options: { root: '/abs/path/to/public', prefix: '/public/' }
+}
+```
+
+`options` may also be an **array** of option objects to expose multiple roots/prefixes; the framework sets
+`decorateReply: true` only on the first mount (subsequent mounts get `false` to avoid re-decorating `reply`).
 
 ---
 
@@ -3303,7 +3322,7 @@ import { start } from '@volcanicminds/backend'
 const server = await start(decorators) // decorators is an object of managers; returns the Fastify instance
 ```
 
-- `start()` registers Fastify plugins (cookie, helmet, rate-limit, multipart, cors, compress, raw-body), JWT
+- `start()` registers Fastify plugins (cookie, helmet, rate-limit, multipart, cors, compress, raw-body, static), JWT
   (+ a separate `refreshToken` namespace), Swagger (if `SWAGGER=true`), the loaders (**tenant → hooks → schemas →
   router**), the scheduler (if enabled), then **decorates the server with the managers** and finally
   `listen()`s. It also mounts the TUS transfer route (if `transferManager` is implemented) and runs the
