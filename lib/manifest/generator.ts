@@ -313,7 +313,7 @@ function collectFields(
     const kind = crudKind(r.method, rest)
     // Write side: create/update bodies, plus a PUT/PATCH on the BASE path — the singleton
     // update (e.g. PUT /company), which crudKind classifies as 'action'. Restricted to the
-    // base path so sub-route action payloads (e.g. /vehicles/:id/images/reorder) don't leak in.
+    // base path so sub-route action payloads (e.g. /posts/:id/attachments/reorder) don't leak in.
     const isSingletonWrite = rest.length === 0 && (r.method === 'PUT' || r.method === 'PATCH')
     if (kind === 'create' || kind === 'update' || isSingletonWrite) addSide(r.doc?.body, 'write')
     if (kind === 'read' || kind === 'list') {
