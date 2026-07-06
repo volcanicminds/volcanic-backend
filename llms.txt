@@ -693,6 +693,59 @@ imported, so consumers that don't enable it needn't install it.
 `options` may also be an **array** of option objects to expose multiple roots/prefixes; the framework sets
 `decorateReply: true` only on the first mount (subsequent mounts get `false` to avoid re-decorating `reply`).
 
+## 1.6b Per-route Response Cache (optional, since 3.5.0)
+
+An **opt-in**, in-memory response cache for read-heavy, slow-changing endpoints (e.g. a public storefront).
+Declare it per route in `routes.ts` — or once at the file level in `config.cache` (inherited by every route in
+that file, overridable per route):
+
+```typescript
+// cache: true | <ttlSeconds> | { enabled?, ttl?, keyGroup?, invalidates? }
+routes: [
+  { method: 'GET', path: '/', roles: [roles.public], handler: 'public.vehicles',
+    cache: { ttl: 3600 } },                       // cache this GET for 1h (key-group = api folder)
+  { method: 'PUT', path: '/:id', roles: [roles.admin], handler: 'vehicle.update',
+    cache: { invalidates: ['public'] } }          // on 2xx, flush the 'public' key-group
+]
+```
+
+Semantics:
+
+- Only **GET** responses with a **2xx** status are cached. The read is a `preHandler` (runs **after** the
+  auth/roles onRequest hook) that short-circuits on a hit; the write is an `onSend` capturing the serialized
+  body plus the `v-*` pagination headers (replayed on a hit). Mutations are never cached.
+- **Scope-safe key** = `keyGroup :: tenant | subject | roles :: METHOD url`. Anonymous/`public` callers share
+  an entry; authenticated calls are isolated per subject/tenant/role — a cached response is never leaked across
+  them. Caching is skipped when multi-tenant is on but the tenant is missing.
+- **Store**: internal **LRU + TTL** (no dependency). Global defaults live in `general.ts`
+  `options.cache = { enabled: true, ttl: 3600, maxEntries: 1000 }`; the effective config is logged at startup.
+- **`keyGroup`** defaults to the api folder (area), e.g. `src/api/public/*` → `public`. Override it to
+  share/segment a group across folders.
+- **Invalidation** is by key-group: declaratively with `cache.invalidates: string | string[]` on a mutating
+  route, or imperatively:
+
+```typescript
+import { invalidateCache } from '@volcanicminds/backend'
+invalidateCache('public')          // flush one key-group
+invalidateCache(['public','brands'])
+invalidateCache()                  // flush everything
+// also available as global.cache.invalidate/flushAll/del/stats
+```
+
+**File-level default (inheritance).** `cache` may also live on the file-level `config`, inherited by every route
+in that file (a per-route `cache` overrides it). The common adoption pattern:
+
+```typescript
+// src/api/public/routes.ts — cache every GET under the 'public' key-group
+config: { title: 'Public', controller: 'controller', cache: { ttl: 3600 } }
+
+// src/api/vehicles/routes.ts — DON'T cache admin (per-user) responses, just flush the
+// storefront on every successful mutation
+config: { title: 'Vehicles', controller: 'controller', cache: { enabled: false, invalidates: ['public'] } }
+```
+
+Full guide (guards, key scoping, LRU/TTL store, caveats): **docs/CACHE.md**.
+
 ---
 
 # Part 2: Deep Dive Data Modeling & Entities

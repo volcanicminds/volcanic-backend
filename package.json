@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "type": "module",
   "codename": "rome",
   "license": "MIT",
@@ -58,7 +58,8 @@
     "prod": "cd dist && node server.js",
     "start": "tsx --env-file .env server.ts",
     "dev": "tsx watch --env-file .env server.ts",
-    "test": "npm run test:core && npm run test:typeorm",
+    "pretest": "npm run build",
+    "test": "node scripts/run-tests.mjs",
     "test:core": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2231 NODE_ENV=memory BROWSER=false JWT_SECRET=tEst0nly_k7Qx2mNp9vLrT4wYbE6sH1jD8fG3aZ5c JWT_REFRESH_SECRET=tEst0nly_R3frsh9vLrT4wYbE6sH1jD8fG3aZ5cK7 mocha --import=tsx ./test/index.spec.ts -t 100000 --exit",
     "test:typeorm": "cross-env NODE_ENV=memory MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/typeorm/**/*.spec.ts -t 20000 --exit",
     "test:pglite": "cross-env NODE_ENV=memory MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/pglite/**/*.spec.ts -t 60000 --exit",

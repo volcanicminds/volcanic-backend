@@ -36,6 +36,7 @@ import cookie from '@fastify/cookie'
 
 import require from './lib/util/require.js'
 import { assertSecretStrength } from './lib/util/secret.js'
+import { configureCache, cache } from './lib/util/cache.js'
 
 import type { TransferManagement } from './types/global.js'
 import general from './lib/config/general.js'
@@ -149,6 +150,11 @@ const start = async (decorators = {}) => {
 
   const begin = new Date().getTime()
   mark.print(logger)
+
+  // Configure the in-memory per-route cache and expose it (`global.cache` + the
+  // `invalidateCache`/`cache` package exports). Logs the effective config.
+  configureCache(global.config?.options?.cache)
+  global.cache = cache
 
   const { tracking, trackingConfig } = await loaderTracking.load()
   global.tracking = tracking
@@ -439,3 +445,5 @@ export { MfaPolicy } from './lib/config/constants.js'
 
 export { yn, preload, start, TranslatedError }
 export { generateManifest, buildManifest } from './lib/manifest/generator.js'
+export { invalidateCache, cache } from './lib/util/cache.js'
+export type { RouteCache, NormalizedRouteCache } from './types/global.js'

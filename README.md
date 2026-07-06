@@ -31,6 +31,20 @@ scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, 
 
 ## Changelog
 
+### 3.5.0
+
+- **Per-route response cache (OOTB).** Opt in per endpoint with a `cache` prop in `routes.ts`
+  (`cache: true` | `<ttlSeconds>` | `{ enabled?, ttl?, keyGroup?, invalidates? }`), also settable at the
+  file-level `config.cache` (inherited by every route, overridable per route). Only **GET** responses with a
+  **2xx** status are cached; the read runs as a `preHandler` (after auth/roles) and short-circuits on a hit,
+  the write as an `onSend` (captures the serialized body + `v-*` headers). The cache key is **scope-safe** —
+  isolated by tenant, authenticated subject and role set — so a cached response is never served across
+  tenants/users/privileges. Backed by an in-memory **LRU + TTL** store (no external dependency); global
+  defaults `options.cache = { enabled, ttl: 3600, maxEntries: 1000 }`. Invalidation is by **key-group**
+  (default = the api folder): declaratively via `cache.invalidates: [...]` on a mutating route, or
+  imperatively via the exported `invalidateCache(keyGroup?)` / `global.cache` (`invalidate`, `flushAll`,
+  `del`, `stats`). The effective config is logged at startup.
+
 ### 3.1.0
 
 - **Embedded database (PGlite)** — opt-in `type: 'pglite'` engine: zero-setup, in-process Postgres for
@@ -92,6 +106,7 @@ focused docs below drill into specific topics:
 - **[Advanced Architecture](docs/ADVANCED_ARCHITECTURE.md)**: Service Layer pattern, BaseService abstraction, and dependency injection.
 - **[Data Layer Magic](docs/DATA_LAYER_MAGIC.md)**: How `req.data()` works and how to turn URLs into complex SQL queries with `@volcanicminds/backend/typeorm`.
 - **[Embedded database (PGlite)](docs/PGLITE.md)**: Plug & play in‑process Postgres for dev/test/demos (zero setup), pgvector support, and Postgres‑vs‑PGlite trade‑offs.
+- **[Per-route Cache](docs/CACHE.md)**: Opt-in in-memory response cache (LRU + TTL) with a `cache` route prop, scope-safe keys (tenant/subject/roles), and key-group invalidation (`invalidates` + `invalidateCache`).
 - **[Schema Customization](docs/SCHEMA_OVERRIDING.md)**: How to extend core schemas (like Login Response) without forking the framework.
 - **[Security & MFA](docs/SECURITY_MFA.md)**: Deep dive into Multi-Factor Authentication policies, Gatekeeper flow, and emergency resets.
 - **[TypeScript Guide](docs/TYPESCRIPT_GUIDE.md)**: How to properly extend Request types, global scopes, and inject User Contexts.

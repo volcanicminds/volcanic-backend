@@ -10,6 +10,8 @@
 // script) since it owns the singletons global.config/server/connection and the
 // shared PGlite instance.
 //
+import path from 'path'
+import { fileURLToPath } from 'url'
 import * as loaderConfig from '../../lib/loader/general.js'
 import * as loaderRoles from '../../lib/loader/roles.js'
 import * as loaderTranslation from '../../lib/loader/translation.js'
@@ -19,6 +21,13 @@ import { UserSchema, UserClass } from '../e2e/userEntity.js'
 import { TenantSchema } from './tenantEntity.js'
 
 export const HEADER = 'x-tenant-id'
+
+// Minimal consumer app: only a tenant-scoped cached route under src/api/tcached
+// (no src/config, so the loaders keep framework defaults — we flip multi_tenant
+// on ourselves below). chdir here lets the router discover that route.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const MT_FIXTURE_DIR = path.resolve(__dirname, '../fixtures/mt-app')
+let originalCwd: string
 
 // Two isolated tenants, each with its own admin seeded into its own schema.
 export const ACME = {
@@ -40,6 +49,9 @@ let tm: any
 
 export async function setup() {
   if (server) return server
+
+  originalCwd = process.cwd()
+  process.chdir(MT_FIXTURE_DIR) // router discovers ./src/api/tcached of the fixture app
 
   // Populate the globals start() would otherwise build via preload(), but with
   // multi-tenant turned on BEFORE the tenant loader reads it.
@@ -126,6 +138,7 @@ export async function teardown() {
   if (ds?.isInitialized) await ds.destroy()
   await closeEmbedded()
   ;(global as any).config = undefined
+  if (originalCwd) process.chdir(originalCwd)
 }
 
 export function app() {

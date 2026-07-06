@@ -31,8 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
       - run: npm ci # compila bcrypt (nativo); ubuntu-latest ha i build tools
-      - run: npm run build # i test girano contro dist/ (self-reference @volcanicminds/backend[/typeorm])
-      - run: npm test
+      - run: npm test # `pretest` builds first — i test girano contro dist/ (self-reference @volcanicminds/backend[/typeorm])
 
   release:
     runs-on: ubuntu-latest

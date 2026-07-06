@@ -69,6 +69,25 @@ export interface RouteConfig {
   consumes?: any
   rawBody?: boolean
   manifest?: ManifestHints // structural hints for the generated manifest (group + resource)
+  cache?: boolean | number | RouteCache // file-level cache default (inherited by every route; per-route `cache` overrides)
+}
+
+// Per-route caching (opt-in). Authored on the route: `true` (default TTL), a number
+// (TTL in seconds), or the full object. Only GET responses with a 2xx status are
+// cached; `invalidates` works on any method (typically mutations).
+export interface RouteCache {
+  enabled?: boolean // default true when the object is present
+  ttl?: number // seconds; default from global config (options.cache.ttl)
+  keyGroup?: string // logical key-group for invalidation; default = the api folder (area)
+  invalidates?: string | string[] // key-groups to flush after a successful (2xx) response
+}
+
+// The normalized form threaded onto a ConfiguredRoute (keyGroup always resolved).
+export interface NormalizedRouteCache {
+  enabled: boolean
+  ttl?: number
+  keyGroup: string
+  invalidates?: string[]
 }
 
 export interface Route {
@@ -79,6 +98,7 @@ export interface Route {
   middlewares: string[]
   config?: RouteConfig
   rateLimit?: any
+  cache?: boolean | number | RouteCache
 }
 
 export interface GeneralConfig {
@@ -104,6 +124,12 @@ export interface GeneralConfig {
     // Admin manifest capability (opt-in): exposes GET /admin/manifest
     manifest?: {
       enabled: boolean
+    }
+    // In-memory per-route response cache (opt-in per route via `cache`).
+    cache?: {
+      enabled?: boolean // master switch (default true)
+      ttl?: number // default TTL in seconds for routes without an explicit ttl
+      maxEntries?: number // LRU cap (slots) before least-recently-used eviction
     }
   }
 }
@@ -157,6 +183,7 @@ export interface ConfiguredRoute {
   }
   group?: string // structural hint (manifest)
   resource?: ResourceHints // structural hints (manifest)
+  cache?: NormalizedRouteCache // per-route caching (normalized)
 }
 
 export interface TrackChanges {
@@ -340,6 +367,7 @@ declare global {
   var entity: any
   var repository: any
   var routes: ConfiguredRoute[]
+  var cache: any
 }
 
 export { global }

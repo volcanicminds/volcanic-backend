@@ -88,21 +88,23 @@ function getTrackingConfigIfEnabled(req) {
   }
 }
 
-function isFieldChanged(oldValue, newValue) {
+export function isFieldChanged(oldValue, newValue) {
   if ((oldValue instanceof Date || newValue instanceof Date) && oldValue != null && newValue != undefined) {
     return !dayjs(oldValue).isSame(dayjs(newValue))
   }
 
   if ((oldValue instanceof Object || newValue instanceof Object) && oldValue != null && newValue != undefined) {
     const primaryKey = global.trackingConfig?.primaryKey
+    // Guard the `in` operator with an object check: `'id' in 'someString'` throws
+    // on a string primitive, so reach the string fallback instead of crashing.
     const oldId =
-      oldValue != null && primaryKey in oldValue
+      oldValue != null && typeof oldValue === 'object' && primaryKey in oldValue
         ? oldValue[primaryKey]
         : typeof oldValue === 'string'
         ? oldValue
         : undefined
     const newId =
-      newValue != null && primaryKey in newValue
+      newValue != null && typeof newValue === 'object' && primaryKey in newValue
         ? newValue[primaryKey]
         : typeof newValue === 'string'
         ? newValue

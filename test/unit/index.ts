@@ -11,6 +11,10 @@ import path from './path.js'
 import managers from './managers.js'
 import manifest from './manifest.js'
 import routes from './routes.js'
+import cache from './cache.js'
+import onError from './onError.js'
+import tracker from './tracker.js'
+import config from './config.js'
 
 export default function load() {
   describe('Unit', () => {
@@ -27,5 +31,9 @@ export default function load() {
     managers()
     manifest()
     routes()
+    cache()
+    onError()
+    tracker()
+    config()
   })
 }

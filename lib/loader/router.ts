@@ -3,6 +3,7 @@ import yn from '../util/yn.js'
 import type { Role, Route, ConfiguredRoute, RouteConfig } from '../../types/global.js'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { normalizePatterns } from '../util/path.js'
+import { normalizeRouteCache, buildCacheHooks } from '../util/cache.js'
 import { globSync } from 'glob'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -83,7 +84,8 @@ export function processRoute(
     roles: rs = [],
     config = {} as RouteConfig,
     middlewares = [],
-    rateLimit
+    rateLimit,
+    cache: cacheInput
   } = route
 
   const rsp = !rs.length ? [roles.public] : rs
@@ -186,6 +188,9 @@ export function processRoute(
       tenantContext,
       rawBody,
       rateLimit,
+      // Per-route cache (falls back to the file-level `config.cache`); the default
+      // key-group is the api folder (`dir`), overridable.
+      cache: normalizeRouteCache(cacheInput ?? defaultConfig?.cache, dir),
       base,
       file: path.join(base, defaultConfig.controller || 'controller', handlerParts[0]),
       func: handlerParts[1],
@@ -245,13 +250,17 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
   let countRoutes = 0
   for (const route of routes) {
     if (route?.enable) {
-      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc, tenantContext } =
+      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc, tenantContext, cache } =
         route
 
       if (log.d) log.debug(`* Add path ${method} ${path} on handle ${handler}`)
       const midds = await loadMiddlewares(base, middlewares)
 
-      server.route({
+      // Attach the cache read (preHandler, runs after auth) and write (onSend)
+      // hooks only when the route opts in — no overhead on uncached routes.
+      const cacheHooks = cache && (cache.enabled || cache.invalidates?.length) ? buildCacheHooks(cache) : null
+
+      const routeDef: any = {
         method: method,
         path: path,
         schema: doc,
@@ -260,7 +269,8 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
           requiredRoles: roles || [],
           rawBody: rawBody || false,
           rateLimit: rateLimit || undefined,
-          tenantContext: tenantContext
+          tenantContext: tenantContext,
+          cache: cache || undefined
         },
         handler: async function (req: FastifyRequest, reply: FastifyReply) {
           let module
@@ -286,7 +296,16 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
 
           return await module[func](req, reply)
         }
-      })
+      }
+
+      if (cacheHooks?.preHandler) {
+        // Cache read runs before the route middlewares; auth/roles are already
+        // enforced in the global onRequest hook, so this is safe.
+        routeDef.preHandler = [cacheHooks.preHandler, ...((midds as any).preHandler || [])]
+      }
+      if (cacheHooks?.onSend) routeDef.onSend = cacheHooks.onSend
+
+      server.route(routeDef)
 
       countRoutes++
     }

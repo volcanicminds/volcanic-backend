@@ -20,6 +20,11 @@ export async function load() {
       },
       manifest: {
         enabled: false
+      },
+      cache: {
+        enabled: true,
+        ttl: 3600,
+        maxEntries: 1000
       }
     }
   }
