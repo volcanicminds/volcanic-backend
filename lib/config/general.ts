@@ -2,8 +2,10 @@ export default {
   name: 'general',
   options: {
     allow_multiple_admin: false,
-    admin_can_change_passwords: false,
     allow_admin_change_password_users: false,
+    // opt-in: users created by an admin (POST /users) start confirmed and can log in
+    // immediately, unless the payload explicitly sends confirmed:false.
+    allow_admin_create_confirmed_users: false,
     reset_external_id_on_login: false,
     scheduler: false,
     embedded_auth: true,

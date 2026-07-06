@@ -7,7 +7,6 @@ export async function load() {
     name: 'general',
     options: {
       allow_multiple_admin: false,
-      admin_can_change_passwords: false,
       allow_admin_change_password_users: false,
       reset_external_id_on_login: false,
       scheduler: false,

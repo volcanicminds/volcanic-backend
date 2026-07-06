@@ -128,7 +128,7 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
 
   const { email, oldPassword, newPassword1, newPassword2 } = req.data()
 
-  if (_user.email !== email && (!req.hasRole(roles.admin) || !global.config.options.admin_can_change_passwords)) {
+  if (_user.email !== email) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Email not valid' })
   }
 

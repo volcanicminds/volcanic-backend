@@ -24,14 +24,19 @@ export async function findOne(req: FastifyRequest, reply: FastifyReply) {
 
 export async function create(req: FastifyRequest, reply: FastifyReply) {
   if (!req.hasRole(roles.admin)) {
-    return reply.status(403).send(Error('Only admins can create users'))
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Only admins can create users' })
   }
 
   const { id: _id, ...data } = req.data()
 
-  if (data.roles && data.roles.includes(roles.admin)) {
+  // Roles may arrive as string codes (JSON body: ['admin']) or as role objects
+  // ({ code: 'admin', ... }); normalize to codes before checking.
+  const roleCodes = (data.roles || []).map((r: string | { code?: string }) => (typeof r === 'string' ? r : r?.code))
+  if (roleCodes.includes(roles.admin.code)) {
     if (config.options?.allow_multiple_admin !== true) {
-      return reply.status(403).send(Error('Cannot assign admin role to a user'))
+      return reply
+        .status(403)
+        .send({ statusCode: 403, error: 'Forbidden', message: 'Cannot assign admin role to a user' })
     }
   }
 
@@ -40,7 +45,20 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   // entity.User.save() — that active-record call always targets the global/public
   // connection and would both double-write and break tenant isolation.
   const user = await req.server['userManager'].createUser(data, req.runner)
-  return user || reply.status(400).send(Error('User not creatable'))
+  if (!user) {
+    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not creatable' })
+  }
+
+  // Opt-in (allow_admin_create_confirmed_users): admin-created users are activated
+  // immediately (confirmed, no pending confirmation token) so they can log in right
+  // away. An explicit confirmed:false in the payload keeps the standard flow.
+  // Self-registration (POST /auth/register) is unaffected: createUser always starts
+  // users unconfirmed.
+  if (config.options?.allow_admin_create_confirmed_users === true && data.confirmed !== false) {
+    return await req.server['userManager'].userConfirmation(user, req.runner)
+  }
+
+  return user
 }
 
 export async function update(req: FastifyRequest, reply: FastifyReply) {

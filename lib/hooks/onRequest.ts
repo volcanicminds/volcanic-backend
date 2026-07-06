@@ -147,7 +147,13 @@ export default async (req, reply) => {
     if (cfg.requiredRoles?.length > 0) {
       const { method = '', url = '', requiredRoles } = cfg
       const authorizedRoles: string[] = req.roles()
-      const hasPermission = requiredRoles.some((r) => authorizedRoles.includes(r.code))
+      // A route open to `public` is open to EVERY caller: anonymous requests already
+      // pass (they carry the `public` role), and an authenticated subject must never
+      // rank below anonymous — without this, a user whose roles don't include
+      // `public` (e.g. only `backoffice`) would get 403 on public routes such as
+      // /users/me or /auth/change-password.
+      const isPublicRoute = requiredRoles.some((r) => r.code === roles.public.code)
+      const hasPermission = isPublicRoute || requiredRoles.some((r) => authorizedRoles.includes(r.code))
 
       if (!hasPermission) {
         // 401 when there is no authenticated subject (must log in first); 403 when

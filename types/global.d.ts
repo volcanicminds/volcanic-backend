@@ -105,8 +105,10 @@ export interface GeneralConfig {
   name: string
   options: {
     allow_multiple_admin: boolean
-    admin_can_change_passwords: boolean
     allow_admin_change_password_users: boolean
+    // Opt-in: users created by an admin (POST /users) start confirmed (login-ready),
+    // unless the payload explicitly sends confirmed:false.
+    allow_admin_create_confirmed_users?: boolean
     reset_external_id_on_login: boolean
     scheduler: boolean
     embedded_auth: boolean

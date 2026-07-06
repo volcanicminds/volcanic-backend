@@ -13,9 +13,6 @@ export default {
   options: {
     // ...
     mfa_policy: process.env.MFA_POLICY || 'OPTIONAL'
-
-    // If true, allows admins to change other users' passwords (still requires old password knowledge)
-    // admin_can_change_passwords: false,
   }
 }
 ```

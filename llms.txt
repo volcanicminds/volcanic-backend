@@ -3489,9 +3489,9 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Auth (MFA) | `POST /auth/mfa/setup` · `/mfa/enable` · `/mfa/disable` | any authenticated | **yes** | `userManager` + `mfaManager` |
 | Auth (MFA) | `POST /auth/mfa/verify` | public (during login) | no² | `userManager` + `mfaManager` |
 | Users | `GET /users/me` · `PUT /users/me` · `GET /users/roles` · `GET /users/is-admin` | any authenticated | **yes** | `userManager` |
-| Users | `GET /users` · `GET /users/count` · `GET /users/:id` · `PUT /users/:id` · `POST /users` · `DELETE /users/:id` | `admin` | **yes** | `userManager` |
+| Users | `GET /users` · `GET /users/count` · `GET /users/:id` · `PUT /users/:id` · `POST /users`⁴ ⁵ · `DELETE /users/:id` | `admin` | **yes** | `userManager` |
 | Users | `POST /users/:id/block` · `/unblock` | `admin`, `backoffice` | **yes** | `userManager` |
-| Users | `POST /users/:id/mfa/reset` · `/password/reset` | `admin` | **yes** | `userManager` |
+| Users | `POST /users/:id/mfa/reset` · `/password/reset`⁶ | `admin` | **yes** | `userManager` |
 | Token | `GET /token` · `/count` · `/:id` | `admin`, `backoffice` | (read)³ | `tokenManager` |
 | Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/block/:id` · `/unblock/:id` | `admin`, `backoffice` | **yes** | `tokenManager` |
 | Tenants | `GET /tenants` · `POST /tenants` · `GET/PUT/DELETE /tenants/:id` · `POST /tenants/:id/restore` · `POST /tenants/impersonate` | `admin` | **yes** | `tenantManager` |
@@ -3500,6 +3500,15 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 ¹ `/refresh-token` consumes the refresh token (body or cookie); `/logout` clears the auth cookie in COOKIE mode.
 ² `/auth/mfa/verify` is reached with the **pre-auth MFA temp token** issued by login (`202`); see Part 6.2.
 ³ Token read routes declare roles but no `isAuthenticated` middleware — gate by roles; harden with the middleware if exposing publicly.
+⁴ Admin-created users start **unconfirmed** by default (standard confirmation flow). Opt-in
+`options.allow_admin_create_confirmed_users: true` (`src/config/general.ts`, since 3.6.0) creates them already
+confirmed and login-ready, unless the payload explicitly sends `confirmed: false`. Self-registration is unaffected.
+⁵ Assigning the `admin` role on `POST /users` is blocked (`403`) unless
+`options.allow_multiple_admin: true` (`src/config/general.ts`, default `false`). This guards a single-admin setup;
+non-admin roles are unaffected. Applies to creation only, not `PUT /users/:id`.
+⁶ `/password/reset` (admin resets another user's password by id) is **opt-in**: it returns `404` unless
+`options.allow_admin_change_password_users: true` (`src/config/general.ts`, default `false`). Unlike self-service
+`/auth/change-password` (which requires the current password), this sets a new password with **no** old-password check.
 
 ## 11.2 Auth modes (Bearer vs Cookie) and `embedded_auth`
 
@@ -3539,7 +3548,9 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
 
 - **Enable** it in `config/general.ts`: `options.manifest = { enabled: true }` (default `false`). It is a **feature
   flag in config.options** — *not* a `start()` decorator (those are reserved for manager DI), consistent with
-  `scheduler` / `multi_tenant`. When enabled, the framework mounts `GET /admin/manifest` (`roles:[admin]`).
+  `scheduler` / `multi_tenant`. When enabled, the framework mounts `GET /admin/manifest`
+  (`roles:[admin, backoffice]` — operators with limited roles still need the manifest to boot the admin UI; the
+  engine hides the capabilities their roles cannot reach, and every API route still enforces).
 - **Schema-only generation.** The manifest is derived from `global.routes` + the registered JSON Schemas
   (`server.getSchemas()`) — **never** from entity metadata, so the core stays decoupled from the data layer
   (enforced by `depcruise`). Consequence: relations are emitted "thin" (target only, no kind/foreign-key) and enums
