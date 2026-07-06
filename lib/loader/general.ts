@@ -22,9 +22,7 @@ export async function load() {
         enabled: false
       },
       cache: {
-        enabled: true,
-        ttl: 3600,
-        maxEntries: 1000
+        enabled: false
       }
     }
   }

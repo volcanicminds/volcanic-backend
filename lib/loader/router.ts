@@ -3,7 +3,7 @@ import yn from '../util/yn.js'
 import type { Role, Route, ConfiguredRoute, RouteConfig } from '../../types/global.js'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { normalizePatterns } from '../util/path.js'
-import { normalizeRouteCache, buildCacheHooks } from '../util/cache.js'
+import { normalizeRouteCache, buildCacheHooks, cacheEnabled } from '../util/cache.js'
 import { globSync } from 'glob'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -259,6 +259,22 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
       // Attach the cache read (preHandler, runs after auth) and write (onSend)
       // hooks only when the route opts in — no overhead on uncached routes.
       const cacheHooks = cache && (cache.enabled || cache.invalidates?.length) ? buildCacheHooks(cache) : null
+
+      // Courtesy log at wiring time: describe each cache-declaring route, and warn
+      // when a route opts in while the global master switch is off (hooks are inert).
+      if (cacheHooks) {
+        if (!cacheEnabled()) {
+          if (log.w)
+            log.warn(
+              `Cache 🧊 route ${method} ${path} declares cache/invalidation but global cache is disabled (options.cache.enabled) — inert`
+            )
+        } else if (log.d) {
+          const parts: string[] = []
+          if (cache?.enabled) parts.push(`read+write ttl ${cache.ttl ?? 'default'}s keyGroup '${cache.keyGroup}'`)
+          if (cache?.invalidates?.length) parts.push(`invalidates [${cache.invalidates.join(', ')}]`)
+          log.debug(`Cache 🧊 route ${method} ${path} — ${parts.join(', ')}`)
+        }
+      }
 
       const routeDef: any = {
         method: method,

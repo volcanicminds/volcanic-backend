@@ -62,6 +62,9 @@ export async function setup() {
     header_key: HEADER,
     query_key: 'tid'
   }
+  // Cache is opt-in (off by default); turn the master switch on so the tenant
+  // isolation cache spec exercises the real hooks.
+  ;(cfg.options as any).cache = { enabled: true }
   ;(global as any).config = cfg
   ;(global as any).roles = await loaderRoles.load()
   ;(global as any).t = loaderTranslation.load()

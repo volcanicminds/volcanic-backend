@@ -27,7 +27,11 @@ interface CacheSettings {
   maxEntries: number // LRU cap
 }
 
-const DEFAULTS: CacheSettings = { enabled: true, ttl: 3600, maxEntries: 1000 }
+// Single source of truth for the cache defaults. `enabled` is opt-in (off by
+// default, consistent with the other optional features like `manifest` /
+// `multi_tenant`); `ttl`/`maxEntries` are the numeric fallbacks applied per-field
+// by configureCache, so no other module needs to restate them.
+const DEFAULTS: CacheSettings = { enabled: false, ttl: 3600, maxEntries: 1000 }
 
 let settings: CacheSettings = { ...DEFAULTS }
 const store = new Map<string, Entry>()
@@ -50,7 +54,8 @@ function startSweep(intervalMs = 60_000) {
 /** (Re)configure the cache from global options and log the effective config. */
 export function configureCache(opts?: CacheSettings | Partial<CacheSettings>): CacheSettings {
   settings = {
-    enabled: opts?.enabled !== false,
+    // Opt-in master switch: enabled only when explicitly set to true.
+    enabled: opts?.enabled === true,
     ttl: Number(opts?.ttl) > 0 ? Number(opts?.ttl) : DEFAULTS.ttl,
     maxEntries: Number(opts?.maxEntries) > 0 ? Number(opts?.maxEntries) : DEFAULTS.maxEntries
   }

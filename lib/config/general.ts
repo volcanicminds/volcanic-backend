@@ -17,7 +17,13 @@ export default {
       query_key: 'tid'
     },
     manifest: {
-      enabled: false // opt-in: exposes GET /admin/manifest (admin-only) for the backoffice engine
+      // opt-in: exposes GET /admin/manifest (admin-only) for the backoffice engine
+      enabled: false
+    },
+    cache: {
+      // opt-in: in-memory LRU+TTL cache for routes that declare `cache:`.
+      // When enabled, ttl (default 3600s) and maxEntries (default 1000) can be set here.
+      enabled: false
     }
   }
 }
