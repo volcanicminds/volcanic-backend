@@ -22,6 +22,46 @@ The layers meet at one seam: `start(decorators)` on the core, into which you inj
 falls back to Null-Object defaults). See `llms.txt` **Part 0** for the model and **Part 12** for end-to-end
 scenarios (public/private, Bearer/Cookie, with/without DB, single/multi-tenant, with `@volcanicminds/tools`).
 
+## Feature Matrix
+
+A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionated package.
+✅ = yes · — = no.
+
+| Feature | In `@volcanicminds/backend` | Via `@volcanicminds/tools` | Active on startup | Description |
+|---|:---:|:---:|:---:|---|
+| **JWT auth (Bearer)** | ✅ | — | ✅ | `@fastify/jwt`. Login/logout, `isAuthenticated`. Signing secret required (`assertSecretStrength`) |
+| **Refresh token** | ✅ | — | ✅ | Separate `refreshToken` JWT namespace. Disable with `JWT_REFRESH=false` |
+| **Cookie auth mode** | ✅ | — | — | `@fastify/cookie`. HttpOnly/Secure/SameSite signed cookie; needs `COOKIE_SECRET`. Enabled by `AUTH_MODE=COOKIE` |
+| **Token revocation** | ✅ | — | ✅ | `externalId` pattern in the JWT: regenerating it invalidates all tokens (global logout / password change) |
+| **CORS** | ✅ | — | ✅ | `@fastify/cors`. Preset exposing `v-*` pagination headers (`v-total`, `v-page`, …) |
+| **Helmet** | ✅ | — | ✅ | `@fastify/helmet`. Security HTTP headers |
+| **Rate limit** | ✅ | — | ✅ | `@fastify/rate-limit`, registered `global:false` → limits only opt-in routes (e.g. MFA) + 404 handler |
+| **Central error handler** | ✅ | — | ✅ | Preserves controller status; hides details via `HIDE_ERROR_DETAILS` (default on in prod) |
+| **Route autodiscovery** | ✅ | — | ✅ | Convention-based router loader |
+| **Schema autodiscovery** | ✅ | — | ✅ | JSON Schema, deep-merge override on matching `$id` |
+| **Hooks autodiscovery** | ✅ | — | ✅ | `onRequest` / `onResponse` / `onError` / `preHandler` / `preSerialization` |
+| **Middleware** | ✅ | — | ✅ | `isAuthenticated`, `isAdmin`, pre/post auth & forgot-password, auto-loaded |
+| **Roles / RBAC** | ✅ | — | ✅ | Per-route roles loader |
+| **i18n** | ✅ | — | ✅ | `i18n` package, `global.t` |
+| **Logging** | ✅ | — | ✅ | `pino` + `pino-pretty`, `global.log` |
+| **Native APIs** | ✅ | — | ✅ | `auth`, `users`, `token`, `health`, `tenants`, `tool`, `admin` |
+| **Swagger / OpenAPI** | ✅ | — | — | `@fastify/swagger` + `@fastify/swagger-ui` at `/api-docs`. Enabled by `SWAGGER=true` |
+| **Compression** | ✅ | — | — | `@fastify/compress`. Opt-in (`enable`) |
+| **Multipart / uploads** | ✅ | — | — | `@fastify/multipart`. Opt-in (`enable`) |
+| **Static files** | ✅ | — | — | `@fastify/static`, single or multiple mounts. Opt-in (`enable`) |
+| **Raw body** | ✅ | — | — | `fastify-raw-body` for webhooks/signatures. Opt-in (`enable`) |
+| **Scheduler / cron** | ✅ | — | — | `@fastify/schedule` + `toad-scheduler`. Enabled by `options.scheduler` |
+| **In-memory cache** | ✅ | — | — | LRU+TTL per-route cache (`cache:`), `invalidateCache`. Enabled by `options.cache.enabled` |
+| **Manifest endpoint** | ✅ | — | — | `GET /admin/manifest` (admin-only) for the backoffice engine. Enabled by `options.manifest.enabled` |
+| **Multi-tenant** | ✅ | — | — | Subdomain / header / query resolver. Enabled by `options.multi_tenant.enabled` (data layer) |
+| **Data layer (Magic Query)** | ✅ | — | — | `typeorm` + query builder via subpath `/typeorm`. Optional peer deps (`typeorm`, `pg`, `bcrypt`, `pluralize`) |
+| **DB entity autoloading** | ✅ | — | — | Auto-discovered entities/repositories; access via `service.use(req.db)` |
+| **MFA / TOTP** | (gatekeeper) | ✅ | — | Core gatekeeper (`202` + `tempToken`, `/auth/mfa/*`); TOTP implementation via injected `mfaManager`. Policy via `MFA_POLICY` |
+| **Resumable uploads (TUS)** | (mount) | ✅ | — | TUS route mounted from injected `transferManager` |
+| **Mailer** | — | ✅ | — | Email sending via tools |
+| **Object storage** | — | ✅ | — | S3 / MinIO storage via tools |
+| **AI utilities** | — | ✅ | — | AI helpers (Mastra) via tools |
+
 ## Runtime requirements & notable behavior (v3)
 
 - **Node.js ≥ 24**, **pure ESM** (`NodeNext`); CommonJS/`require` is not supported. REST-only (no GraphQL).
