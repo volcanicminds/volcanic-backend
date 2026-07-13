@@ -71,6 +71,32 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 
 ## Changelog
 
+### 4.0.1
+
+**Authorization redesign (breaking).** Full model in [docs/AUTHORIZATION_MODEL.md](docs/AUTHORIZATION_MODEL.md).
+
+- **Roles.** Two protected built-ins remain — `public` and `admin`; **`backoffice` is removed**. A consumer's
+  `config/roles.ts` may override only the *labels* of `admin`/`public` (their code and capabilities are locked)
+  and add its own roles freely.
+- **Capabilities.** Roles may declare `capabilities: string[]`; a route gates with `requireCapability: 'X'`
+  instead of a role list. At boot the allowed set becomes `admin` plus every role that declares the capability.
+  The framework reserves **`users`**, **`tokens`** and **`manifest`**, and the native surfaces (`/users/*`,
+  `/token/*`, `/admin/manifest`) are re-gated to them — so a non-admin operator can be granted user/token
+  management or console access without being `admin`.
+- **Admin apex.** Only an `admin` may grant the `admin` role (to a user *or* a token), and only with
+  `options.allow_multiple_admin`; no capability holder may act on an existing admin subject; the **last admin
+  cannot be deleted, demoted or blocked** (never-zero-admin).
+- **Boot fail-fast.** A route gated on a role absent from `config/roles.ts` now **aborts startup** (previously it
+  was silently disabled).
+- **Sovereign founder & genesis.** `/auth/register` **never** creates an admin. Single-tenant instances provision
+  the founder at boot from **`ADMIN_EMAIL`** (create / promote / no-op); with no admin and no `ADMIN_EMAIL`,
+  startup fails fast. The founder is undeletable/undemotable/unblockable, its email is immutable via the API, and
+  its credentials are self-service only. A generated password is written to stdout only, never the logger.
+
+**Migration.** Consumers referencing `backoffice` must re-declare it in `config/roles.ts` (with the capabilities
+they need); stop bootstrapping an admin via `/auth/register` and set `ADMIN_EMAIL`; ensure a single-tenant instance
+has an admin or `ADMIN_EMAIL` at boot.
+
 ### 3.5.0
 
 - **Per-route response cache (OOTB).** Opt in per endpoint with a `cache` prop in `routes.ts`
@@ -385,12 +411,17 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `MFA_APP_NAME`                 | Name of the application displayed in Authenticator apps.                |    No    | `VolcanicApp`       |
 | `MFA_ADMIN_FORCED_RESET_EMAIL` | Admin email for emergency MFA reset                                     |    No    |                     |
 | `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
-| `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
 | `AUTH_MODE`                    | Authentication mode: `BEARER` (default) or `COOKIE`                     |    No    | `BEARER`            |
 | `COOKIE_SECRET`                | Secret for signing cookies (Required if `AUTH_MODE=COOKIE`)             | **Yes**² |                     |
+| `ADMIN_EMAIL`                  | Sovereign founder email — provisioned as `admin` at boot (single-tenant, see below). | **Yes**³ |          |
+| `ADMIN_PASSWORD`               | Password for the founder created from `ADMIN_EMAIL`; if unset, a strong one is generated and printed to stdout. | No |    |
 | `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response.            |    No    | `true` (prod)       |
 
 ² Required if `AUTH_MODE` is `COOKIE`.
+
+³ Single-tenant only, and only when no admin exists yet: a fresh instance provisions the sovereign founder
+from `ADMIN_EMAIL`. If an admin already exists it may be omitted; with **no** admin and **no** `ADMIN_EMAIL`,
+startup **fails fast**. See [docs/AUTHORIZATION_MODEL.md](docs/AUTHORIZATION_MODEL.md).
 
 ¹ Required if `JWT_REFRESH` is enabled.
 
@@ -658,6 +689,19 @@ You can easily protect routes using Role-Based Access Control (RBAC). The framew
   path: '/',
   handler: 'product.create',
   roles: [roles.admin] // Only users with the 'admin' role can access this
+}
+```
+
+Alternatively, gate by **capability**: the allowed set becomes `admin` plus every role that declares it. The
+framework reserves `users`, `tokens` and `manifest`; a consumer grants its own capabilities to its roles in
+`config/roles.ts`.
+
+```typescript
+{
+  method: 'GET',
+  path: '/',
+  handler: 'product.find',
+  requireCapability: 'catalog' // admin, or any role that declares the `catalog` capability
 }
 ```
 

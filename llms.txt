@@ -3579,6 +3579,48 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
 - **No `autoCrud`.** The framework does **not** auto-mount a generic `/admin/<resource>` CRUD. The manifest describes
   the project's **hand-written** endpoints (real paths); a generic-CRUD capability remains a possible future addition.
 
+## 11.5 Capabilities, the admin apex and the sovereign founder
+
+**Built-in roles.** Two protected built-ins ship: `public` (anonymous/base) and `admin` (universal superuser,
+appended to every route). A consumer's `config/roles.ts` may override only their *labels* (name/description) — code
+and capabilities are locked — and add its own roles freely. `backoffice` is **not** built-in (removed in v4).
+
+**Capabilities.** A role may declare `capabilities: string[]`; a route gates on one with `requireCapability: 'X'`
+(top-level, alongside/instead of `roles`). At **boot** the allowed set is resolved to `admin` ∪ {every role that
+declares `X`}; the request gate is unchanged. The framework reserves three capability names and gates its native
+surfaces with them:
+
+| Capability | Native routes | Grant it to a role to allow… |
+| :--- | :--- | :--- |
+| `users` | `/users/*` (CRUD, block/unblock, reset) | non-admin user management |
+| `tokens` | `/token/*` | non-admin integration-token management |
+| `manifest` | `GET /admin/manifest` | loading the admin console without being admin |
+
+Consumers coin their **own** capability names for their **own** routes. Capabilities live only on consumer roles
+(never on `admin`/`public`): `admin` already satisfies every capability via the append, and a capability on `public`
+would make the route anonymous (any route listing `public` is fully public). "Any authenticated user" is the existing
+idiom `roles: []` + `global.isAuthenticated`, not a capability.
+
+**Fail-fast.** A route gated on a role code **not** declared in `config/roles.ts` aborts startup with an aggregated
+error (previously silently disabled). Prefer string codes (`roles: ['editor']`) for named errors.
+
+**The admin apex.** `admin` is a restricted group (default single). The controllers enforce:
+- **Rule A** — only an `admin` may grant the `admin` role, to a **user or a token**, and only with
+  `options.allow_multiple_admin: true` (default `false`); a `users`/`tokens` holder manages non-admin subjects but
+  never mints an admin (closes the admin-token backdoor).
+- **Rule B** — no capability holder may `update`/`delete`/`block`/`unblock` an existing **admin** subject; only an
+  admin acts on an admin. MFA/password reset stay admin-only.
+- **Never-zero-admin** — the last admin cannot be deleted, demoted or blocked.
+
+**Genesis & the sovereign founder** (single-tenant, at boot, when a data-layer connection is present).
+`POST /auth/register` **never** grants `admin`. The founder is identified by `ADMIN_EMAIL` (env, case-insensitive)
+and reconciled at boot: created if missing (password from `ADMIN_PASSWORD`, else generated and written to **stdout
+only** — never the logger), promoted if it exists without the role, else no-op. With **no** admin and **no**
+`ADMIN_EMAIL`, startup **fails fast**. The founder is additionally **undeletable/undemotable/unblockable**, its email
+is immutable via the API (transfer = change `ADMIN_EMAIL` + redeploy), and its credentials are self-service only. In
+**multi-tenant** genesis is skipped: tenant admins come from provisioning and the system founder is seeded
+out-of-band. Full model: [docs/AUTHORIZATION_MODEL.md](docs/AUTHORIZATION_MODEL.md).
+
 ---
 
 # Part 12: Usage Scenarios & Recipes

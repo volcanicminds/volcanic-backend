@@ -1,11 +1,10 @@
 # Authorization Model — Roles, Capabilities & Admin Governance
 
-> **Status: DESIGN PROPOSAL (not yet implemented).** This document specifies the target
-> authorization model for `@volcanicminds/backend`. It supersedes the ad-hoc `backoffice`
-> role. Nothing here is coded yet — this is the spec to review before implementation.
+> **Status: IMPLEMENTED (v4.0.1).** This document is the authoritative specification of the
+> authorization model in `@volcanicminds/backend`. It supersedes the ad-hoc `backoffice` role.
 > Complements `AUTH_COMPOSABLE_EVOLUTION.md` (login *flows*); this doc is about *authorization*.
 >
-> **Target release: `4.0.0`** — a major, matching the breaking changes in §9.
+> **Released in `4.0.1`** — a major, matching the breaking changes in §9.
 
 ## 1. Motivation
 
@@ -254,20 +253,20 @@ The founder (`email === ADMIN_EMAIL`) is protected against **everyone, admins in
 - Per-tenant "founder protection" (a sovereign admin *inside* a tenant) is **out of scope** for now;
   it would require storing the founder email on the `Tenant` record.
 
-## 8. Existing rough edges to fix as part of this work
+## 8. Rough edges
 
-Found while auditing the current code; the capability model is not safe until these are closed:
+Found while auditing the code. The first four were **closed** in this work; the capability model
+depends on them:
 
-1. **`allow_multiple_admin` asymmetry** — enforced on `POST /users` create only; `PUT /users/:id`
-   (`lib/api/users/controller/user.ts`) does **not** re-check, so an admin can elevate anyone to
-   admin via update regardless of the flag. Also missing on token creation.
-2. **No last-admin protection** — `remove` deletes by id with no guard; the last admin can be
-   deleted → total lockout.
-3. **Token role backdoor** — integration tokens carry authorization `roles[]`; must be covered by
-   Rule A (no `admin` on tokens).
-4. **Public register-as-admin** — `POST /auth/register` currently mints the first admin (land-grab
-   on a fresh, exposed instance; also creates it *unconfirmed*, a chicken-and-egg for login).
-   Replaced by Option Z (§6).
+1. ✅ **`allow_multiple_admin` symmetry** — now enforced on create, update **and** token creation
+   (Rule A). Previously create-only.
+2. ✅ **Last-admin protection** — delete/demote/block refuse to drop the admin count to zero.
+3. ✅ **Token role backdoor** — Rule A covers tokens: no capability holder can mint an `admin` token.
+4. ✅ **Public register-as-admin** — `POST /auth/register` no longer grants `admin`; the founder is
+   provisioned from `ADMIN_EMAIL` (§6).
+
+Still open (multi-tenant, out of scope for this release):
+
 5. **System-admin detection dead branch** — `lib/api/tenants/controller/tenants.ts` checks
    `req.user?.tenantId === 'system'`, but the `User` entity has no `tenantId`; detection effectively
    relies on `req.tenant?.slug === 'system'`. Consolidate.
@@ -283,7 +282,7 @@ Found while auditing the current code; the capability model is not safe until th
 | `ADMIN_EMAIL` now mandatory | Startup | Set it in the environment; boot fail-fast without it |
 | `/users`, `/token`, `/admin/manifest` re-gated to capabilities | Non-admin access | Grant `users` / `tokens` / `manifest` to the consumer role |
 
-Released as **`4.0.0`** (major). A route gated on a now-undeclared role fails fast at boot (§3.5) —
+Released as **`4.0.1`** (major). A route gated on a now-undeclared role fails fast at boot (§3.5) —
 this is intentional, so the removal of `backoffice` surfaces loudly in any consumer that forgot to
 re-declare it, instead of silently disabling routes.
 
