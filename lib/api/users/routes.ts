@@ -14,7 +14,7 @@ export default {
     {
       method: 'GET',
       path: '/',
-      roles: [roles.admin],
+      requireCapability: 'users',
       handler: 'user.find',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -33,7 +33,7 @@ export default {
     {
       method: 'GET',
       path: '/count',
-      roles: [roles.admin],
+      requireCapability: 'users',
       handler: 'user.count',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -71,7 +71,7 @@ export default {
     {
       method: 'GET',
       path: '/:id',
-      roles: [roles.admin],
+      requireCapability: 'users',
       handler: 'user.findOne',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -89,7 +89,7 @@ export default {
     {
       method: 'PUT',
       path: '/:id',
-      roles: [roles.admin],
+      requireCapability: 'users',
       handler: 'user.update',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -108,7 +108,7 @@ export default {
     {
       method: 'POST',
       path: '/',
-      roles: [roles.admin],
+      requireCapability: 'users',
       handler: 'user.create',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -126,7 +126,7 @@ export default {
     {
       method: 'DELETE',
       path: '/:id',
-      roles: [roles.admin],
+      requireCapability: 'users',
       handler: 'user.remove',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -190,7 +190,7 @@ export default {
     {
       method: 'POST',
       path: '/:id/block',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'users',
       handler: 'user.block',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -206,7 +206,7 @@ export default {
     {
       method: 'POST',
       path: '/:id/unblock',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'users',
       handler: 'user.unblock',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -221,7 +221,7 @@ export default {
     {
       method: 'POST',
       path: '/:id/mfa/reset',
-      roles: [roles.admin],
+      requireCapability: 'users',
       handler: 'user.resetMfaByAdmin',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -236,7 +236,7 @@ export default {
     {
       method: 'POST',
       path: '/:id/password/reset',
-      roles: [roles.admin],
+      requireCapability: 'users',
       handler: 'user.resetPasswordByAdmin',
       middlewares: ['global.isAuthenticated'],
       config: {

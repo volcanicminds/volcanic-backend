@@ -1,4 +1,15 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
+import { includesRole } from '../../../util/authz.js'
+
+// Rule A: only an admin may grant a token the admin role, and only with
+// allow_multiple_admin — otherwise a `tokens` capability holder could mint an admin
+// token and escalate. Tokens carry roles used for authorization (see onRequest).
+function assignsAdmin(req: FastifyRequest, roleValue: unknown): boolean {
+  return (
+    includesRole(roleValue, roles.admin.code) &&
+    (!req.hasRole(roles.admin) || config.options?.allow_multiple_admin !== true)
+  )
+}
 
 export async function count(req: FastifyRequest, _reply: FastifyReply) {
   return await req.server['tokenManager'].countQuery(req.data(), req.runner)
@@ -28,6 +39,10 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   data.roles = (data.requiredRoles || []).map((r) => global.roles[r]?.code).filter((r) => !!r)
   if (!data.roles.includes(publicRole)) {
     data.roles.push(publicRole)
+  }
+
+  if (assignsAdmin(req, data.roles)) {
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot assign the admin role to a token' })
   }
 
   let token = await req.server['tokenManager'].createToken(data, req.runner)
@@ -76,14 +91,13 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const data = req.data() || {}
+  if (assignsAdmin(req, data.roles)) {
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot assign the admin role to a token' })
+  }
   return req.server['tokenManager'].updateTokenById(token.getId(), data, req.runner)
 }
 
-export async function block(req: FastifyRequest, reply: FastifyReply) {
-  if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
-    return reply.status(403).send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to block a user' })
-  }
-
+export async function block(req: FastifyRequest, _reply: FastifyReply) {
   const { id: userId } = req.parameters()
   const { reason } = req.data()
 
@@ -92,13 +106,7 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   return { ok: !!token.getId() }
 }
 
-export async function unblock(req: FastifyRequest, reply: FastifyReply) {
-  if (!req.hasRole(roles.admin) && !req.hasRole(roles.backoffice)) {
-    return reply
-      .status(403)
-      .send({ statusCode: 403, code: 'ROLE_NOT_ALLOWED', message: 'Not allowed to unblock a user' })
-  }
-
+export async function unblock(req: FastifyRequest, _reply: FastifyReply) {
   const { id: userId } = req.parameters()
   await req.server['tokenManager'].unblockTokenById(userId, req.runner)
   const token = await req.server['tokenManager'].retrieveTokenById(userId, req.runner)

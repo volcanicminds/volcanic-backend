@@ -14,10 +14,9 @@ export default {
     {
       method: 'GET',
       path: '/manifest',
-      // `backoffice` is allowed too: operators with limited roles still need the
-      // manifest to boot the admin UI — the client hides what their roles cannot
-      // reach (declared per-capability `roles`), and every API route still enforces.
-      roles: [roles.admin, roles.backoffice],
+      // A role granted the `manifest` capability can load the admin console; the client
+      // hides what the caller's roles cannot reach and every API route still enforces.
+      requireCapability: 'manifest',
       handler: 'manifest.get',
       middlewares: ['global.isAuthenticated'],
       config: {

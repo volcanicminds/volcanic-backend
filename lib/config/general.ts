@@ -19,7 +19,7 @@ export default {
       query_key: 'tid'
     },
     manifest: {
-      // opt-in: exposes GET /admin/manifest (admin-only) for the backoffice engine
+      // opt-in: exposes GET /admin/manifest (gated by the `manifest` capability) for the admin console
       enabled: false
     },
     cache: {

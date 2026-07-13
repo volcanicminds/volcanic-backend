@@ -52,7 +52,7 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 | **Raw body** | ✅ | — | — | `fastify-raw-body` for webhooks/signatures. Opt-in (`enable`) |
 | **Scheduler / cron** | ✅ | — | — | `@fastify/schedule` + `toad-scheduler`. Enabled by `options.scheduler` |
 | **In-memory cache** | ✅ | — | — | LRU+TTL per-route cache (`cache:`), `invalidateCache`. Enabled by `options.cache.enabled` |
-| **Manifest endpoint** | ✅ | — | — | `GET /admin/manifest` (admin-only) for the backoffice engine. Enabled by `options.manifest.enabled` |
+| **Manifest endpoint** | ✅ | — | — | `GET /admin/manifest` (gated by the `manifest` capability) for the admin console. Enabled by `options.manifest.enabled` |
 | **Multi-tenant** | ✅ | — | — | Subdomain / header / query resolver. Enabled by `options.multi_tenant.enabled` (data layer) |
 | **Data layer (Magic Query)** | ✅ | — | — | `typeorm` + query builder via subpath `/typeorm`. Optional peer deps (`typeorm`, `pg`, `bcrypt`, `pluralize`) |
 | **DB entity autoloading** | ✅ | — | — | Auto-discovered entities/repositories; access via `service.use(req.db)` |
@@ -773,12 +773,19 @@ This powerful synergy allows you to build complex, high-performance data endpoin
 
 ## Roles
 
-By default, there are some basic roles:
+By default, there are two built-in roles:
 
-- **public**
+- **public** — the implicit anonymous role; routes with `roles: []` are open to everyone.
 - **admin** — **global superuser**: `admin` is implicitly added to every route's allowed roles, so an admin can
   access any endpoint (even those restricted to other roles). This is by design.
-- **backoffice**
+
+Roles may also carry **capabilities** — the framework reserves `users`, `tokens` and `manifest` — so a
+consumer-defined role can be granted a native surface (user or token management, or loading the admin console)
+without being `admin`. Gate a route with `requireCapability` instead of a role list; at boot the allowed set
+becomes `admin` plus every role that declares the capability. The `admin` apex is protected: only an admin can
+grant the `admin` role (and only with `allow_multiple_admin`), no capability holder can act on an admin subject,
+and the instance never boots with zero admins. The sovereign founder is provisioned at boot from `ADMIN_EMAIL`.
+See `docs/AUTHORIZATION_MODEL.md`.
 
 > **Authorization responses:** a request with no authenticated subject gets **401** (must log in); an
 > authenticated user lacking the required role gets **403**. Error bodies follow a single shape:

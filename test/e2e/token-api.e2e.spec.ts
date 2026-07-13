@@ -17,7 +17,7 @@ describe('E2E — API token management (/token)', () => {
     adminTok = await login(ADMIN.email, ADMIN.password)
   })
 
-  it('requires admin/backoffice (401 without a token)', async () => {
+  it('requires authentication (401 without a token)', async () => {
     const res = await inject({ method: 'GET', url: '/token' })
     expect(res.statusCode).toBe(401)
   })
@@ -93,11 +93,44 @@ describe('E2E — API token management (/token)', () => {
     expect((await getTokenById(id)).blocked).toBe(false)
   })
 
-  it('a non-admin cannot list tokens (403)', async () => {
+  it('a non-admin (no tokens capability) cannot list tokens (403)', async () => {
     const email = 'token-nonadmin@e2e.test'
     await seedConfirmedUser(email, 'Tok-pw-123456')
     const userTok = await login(email, 'Tok-pw-123456')
     const res = await inject({ method: 'GET', url: '/token', headers: authHeader(userTok) })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('a user with the tokens capability can list (200)', async () => {
+    const email = 'token-ops@e2e.test'
+    const u: any = await seedConfirmedUser(email, 'Tok-pw-123456')
+    await inject({
+      method: 'PUT',
+      url: `/users/${u.id}`,
+      headers: authHeader(adminTok),
+      payload: { roles: ['ops'] }
+    })
+    const opsTok = await login(email, 'Tok-pw-123456')
+    const res = await inject({ method: 'GET', url: '/token', headers: authHeader(opsTok) })
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('rule A — a tokens-capability holder cannot mint an admin token (403)', async () => {
+    const email = 'token-ops-admin@e2e.test'
+    const u: any = await seedConfirmedUser(email, 'Tok-pw-123456')
+    await inject({
+      method: 'PUT',
+      url: `/users/${u.id}`,
+      headers: authHeader(adminTok),
+      payload: { roles: ['ops'] }
+    })
+    const opsTok = await login(email, 'Tok-pw-123456')
+    const res = await inject({
+      method: 'POST',
+      url: '/token',
+      headers: authHeader(opsTok),
+      payload: { name: 'evil-admin-token', requiredRoles: ['admin'] }
+    })
     expect(res.statusCode).toBe(403)
   })
 

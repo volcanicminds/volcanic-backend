@@ -6,6 +6,9 @@
 //
 import { start as startServer } from '../../index.js'
 import { start as startDatabase, closeEmbedded, userManager, tokenManager } from '../../typeorm.js'
+import * as loaderConfig from '../../lib/loader/general.js'
+import * as loaderTranslation from '../../lib/loader/translation.js'
+import * as loaderRoles from '../../lib/loader/roles.js'
 import { UserSchema, UserClass } from './userEntity.js'
 import { TokenSchema, TokenClass } from './tokenEntity.js'
 
@@ -33,6 +36,11 @@ export async function getUserByEmail(email: string): Promise<any> {
   return userManager.retrieveUserByEmail(email)
 }
 
+/** Count of users holding the admin role — used to assert never-zero-admin preconditions. */
+export async function countAdmins(): Promise<number> {
+  return Number(await userManager.countQuery({ 'roles:in': 'admin' }))
+}
+
 /** Reads a token record straight from the DB (e.g. to assert `blocked`, which the
  *  tokenSchema response does not expose). */
 export async function getTokenById(id: string): Promise<any> {
@@ -49,6 +57,19 @@ export async function setup() {
 
   await seedUser(ADMIN)
   await seedUser(USER)
+
+  // Preload framework globals and register a capability-bearing consumer role so the
+  // native capability-gated routes (/users, /token) can be reached by a non-admin.
+  // start() skips its own preload when global.config is already set.
+  ;(global as any).config = await loaderConfig.load()
+  ;(global as any).t = loaderTranslation.load()
+  ;(global as any).roles = await loaderRoles.load()
+  ;(global as any).roles.ops = {
+    code: 'ops',
+    name: 'Ops',
+    description: 'user/token management via capabilities',
+    capabilities: ['users', 'tokens']
+  }
 
   server = await startServer({ userManager, tokenManager })
   await server.ready()

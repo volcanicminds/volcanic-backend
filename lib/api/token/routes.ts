@@ -12,7 +12,7 @@ export default {
     {
       method: 'GET',
       path: '/',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'tokens',
       handler: 'token.find',
       middlewares: [],
       config: {
@@ -31,7 +31,7 @@ export default {
     {
       method: 'GET',
       path: '/count',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'tokens',
       handler: 'token.count',
       middlewares: [],
       config: {
@@ -48,7 +48,7 @@ export default {
     {
       method: 'GET',
       path: '/:id',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'tokens',
       handler: 'token.findOne',
       middlewares: [],
       config: {
@@ -66,7 +66,7 @@ export default {
     {
       method: 'POST',
       path: '/',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'tokens',
       handler: 'token.create',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -84,7 +84,7 @@ export default {
     {
       method: 'PUT',
       path: '/:id',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'tokens',
       handler: 'token.update',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -103,7 +103,7 @@ export default {
     {
       method: 'DELETE',
       path: '/:id',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'tokens',
       handler: 'token.remove',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -118,7 +118,7 @@ export default {
     {
       method: 'POST',
       path: '/block/:id',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'tokens',
       handler: 'token.block',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -134,7 +134,7 @@ export default {
     {
       method: 'POST',
       path: '/unblock/:id',
-      roles: [roles.admin, roles.backoffice],
+      requireCapability: 'tokens',
       handler: 'token.unblock',
       middlewares: ['global.isAuthenticated'],
       config: {

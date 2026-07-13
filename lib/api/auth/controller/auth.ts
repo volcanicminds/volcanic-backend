@@ -50,21 +50,18 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Repeated password not match' })
   }
 
-  let existings = await req.server['userManager'].retrieveUserByEmail(data.email, req.runner)
+  const existings = await req.server['userManager'].retrieveUserByEmail(data.email, req.runner)
   if (existings) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Email already registered' })
   }
 
-  if ((data.requiredRoles || []).includes('admin')) {
-    existings = await req.server['userManager'].findQuery({ 'roles:in': 'admin' }, req.runner)
-    if (existings?.records?.length) {
-      return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User admin already registered' })
-    }
-  }
-
-  // public is the default
+  // Registration never grants the admin role — the admin apex is provisioned only at boot
+  // from ADMIN_EMAIL (see docs/AUTHORIZATION_MODEL.md §6). `public` is the default.
   const publicRole = global.roles?.public?.code || 'public'
-  data.roles = (data.requiredRoles || []).map((r) => global.roles[r]?.code).filter((r) => !!r)
+  const adminRole = global.roles?.admin?.code || 'admin'
+  data.roles = (data.requiredRoles || [])
+    .map((r) => global.roles[r]?.code)
+    .filter((r) => !!r && r !== adminRole)
   if (!data.roles.includes(publicRole)) {
     data.roles.push(publicRole)
   }

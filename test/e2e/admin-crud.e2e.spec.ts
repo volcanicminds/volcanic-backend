@@ -4,7 +4,7 @@
 // authorization boundary (non-admin cannot create). BEARER, single-tenant.
 //
 import { expect } from 'expect'
-import { app, login, authHeader, seedConfirmedUser, getUserByEmail, ADMIN } from './harness.js'
+import { app, login, authHeader, seedConfirmedUser, getUserByEmail, countAdmins, ADMIN } from './harness.js'
 
 const PW = 'Crud-pw-123456'
 
@@ -111,7 +111,7 @@ describe('E2E — admin user management (CRUD + block)', () => {
   describe('dynamic role change takes effect', () => {
     // An admin grants a role; the change must apply on the NEXT request (roles are
     // read fresh from the DB in onRequest), unlocking a role-gated endpoint.
-    const actor = 'role-actor@e2e.test' // gets promoted to backoffice
+    const actor = 'role-actor@e2e.test' // gets promoted to `ops` (users capability)
     const target = 'role-target@e2e.test' // someone the actor will block
     let actorTok: string
     let targetId: string
@@ -124,7 +124,7 @@ describe('E2E — admin user management (CRUD + block)', () => {
       actorTok = await login(actor, PW)
     })
 
-    it('a plain user cannot use a backoffice-gated endpoint (block) → 403', async () => {
+    it('a plain user cannot use a users-gated endpoint (block) → 403', async () => {
       const res = await inject({
         method: 'POST',
         url: `/users/${targetId}/block`,
@@ -134,13 +134,13 @@ describe('E2E — admin user management (CRUD + block)', () => {
       expect(res.statusCode).toBe(403)
     })
 
-    it('after admin grants backoffice, the SAME token can block (200)', async () => {
+    it('after admin grants a users-capability role, the SAME token can block (200)', async () => {
       const actorUser = await getUserByEmail(actor)
       const grant = await inject({
         method: 'PUT',
         url: `/users/${actorUser.id}`,
         headers: authHeader(adminTok),
-        payload: { roles: ['backoffice'] }
+        payload: { roles: ['ops'] }
       })
       expect(grant.statusCode).toBe(200)
 
@@ -154,12 +154,106 @@ describe('E2E — admin user management (CRUD + block)', () => {
       expect(JSON.parse(res.body)).toMatchObject({ ok: true })
     })
 
-    it('a backoffice-only user still reaches public routes (/users/me)', async () => {
+    it('an ops-only user still reaches public routes (/users/me)', async () => {
       // Public routes are open to EVERY caller: a subject whose roles do not
-      // include `public` (here: only `backoffice`) must not rank below anonymous.
+      // include `public` (here: only `ops`) must not rank below anonymous.
       const res = await inject({ method: 'GET', url: '/users/me', headers: authHeader(actorTok) })
       expect(res.statusCode).toBe(200)
       expect(JSON.parse(res.body).email).toBe(actor)
+    })
+  })
+
+  describe('admin-apex guards (rules A/B + never-zero)', () => {
+    // Runs while ADMIN is still the only admin (before the multiple-admin block creates
+    // a second), so never-zero fires deterministically. The precondition guards ADMIN
+    // from an accidental delete if that ordering ever changes.
+    let opsTok: string
+    let adminId: string
+
+    before(async () => {
+      const n = await countAdmins()
+      if (n !== 1) throw new Error(`precondition failed: expected exactly 1 admin, found ${n}`)
+      adminId = (await getUserByEmail(ADMIN.email)).id
+      const email = 'apex-ops@e2e.test'
+      const u: any = await seedConfirmedUser(email, PW)
+      await inject({ method: 'PUT', url: `/users/${u.id}`, headers: authHeader(adminTok), payload: { roles: ['ops'] } })
+      opsTok = await login(email, PW)
+    })
+
+    it('rule A — a users-capability holder cannot create an admin (403)', async () => {
+      const res = await inject({
+        method: 'POST',
+        url: '/users',
+        headers: authHeader(opsTok),
+        payload: { email: 'apex-newadmin@e2e.test', password: PW, roles: ['admin'] }
+      })
+      expect(res.statusCode).toBe(403)
+      expect(await getUserByEmail('apex-newadmin@e2e.test')).toBeFalsy()
+    })
+
+    it('rule A — a users-capability holder can create a non-admin (200)', async () => {
+      const res = await inject({
+        method: 'POST',
+        url: '/users',
+        headers: authHeader(opsTok),
+        payload: { email: 'apex-plain@e2e.test', password: PW, roles: ['public'] }
+      })
+      expect(res.statusCode).toBe(200)
+    })
+
+    it('rule B — a users-capability holder cannot update an admin (403)', async () => {
+      const res = await inject({
+        method: 'PUT',
+        url: `/users/${adminId}`,
+        headers: authHeader(opsTok),
+        payload: { firstName: 'Hacked' }
+      })
+      expect(res.statusCode).toBe(403)
+    })
+
+    it('rule B — a users-capability holder cannot block an admin (403)', async () => {
+      const res = await inject({
+        method: 'POST',
+        url: `/users/${adminId}/block`,
+        headers: authHeader(opsTok),
+        payload: { reason: 'nope' }
+      })
+      expect(res.statusCode).toBe(403)
+      expect((await getUserByEmail(ADMIN.email)).blocked).toBeFalsy()
+    })
+
+    it('rule B — a users-capability holder cannot delete an admin (403)', async () => {
+      const res = await inject({ method: 'DELETE', url: `/users/${adminId}`, headers: authHeader(opsTok) })
+      expect(res.statusCode).toBe(403)
+      expect(await getUserByEmail(ADMIN.email)).toBeTruthy()
+    })
+
+    it('never-zero — cannot delete the last admin (403)', async () => {
+      const res = await inject({ method: 'DELETE', url: `/users/${adminId}`, headers: authHeader(adminTok) })
+      expect(res.statusCode).toBe(403)
+      expect(await getUserByEmail(ADMIN.email)).toBeTruthy()
+    })
+
+    it('never-zero — cannot demote the last admin (403)', async () => {
+      const res = await inject({
+        method: 'PUT',
+        url: `/users/${adminId}`,
+        headers: authHeader(adminTok),
+        payload: { roles: ['public'] }
+      })
+      expect(res.statusCode).toBe(403)
+      expect((await getUserByEmail(ADMIN.email)).roles).toContain('admin')
+    })
+
+    it('never-zero — cannot block the last admin (403)', async () => {
+      const res = await inject({
+        method: 'POST',
+        url: `/users/${adminId}/block`,
+        headers: authHeader(adminTok),
+        payload: { reason: 'x' }
+      })
+      expect(res.statusCode).toBe(403)
+      expect((await getUserByEmail(ADMIN.email)).blocked).toBeFalsy()
     })
   })
 
@@ -394,6 +488,89 @@ describe('E2E — admin user management (CRUD + block)', () => {
         payload: { email: 'should-not@e2e.test', password: PW, roles: ['public'] }
       })
       expect(res.statusCode).toBe(403)
+    })
+  })
+
+  describe('sovereign founder (ADMIN_EMAIL) + register', () => {
+    // A throwaway admin plays the founder so a guard regression cannot touch ADMIN.
+    // adminTok is a different admin (not the founder) acting against it.
+    const founderEmail = 'sovereign-founder@e2e.test'
+    let founderId: string
+    let savedEmail: string | undefined
+    let savedPwReset: boolean | undefined
+
+    before(async () => {
+      savedEmail = process.env.ADMIN_EMAIL
+      savedPwReset = (global as any).config.options.allow_admin_change_password_users
+      ;(global as any).config.options.allow_admin_change_password_users = true
+      await seedConfirmedUser(founderEmail, PW, ['admin'])
+      founderId = (await getUserByEmail(founderEmail)).id
+      process.env.ADMIN_EMAIL = founderEmail
+    })
+
+    after(() => {
+      if (savedEmail === undefined) delete process.env.ADMIN_EMAIL
+      else process.env.ADMIN_EMAIL = savedEmail
+      ;(global as any).config.options.allow_admin_change_password_users = savedPwReset
+    })
+
+    it('another admin cannot demote the founder (403)', async () => {
+      const res = await inject({
+        method: 'PUT',
+        url: `/users/${founderId}`,
+        headers: authHeader(adminTok),
+        payload: { roles: ['public'] }
+      })
+      expect(res.statusCode).toBe(403)
+      expect((await getUserByEmail(founderEmail)).roles).toContain('admin')
+    })
+
+    it('another admin cannot change the founder email (403)', async () => {
+      const res = await inject({
+        method: 'PUT',
+        url: `/users/${founderId}`,
+        headers: authHeader(adminTok),
+        payload: { email: 'moved@e2e.test' }
+      })
+      expect(res.statusCode).toBe(403)
+    })
+
+    it('another admin cannot block the founder (403)', async () => {
+      const res = await inject({
+        method: 'POST',
+        url: `/users/${founderId}/block`,
+        headers: authHeader(adminTok),
+        payload: { reason: 'x' }
+      })
+      expect(res.statusCode).toBe(403)
+      expect((await getUserByEmail(founderEmail)).blocked).toBeFalsy()
+    })
+
+    it('another admin cannot reset the founder password (403)', async () => {
+      const res = await inject({
+        method: 'POST',
+        url: `/users/${founderId}/password/reset`,
+        headers: authHeader(adminTok),
+        payload: { password: 'New-pw-123456' }
+      })
+      expect(res.statusCode).toBe(403)
+    })
+
+    it('another admin cannot delete the founder (403)', async () => {
+      const res = await inject({ method: 'DELETE', url: `/users/${founderId}`, headers: authHeader(adminTok) })
+      expect(res.statusCode).toBe(403)
+      expect(await getUserByEmail(founderEmail)).toBeTruthy()
+    })
+
+    it('registration cannot grant the admin role', async () => {
+      const email = 'selfreg-admin@e2e.test'
+      const res = await inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { username: 'sra', email, password1: PW, password2: PW, requiredRoles: ['admin'] }
+      })
+      expect(res.statusCode).toBe(200)
+      expect((await getUserByEmail(email)).roles).not.toContain('admin')
     })
   })
 })

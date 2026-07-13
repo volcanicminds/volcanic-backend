@@ -157,7 +157,7 @@ export default {
     { anyOf: ['password'] },                                  // stage 1 — identify
     { anyOf: ['totp'] }                                       // stage 2 — MFA always
   ],
-  backoffice: [
+  operator: [
     { anyOf: ['password'] },
     { anyOf: ['email-otp', 'sms-otp'], when: 'subject.mfaEnabled' } // conditional 2nd factor
   ],
@@ -175,7 +175,7 @@ Semantics:
   evaluator — **never** `eval()` of arbitrary code. Unknown fields fail at boot (see below).
 - **Role precedence** = declaration order; a user with several roles gets the **first**
   matching flow (list most-privileged first, so a lesser role never weakens login). Example:
-  a user with `['backoffice','admin']` gets the `admin` flow because `admin` is declared first.
+  a user with `['operator','admin']` gets the `admin` flow because `admin` is declared first.
 
 ### Boot validation — fail-fast, no silent defaults
 
@@ -249,7 +249,7 @@ A concrete end-to-end run, including the failure and restart branches, so the mo
 unambiguous.
 
 ```
-① POST /auth/flow/start   { flow: 'backoffice', credentials: { email, password } }
+① POST /auth/flow/start   { flow: 'operator', credentials: { email, password } }
    Server: verifies password (stage 1, an identifier).
            Stage 2 is [email-otp | sms-otp] when subject.mfaEnabled → applies.
            Creates UserAuthFlow{ flowId, stage:1, satisfied:['password'], expiresAt:+15m }.

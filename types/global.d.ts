@@ -27,6 +27,10 @@ export interface Role {
   code: string
   name: string
   description: string
+  // Capabilities granted to this role (see docs/AUTHORIZATION_MODEL.md §3). Named only
+  // in config, resolved at boot, never at runtime. `admin`/`public` are protected
+  // built-ins and never carry capabilities (locked by the roles loader).
+  capabilities?: string[]
 }
 
 export interface Roles {
@@ -94,7 +98,12 @@ export interface Route {
   method: string
   path: string
   handler: string
-  roles: Role[]
+  // Role objects (from the global `roles` catalog) or bare string codes; string codes
+  // are resolved and validated against the catalog at load (unknown code → fail-fast).
+  roles: (Role | string)[]
+  // Gate on a capability: the allowed set becomes admin + every role that declares it.
+  // A capability held by no role leaves the route admin-only. See docs/AUTHORIZATION_MODEL.md §3.
+  requireCapability?: string
   middlewares: string[]
   config?: RouteConfig
   rateLimit?: any

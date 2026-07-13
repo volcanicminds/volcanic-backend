@@ -49,6 +49,15 @@ export async function setup() {
   const u: any = await userManager.createUser(USER as any)
   await userManager.updateUserById(u.id, { confirmed: true, confirmedAt: new Date() } as any)
 
+  // Seed an admin so the boot genesis (never-zero-admin) does not fail-fast.
+  const a: any = await userManager.createUser({
+    email: 'mfa-admin@e2e.test',
+    username: 'mfa-admin',
+    password: 'Mfa-pw-123456',
+    roles: ['admin']
+  } as any)
+  await userManager.updateUserById(a.id, { confirmed: true, confirmedAt: new Date() } as any)
+
   server = await startServer({ userManager, mfaManager: mfaManagerStub })
   await server.ready()
   return server

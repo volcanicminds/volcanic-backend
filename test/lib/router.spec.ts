@@ -6,7 +6,8 @@ import { processRoute } from '../../lib/loader/router.js'
 ;(global as any).roles = {
   public: { code: 'public' },
   admin: { code: 'admin' },
-  backoffice: { code: 'backoffice' }
+  backoffice: { code: 'backoffice' },
+  ops: { code: 'ops', capabilities: ['users'] }
 }
 ;(global as any).log = {} // all log.x flags falsy -> silent
 
@@ -73,5 +74,50 @@ describe('loader/router — processRoute', () => {
     const first: any = run({ method: 'GET', path: '/', handler: 'user.find' })
     const dup = run({ method: 'GET', path: '/', handler: 'user.find' }, [first])
     expect(dup).toBeNull()
+  })
+})
+
+const runErr = (route: any, roleErrors: string[]) =>
+  processRoute(route, 0, 'x/routes.ts', 'x', '/base', {}, AUTH_MIDDLEWARES, [], roleErrors)
+
+describe('loader/router — role/capability resolution', () => {
+  it('resolves a string-code role against the catalog', () => {
+    const r: any = run({ method: 'GET', path: '/', handler: 'x.y', roles: ['backoffice'] })
+    expect(codes(r)).toEqual(['backoffice', 'admin'])
+  })
+
+  it('expands requireCapability to holder roles plus admin', () => {
+    const r: any = run({ method: 'GET', path: '/', handler: 'x.y', requireCapability: 'users' })
+    expect(codes(r)).toEqual(['ops', 'admin'])
+  })
+
+  it('a capability held by no role is admin-only (no public default)', () => {
+    const r: any = run({ method: 'GET', path: '/', handler: 'x.y', requireCapability: 'tokens' })
+    expect(codes(r)).toEqual(['admin'])
+  })
+
+  it('dedupes when a declared role also holds the capability', () => {
+    const r: any = run({ method: 'GET', path: '/', handler: 'x.y', roles: ['ops'], requireCapability: 'users' })
+    expect(codes(r)).toEqual(['ops', 'admin'])
+  })
+
+  it('collects an unknown string-code role for the fail-fast', () => {
+    const errs: string[] = []
+    runErr({ method: 'GET', path: '/', handler: 'x.y', roles: ['pippo'] }, errs)
+    expect(errs.length).toBe(1)
+    expect(errs[0]).toContain("unknown role 'pippo'")
+  })
+
+  it('collects an undefined role entry (e.g. roles.pippo)', () => {
+    const errs: string[] = []
+    runErr({ method: 'GET', path: '/', handler: 'x.y', roles: [undefined] }, errs)
+    expect(errs.length).toBe(1)
+    expect(errs[0]).toContain('undefined role')
+  })
+
+  it('does not flag a well-known role', () => {
+    const errs: string[] = []
+    runErr({ method: 'GET', path: '/', handler: 'x.y', roles: ['admin'] }, errs)
+    expect(errs.length).toBe(0)
   })
 })

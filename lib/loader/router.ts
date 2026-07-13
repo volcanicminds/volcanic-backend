@@ -66,6 +66,52 @@ async function loadMiddlewares(base: string, middlewares: string[] = []) {
 }
 
 
+// Resolve a route's declared roles (Role objects or string codes) plus its optional
+// capability into the final allowed-role set. Object refs are trusted; string codes and
+// undefined entries that don't resolve against the `roles` catalog are collected in
+// `roleErrors` for the fail-fast at load. admin is always appended (universal superuser);
+// a route with neither roles nor a capability defaults to public.
+function resolveRequiredRoles(
+  rs: (Role | string)[],
+  capability: string | undefined,
+  where: string,
+  roleErrors: string[]
+): Role[] {
+  const declared: Role[] = []
+  for (const ref of rs) {
+    if (ref == null) {
+      roleErrors.push(`${where} → references an undefined role`)
+    } else if (typeof ref === 'string') {
+      const resolved = roles[ref]
+      if (resolved) declared.push(resolved)
+      else roleErrors.push(`${where} → unknown role '${ref}' (not declared in config/roles.ts)`)
+    } else if (ref.code) {
+      declared.push(ref)
+    } else {
+      roleErrors.push(`${where} → a declared role has no code`)
+    }
+  }
+
+  const capRoles: Role[] = capability
+    ? Object.values(roles).filter((r) => Array.isArray(r.capabilities) && r.capabilities.includes(capability))
+    : []
+  if (capability && capRoles.length === 0 && log?.w) {
+    log.warn(`Route ${where} requires capability '${capability}' held by no role — admin-only`)
+  }
+
+  const seen = new Set<string>()
+  const out: Role[] = []
+  for (const r of [...declared, ...capRoles]) {
+    if (r?.code && !seen.has(r.code)) {
+      seen.add(r.code)
+      out.push(r)
+    }
+  }
+  if (out.length === 0 && !capability) out.push(roles.public)
+  if (!out.some((r) => r.code === roles.admin.code)) out.push(roles.admin)
+  return out
+}
+
 export function processRoute(
   route: Route,
   index: number,
@@ -74,7 +120,8 @@ export function processRoute(
   base: string,
   defaultConfig: any,
   authMiddlewares: string[],
-  validRoutes: ConfiguredRoute[]
+  validRoutes: ConfiguredRoute[],
+  roleErrors: string[] = []
 ): ConfiguredRoute | null {
   const errors: string[] = []
   const {
@@ -82,25 +129,19 @@ export function processRoute(
     path: pathName = '/',
     handler,
     roles: rs = [],
+    requireCapability,
     config = {} as RouteConfig,
     middlewares = [],
     rateLimit,
     cache: cacheInput
   } = route
 
-  const rsp = !rs.length ? [roles.public] : rs
-  let requiredRoles: Role[] = []
-
-  try {
-    // `admin` is a global superuser: it is appended to EVERY route's allowed roles,
-    // so an admin can access any endpoint (even ones restricted to e.g. backoffice).
-    // This is intentional. Remove this append if admin should NOT be a universal role.
-    requiredRoles = rsp.some((r) => r.code === roles.admin.code) ? rsp : [...rsp, roles.admin]
-  } catch (err) {
-    if (log.e) log.error(`Error in loading roles for ${methodCase} ${pathName} (${handler})`)
-    if (log.t) log.trace(err)
-    config.enable = false
-  }
+  const requiredRoles = resolveRequiredRoles(
+    rs,
+    requireCapability,
+    `${methodCase} ${pathName} (${handler})`,
+    roleErrors
+  )
 
   const reqAuth: boolean =
     middlewares.some((m) => authMiddlewares.includes(m)) ||
@@ -207,6 +248,7 @@ export function processRoute(
 
 async function load(): Promise<ConfiguredRoute[]> {
   const validRoutes: ConfiguredRoute[] = []
+  const roleErrors: string[] = []
   const patterns = normalizePatterns(['..', 'api', '**', 'routes.{ts,js}'], ['src', 'api', '**', 'routes.{ts,js}'])
   const authMiddlewares = ['global.isAuthenticated', 'global.isAdmin']
 
@@ -228,12 +270,30 @@ async function load(): Promise<ConfiguredRoute[]> {
       if (log.t) log.trace(`* Add ${routes.length} routes from ${file}`)
 
       routes.forEach((route: Route, index: number) => {
-        const configuredRoute = processRoute(route, index, file, dir, base, defaultConfig, authMiddlewares, validRoutes)
+        const configuredRoute = processRoute(
+          route,
+          index,
+          file,
+          dir,
+          base,
+          defaultConfig,
+          authMiddlewares,
+          validRoutes,
+          roleErrors
+        )
         if (configuredRoute) {
           validRoutes.push(configuredRoute)
         }
       })
     }
+  }
+
+  if (roleErrors.length) {
+    const message = `Route/role integrity check failed — every route role must be declared in config/roles.ts:\n  - ${roleErrors.join(
+      '\n  - '
+    )}`
+    if (log?.f) log.fatal(message)
+    throw new Error(message)
   }
 
   return validRoutes
