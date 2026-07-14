@@ -256,7 +256,23 @@ export async function changePassword(email: string, password: string, oldPasswor
   }
 }
 
-export async function forgotPassword(email: string, runner?: QueryRunner) {
+/**
+ * Mints a reset token that carries its own expiry: `<epochSeconds>.<random>`.
+ *
+ * The deadline travels INSIDE the token instead of being read back from
+ * `resetPasswordTokenAt`, because a `timestamp` (no time zone) column does not
+ * round-trip: it is written in UTC and read back as local time, so the value
+ * returns shifted by the process TZ offset (e.g. -2h on Europe/Rome, +4h on
+ * America/New_York). Any expiry computed from it would be wrong by that offset —
+ * too strict in the east, too lax in the west. An integer in the token cannot
+ * drift.
+ *
+ * No signature is needed: the whole token is the DB lookup key, so tampering
+ * with the epoch simply stops matching any row.
+ *
+ * `resetPasswordTokenAt` is still written, as audit info only.
+ */
+export async function forgotPassword(email: string, runner?: QueryRunner, ttlSeconds = 3600) {
   if (!email) {
     throw new ServiceError('Invalid parameters', 400)
   }
@@ -265,10 +281,11 @@ export async function forgotPassword(email: string, runner?: QueryRunner) {
     const user = await repo.findOneBy({ email: email })
 
     if (user) {
+      const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds
       return repo.save({
         ...user,
         resetPasswordTokenAt: new Date(),
-        resetPasswordToken: Crypto.randomBytes(64).toString('hex')
+        resetPasswordToken: `${expiresAt}.${Crypto.randomBytes(64).toString('hex')}`
       })
     }
     throw new ServiceError('Password not changed', 400)

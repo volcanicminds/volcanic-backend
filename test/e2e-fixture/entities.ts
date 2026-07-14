@@ -26,8 +26,8 @@ export const WidgetSchema = new EntitySchema<any>({
     id: { type: 'uuid', primary: true, generated: 'uuid' },
     name: { type: String },
     value: { type: 'int', default: 0 },
-    createdAt: { type: 'timestamp', createDate: true },
-    updatedAt: { type: 'timestamp', updateDate: true }
+    createdAt: { type: 'timestamptz', createDate: true },
+    updatedAt: { type: 'timestamptz', updateDate: true }
   }
 })
 
@@ -42,7 +42,7 @@ export const ChangeSchema = new EntitySchema<any>({
     status: { type: String },
     userId: { type: String, nullable: true },
     contents: { type: 'simple-json', nullable: true },
-    createdAt: { type: 'timestamp', createDate: true },
-    updatedAt: { type: 'timestamp', updateDate: true }
+    createdAt: { type: 'timestamptz', createDate: true },
+    updatedAt: { type: 'timestamptz', updateDate: true }
   }
 })

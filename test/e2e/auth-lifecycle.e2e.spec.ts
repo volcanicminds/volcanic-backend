@@ -188,20 +188,29 @@ describe('E2E — auth lifecycle', () => {
       expect(res.statusCode).toBe(400)
     })
 
-    // The token ages out `reset_password_token_ttl` seconds (default 3600) after
-    // it was minted. Backdating `resetPasswordTokenAt` is how we age it without
-    // waiting an hour.
-    it('rejects a token minted before the TTL window (403) and keeps the old password', async () => {
+    // The deadline rides inside the token as an `<epochSeconds>.` prefix, so these
+    // tests never touch a DB date: expiry is forced with a negative TTL, not by
+    // backdating a column (which would not round-trip — see forgotPassword).
+    it('mints a token carrying a deadline TTL seconds in the future', async () => {
+      const email2 = 'minted@reg.test'
+      await seedConfirmedUser(email2, OLD)
+      await inject({ method: 'POST', url: '/auth/forgot-password', payload: { email: email2 } })
+
+      const { resetPasswordToken } = await getUserByEmail(email2)
+      const [expiresAt, random] = resetPasswordToken.split('.')
+      const ttl = Number(global.config?.options?.reset_password_token_ttl) || 3600
+      const expected = Math.floor(Date.now() / 1000) + ttl
+
+      expect(Number(expiresAt)).toBeGreaterThan(Math.floor(Date.now() / 1000))
+      expect(Math.abs(Number(expiresAt) - expected)).toBeLessThanOrEqual(5)
+      expect(random).toMatch(/^[0-9a-f]{128}$/)
+    })
+
+    it('rejects a token whose embedded deadline has passed (403) and keeps the old password', async () => {
       const stale = 'stale@reg.test'
       await seedConfirmedUser(stale, OLD)
-      await inject({ method: 'POST', url: '/auth/forgot-password', payload: { email: stale } })
-
-      const user = await getUserByEmail(stale)
-      const code = user.resetPasswordToken
-      const ttl = Number(global.config?.options?.reset_password_token_ttl) || 3600
-      await userManager.updateUserById(user.getId(), {
-        resetPasswordTokenAt: new Date(Date.now() - (ttl + 60) * 1000)
-      } as any)
+      // negative TTL -> minted already expired, no clock manipulation needed
+      const { resetPasswordToken: code } = await userManager.forgotPassword(stale, undefined, -60)
 
       const res = await inject({
         method: 'POST',
@@ -216,23 +225,20 @@ describe('E2E — auth lifecycle', () => {
       expect(stillOld.statusCode).toBe(200)
     })
 
-    it('accepts a token still inside the TTL window', async () => {
-      const fresh = 'fresh@reg.test'
-      await seedConfirmedUser(fresh, OLD)
-      await inject({ method: 'POST', url: '/auth/forgot-password', payload: { email: fresh } })
-
-      const user = await getUserByEmail(fresh)
-      const ttl = Number(global.config?.options?.reset_password_token_ttl) || 3600
-      await userManager.updateUserById(user.getId(), {
-        resetPasswordTokenAt: new Date(Date.now() - (ttl - 60) * 1000)
-      } as any)
+    it('rejects a token with no parsable deadline (403, fail-closed)', async () => {
+      const odd = 'no-deadline@reg.test'
+      await seedConfirmedUser(odd, OLD)
+      const code = 'token-without-an-epoch-prefix'
+      const user = await getUserByEmail(odd)
+      await userManager.updateUserById(user.getId(), { resetPasswordToken: code } as any)
 
       const res = await inject({
         method: 'POST',
         url: '/auth/reset-password',
-        payload: { code: user.resetPasswordToken, newPassword1: NEW, newPassword2: NEW }
+        payload: { code, newPassword1: NEW, newPassword2: NEW }
       })
-      expect(res.statusCode).toBe(200)
+      expect(res.statusCode).toBe(403)
+      expect(JSON.parse(res.body).message).toBe('Reset token expired')
     })
   })
 

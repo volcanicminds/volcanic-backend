@@ -71,6 +71,46 @@ describe('Embedded PGlite engine', () => {
     })
   })
 
+  // `timestamp without time zone` does not round-trip: it is written in UTC and
+  // read back as local time, so a Date returns shifted by the process TZ offset
+  // (-2h on Europe/Rome, +4h on America/New_York, 0 only on UTC). `timestamptz`
+  // stores the instant and converts it for the reader.
+  //
+  // These two tests are complementary and both are needed: the round-trip proves
+  // the behaviour but is blind on a UTC machine (where naive drifts by 0, i.e.
+  // where CI runs), while the schema assertion catches a column reverting to
+  // naive in ANY time zone.
+  describe('date columns survive the time zone', () => {
+    it('declares every date column as timestamptz', async () => {
+      const rows = await ds.query(
+        `SELECT table_name, column_name, data_type FROM information_schema.columns
+         WHERE table_schema = 'public' AND data_type LIKE 'timestamp%'`
+      )
+      expect(rows.length).toBeGreaterThan(0)
+      const naive = rows
+        .filter((r: any) => r.data_type === 'timestamp without time zone')
+        .map((r: any) => `${r.table_name}.${r.column_name}`)
+      expect(naive).toEqual([])
+    })
+
+    it('reads a written Date back as the very same instant', async () => {
+      const repo = ds.getRepository(User)
+      const written = new Date()
+      const saved = await repo.save(
+        repo.create({
+          username: 'tz-probe',
+          email: 'tz-probe@test.local',
+          password: 'x',
+          resetPasswordTokenAt: written
+        })
+      )
+      // re-read from the DB, not from the in-memory entity
+      const found = await repo.findOneBy({ id: saved.id })
+      const driftMs = Math.abs(new Date(found.resetPasswordTokenAt).getTime() - written.getTime())
+      expect(driftMs).toBeLessThan(1000)
+    })
+  })
+
   describe('queries + boolean serialization', () => {
     before(async () => {
       const repo = ds.getRepository(Product)

@@ -16,8 +16,8 @@ export const TenantSchema = new EntitySchema<any>({
     dbSchema: { type: String, nullable: true },
     dbName: { type: String, nullable: true },
     status: { type: String, default: 'active' },
-    createdAt: { type: 'timestamp', createDate: true },
-    updatedAt: { type: 'timestamp', updateDate: true },
-    deletedAt: { type: 'timestamp', deleteDate: true, nullable: true }
+    createdAt: { type: 'timestamptz', createDate: true },
+    updatedAt: { type: 'timestamptz', updateDate: true },
+    deletedAt: { type: 'timestamptz', deleteDate: true, nullable: true }
   }
 })

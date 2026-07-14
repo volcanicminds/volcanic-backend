@@ -231,7 +231,8 @@ export interface UserManagement {
   retrieveUserByExternalId(externalId: string): any | null
   retrieveUserByPassword(email: string, password: string): any | null
   changePassword(email: string, password: string, oldPassword: string): any | null
-  forgotPassword(email: string): any | null
+  /** Mints a reset token carrying its own `<epochSeconds>.` expiry prefix. */
+  forgotPassword(email: string, runner?: any, ttlSeconds?: number): any | null
   resetPassword(user: any, password: string): any | null
   userConfirmation(user: any)
   blockUserById(id: string, reason: string): any | null

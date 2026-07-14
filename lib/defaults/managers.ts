@@ -83,7 +83,7 @@ export const defaultUserManager: UserManagement = {
   changePassword(_email: string, _password: string, _oldPassword: string) {
     throw new Error('Not implemented.')
   },
-  forgotPassword(_email: string) {
+  forgotPassword(_email: string, _runner?: unknown, _ttlSeconds?: number) {
     throw new Error('Not implemented.')
   },
   userConfirmation(_user: unknown) {

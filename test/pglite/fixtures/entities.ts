@@ -25,7 +25,7 @@ export const Product = new EntitySchema<any>({
     note: { type: String, nullable: true },
     tags: { type: 'text', array: true, nullable: true },
     meta: { type: 'jsonb', nullable: true },
-    releasedAt: { type: 'timestamp', nullable: true }
+    releasedAt: { type: 'timestamptz', nullable: true }
   },
   relations: {
     category: { type: 'many-to-one', target: 'Category', nullable: true, joinColumn: true }
@@ -42,8 +42,8 @@ export const Change = new EntitySchema<any>({
     status: { type: String },
     userId: { type: String, nullable: true },
     contents: { type: 'jsonb', nullable: true },
-    createdAt: { type: 'timestamp', createDate: true },
-    updatedAt: { type: 'timestamp', updateDate: true }
+    createdAt: { type: 'timestamptz', createDate: true },
+    updatedAt: { type: 'timestamptz', updateDate: true }
   }
 })
 
@@ -57,15 +57,15 @@ export const User = new EntitySchema<any>({
     username: { type: String, nullable: true },
     email: { type: String, unique: true },
     password: { type: String },
-    passwordChangedAt: { type: 'timestamp', nullable: true },
+    passwordChangedAt: { type: 'timestamptz', nullable: true },
     confirmed: { type: Boolean, default: false },
-    confirmedAt: { type: 'timestamp', nullable: true },
+    confirmedAt: { type: 'timestamptz', nullable: true },
     confirmationToken: { type: String, nullable: true },
     resetPasswordToken: { type: String, nullable: true },
-    resetPasswordTokenAt: { type: 'timestamp', nullable: true },
+    resetPasswordTokenAt: { type: 'timestamptz', nullable: true },
     blocked: { type: Boolean, default: false },
     blockedReason: { type: String, nullable: true },
-    blockedAt: { type: 'timestamp', nullable: true },
+    blockedAt: { type: 'timestamptz', nullable: true },
     roles: { type: 'simple-array', nullable: true },
     mfaEnabled: { type: Boolean, default: false },
     mfaSecret: { type: String, nullable: true },
@@ -73,8 +73,8 @@ export const User = new EntitySchema<any>({
     mfaRecoveryCodes: { type: 'simple-array', nullable: true },
     firstName: { type: String, nullable: true },
     lastName: { type: String, nullable: true },
-    createdAt: { type: 'timestamp', createDate: true },
-    updatedAt: { type: 'timestamp', updateDate: true }
+    createdAt: { type: 'timestamptz', createDate: true },
+    updatedAt: { type: 'timestamptz', updateDate: true }
   }
 })
 
@@ -87,11 +87,11 @@ export const Token = new EntitySchema<any>({
     description: { type: String, nullable: true },
     blocked: { type: Boolean, default: false },
     blockedReason: { type: String, nullable: true },
-    blockedAt: { type: 'timestamp', nullable: true },
+    blockedAt: { type: 'timestamptz', nullable: true },
     roles: { type: 'simple-array', nullable: true },
-    createdAt: { type: 'timestamp', createDate: true },
-    updatedAt: { type: 'timestamp', updateDate: true },
-    deletedAt: { type: 'timestamp', deleteDate: true, nullable: true }
+    createdAt: { type: 'timestamptz', createDate: true },
+    updatedAt: { type: 'timestamptz', updateDate: true },
+    deletedAt: { type: 'timestamptz', deleteDate: true, nullable: true }
   }
 })
 
@@ -104,8 +104,8 @@ export const Tenant = new EntitySchema<any>({
     dbSchema: { type: String, nullable: true },
     dbName: { type: String, nullable: true },
     status: { type: String, default: 'active' },
-    createdAt: { type: 'timestamp', createDate: true },
-    updatedAt: { type: 'timestamp', updateDate: true },
-    deletedAt: { type: 'timestamp', deleteDate: true, nullable: true }
+    createdAt: { type: 'timestamptz', createDate: true },
+    updatedAt: { type: 'timestamptz', updateDate: true },
+    deletedAt: { type: 'timestamptz', deleteDate: true, nullable: true }
   }
 })

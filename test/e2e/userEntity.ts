@@ -37,15 +37,15 @@ export const UserSchema = new EntitySchema<any>({
     username: { type: String, nullable: true },
     email: { type: String, unique: true },
     password: { type: String },
-    passwordChangedAt: { type: 'timestamp', nullable: true },
+    passwordChangedAt: { type: 'timestamptz', nullable: true },
     confirmed: { type: Boolean, default: false },
-    confirmedAt: { type: 'timestamp', nullable: true },
+    confirmedAt: { type: 'timestamptz', nullable: true },
     confirmationToken: { type: String, nullable: true },
     resetPasswordToken: { type: String, nullable: true },
-    resetPasswordTokenAt: { type: 'timestamp', nullable: true },
+    resetPasswordTokenAt: { type: 'timestamptz', nullable: true },
     blocked: { type: Boolean, default: false },
     blockedReason: { type: String, nullable: true },
-    blockedAt: { type: 'timestamp', nullable: true },
+    blockedAt: { type: 'timestamptz', nullable: true },
     roles: { type: 'simple-array', nullable: true },
     mfaEnabled: { type: Boolean, default: false },
     mfaSecret: { type: String, nullable: true, select: false },
@@ -54,7 +54,7 @@ export const UserSchema = new EntitySchema<any>({
     mfaLastUsedCounter: { type: 'int', nullable: true },
     firstName: { type: String, nullable: true },
     lastName: { type: String, nullable: true },
-    createdAt: { type: 'timestamp', createDate: true },
-    updatedAt: { type: 'timestamp', updateDate: true }
+    createdAt: { type: 'timestamptz', createDate: true },
+    updatedAt: { type: 'timestamptz', updateDate: true }
   }
 })

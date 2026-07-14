@@ -13,17 +13,23 @@ const TOTP_PERIOD_SECONDS = 30
 
 const DEFAULT_RESET_PASSWORD_TOKEN_TTL = 3600
 
+/** Reset-token TTL in seconds, applied when /auth/forgot-password mints the token. */
+export function resetPasswordTokenTtl(): number {
+  return Number(global.config?.options?.reset_password_token_ttl) || DEFAULT_RESET_PASSWORD_TOKEN_TTL
+}
+
 /**
- * True when a reset token minted by /auth/forgot-password is past its TTL
- * (`reset_password_token_ttl`, seconds). Fails closed: a token whose
- * `resetPasswordTokenAt` is missing or unparsable counts as expired, so a user
- * row predating this check can never yield an immortal token.
+ * True when a reset token is past the deadline it carries in its own
+ * `<epochSeconds>.<random>` prefix (see `userManager.forgotPassword`, which
+ * explains why the deadline is not read back from the DB).
+ *
+ * Fails closed: a token without a parsable epoch counts as expired. Tampering is
+ * a non-issue — the token is the lookup key, so an edited epoch matches no row.
  */
-function isResetTokenExpired(user: any): boolean {
-  const ttl = Number(global.config?.options?.reset_password_token_ttl) || DEFAULT_RESET_PASSWORD_TOKEN_TTL
-  const mintedAt = new Date(user?.resetPasswordTokenAt).getTime()
-  if (!Number.isFinite(mintedAt)) return true
-  return Date.now() - mintedAt > ttl * 1000
+function isResetTokenExpired(code: string): boolean {
+  const expiresAt = Number(String(code ?? '').split('.')[0])
+  if (!Number.isFinite(expiresAt)) return true
+  return Date.now() / 1000 > expiresAt
 }
 
 /**
@@ -193,7 +199,7 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
   // trigger the reset flow when the user exists, is valid and not blocked.
   // (A residual timing side-channel remains since the valid path does a DB write.)
   if (isValid && !user?.blocked) {
-    const updated = await req.server['userManager'].forgotPassword(user.email, req.runner)
+    const updated = await req.server['userManager'].forgotPassword(user.email, req.runner, resetPasswordTokenTtl())
     // The token never reaches the response — it is handed to the
     // `global.postForgotPassword` middleware, which the consumer implements to
     // deliver it (the core has no mailer and cannot know the frontend URL).
@@ -253,9 +259,9 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
-  // Distinct message on purpose: the caller already holds a valid 64-byte token,
-  // so telling them it aged out reveals nothing and lets the UI offer a new link.
-  if (isResetTokenExpired(user)) {
+  // Distinct message on purpose: the caller already holds a token that matched a
+  // row, so telling them it aged out reveals nothing and lets the UI offer a new link.
+  if (isResetTokenExpired(code)) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Reset token expired' })
   }
 
