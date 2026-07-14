@@ -58,6 +58,7 @@
     "prod": "cd dist && node server.js",
     "start": "tsx --env-file .env server.ts",
     "dev": "tsx watch --env-file .env server.ts",
+    "prepublishOnly": "npm run check-all && npm test",
     "pretest": "npm run build",
     "test": "node scripts/run-tests.mjs",
     "test:core": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2231 NODE_ENV=memory BROWSER=false JWT_SECRET=tEst0nly_k7Qx2mNp9vLrT4wYbE6sH1jD8fG3aZ5c JWT_REFRESH_SECRET=tEst0nly_R3frsh9vLrT4wYbE6sH1jD8fG3aZ5cK7 mocha --import=tsx ./test/index.spec.ts -t 100000 --exit",
