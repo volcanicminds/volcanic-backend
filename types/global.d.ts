@@ -125,6 +125,8 @@ export interface GeneralConfig {
     mfa_policy?: MfaPolicy | string
     mfa_admin_forced_reset_email?: string
     mfa_admin_forced_reset_until?: string
+    // Lifetime of a /auth/forgot-password reset token, in seconds (default 3600).
+    reset_password_token_ttl?: number
     // Multi-Tenant Configs
     multi_tenant?: {
       enabled: boolean
@@ -322,6 +324,14 @@ declare module 'fastify' {
      * MUST be used for all DB operations within this request scope.
      */
     db?: EntityManager
+    /**
+     * Reset token minted by `POST /auth/forgot-password`, handed to the
+     * `global.postForgotPassword` middleware so the consumer can deliver it
+     * (e.g. email a reset link). Set only when the account exists and is valid.
+     * MUST NOT be serialized into the response: the endpoint answers a generic
+     * `{ok:true}` to avoid account enumeration.
+     */
+    resetToken?: string
     /** Raw request body, populated by `fastify-raw-body` when enabled on the route. */
     rawBody?: string | Buffer
     /** Multipart helpers, populated by `@fastify/multipart`. */
@@ -351,6 +361,8 @@ export interface FastifyRequest extends FastifyRequest {
    * MUST be used for all DB operations within this request scope.
    */
   db?: EntityManager
+  /** Reset token minted by `POST /auth/forgot-password` — see the `fastify` module augmentation above. */
+  resetToken?: string
   /** Raw request body, populated by `fastify-raw-body` when enabled on the route. */
   rawBody?: string | Buffer
   /** Multipart helpers, populated by `@fastify/multipart`. */

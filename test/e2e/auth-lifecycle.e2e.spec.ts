@@ -187,6 +187,53 @@ describe('E2E — auth lifecycle', () => {
       })
       expect(res.statusCode).toBe(400)
     })
+
+    // The token ages out `reset_password_token_ttl` seconds (default 3600) after
+    // it was minted. Backdating `resetPasswordTokenAt` is how we age it without
+    // waiting an hour.
+    it('rejects a token minted before the TTL window (403) and keeps the old password', async () => {
+      const stale = 'stale@reg.test'
+      await seedConfirmedUser(stale, OLD)
+      await inject({ method: 'POST', url: '/auth/forgot-password', payload: { email: stale } })
+
+      const user = await getUserByEmail(stale)
+      const code = user.resetPasswordToken
+      const ttl = Number(global.config?.options?.reset_password_token_ttl) || 3600
+      await userManager.updateUserById(user.getId(), {
+        resetPasswordTokenAt: new Date(Date.now() - (ttl + 60) * 1000)
+      } as any)
+
+      const res = await inject({
+        method: 'POST',
+        url: '/auth/reset-password',
+        payload: { code, newPassword1: NEW, newPassword2: NEW }
+      })
+      expect(res.statusCode).toBe(403)
+      expect(JSON.parse(res.body).message).toBe('Reset token expired')
+
+      // the reset did not go through: the original password still logs in
+      const stillOld = await inject({ method: 'POST', url: '/auth/login', payload: { email: stale, password: OLD } })
+      expect(stillOld.statusCode).toBe(200)
+    })
+
+    it('accepts a token still inside the TTL window', async () => {
+      const fresh = 'fresh@reg.test'
+      await seedConfirmedUser(fresh, OLD)
+      await inject({ method: 'POST', url: '/auth/forgot-password', payload: { email: fresh } })
+
+      const user = await getUserByEmail(fresh)
+      const ttl = Number(global.config?.options?.reset_password_token_ttl) || 3600
+      await userManager.updateUserById(user.getId(), {
+        resetPasswordTokenAt: new Date(Date.now() - (ttl - 60) * 1000)
+      } as any)
+
+      const res = await inject({
+        method: 'POST',
+        url: '/auth/reset-password',
+        payload: { code: user.resetPasswordToken, newPassword1: NEW, newPassword2: NEW }
+      })
+      expect(res.statusCode).toBe(200)
+    })
   })
 
   // Account-enumeration hardening: forgot-password must not let a caller tell

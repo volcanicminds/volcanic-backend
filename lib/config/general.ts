@@ -10,6 +10,9 @@ export default {
     scheduler: false,
     embedded_auth: true,
     mfa_policy: process.env.MFA_POLICY || 'OPTIONAL', // OPTIONAL, MANDATORY, ONE_WAY
+    // How long a /auth/forgot-password reset token stays usable, in seconds.
+    // Checked against `user.resetPasswordTokenAt` by /auth/reset-password.
+    reset_password_token_ttl: Number(process.env.RESET_PASSWORD_TOKEN_TTL) || 3600,
     mfa_admin_forced_reset_email: null,
     mfa_admin_forced_reset_until: null,
     multi_tenant: {

@@ -11,6 +11,21 @@ const MAX_PASSWORD_LENGTH = 256
 // TOTP period in seconds — must match the period used by the MFA manager (tools default: 30).
 const TOTP_PERIOD_SECONDS = 30
 
+const DEFAULT_RESET_PASSWORD_TOKEN_TTL = 3600
+
+/**
+ * True when a reset token minted by /auth/forgot-password is past its TTL
+ * (`reset_password_token_ttl`, seconds). Fails closed: a token whose
+ * `resetPasswordTokenAt` is missing or unparsable counts as expired, so a user
+ * row predating this check can never yield an immortal token.
+ */
+function isResetTokenExpired(user: any): boolean {
+  const ttl = Number(global.config?.options?.reset_password_token_ttl) || DEFAULT_RESET_PASSWORD_TOKEN_TTL
+  const mintedAt = new Date(user?.resetPasswordTokenAt).getTime()
+  if (!Number.isFinite(mintedAt)) return true
+  return Date.now() - mintedAt > ttl * 1000
+}
+
 /**
  * Normalizes the MFA manager `verify` result and turns the relative time-step delta into the
  * absolute step consumed, so it can be persisted for anti-replay.
@@ -178,7 +193,11 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
   // trigger the reset flow when the user exists, is valid and not blocked.
   // (A residual timing side-channel remains since the valid path does a DB write.)
   if (isValid && !user?.blocked) {
-    await req.server['userManager'].forgotPassword(user.email, req.runner)
+    const updated = await req.server['userManager'].forgotPassword(user.email, req.runner)
+    // The token never reaches the response — it is handed to the
+    // `global.postForgotPassword` middleware, which the consumer implements to
+    // deliver it (the core has no mailer and cannot know the frontend URL).
+    req.resetToken = updated?.resetPasswordToken
   }
 
   return { ok: true }
@@ -232,6 +251,12 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
 
   if (user.blocked) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
+  }
+
+  // Distinct message on purpose: the caller already holds a valid 64-byte token,
+  // so telling them it aged out reveals nothing and lets the UI offer a new link.
+  if (isResetTokenExpired(user)) {
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Reset token expired' })
   }
 
   user = await req.server['userManager'].resetPassword(user, newPassword1, req.runner)
