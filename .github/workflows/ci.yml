@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, v3]
+    branches: [main, develop, v3]
     tags: ['v*']
   pull_request:
 
@@ -31,7 +31,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
       - run: npm ci # compila bcrypt (nativo); ubuntu-latest ha i build tools
-      - run: npm test # `pretest` builds first — i test girano contro dist/ (self-reference @volcanicminds/backend[/typeorm])
+      - run: npm test # `pretest` builds first — i test girano contro dist/ (self-reference @volcanicminds/backend)
+      # Il job Postgres reale (isolamento fra tenant, bloccante anche al tag) entra con la
+      # suite che esegue: T-0.2 di EVO_FRAMEWORK.md, vedi docs/TESTING_V5.md §5.
 
   release:
     runs-on: ubuntu-latest
@@ -43,6 +45,9 @@ jobs:
         with: { node-version: 24, cache: npm, registry-url: 'https://registry.npmjs.org' }
       - run: npm ci
       - run: npm run build
-      - run: npm publish --access public
+      # Una versione con suffisso (5.0.0-alpha.0) esce su dist-tag `next`, mai su `latest`:
+      # `latest` passa alla 5 solo quando la fase 7 è chiusa e la guida di migrazione esiste.
+      - run: echo "DIST_TAG=$(node -p "require('./package.json').version.includes('-') ? 'next' : 'latest'")" >> $GITHUB_ENV
+      - run: npm publish --access public --tag "$DIST_TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

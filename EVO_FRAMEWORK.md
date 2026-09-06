@@ -329,8 +329,9 @@ Obiettivo della fase: **esistono il giudice e la specifica, prima del codice da 
    con dist-tag `next`, mai `latest`, finché la fase 7 non è chiusa.
 3. **Togliere `test` dall'`exclude` di `tsconfig.json`** (D-25): i test devono passare dal
    type-check, altrimenti la loro rottura si scopre a runtime.
-4. Nel workflow di CI aggiungere il job Postgres reale che T-0.2 richiede, con un servizio
-   `postgres:16-alpine`, e renderlo **bloccante anche per la pubblicazione sul tag**.
+4. Nel workflow di CI aggiungere `develop` ai rami che fanno partire la pipeline, e far uscire
+   le versioni con suffisso su dist-tag `next`, mai su `latest`. **Il job Postgres reale entra
+   insieme alla suite che esegue (T-0.2)**: un cancello che gira a vuoto non è un cancello.
 5. **Rimuovere il data layer TypeORM**: `lib/database/typeorm/**`, `typeorm.ts`, le dipendenze
    `typeorm` e `reflect-metadata`, il subpath `/typeorm` da `package.json`, e le suite che
    esistono solo per provarlo (`test/typeorm`, `test/pglite`). Nessuna convivenza: il codice

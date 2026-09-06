@@ -30,7 +30,7 @@ documenti esistono e in che ordine si leggono.
 
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
-| T-0.1 | Branch, versione, catena di verifica, **rimozione di TypeORM** | `[~]` | `develop` allineato a `main` il 6 settembre 2026 (`git branch -f develop main`). Restano: versione alpha, `tsconfig` con i test nel type-check, job Postgres in CI |
+| T-0.1 | Branch, versione, catena di verifica, **rimozione di TypeORM** | `[~]` | fatto: `develop` allineato a `main`; versione `5.0.0-alpha.0`; `lib/database/`, `typeorm.ts`, `types/database/` rimossi; dipendenze `typeorm`, `typeorm-pglite`, `reflect-metadata`, `pluralize` fuori, Drizzle e i driver nelle peer opzionali; subpath `/typeorm` tolto da `exports`; `depcruise` e CI aggiornati; `npm run check-all` **verde** (92 moduli), `test:lib` 49 test verdi. **Resta**: cancellare le suite che non compilano più (comando in coda a questo file) e togliere `test` dall'`exclude` di `tsconfig.json` |
 | T-0.2 | Banco di prova nero su Postgres reale | `[ ]` | |
 | T-0.3 | Le specifiche dei contratti | `[x]` | scritte il 6 settembre 2026: `docs/SCHEMA_V5.md`, `MAGIC_QUERY_V5.md`, `MANAGERS_V5.md`, `AUTHORIZATION_V5.md`, `API_V5.md`, `CONFIGURATION_V5.md`, `TESTING_V5.md`. Decisioni nell'appendice di `EVO_PUNTI_APERTI.md` |
 | T-0.4 | Verifica della matrice delle combinazioni | `[x]` | sezione 1 di `EVO_FRAMEWORK.md`, quattro combinazioni confermate il 6 settembre 2026 |
@@ -120,5 +120,7 @@ documenti esistono e in che ordine si leggono.
 | `docs/AUTHORIZATION_MODEL.md` | `[-]` | resta valido: `AUTHORIZATION_V5.md` lo estende, non lo sostituisce |
 | Dipendenze Drizzle installate e verificate su Node 24.11 | `[ ]` | `drizzle-orm`, `drizzle-kit`, `better-sqlite3` (build nativo, da provare), `@libsql/client`. `pg` e `bcrypt` ci sono già |
 | `npm audit fix` sulla baseline | `[ ]` | da fare **prima** di aggiungere le dipendenze nuove, altrimenti l'audit successivo non dice più chi ha portato cosa |
-| Finestra a build rossa | `[ ]` | dalla rimozione di TypeORM (T-0.1 punto 5) fino a fase 2 chiusa. Ripristino del codice vecchio: `git checkout main -- lib/database/typeorm typeorm.ts` |
+| Finestra a build rossa | `[~]` | aperta il 6 settembre 2026. In realtà `check-all` è verde: manca il data layer, non la compilazione. Ripristino del codice vecchio: `git checkout main -- lib/database typeorm.ts` |
+| **Cancellare le suite orfane** | `[ ]` | non compilano più senza il data layer e vanno rifatte in fase 2 su `docs/TESTING_V5.md` §1. Comando: `git rm -r test/typeorm test/pglite test/perf test/e2e test/e2e-cookie test/e2e-mfa test/e2e-mt test/e2e-norefresh test/e2e-ratelimit test/e2e-fixture test/common test/demo test/unit test/index.spec.ts test/fixtures`. I contenuti restano recuperabili: `git show main:test/e2e/auth-lifecycle.e2e.spec.ts` |
+| Test dentro il type-check (D-25) | `[ ]` | togliere `test` dall'`exclude` di `tsconfig.json`, **subito dopo** la cancellazione delle suite orfane |
 | Misure di tempo rifatte su macchina dedicata | `[ ]` | quelle dell'appendice A vengono da un portatile condiviso: non usarle per dimensionare |

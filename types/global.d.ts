@@ -2,7 +2,10 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { FastifyRequest, FastifyReply } from 'fastify'
 export { FastifyInstance } from 'fastify'
-import { EntityManager } from 'typeorm'
+// Placeholder until T-1.2 replaces it with the branded ControlHandle / TenantHandle
+// pair (docs/MANAGERS_V5.md §1). The core must not name a driver type: that is what
+// tied v4 to TypeORM in three files outside the data layer.
+type EntityManager = any
 import { MfaPolicy } from '../lib/config/constants.js'
 import { VQuery, VFindResult, VHeaders } from './orm.js'
 

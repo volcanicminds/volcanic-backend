@@ -5,7 +5,7 @@ module.exports = {
       comment: 'Il core non deve importare il data layer (lib/database/**) né le sue peer dep',
       severity: 'error',
       from: { path: '^(index\\.ts|lib/(?!database/))' },
-      to: { path: '^lib/database/|^typeorm\\.ts$|^(typeorm|bcrypt|pluralize|reflect-metadata|pg)$' }
+      to: { path: '^lib/database/|^db\\.ts$|^(drizzle-orm|better-sqlite3|@libsql/client|bcrypt|pg)$' }
     },
     {
       name: 'datalayer-may-use-core-types-only',

@@ -8,6 +8,16 @@
 
 A Node.js framework based on Fastify to build robust APIs quickly, featuring an automatic routing system, integrated authentication, and a powerful data access layer.
 
+> **This branch is `5.0.0-alpha`, and the data layer is being rewritten.** The TypeORM data
+> layer and the `@volcanicminds/backend/typeorm` subpath were removed; the Drizzle one, exposed
+> as `@volcanicminds/backend/db`, is being built. Everything below this line still describes
+> **v4** until the rewrite lands, so read it as the 4.x reference.
+>
+> What v5 will be is specified, not improvised: the plan is `EVO_FRAMEWORK.md`, the contracts
+> are `docs/SCHEMA_V5.md`, `docs/MAGIC_QUERY_V5.md`, `docs/MANAGERS_V5.md`,
+> `docs/AUTHORIZATION_V5.md`, `docs/API_V5.md`, `docs/CONFIGURATION_V5.md` and
+> `docs/TESTING_V5.md`. **For production, use 4.x from `main`.**
+
 ## Two layers in one package
 
 `@volcanicminds/backend` ships a **DB-agnostic HTTP core** and an **optional data layer**, cleanly separated:

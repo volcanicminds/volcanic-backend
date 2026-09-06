@@ -17,20 +17,14 @@ const bold = (s) => c(1, s)
 const red = (s) => c(31, s)
 const green = (s) => c(32, s)
 
-// The suites, in run order — same set the `test` script used to chain with &&.
-const SUITES = [
-  'test:core',
-  'test:typeorm',
-  'test:lib',
-  'test:pglite',
-  'test:e2e:pglite',
-  'test:e2e:mt:pglite',
-  'test:e2e:cookie:pglite',
-  'test:e2e:norefresh:pglite',
-  'test:e2e:mfa:pglite',
-  'test:e2e:ratelimit:pglite',
-  'test:e2e:fixture:pglite'
-]
+// The suites, in run order.
+//
+// v5 rebuild in progress: the TypeORM data layer was removed (T-0.1) and every suite
+// that booted through it went with it. Only the core unit suite survives until the
+// Drizzle data layer exists. The target suite map is docs/TESTING_V5.md §1; the specs
+// of the removed suites are recoverable from history, e.g.
+//   git show main:test/e2e/auth-lifecycle.e2e.spec.ts
+const SUITES = ['test:lib']
 
 const ANSI = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const stripAnsi = (s) => s.replace(ANSI, '')

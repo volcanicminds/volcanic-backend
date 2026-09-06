@@ -1,6 +1,6 @@
 {
   "name": "@volcanicminds/backend",
-  "version": "4.0.3",
+  "version": "5.0.0-alpha.0",
   "type": "module",
   "codename": "rome",
   "license": "MIT",
@@ -28,20 +28,12 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "sideEffects": [
-    "./dist/typeorm.js",
-    "./lib/database/typeorm/**"
-  ],
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js"
-    },
-    "./typeorm": {
-      "types": "./dist/typeorm.d.ts",
-      "import": "./dist/typeorm.js",
-      "require": "./dist/typeorm.js"
     },
     "./package.json": "./package.json"
   },
@@ -61,25 +53,13 @@
     "prepublishOnly": "npm run check-all && npm test",
     "pretest": "npm run build",
     "test": "node scripts/run-tests.mjs",
-    "test:core": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2231 NODE_ENV=memory BROWSER=false JWT_SECRET=tEst0nly_k7Qx2mNp9vLrT4wYbE6sH1jD8fG3aZ5c JWT_REFRESH_SECRET=tEst0nly_R3frsh9vLrT4wYbE6sH1jD8fG3aZ5cK7 mocha --import=tsx ./test/index.spec.ts -t 100000 --exit",
-    "test:typeorm": "cross-env NODE_ENV=memory MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/typeorm/**/*.spec.ts -t 20000 --exit",
-    "test:pglite": "cross-env NODE_ENV=memory MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/pglite/**/*.spec.ts -t 60000 --exit",
-    "test:perf": "cross-env PORT=2233 NODE_ENV=memory LOG_LEVEL=error LOG_FASTIFY=false MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/perf/**/*.spec.ts -t 120000 --exit",
-    "test:e2e:pglite": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2234 NODE_ENV=memory LOG_LEVEL=silent JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e/**/*.e2e.spec.ts -t 60000 --exit",
-    "test:e2e:mt:pglite": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2235 NODE_ENV=memory LOG_LEVEL=silent JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-mt/**/*.e2e.spec.ts -t 60000 --exit",
-    "test:e2e:cookie:pglite": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2236 NODE_ENV=memory LOG_LEVEL=silent AUTH_MODE=COOKIE COOKIE_SECRET=e2e-cookie-secret-please-change-32xyz JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-cookie/**/*.e2e.spec.ts -t 60000 --exit",
-    "test:e2e:norefresh:pglite": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2237 NODE_ENV=memory LOG_LEVEL=silent JWT_REFRESH=false JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-norefresh/**/*.e2e.spec.ts -t 60000 --exit",
-    "test:e2e:mfa:pglite": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2238 NODE_ENV=memory LOG_LEVEL=silent JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-mfa/**/*.e2e.spec.ts -t 60000 --exit",
-    "test:e2e:ratelimit:pglite": "cross-env AUTH_RATELIMIT_MAX=3 AUTH_RATELIMIT_WINDOW=60000 PORT=2239 NODE_ENV=memory LOG_LEVEL=silent JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-ratelimit/**/*.e2e.spec.ts -t 60000 --exit",
-    "test:e2e:fixture:pglite": "cross-env AUTH_RATELIMIT_MAX=100000 PORT=2240 NODE_ENV=memory LOG_LEVEL=silent JWT_SECRET=e2e-test-secret-please-change-32-chars MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-fixture/**/*.e2e.spec.ts -t 60000 --exit",
     "test:lib": "cross-env NODE_ENV=memory mocha --import=tsx ./test/lib/**/*.spec.ts -t 20000 --exit",
-    "test:full": "npm run test:core",
     "reset": "npm install && npm update && npm run build",
     "upgrade-deps": "npx npm-check-updates -u",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
-    "depcruise": "depcruise index.ts typeorm.ts lib --config .dependency-cruiser.cjs",
+    "depcruise": "depcruise index.ts lib --config .dependency-cruiser.cjs",
     "check-all": "npm run lint && npm run type-check && npm run depcruise",
     "combine": "node combine.js"
   },
@@ -113,18 +93,20 @@
   "peerDependencies": {
     "@electric-sql/pglite": "0.5.3",
     "@electric-sql/pglite-pgvector": "^0.0.4",
+    "@libsql/client": "^0.18.0",
     "bcrypt": "^6.0.0",
-    "pg": "^8.13.0",
-    "pluralize": "^8.0.0",
-    "reflect-metadata": "^0.2.2",
-    "typeorm": "^0.3.28",
-    "typeorm-pglite": "^0.3.4"
+    "better-sqlite3": "^12.11.1",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.13.0"
   },
   "peerDependenciesMeta": {
-    "typeorm": {
+    "drizzle-orm": {
       "optional": true
     },
-    "typeorm-pglite": {
+    "better-sqlite3": {
+      "optional": true
+    },
+    "@libsql/client": {
       "optional": true
     },
     "@electric-sql/pglite": {
@@ -136,12 +118,6 @@
     "bcrypt": {
       "optional": true
     },
-    "pluralize": {
-      "optional": true
-    },
-    "reflect-metadata": {
-      "optional": true
-    },
     "pg": {
       "optional": true
     }
@@ -151,26 +127,26 @@
     "@electric-sql/pglite-pgvector": "^0.0.4",
     "@eslint/js": "^9.39.2",
     "@types/bcrypt": "^6.0.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.10.4",
     "@types/pg": "^8.11.10",
-    "@types/pluralize": "^0.0.33",
     "@types/semver": "^7.7.1",
     "autocannon": "^8.0.0",
     "bcrypt": "^6.0.0",
     "cross-env": "^10.1.0",
+    "@libsql/client": "^0.18.0",
+    "better-sqlite3": "^12.11.1",
     "dependency-cruiser": "^18.0.0",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
     "eslint": "^9.39.2",
     "expect": "^30.2.0",
     "globals": "^16.5.0",
     "mocha": "^8.1.3",
     "pg": "^8.13.0",
-    "pluralize": "^8.0.0",
-    "reflect-metadata": "^0.2.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typeorm": "^0.3.28",
-    "typeorm-pglite": "^0.3.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.50.0"
   },
