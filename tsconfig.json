@@ -10,8 +10,6 @@
     "declaration": true,
     "declarationMap": true,
     "removeComments": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -25,5 +23,5 @@
     }
   },
   "include": ["*.ts", "*.d.ts", "lib/**/*", "types/**/*"],
-  "exclude": ["node_modules", "dist", "test"]
+  "exclude": ["node_modules", "dist"]
 }
