@@ -1,5 +1,10 @@
 # Composable Multi-Step Authentication Engine
 
+> **Deferred, and not part of v5.** The active plan is `EVO_FRAMEWORK.md`, which prevails
+> wherever the two disagree. This design targets a composable authentication engine and is
+> orthogonal to the multi-tenant rewrite; it is reconsidered after phase 8, not during it.
+> Do not start any task from this document.
+
 > Status: **Design / Roadmap** — target **v4 (breaking)**.
 > This document describes the evolution of the framework's authentication from a hardcoded
 > `password → TOTP` flow into a **composable, configurable, multi-step engine** with

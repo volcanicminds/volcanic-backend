@@ -1,5 +1,8 @@
 # Configuration — Data layer (`@volcanicminds/backend/typeorm`)
 
+> **Superseded by `docs/CONFIGURATION_V5.md`.** This page describes the **v4** data layer
+> (`/typeorm` subpath, `multi_tenant` block). It stays as the reference for projects on 4.x.
+
 > The data layer (Magic Query + multi-tenant) is included in `@volcanicminds/backend` and exposed
 > as the subpath `@volcanicminds/backend/typeorm`. This page documents its configuration.
 

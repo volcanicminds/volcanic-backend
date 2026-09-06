@@ -1,5 +1,10 @@
 # Data Layer Magic: From URL to SQL
 
+> **Superseded by `docs/MAGIC_QUERY_V5.md`.** This page describes the **v4** syntax and stays
+> as the reference for projects on 4.x. Do not implement from it: v5 changes reserved
+> parameters, operator names and case-sensitivity. The v4 → v5 table is in section 9 of the v5
+> document.
+
 One of the most powerful features of the `@volcanicminds/backend` + `@volcanicminds/backend/typeorm` combination is the automatic translation of HTTP Query Strings into complex, optimized SQL queries.
 
 This guide explains how to leverage this "magic" to build flexible APIs without writing boilerplate query parsing logic.
