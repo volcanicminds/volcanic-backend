@@ -139,6 +139,10 @@ The pipeline gains one job and one rule.
    `DB_POOL_MAX=1`.
 2. **It is blocking**, on pull requests, on the protected branch and on the `v*` tag that
    publishes. If isolation is not proven, nothing is published.
+   **It is expected to be red from the day it lands until phase 3 closes**: the bench is
+   written before the code it judges, and it fails on the missing data layer. Do not silence
+   it with `continue-on-error`, and do not "fix" it by editing the tests. Its red is the
+   honest statement that the rewrite is not finished.
 3. `tsconfig.json` no longer excludes `test`, so `npm run type-check` covers the suites too
    (defect D-25).
 

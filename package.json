@@ -53,6 +53,7 @@
     "prepublishOnly": "npm run check-all && npm test",
     "pretest": "npm run build",
     "test": "node scripts/run-tests.mjs",
+    "test:e2e:mt:pg": "cross-env NODE_ENV=test PORT=2241 LOG_LEVEL=silent DB_POOL_MAX=1 AUTH_RATELIMIT_MAX=100000 ADMIN_EMAIL=super@system.test ADMIN_PASSWORD=Super-pw-123456 JWT_SECRET=e2e-test-secret-please-change-32-chars JWT_REFRESH_SECRET=e2e-refresh-secret-please-change-32ch MFA_DB_SECRET=unit-test-secret-please-change-32xyz mocha --import=tsx ./test/e2e-mt-pg/**/*.e2e.spec.ts -t 60000 --exit",
     "test:lib": "cross-env NODE_ENV=memory mocha --import=tsx ./test/lib/**/*.spec.ts -t 20000 --exit",
     "reset": "npm install && npm update && npm run build",
     "upgrade-deps": "npx npm-check-updates -u",

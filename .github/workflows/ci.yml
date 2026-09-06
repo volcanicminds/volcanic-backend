@@ -35,9 +35,40 @@ jobs:
       # Il job Postgres reale (isolamento fra tenant, bloccante anche al tag) entra con la
       # suite che esegue: T-0.2 di EVO_FRAMEWORK.md, vedi docs/TESTING_V5.md §5.
 
+  # Isolamento fra tenant su Postgres reale (T-0.2). PGlite non ha un pool, quindi non
+  # può vedere questa classe di difetti: senza questo job non esiste alcuna prova che
+  # i dati di un cliente non siano leggibili da un altro.
+  #
+  # ATTESO ROSSO fino alla chiusura della fase 3: il data layer Drizzle non esiste ancora
+  # e il banco fallisce sull'import. È il suo mestiere. Non va reso `continue-on-error`:
+  # un cancello che passa sempre non è un cancello, e la pubblicazione ne dipende.
+  test-pg:
+    runs-on: ubuntu-latest
+    needs: verify
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: volcanic
+          POSTGRES_PASSWORD: volcanic
+          POSTGRES_DB: volcanic
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U volcanic" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://volcanic:volcanic@127.0.0.1:5432/volcanic
+      DB_POOL_MAX: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run test:e2e:mt:pg
+
   release:
     runs-on: ubuntu-latest
-    needs: [verify, test]
+    needs: [verify, test, test-pg]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4

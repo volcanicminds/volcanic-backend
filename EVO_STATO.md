@@ -31,7 +31,7 @@ documenti esistono e in che ordine si leggono.
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
 | T-0.1 | Branch, versione, catena di verifica, rimozione di TypeORM | `[x]` | `develop` allineato a `main` e pubblicato; versione `5.0.0-alpha.0`; data layer TypeORM rimosso con le suite che ci giravano sopra (resta `test/lib`); Drizzle e i driver come peer opzionali, verificati su Node 24.11; subpath `/typeorm` fuori da `exports`; decoratori tolti dal build; `tsconfig.test.json` mette i test nel type-check senza emetterli in `dist` (D-25); CI su `develop` e prerelease su dist-tag `next`. `npm run check-all` verde, `npm test` 49 verdi. Commit `db20063` e seguente |
-| T-0.2 | Banco di prova nero su Postgres reale | `[ ]` | |
+| T-0.2 | Banco di prova nero su Postgres reale | `[x]` | `test/e2e-mt-pg/`: harness, app di prova con le due sonde, i sette test di `docs/TESTING_V5.md` §2.4. Script `npm run test:e2e:mt:pg`, job `test-pg` in CI da cui dipende la pubblicazione. **Rosso come deve essere**: fallisce su `db.js` mancante. Verificato il 6 settembre 2026 contro `postgres:16-alpine` con `DB_POOL_MAX=1` |
 | T-0.3 | Le specifiche dei contratti | `[x]` | scritte il 6 settembre 2026: `docs/SCHEMA_V5.md`, `MAGIC_QUERY_V5.md`, `MANAGERS_V5.md`, `AUTHORIZATION_V5.md`, `API_V5.md`, `CONFIGURATION_V5.md`, `TESTING_V5.md`. Decisioni nell'appendice di `EVO_PUNTI_APERTI.md` |
 | T-0.4 | Verifica della matrice delle combinazioni | `[x]` | sezione 1 di `EVO_FRAMEWORK.md`, quattro combinazioni confermate il 6 settembre 2026 |
 
