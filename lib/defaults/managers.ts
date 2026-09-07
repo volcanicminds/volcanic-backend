@@ -1,215 +1,47 @@
 import {
   UserManagement,
   TokenManagement,
-  DataBaseManagement,
+  TrackingManagement,
   MfaManagement,
   TransferManagement,
   TenantManagement,
-  TransferCallback
+  SystemUserManagement
 } from '../../types/global.js'
-import { FastifyReply, FastifyRequest } from 'fastify'
 
-// Default implementations that throw errors or return not implemented
-export const defaultTenantManager: TenantManagement = {
-  isImplemented() {
-    return false
-  },
-  resolveTenant(_req) {
-    throw new Error('Not implemented')
-  },
-  switchContext(_tenant, _db?) {
-    throw new Error('Not implemented')
-  },
-  createTenant(_data) {
-    throw new Error('Not implemented')
-  },
-  deleteTenant(_id) {
-    throw new Error('Not implemented')
-  },
-  listTenants() {
-    throw new Error('Not implemented')
-  },
-  getTenant(_id) {
-    throw new Error('Not implemented')
-  },
-  updateTenant(_id, _data) {
-    throw new Error('Not implemented')
-  },
-  restoreTenant(_id) {
-    throw new Error('Not implemented')
-  }
+//
+// Null-object managers.
+//
+// A consumer injects the real ones through `start(decorators)`; without them the server
+// still boots, and every data call fails loudly instead of silently doing nothing. The
+// framework asks `isImplemented()` before taking any path that needs persistence.
+//
+// v4 listed all sixty methods by hand and each one threw the same sentence, so every change
+// to a manager contract meant editing this file twice: once for the signature, once for the
+// argument names nobody reads. One factory does the same job and cannot drift from the
+// interfaces, because there is nothing here to keep in sync.
+//
+function notImplemented<T extends object>(manager: string): T {
+  return new Proxy({} as T, {
+    get(_target, property) {
+      // `then` must stay undefined: an object that answers to `then` is treated as a
+      // promise, and awaiting a manager by accident would hang or resolve to nonsense.
+      if (typeof property === 'symbol' || property === 'then') return undefined
+      if (property === 'isImplemented') return () => false
+
+      return async () => {
+        throw new Error(
+          `${manager}.${String(property)} is not implemented: inject a real manager through start(decorators), ` +
+            `or load the data layer from @volcanicminds/backend/db`
+        )
+      }
+    }
+  })
 }
 
-export const defaultUserManager: UserManagement = {
-  isImplemented() {
-    return false
-  },
-  isValidUser(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  createUser(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  deleteUser(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  resetExternalId(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  updateUserById(_id: string, _user: unknown) {
-    throw new Error('Not implemented.')
-  },
-  retrieveUserById(_id: string) {
-    throw new Error('Not implemented.')
-  },
-  retrieveUserByEmail(_email: string) {
-    throw new Error('Not implemented.')
-  },
-  retrieveUserByConfirmationToken(_code: string) {
-    throw new Error('Not implemented.')
-  },
-  retrieveUserByResetPasswordToken(_code: string) {
-    throw new Error('Not implemented.')
-  },
-  retrieveUserByUsername(_username: string) {
-    throw new Error('Not implemented.')
-  },
-  retrieveUserByExternalId(_externalId: string) {
-    throw new Error('Not implemented.')
-  },
-  retrieveUserByPassword(_email: string, _password: string) {
-    throw new Error('Not implemented.')
-  },
-  changePassword(_email: string, _password: string, _oldPassword: string) {
-    throw new Error('Not implemented.')
-  },
-  forgotPassword(_email: string, _runner?: unknown, _ttlSeconds?: number) {
-    throw new Error('Not implemented.')
-  },
-  userConfirmation(_user: unknown) {
-    throw new Error('Not implemented.')
-  },
-  resetPassword(_user: unknown, _password: string) {
-    throw new Error('Not implemented.')
-  },
-  blockUserById(_id: string, _reason: string) {
-    throw new Error('Not implemented.')
-  },
-  unblockUserById(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  countQuery(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  findQuery(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  disableUserById(_id: string) {
-    throw new Error('Not implemented.')
-  },
-  saveMfaSecret(_userId: string, _secret: string) {
-    throw new Error('Not implemented.')
-  },
-  retrieveMfaSecret(_userId: string) {
-    throw new Error('Not implemented.')
-  },
-  enableMfa(_userId: string) {
-    throw new Error('Not implemented.')
-  },
-  disableMfa(_userId: string) {
-    throw new Error('Not implemented.')
-  },
-  forceDisableMfaForAdmin(_email: string) {
-    throw new Error('Not implemented.')
-  }
-}
-
-export const defaultTokenManager: TokenManagement = {
-  isImplemented() {
-    return false
-  },
-  isValidToken(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  createToken(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  resetExternalId(_id: string) {
-    throw new Error('Not implemented.')
-  },
-  updateTokenById(_id: string, _token: unknown) {
-    throw new Error('Not implemented.')
-  },
-  retrieveTokenById(_id: string) {
-    throw new Error('Not implemented.')
-  },
-  retrieveTokenByExternalId(_id: string) {
-    throw new Error('Not implemented.')
-  },
-  blockTokenById(_id: string, _reason: string) {
-    throw new Error('Not implemented.')
-  },
-  unblockTokenById(_id: string) {
-    throw new Error('Not implemented.')
-  },
-  countQuery(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  findQuery(_data: unknown) {
-    throw new Error('Not implemented.')
-  },
-  removeTokenById(_id: string) {
-    throw new Error('Not implemented.')
-  }
-}
-
-export const defaultDataBaseManager: DataBaseManagement = {
-  isImplemented() {
-    return false
-  },
-  synchronizeSchemas() {
-    throw new Error('Not implemented.')
-  },
-  retrieveBy(_entityName, _entityId) {
-    throw new Error('Not implemented.')
-  },
-  addChange(_entityName, _entityId, _status, _userId, _contents, _changeEntity) {
-    throw new Error('Not implemented.')
-  }
-}
-
-export const defaultMfaManager: MfaManagement = {
-  generateSetup(_appName: string, _email: string) {
-    throw new Error('Not implemented.')
-  },
-  verify(_token: string, _secret: string): number | null {
-    throw new Error('Not implemented.')
-  }
-}
-
-export const defaultTransferManager: TransferManagement = {
-  isImplemented() {
-    return false
-  },
-  getPath() {
-    throw new Error('Not implemented.')
-  },
-  getServer() {
-    throw new Error('Not implemented.')
-  },
-  onUploadCreate(_callback: TransferCallback) {
-    throw new Error('Not implemented.')
-  },
-  onUploadFinish(_callback: TransferCallback) {
-    throw new Error('Not implemented.')
-  },
-  onUploadTerminate(_callback: TransferCallback) {
-    throw new Error('Not implemented.')
-  },
-  handle(_req: FastifyRequest, _res: FastifyReply) {
-    throw new Error('Not implemented.')
-  },
-  isValid(_req: FastifyRequest) {
-    throw new Error('Not implemented.')
-  }
-}
+export const defaultUserManager = notImplemented<UserManagement>('userManager')
+export const defaultTokenManager = notImplemented<TokenManagement>('tokenManager')
+export const defaultTrackingManager = notImplemented<TrackingManagement>('trackingManager')
+export const defaultTenantManager = notImplemented<TenantManagement>('tenantManager')
+export const defaultSystemUserManager = notImplemented<SystemUserManagement>('systemUserManager')
+export const defaultMfaManager = notImplemented<MfaManagement>('mfaManager')
+export const defaultTransferManager = notImplemented<TransferManagement>('transferManager')

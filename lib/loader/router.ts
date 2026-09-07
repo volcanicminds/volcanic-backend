@@ -156,7 +156,12 @@ export function processRoute(
     description = '',
     enable = yn(defaultConfig.enable, true),
     deprecated = yn(defaultConfig.deprecated, false),
-    tenantContext = yn(defaultConfig.tenantContext, true),
+    // `scope` is the v5 spelling (docs/AUTHORIZATION_V5.md §2): 'tenant' by default,
+    // 'control' for a route that acts on the platform. It is resolved here into the
+    // internal flag the hooks already honour, so a route that declares it actually gets
+    // it — a field that is documented, typed and never read is defect D-11.
+    scope = defaultConfig.scope || 'tenant',
+    tenantContext = scope === 'control' ? false : yn(defaultConfig.tenantContext, true),
     tags = defaultConfig.tags,
     version = defaultConfig.version || '',
     security = defaultConfig.security,

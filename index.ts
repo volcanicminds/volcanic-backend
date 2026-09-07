@@ -44,7 +44,7 @@ import general from './lib/config/general.js'
 import {
   defaultUserManager,
   defaultTokenManager,
-  defaultDataBaseManager,
+  defaultTrackingManager,
   defaultMfaManager,
   defaultTransferManager,
   defaultTenantManager
@@ -270,7 +270,7 @@ const start = async (decorators = {}) => {
   decorators = {
     userManager: defaultUserManager,
     tokenManager: defaultTokenManager,
-    dataBaseManager: defaultDataBaseManager,
+    trackingManager: defaultTrackingManager,
     mfaManager: defaultMfaManager,
     transferManager: defaultTransferManager,
     tenantManager: defaultTenantManager,
@@ -438,7 +438,7 @@ export type {
   ConfiguredRoute,
   UserManagement,
   TokenManagement,
-  DataBaseManagement,
+  TrackingManagement,
   MfaManagement,
   TransferManagement,
   TransferCallback,

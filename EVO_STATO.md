@@ -40,7 +40,7 @@ documenti esistono e in che ordine si leggono.
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
 | T-1.1 | Configurazione `control` e `tenants` | `[x]` | `multi_tenant` sostituito dai due blocchi in `lib/config/general.ts` e `lib/loader/general.ts`; fusione profonda in `lib/util/merge.ts` (D-21) e default del blocco tenant applicati solo se dichiarato (`normalizeOptions`); tipi `ControlConfig`/`TenantsConfig` in `types/global.d.ts`; sei punti del core passano da `lib/util/tenancy.ts`; gruppo `/tool` rimosso; 9 test nuovi in `test/lib/merge.spec.ts`, totale 58 verdi |
-| T-1.2 | Due tipi distinti, `ControlHandle` e `TenantHandle` | `[ ]` | |
+| T-1.2 | Due tipi distinti, `ControlHandle` e `TenantHandle` | `[x]` | brand fantasma in `types/global.d.ts`, senza nominare l'ORM (invariante 10); `req.db`/`req.runner` spariti, al loro posto `req.control`, `req.tenant`, `req.tenantInfo`; 61 chiamate ai manager migrate a contesto-primo con `dataContext(req)`; interfacce dei manager riscritte su `docs/MANAGERS_V5.md` (`TrackingManagement`, `SystemUserManagement`, `TenantManagement` senza `switchContext`); null-object riscritti con una fabbrica; controller dei tenant riscritto senza `global.connection` e senza i cinque `@ts-ignore`; `scope: 'control'` letto davvero dal router; `onResponse` non rilascia più niente. 60 test verdi |
 | T-1.3 | Porte del data layer e subpath `/db` | `[ ]` | |
 | T-1.4 | Matrice di capacità e rifiuto all'avvio | `[ ]` | |
 | T-1.5 | Regola su cosa sta nel piano di controllo | `[ ]` | |
@@ -72,7 +72,7 @@ documenti esistono e in che ordine si leggono.
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
 | T-4.1 | Utenti e ruoli di sistema nel piano di controllo | `[ ]` | |
-| T-4.2 | Impersonificazione tracciata | `[ ]` | |
+| T-4.2 | Impersonificazione tracciata | `[ ]` | la rotta `/tenants/impersonate` è stata **rimossa** in T-1.2 con il resto del codice v4: torna qui, con il record persistito e revocabile |
 | T-4.3 | «Fondatore» risolto nel contenitore | `[ ]` | |
 
 ## Fase 5: migrazioni e flotta

@@ -2,10 +2,6 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { FastifyRequest, FastifyReply } from 'fastify'
 export { FastifyInstance } from 'fastify'
-// Placeholder until T-1.2 replaces it with the branded ControlHandle / TenantHandle
-// pair (docs/MANAGERS_V5.md §1). The core must not name a driver type: that is what
-// tied v4 to TypeORM in three files outside the data layer.
-type EntityManager = any
 import { MfaPolicy } from '../lib/config/constants.js'
 import { VQuery, VFindResult, VHeaders } from './orm.js'
 
@@ -65,6 +61,9 @@ export interface RouteConfig {
   description: string
   enable: boolean
   deprecated: boolean
+  /** 'tenant' (default) or 'control': which plane the route acts on. */
+  scope?: 'tenant' | 'control'
+  /** @deprecated the v4 spelling of `scope`; `scope: 'control'` is `tenantContext: false`. */
   tenantContext?: boolean
   tags?: string[]
   version: string
@@ -155,6 +154,41 @@ export interface TenantsConfig {
     refuseStartIfControlBehind?: boolean
   }
   [option: string]: unknown
+}
+
+// ---------------------------------------------------------------------------------------
+// Data handles (docs/MANAGERS_V5.md §1)
+//
+// Two nominal types, so the compiler forbids passing a tenant connection where a control
+// one is required. The brands are phantom: nothing exists at runtime. The core declares
+// them WITHOUT naming an ORM — that is invariant 10, and it is what tied v4 to TypeORM in
+// three files outside the data layer. The data layer re-exports them widened to its own
+// client and offers an accessor for the rare hand-written query.
+// ---------------------------------------------------------------------------------------
+declare const controlBrand: unique symbol
+declare const tenantBrand: unique symbol
+
+/** A connection bound to the control plane: the tenant registry and the system users. */
+export type ControlHandle = { readonly [controlBrand]: true }
+
+/** A connection bound to one tenant container: a schema, a database, or a file. */
+export type TenantHandle = { readonly [tenantBrand]: true; readonly tenantId: string }
+
+/** Application data: the tenant container when tenancy is on, the control plane when it is not. */
+export type DataHandle = ControlHandle | TenantHandle
+
+/** A row of the tenant registry (docs/SCHEMA_V5.md §3.1). Never a connection: see `TenantHandle`. */
+export interface Tenant {
+  id: string
+  name: string
+  slug: string
+  strategy: TenantStrategy
+  engine: Engine
+  /** Where the data is: schema name, database name, or file path. */
+  locator: string
+  status: 'active' | 'suspended' | 'archived'
+  schemaVersion?: string | null
+  config?: Record<string, unknown>
 }
 
 export interface GeneralConfig {
@@ -262,69 +296,87 @@ export interface TrackChangesList {
   [option: string]: TrackChanges
 }
 
+// ---------------------------------------------------------------------------------------
+// Managers: the integration surface a consumer injects through start(decorators).
+// Contract: docs/MANAGERS_V5.md. Three rules hold everywhere:
+//   - the handle is the FIRST argument, always named ctx: a call without a context does
+//     not compile, and it is greppable;
+//   - every method is async;
+//   - a missing row returns null, anything else throws. No method reads global state.
+// ---------------------------------------------------------------------------------------
 export interface UserManagement {
   isImplemented(): boolean
   isValidUser(data: any): boolean
-  createUser(data: any): any | null
-  deleteUser(data: any): any | null
-  resetExternalId(data: any): any | null
-  updateUserById(id: string, user: any): any | null
-  retrieveUserById(id: string): any | null
-  retrieveUserByEmail(email: string): any | null
-  retrieveUserByResetPasswordToken(code: string): any | null
-  retrieveUserByConfirmationToken(code: string): any | null
-  retrieveUserByUsername(username: string): any | null
-  retrieveUserByExternalId(externalId: string): any | null
-  retrieveUserByPassword(email: string, password: string): any | null
-  changePassword(email: string, password: string, oldPassword: string): any | null
+
+  createUser(ctx: DataHandle, data: any): Promise<any>
+  updateUserById(ctx: DataHandle, id: string, data: any): Promise<any | null>
+  deleteUser(ctx: DataHandle, id: string): Promise<boolean>
+  /** Rotates the public identifier, which invalidates every token of that user. */
+  resetExternalId(ctx: DataHandle, id: string): Promise<string>
+
+  retrieveUserById(ctx: DataHandle, id: string): Promise<any | null>
+  retrieveUserByExternalId(ctx: DataHandle, externalId: string): Promise<any | null>
+  retrieveUserByEmail(ctx: DataHandle, email: string): Promise<any | null>
+  retrieveUserByUsername(ctx: DataHandle, username: string): Promise<any | null>
+  retrieveUserByResetPasswordToken(ctx: DataHandle, token: string): Promise<any | null>
+  retrieveUserByConfirmationToken(ctx: DataHandle, token: string): Promise<any | null>
+  /** Constant-time comparison, also for an email that does not exist. */
+  retrieveUserByPassword(ctx: DataHandle, email: string, password: string): Promise<any | null>
+
+  changePassword(ctx: DataHandle, email: string, password: string, oldPassword: string): Promise<any>
   /** Mints a reset token carrying its own `<epochSeconds>.` expiry prefix. */
-  forgotPassword(email: string, runner?: any, ttlSeconds?: number): any | null
-  resetPassword(user: any, password: string): any | null
-  userConfirmation(user: any)
-  blockUserById(id: string, reason: string): any | null
-  unblockUserById(id: string): any | null
-  countQuery(data: VQuery): any | null
-  findQuery(data: VQuery): VFindResult<any> | null
-  disableUserById(id: string): any | null
+  forgotPassword(ctx: DataHandle, email: string, ttlSeconds?: number): Promise<string | null>
+  resetPassword(ctx: DataHandle, user: any, password: string): Promise<any>
+  userConfirmation(ctx: DataHandle, user: any): Promise<any>
 
-  // MFA Persistence Methods
-  saveMfaSecret(userId: string, secret: string): Promise<boolean>
-  retrieveMfaSecret(userId: string): Promise<string | null>
-  enableMfa(userId: string): Promise<boolean>
-  disableMfa(userId: string): Promise<boolean>
+  blockUserById(ctx: DataHandle, id: string, reason: string): Promise<any>
+  unblockUserById(ctx: DataHandle, id: string): Promise<any>
 
-  // Emergency Reset
-  forceDisableMfaForAdmin(email: string): Promise<boolean>
+  countQuery(ctx: DataHandle, data: VQuery): Promise<number>
+  findQuery(ctx: DataHandle, data: VQuery): Promise<VFindResult<any>>
+
+  saveMfaSecret(ctx: DataHandle, userId: string, secret: string): Promise<boolean>
+  retrieveMfaSecret(ctx: DataHandle, userId: string): Promise<string | null>
+  enableMfa(ctx: DataHandle, userId: string): Promise<boolean>
+  disableMfa(ctx: DataHandle, userId: string): Promise<boolean>
+  /** Emergency reset performed by an administrator, by id — never by email (enumeration). */
+  forceDisableMfa(ctx: DataHandle, userId: string): Promise<boolean>
 }
 
 export interface TokenManagement {
   isImplemented(): boolean
   isValidToken(data: any): boolean
-  createToken(data: any): any | null
-  resetExternalId(id: string): any | null
-  updateTokenById(id: string, token: any): any | null
-  retrieveTokenById(id: string): any | null
-  retrieveTokenByExternalId(id: string): any | null
-  blockTokenById(id: string, reason: string): any | null
-  unblockTokenById(id: string): any | null
-  countQuery(data: VQuery): any | null
-  findQuery(data: VQuery): VFindResult<any> | null
-  removeTokenById(id: string): any | null
+
+  createToken(ctx: DataHandle, data: any): Promise<any>
+  updateTokenById(ctx: DataHandle, id: string, token: any): Promise<any | null>
+  removeTokenById(ctx: DataHandle, id: string): Promise<boolean>
+  resetExternalId(ctx: DataHandle, id: string): Promise<string>
+
+  retrieveTokenById(ctx: DataHandle, id: string): Promise<any | null>
+  retrieveTokenByExternalId(ctx: DataHandle, externalId: string): Promise<any | null>
+
+  blockTokenById(ctx: DataHandle, id: string, reason: string): Promise<any>
+  unblockTokenById(ctx: DataHandle, id: string): Promise<any>
+
+  countQuery(ctx: DataHandle, data: VQuery): Promise<number>
+  findQuery(ctx: DataHandle, data: VQuery): Promise<VFindResult<any>>
 }
 
-export interface DataBaseManagement {
+/**
+ * The audit trail. Renamed from `DataBaseManagement`, which promised to manage a database
+ * and only ever wrote changes; `synchronizeSchemas()` is gone with it, because a schema
+ * rebuilt from metadata cannot coexist with versioned migrations.
+ */
+export interface TrackingManagement {
   isImplemented(): boolean
-  synchronizeSchemas(): any | null
-  retrieveBy(entityName, entityId): any | null
-  addChange(entityName, entityId, status, userId, contents, changeEntity): any | null
+  retrieveBy(ctx: DataHandle, entityName: string, entityId: string): Promise<any>
+  addChange(ctx: DataHandle, change: any): Promise<any>
 }
 
 export interface MfaManagement {
   generateSetup(appName: string, email: string): Promise<{ secret: string; uri: string; qrCode: string }>
-  // Returns the matched time-step delta (integer) when valid, or null when invalid.
-  // The delta enables anti-replay protection (track the consumed step). Legacy managers returning a
-  // boolean are still tolerated at runtime (treated as valid/invalid without replay tracking).
-  verify(token: string, secret: string): number | null
+  /** The matched time-step delta when valid, null when invalid: the delta rejects replays. */
+  verify(token: string, secret: string): Promise<number | null> | number | null
 }
 
 // Callback type signature: (uploadOrId, req, res) => void
@@ -341,16 +393,50 @@ export interface TransferManagement {
   isValid(req: FastifyRequest): Promise<boolean>
 }
 
+/**
+ * The registry and the life cycle of containers. Every registry method takes a
+ * ControlHandle: passing a TenantHandle does not compile.
+ *
+ * `resolveTenant(req)` and `switchContext(tenant, db)` of v4 are gone. Resolution moved to
+ * the core, which reads and verifies the token and hands down only the identifier; context
+ * switching disappeared entirely, because v5 never mutates session state (T-3.1).
+ */
 export interface TenantManagement {
   isImplemented(): boolean
-  resolveTenant(req: FastifyRequest): Promise<any | null>
-  switchContext(tenant: any, db?: EntityManager): Promise<void>
-  createTenant?(data: any): Promise<void>
-  deleteTenant?(id: string): Promise<void>
-  listTenants?(): Promise<any[]>
-  getTenant?(id: string): Promise<any | null>
-  updateTenant?(id: string, data: any): Promise<any | null>
-  restoreTenant?(id: string): Promise<any | null>
+
+  listTenants(ctx: ControlHandle, query?: VQuery): Promise<VFindResult<Tenant>>
+  getTenant(ctx: ControlHandle, id: string): Promise<Tenant | null>
+  getTenantBySlug(ctx: ControlHandle, slug: string): Promise<Tenant | null>
+  createTenant(ctx: ControlHandle, data: any): Promise<Tenant>
+  updateTenant(ctx: ControlHandle, id: string, data: any): Promise<Tenant | null>
+  suspendTenant(ctx: ControlHandle, id: string, reason?: string): Promise<boolean>
+  restoreTenant(ctx: ControlHandle, id: string): Promise<boolean>
+  /** Soft-deletes the registry row only. It does NOT remove data: that is destroyContainer. */
+  softDeleteTenant(ctx: ControlHandle, id: string): Promise<boolean>
+
+  openContainer(tenantId: string): Promise<TenantHandle>
+  closeContainer(handle: TenantHandle): Promise<void>
+  migrateContainer(tenantId: string, target?: string): Promise<string>
+  exportContainer(tenantId: string, destination: string): Promise<any>
+  /** Irreversible. Only ever called after a successful export (T-6.3). */
+  destroyContainer(tenantId: string): Promise<boolean>
+  inspectContainer(tenantId: string): Promise<any>
+}
+
+/** Platform administrators, in the control plane. They are never tenant users. */
+export interface SystemUserManagement {
+  isImplemented(): boolean
+  createSystemUser(ctx: ControlHandle, data: any): Promise<any>
+  updateSystemUserById(ctx: ControlHandle, id: string, data: any): Promise<any | null>
+  deleteSystemUser(ctx: ControlHandle, id: string): Promise<boolean>
+  retrieveSystemUserById(ctx: ControlHandle, id: string): Promise<any | null>
+  retrieveSystemUserByEmail(ctx: ControlHandle, email: string): Promise<any | null>
+  retrieveSystemUserByExternalId(ctx: ControlHandle, externalId: string): Promise<any | null>
+  retrieveSystemUserByPassword(ctx: ControlHandle, email: string, password: string): Promise<any | null>
+  blockSystemUserById(ctx: ControlHandle, id: string, reason: string): Promise<any>
+  unblockSystemUserById(ctx: ControlHandle, id: string): Promise<any>
+  countQuery(ctx: ControlHandle, data: VQuery): Promise<number>
+  findQuery(ctx: ControlHandle, data: VQuery): Promise<VFindResult<any>>
 }
 
 declare module 'fastify' {
@@ -364,13 +450,12 @@ declare module 'fastify' {
     hasRole(role: Role): boolean
     payloadSize?: number
     trackingData?: any
-    runner?: any
-    tenant?: any
-    /**
-     * The Tenant-Aware EntityManager for this request.
-     * MUST be used for all DB operations within this request scope.
-     */
-    db?: EntityManager
+    /** The control plane. Present whenever a data layer is loaded. */
+    control?: ControlHandle
+    /** The container of this request's tenant. Absent on a single-tenant deployment. */
+    tenant?: TenantHandle
+    /** The registry row of this request's tenant. A record, never a connection. */
+    tenantInfo?: Tenant
     /**
      * Reset token minted by `POST /auth/forgot-password`, handed to the
      * `global.postForgotPassword` middleware so the consumer can deliver it
@@ -401,13 +486,9 @@ export interface FastifyRequest extends FastifyRequest {
   hasRole(role: Role): boolean
   payloadSize?: number
   trackingData?: any
-  runner?: any
-  tenant?: any
-  /**
-   * The Tenant-Aware EntityManager for this request.
-   * MUST be used for all DB operations within this request scope.
-   */
-  db?: EntityManager
+  control?: ControlHandle
+  tenant?: TenantHandle
+  tenantInfo?: Tenant
   /** Reset token minted by `POST /auth/forgot-password` — see the `fastify` module augmentation above. */
   resetToken?: string
   /** Raw request body, populated by `fastify-raw-body` when enabled on the route. */

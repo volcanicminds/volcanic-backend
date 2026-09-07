@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import type { AuthenticatedUser } from '../../../../types/global.js'
 import { MfaPolicy } from '../../../config/constants.js'
 import { includesRole, isFounderEmail } from '../../../util/authz.js'
+import { dataContext } from '../../../util/tenancy.js'
 
 const forbidden = (reply: FastifyReply, message: string) =>
   reply.status(403).send({ statusCode: 403, error: 'Forbidden', message })
@@ -9,7 +10,7 @@ const forbidden = (reply: FastifyReply, message: string) =>
 // The admin role is a restricted apex (default single, see allow_multiple_admin). This
 // guards against dropping to zero admins, which would lock the instance out.
 async function isLastAdmin(req: FastifyRequest): Promise<boolean> {
-  const total = await req.server['userManager'].countQuery({ 'roles:in': roles.admin.code }, req.runner)
+  const total = await req.server['userManager'].countQuery(dataContext(req), { 'roles:in': roles.admin.code })
   return Number(total) <= 1
 }
 
@@ -19,17 +20,17 @@ export async function getRoles(_req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function count(req: FastifyRequest, _reply: FastifyReply) {
-  return req.server['userManager'].countQuery(req.data(), req.runner)
+  return req.server['userManager'].countQuery(dataContext(req), req.data())
 }
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
-  const { headers, records } = await req.server['userManager'].findQuery(req.data(), req.runner)
+  const { headers, records } = await req.server['userManager'].findQuery(dataContext(req), req.data())
   return reply.type('application/json').headers(headers).send(records)
 }
 
 export async function findOne(req: FastifyRequest, reply: FastifyReply) {
   const { id } = req.parameters()
-  const user = id ? await req.server['userManager'].retrieveUserById(id, req.runner) : null
+  const user = id ? await req.server['userManager'].retrieveUserById(dataContext(req), id) : null
   return user || reply.status(404).send()
 }
 
@@ -49,7 +50,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   // createUser already persists and returns the saved entity, so do NOT re-save via
   // entity.User.save() — that active-record call always targets the global/public
   // connection and would both double-write and break tenant isolation.
-  const user = await req.server['userManager'].createUser(data, req.runner)
+  const user = await req.server['userManager'].createUser(dataContext(req), data)
   if (!user) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not creatable' })
   }
@@ -60,7 +61,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   // Self-registration (POST /auth/register) is unaffected: createUser always starts
   // users unconfirmed.
   if (config.options?.allow_admin_create_confirmed_users === true && data.confirmed !== false) {
-    return await req.server['userManager'].userConfirmation(user, req.runner)
+    return await req.server['userManager'].userConfirmation(dataContext(req), user)
   }
 
   return user
@@ -74,7 +75,7 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
 
   const { id: _id, ...userData } = req.data()
 
-  const target = await req.server['userManager'].retrieveUserById(id, req.runner)
+  const target = await req.server['userManager'].retrieveUserById(dataContext(req), id)
   const targetIsAdmin = includesRole(target?.roles, roles.admin.code)
   const changingRoles = Object.prototype.hasOwnProperty.call(userData, 'roles')
 
@@ -109,7 +110,7 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
     return forbidden(reply, 'Cannot demote the last admin')
   }
 
-  return await req.server['userManager'].updateUserById(id, userData, req.runner)
+  return await req.server['userManager'].updateUserById(dataContext(req), id, userData)
 }
 
 export async function remove(req: FastifyRequest, reply: FastifyReply) {
@@ -118,7 +119,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(404).send()
   }
 
-  const target = await req.server['userManager'].retrieveUserById(id, req.runner)
+  const target = await req.server['userManager'].retrieveUserById(dataContext(req), id)
   const targetIsAdmin = includesRole(target?.roles, roles.admin.code)
 
   // Sovereign founder: cannot be deleted.
@@ -134,7 +135,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
     return forbidden(reply, 'Cannot delete the last admin')
   }
 
-  return await req.server['userManager'].deleteUser(id, req.runner)
+  return await req.server['userManager'].deleteUser(dataContext(req), id)
 }
 
 export async function getCurrentUser(req: FastifyRequest, reply: FastifyReply) {
@@ -171,7 +172,7 @@ export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply
   for (const f of SELF_EDITABLE_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(incoming, f)) userData[f] = incoming[f]
   }
-  return await req.server['userManager'].updateUserById(id, userData, req.runner)
+  return await req.server['userManager'].updateUserById(dataContext(req), id, userData)
 }
 
 export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
@@ -187,7 +188,7 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   const { id: userId } = req.parameters()
   const { reason } = req.data()
 
-  const target = await req.server['userManager'].retrieveUserById(userId, req.runner)
+  const target = await req.server['userManager'].retrieveUserById(dataContext(req), userId)
   const targetIsAdmin = includesRole(target?.roles, roles.admin.code)
   // Sovereign founder: cannot be blocked.
   if (isFounderEmail(target?.email)) {
@@ -202,8 +203,8 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
     return forbidden(reply, 'Cannot block the last admin')
   }
 
-  let user = await req.server['userManager'].blockUserById(userId, reason, req.runner)
-  user = await req.server['userManager'].resetExternalId(user.getId(), req.runner)
+  let user = await req.server['userManager'].blockUserById(dataContext(req), userId, reason)
+  user = await req.server['userManager'].resetExternalId(dataContext(req), user.getId())
   return { ok: !!user.getId() }
 }
 
@@ -214,13 +215,13 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
 
   const { id: userId } = req.parameters()
 
-  const target = await req.server['userManager'].retrieveUserById(userId, req.runner)
+  const target = await req.server['userManager'].retrieveUserById(dataContext(req), userId)
   // Rule B: only an admin may unblock an admin subject.
   if (includesRole(target?.roles, roles.admin.code) && !req.hasRole(roles.admin)) {
     return forbidden(reply, 'Cannot unblock an admin user')
   }
 
-  const user = await req.server['userManager'].unblockUserById(userId, req.runner)
+  const user = await req.server['userManager'].unblockUserById(dataContext(req), userId)
   return { ok: !!user.getId() }
 }
 
@@ -235,13 +236,13 @@ export async function resetMfaByAdmin(req: FastifyRequest, reply: FastifyReply) 
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing user id' })
   }
 
-  const mfaTarget = await req.server['userManager'].retrieveUserById(id, req.runner)
+  const mfaTarget = await req.server['userManager'].retrieveUserById(dataContext(req), id)
   if (isFounderEmail(mfaTarget?.email) && !isFounderEmail(req.user?.email)) {
     return forbidden(reply, 'Cannot reset the sovereign admin MFA')
   }
 
   try {
-    await req.server['userManager'].disableMfa(id, req.runner)
+    await req.server['userManager'].disableMfa(dataContext(req), id)
     return { ok: true }
   } catch (error) {
     req.log.error(error)
@@ -270,7 +271,7 @@ export async function resetPasswordByAdmin(req: FastifyRequest, reply: FastifyRe
   }
 
   try {
-    const user = await req.server['userManager'].retrieveUserById(id, req.runner)
+    const user = await req.server['userManager'].retrieveUserById(dataContext(req), id)
     if (!user) {
       return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'User not found' })
     }
@@ -279,7 +280,7 @@ export async function resetPasswordByAdmin(req: FastifyRequest, reply: FastifyRe
       return forbidden(reply, 'Cannot reset the sovereign admin password')
     }
 
-    await req.server['userManager'].resetPassword(user, password, req.runner)
+    await req.server['userManager'].resetPassword(dataContext(req), user, password)
     return { ok: true }
   } catch (error) {
     req.log.error(error)

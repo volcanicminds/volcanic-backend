@@ -16,14 +16,26 @@ declare const controlBrand: unique symbol
 declare const tenantBrand: unique symbol
 
 /** A connection bound to the control plane (the tenant registry, system users). */
-export type ControlHandle = DrizzleDatabase & { readonly [controlBrand]: true }
+export type ControlHandle = { readonly [controlBrand]: true }
 
 /** A connection bound to one tenant container (schema, database, or file). */
-export type TenantHandle = DrizzleDatabase & { readonly [tenantBrand]: true; readonly tenantId: string }
+export type TenantHandle = { readonly [tenantBrand]: true; readonly tenantId: string }
 
 /** Application data: the tenant container when tenancy is on, the control plane when it is `none`. */
 export type DataHandle = ControlHandle | TenantHandle
 ```
+
+**The core declares the brands, the data layer supplies the client.** The types above live in
+`types/global.d.ts` and carry no ORM in them: invariant 10 says the engine name does not appear
+in the public API, and typing the handle as `DrizzleDatabase & brand` in the core would put it
+there, in the one file every consumer loads. The data layer re-exports the same handles widened
+to its client — `export type ControlDb = ControlHandle & NodePgDatabase` — and offers
+`asClient(handle)` for the rare place that writes a query by hand instead of going through a
+manager. Everything else takes a handle and passes it on, which is all a controller needs.
+
+Inside the framework the handle of a request is read with one helper, so the choice is made in
+one place: `dataContext(req)` returns `req.tenant ?? req.control`, that is the tenant container
+when tenancy is on and the control plane when it is not.
 
 The brands are phantom types: they cost nothing at runtime and make
 `tenantManager.createTenant(tenantHandle, …)` a **compile error**. That is invariant 6, and it is
@@ -288,7 +300,7 @@ export interface CapabilityMatrix {
 
 | v4 | v5 |
 |---|---|
-| `userManager.retrieveUserByEmail(email)` | `userManager.retrieveUserByEmail(req.tenant ?? req.control, email)` |
+| `userManager.retrieveUserByEmail(email)` | `userManager.retrieveUserByEmail(dataContext(req), email)`, or `req.tenant ?? req.control` written out |
 | `req.db` / `req.runner` | `req.tenant` / `req.control` |
 | `dataBaseManager` | `trackingManager` |
 | `dataBaseManager.synchronizeSchemas()` | removed: use migrations |

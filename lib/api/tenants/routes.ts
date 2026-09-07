@@ -8,7 +8,7 @@ export default {
     description: 'Administration of tenants (global scope)',
     controller: 'controller',
     enable: isEnabled,
-    tenantContext: false, // Critical: Operate on global scope (public schema), bypass tenant context
+    scope: 'control', // acts on the platform, never inside a customer's container
     tags: ['tenants'],
     manifest: {
       group: 'system',
@@ -93,6 +93,17 @@ export default {
     },
     {
       method: 'POST',
+      path: '/:id/suspend',
+      roles: [roles.admin],
+      handler: 'tenants.suspend',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Suspend Tenant',
+        description: 'Suspends a tenant: explicit, instead of editing a status field by hand.'
+      }
+    },
+    {
+      method: 'POST',
       path: '/:id/restore',
       roles: [roles.admin],
       handler: 'tenants.restore',
@@ -103,46 +114,6 @@ export default {
         params: { $ref: 'globalParamsSchema#' },
         response: {
           200: { $ref: 'defaultResponse#' }
-        }
-      }
-    },
-    {
-      method: 'POST',
-      path: '/impersonate',
-      roles: [roles.admin],
-      handler: 'tenants.impersonate',
-      middlewares: ['global.isAuthenticated'],
-      config: {
-        title: 'Impersonate User',
-        description:
-          'Generate an impersonation token for a specific user in a target tenant (System Admin or Tenant Admin).',
-        tenantContext: true, // Enable tenant context to allow Tenant Admins to be authenticated
-        // Optional: Define body schema for documentation
-        body: {
-          type: 'object',
-          properties: {
-            targetTenantSlug: { type: 'string' },
-            targetTenantId: { type: 'string' },
-            targetRole: { type: 'string' },
-            targetUserEmail: { type: 'string' },
-            targetUserId: { type: 'string' }
-          }
-        },
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              token: { type: 'string' },
-              expiresAt: { type: 'string', format: 'date-time' },
-              impersonatedUser: {
-                type: 'object',
-                properties: {
-                  email: { type: 'string' },
-                  id: { type: 'string' }
-                }
-              }
-            }
-          }
         }
       }
     }

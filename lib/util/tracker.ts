@@ -3,7 +3,7 @@ import dayjs from 'dayjs'
 import type { FastifyRequest, FastifyReply } from '../../types/global.js'
 
 export async function initialize(req: FastifyRequest, _reply: FastifyReply) {
-  if (req.server['dataBaseManager'].isImplemented()) {
+  if (req.server['trackingManager'].isImplemented()) {
     const tc = getTrackingConfigIfEnabled(req)
     const allData = { ...req.parameters(), ...req.data() }
 
@@ -11,7 +11,7 @@ export async function initialize(req: FastifyRequest, _reply: FastifyReply) {
       try {
         if (allData && tc.entity && tc.primaryKey && tc.primaryKey in allData) {
           const key = allData[tc.primaryKey]
-          req.trackingData = await req.server['dataBaseManager'].retrieveBy(tc.entity, key)
+          req.trackingData = await req.server['trackingManager'].retrieveBy(tc.entity, key)
           if (log.t)
             log.trace(`Tracking changes: found id ${req.trackingData ? req.trackingData[tc.primaryKey] : null}`)
         }
@@ -24,7 +24,7 @@ export async function initialize(req: FastifyRequest, _reply: FastifyReply) {
 }
 
 export async function track(req: FastifyRequest, _reply: FastifyReply, payload: any) {
-  if (req.server['dataBaseManager'].isImplemented()) {
+  if (req.server['trackingManager'].isImplemented()) {
     const tc = getTrackingConfigIfEnabled(req)
     if (tc) {
       try {
@@ -69,7 +69,7 @@ export async function track(req: FastifyRequest, _reply: FastifyReply, payload: 
 
         if (addChange) {
           if (log.t) log.trace(`Tracking changes: add ${changeEntity} for ${entity}, ${id}, ${userId}, ${status}`)
-          await req.server['dataBaseManager'].addChange(entity, id, status, userId, contents, changeEntity)
+          await req.server['trackingManager'].addChange(entity, id, status, userId, contents, changeEntity)
         }
       } catch (error) {
         log.error(`Tracking changes: error on ${tc.code}`)

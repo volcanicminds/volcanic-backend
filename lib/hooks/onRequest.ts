@@ -2,7 +2,7 @@
 import { getParams, getData } from '../util/common.js'
 import { httpError } from '../util/httpError.js'
 import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } from '../../types/global.js'
-import { isTenancyEnabled } from '../util/tenancy.js'
+import { isTenancyEnabled, dataContext } from '../util/tenancy.js'
 
 const MFA_SETUP_WHITELIST = ['/auth/mfa/setup', '/auth/mfa/enable', '/auth/mfa/verify', '/auth/logout']
 
@@ -78,10 +78,10 @@ export default async (req, reply) => {
 
         // Validate Tenant Access
         if (isTenancyEnabled() && cfg.tenantContext !== false) {
-          if (!req.tenant || !tokenData.tid) {
+          if (!req.tenantInfo || !tokenData.tid) {
             return reply.status(403).send(httpError(403, 'Token does not belong to this tenant', 'TENANT_NOT_FOUND'))
           }
-          if (tokenData.tid !== req.tenant.id) {
+          if (tokenData.tid !== req.tenantInfo.id) {
             return reply.status(403).send(httpError(403, 'Token does not belong to this tenant', 'TENANT_MISMATCH'))
           }
         }
@@ -109,7 +109,7 @@ export default async (req, reply) => {
         let token: null | AuthenticatedToken = null
 
         if (req.server['userManager']?.isImplemented()) {
-          user = await req.server['userManager'].retrieveUserByExternalId(subjectId, req.db)
+          user = await req.server['userManager'].retrieveUserByExternalId(dataContext(req), subjectId)
           if (user) {
             const isValid = await req.server['userManager'].isValidUser(user)
             if (!isValid) {
@@ -120,7 +120,7 @@ export default async (req, reply) => {
         }
 
         if (!user && req.server['tokenManager']?.isImplemented()) {
-          token = await req.server['tokenManager'].retrieveTokenByExternalId(subjectId, req.db)
+          token = await req.server['tokenManager'].retrieveTokenByExternalId(dataContext(req), subjectId)
           if (token) {
             const isValid = await req.server['tokenManager'].isValidToken(token)
             if (!isValid) {

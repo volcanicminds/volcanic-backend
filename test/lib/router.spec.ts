@@ -18,6 +18,20 @@ const run = (route: any, validRoutes: any[] = []) =>
 const codes = (r: any) => (r.roles || []).map((x: any) => x.code)
 
 describe('loader/router — processRoute', () => {
+  // T-1.2: `scope` is the v5 spelling of which plane a route acts on. It must actually
+  // reach the route, or it is a documented field nobody reads (D-11).
+  it('resolves scope: control into a route outside the tenant context', () => {
+    const r: any = run({ method: 'GET', path: '/', handler: 'user.find', config: { scope: 'control' } })
+    expect(r.tenantContext).toBe(false)
+  })
+
+  it('keeps the tenant context by default, and for scope: tenant', () => {
+    const plain: any = run({ method: 'GET', path: '/', handler: 'user.find' })
+    expect(plain.tenantContext).toBe(true)
+    const scoped: any = run({ method: 'GET', path: '/s', handler: 'user.find', config: { scope: 'tenant' } })
+    expect(scoped.tenantContext).toBe(true)
+  })
+
   it('defaults to [public] and always appends admin (global superuser)', () => {
     const r: any = run({ method: 'GET', path: '/', handler: 'user.find' })
     expect(codes(r)).toEqual(['public', 'admin'])

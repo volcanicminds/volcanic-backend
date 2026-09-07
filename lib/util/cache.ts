@@ -181,7 +181,7 @@ const HEADER_ALLOW = /^(content-type|v-)/i
 
 /** Scope segment: isolates cached data by tenant, authenticated subject and roles. */
 function scope(req: any): string {
-  const tenant = req.tenant?.id ?? ''
+  const tenant = req.tenantInfo?.id ?? ''
   const subject = req.user?.externalId ?? req.token?.getId?.() ?? 'anon'
   const rolesList = typeof req.roles === 'function' ? req.roles() : []
   const rolesKey = [...(rolesList || [])].sort().join(',')
@@ -196,7 +196,7 @@ function keyFor(req: any, keyGroup: string): string {
  *  to avoid ever leaking data across tenants. */
 function tenantMissing(req: any): boolean {
   const tenantCtx = req.routeOptions?.config?.tenantContext
-  return Boolean(isTenancyEnabled() && tenantCtx !== false && !req.tenant)
+  return Boolean(isTenancyEnabled() && tenantCtx !== false && !req.tenantInfo)
 }
 
 /** Build the per-route read (preHandler) and write (onSend) hooks for a cached route. */
