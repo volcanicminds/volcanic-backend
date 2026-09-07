@@ -4,6 +4,11 @@ import { ensureGenesisAdmin } from '../../lib/loader/genesis.js'
 
 // Records what the genesis reconciliation asked the (fake) userManager to do. The real
 // admin-code/config fall back to sensible defaults, so no shared globals are set here.
+// `log?.i` still throws when `log` is undeclared: optional chaining guards a property, not
+// an identifier. Declared here so this suite stands alone rather than relying on whichever
+// other spec file mocha happened to load first.
+;(global as any).log = {}
+
 const CONTROL: any = { kind: 'control' }
 
 function fakeManager(overrides: any = {}) {
@@ -15,8 +20,11 @@ function fakeManager(overrides: any = {}) {
   return {
     calls,
     isImplemented: () => true,
-    countQuery: async (ctx: any) => {
+    countQuery: async (ctx: any, query: any) => {
       seen(ctx)
+      // Two different questions reach the same method: how many admins exist, and whether
+      // this container already has a sovereign (T-4.3).
+      if (query && 'isFounder:eq' in query) return overrides.founders ?? 0
       return overrides.count ?? 0
     },
     retrieveUserByEmail: async (ctx: any) => {
@@ -97,12 +105,40 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
     expect(um.calls.created).toBeNull()
   })
 
-  it('is a no-op when the founder is already an admin', async () => {
+  // T-4.3: sovereignty is a column now, so genesis reconciles the row instead of trusting
+  // that ADMIN_EMAIL will be compared again on every later request.
+  it('marks an existing admin as the founder when the container has none', async () => {
     process.env.ADMIN_EMAIL = 'founder@x.com'
-    const um = fakeManager({ existing: { getId: () => 'u1', roles: ['admin'] } })
+    const um = fakeManager({ existing: { getId: () => 'u1', roles: ['admin'] }, founders: 0 })
+    await ensureGenesisAdmin(serverWith(um))
+    expect(um.calls.created).toBeNull()
+    expect(um.calls.promoted).toEqual({ id: 'u1', data: { isFounder: true } })
+  })
+
+  it('does not mint a second sovereign when one already exists', async () => {
+    process.env.ADMIN_EMAIL = 'someone-else@x.com'
+    const um = fakeManager({ existing: { getId: () => 'u2', roles: ['admin'] }, founders: 1 })
+    await ensureGenesisAdmin(serverWith(um))
+    // Changing an environment variable must not be able to hand sovereignty to another row:
+    // that is exactly what made D-27 a privilege issue rather than a naming one.
+    expect(um.calls.promoted).toBeNull()
+    expect(um.calls.created).toBeNull()
+  })
+
+  it('is a no-op when the founder row is already reconciled', async () => {
+    process.env.ADMIN_EMAIL = 'founder@x.com'
+    const um = fakeManager({ existing: { getId: () => 'u1', roles: ['admin'], isFounder: true }, founders: 1 })
     await ensureGenesisAdmin(serverWith(um))
     expect(um.calls.promoted).toBeNull()
     expect(um.calls.created).toBeNull()
+  })
+
+  it('creates the first identity as the sovereign one', async () => {
+    process.env.ADMIN_EMAIL = 'founder@x.com'
+    process.env.ADMIN_PASSWORD = 'Given-pw-123'
+    const um = fakeManager({ existing: null, founders: 0 })
+    await ensureGenesisAdmin(serverWith(um))
+    expect(um.calls.created.isFounder).toBe(true)
   })
 
   it('proceeds without ADMIN_EMAIL when an admin already exists', async () => {

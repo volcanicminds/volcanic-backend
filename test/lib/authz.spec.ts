@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { expect } from 'expect'
-import { roleCodes, includesRole, isFounderEmail } from '../../lib/util/authz.js'
+import { roleCodes, includesRole, isFounder } from '../../lib/util/authz.js'
 
 describe('util/authz', () => {
   it('normalizes string codes', () => {
@@ -28,29 +28,38 @@ describe('util/authz', () => {
     expect(includesRole(undefined, 'admin')).toBe(false)
   })
 
-  describe('isFounderEmail', () => {
+  // T-4.3: the founder is a property of the row, in its own container. v4 asked the process
+  // environment, so in multi-tenant the same address was sovereign inside EVERY tenant and
+  // one customer's admin inherited another's protections (defect D-27).
+  describe('isFounder', () => {
     const saved = process.env.ADMIN_EMAIL
     afterEach(() => {
       if (saved === undefined) delete process.env.ADMIN_EMAIL
       else process.env.ADMIN_EMAIL = saved
     })
 
-    it('is false when ADMIN_EMAIL is unset', () => {
+    it('reads the column, and only the column', () => {
+      expect(isFounder({ email: 'a@b.com', isFounder: true })).toBe(true)
+      expect(isFounder({ email: 'a@b.com', isFounder: false })).toBe(false)
+      expect(isFounder({ email: 'a@b.com' })).toBe(false)
+    })
+
+    it('does not consult the environment, whatever it says', () => {
+      process.env.ADMIN_EMAIL = 'founder@x.com'
+      // The address matches the variable and the row does not carry the flag: in v4 this
+      // returned true, and in every tenant at once.
+      expect(isFounder({ email: 'founder@x.com' })).toBe(false)
+      // And the flag is enough without the variable.
       delete process.env.ADMIN_EMAIL
-      expect(isFounderEmail('a@b.com')).toBe(false)
+      expect(isFounder({ email: 'someone@else.com', isFounder: true })).toBe(true)
     })
 
-    it('matches case- and whitespace-insensitively', () => {
-      process.env.ADMIN_EMAIL = 'Founder@X.com'
-      expect(isFounderEmail('founder@x.com')).toBe(true)
-      expect(isFounderEmail('  FOUNDER@X.COM ')).toBe(true)
-      expect(isFounderEmail('other@x.com')).toBe(false)
-    })
-
-    it('is false for non-string input', () => {
-      process.env.ADMIN_EMAIL = 'f@x.com'
-      expect(isFounderEmail(undefined)).toBe(false)
-      expect(isFounderEmail(null)).toBe(false)
+    it('is false for anything that is not a row', () => {
+      expect(isFounder(undefined)).toBe(false)
+      expect(isFounder(null)).toBe(false)
+      expect(isFounder('founder@x.com')).toBe(false)
+      // Not truthiness: a string is not a flag.
+      expect(isFounder({ isFounder: 'yes' })).toBe(false)
     })
   })
 })

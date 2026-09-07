@@ -180,7 +180,19 @@ ordinary user with that user's roles. Every request checks the record, not the s
 revoking takes effect immediately rather than when the JWT expires. Tracked writes record the
 session in `change.impersonation_id`.
 
-## 12. Routes that no longer exist
+## 12. The sovereign founder
+
+| v4 | v5 |
+|---|---|
+| `isFounderEmail(email)`, compared against `process.env.ADMIN_EMAIL` on every check | `isFounder(user)`, the `is_founder` column of the row |
+| the same address was sovereign inside **every** tenant | each container has its own founder, or none |
+| changing `ADMIN_EMAIL` moved the sovereignty | it does not: a container that has a founder keeps it |
+| `ADMIN_EMAIL` read at request time | read at boot only, to seed the first identity |
+
+A container that predates the column has no founder, and the next boot with `ADMIN_EMAIL` set
+gives it one. Moving sovereignty is now a deliberate write, not a redeploy.
+
+## 13. Routes that no longer exist
 
 | Route | Why |
 |---|---|

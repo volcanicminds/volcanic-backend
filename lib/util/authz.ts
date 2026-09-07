@@ -17,10 +17,19 @@ export function includesRole(value: unknown, code: string): boolean {
 }
 
 /**
- * Whether an email identifies the sovereign founder (env `ADMIN_EMAIL`, case-insensitive).
- * Returns false when `ADMIN_EMAIL` is unset, so founder guards stay inert without it.
+ * Whether a user row is the sovereign founder of ITS OWN container (T-4.3).
+ *
+ * v4 asked this question of the process environment: `email === process.env.ADMIN_EMAIL`.
+ * On a single-tenant instance that was merely indirect; in multi-tenant it meant the same
+ * address was the sovereign inside EVERY tenant, so one customer's admin inherited the
+ * protections, and the powers, of another's (defect D-27). Worse, it made the answer depend
+ * on how the process happened to be started rather than on anything written down.
+ *
+ * In v5 it is a column of the row, so the question is answered by the container the row
+ * lives in, and two tenants can each have their own founder without knowing about each
+ * other. `ADMIN_EMAIL` survives for exactly one job, seeding the first identity on an empty
+ * plane at boot (see lib/loader/genesis.ts); after that write nothing reads it again.
  */
-export function isFounderEmail(email: unknown): boolean {
-  const founder = process.env.ADMIN_EMAIL?.trim().toLowerCase()
-  return !!founder && typeof email === 'string' && email.trim().toLowerCase() === founder
+export function isFounder(user: unknown): boolean {
+  return (user as { isFounder?: unknown } | null)?.isFounder === true
 }

@@ -1,7 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import type { AuthenticatedUser } from '../../../../types/global.js'
 import { MfaPolicy } from '../../../config/constants.js'
-import { includesRole, isFounderEmail } from '../../../util/authz.js'
+import { includesRole, isFounder } from '../../../util/authz.js'
 import { dataContext } from '../../../util/tenancy.js'
 
 const forbidden = (reply: FastifyReply, message: string) =>
@@ -79,9 +79,10 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   const targetIsAdmin = includesRole(target?.roles, roles.admin.code)
   const changingRoles = Object.prototype.hasOwnProperty.call(userData, 'roles')
 
-  // Sovereign founder: cannot be demoted or have its email changed via the API
-  // (transfer happens via env + redeploy).
-  if (isFounderEmail(target?.email)) {
+  // Sovereign founder: cannot be demoted or have its email changed through the API. The
+  // question is asked of the ROW, so the answer belongs to this container and to no other
+  // (T-4.3, defect D-27).
+  if (isFounder(target)) {
     if (changingRoles && !includesRole(userData.roles, roles.admin.code)) {
       return forbidden(reply, 'Cannot demote the sovereign admin')
     }
@@ -123,7 +124,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
   const targetIsAdmin = includesRole(target?.roles, roles.admin.code)
 
   // Sovereign founder: cannot be deleted.
-  if (isFounderEmail(target?.email)) {
+  if (isFounder(target)) {
     return forbidden(reply, 'Cannot delete the sovereign admin')
   }
   // Rule B: only an admin may delete an admin subject.
@@ -191,7 +192,7 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   const target = await req.server['userManager'].retrieveUserById(dataContext(req), userId)
   const targetIsAdmin = includesRole(target?.roles, roles.admin.code)
   // Sovereign founder: cannot be blocked.
-  if (isFounderEmail(target?.email)) {
+  if (isFounder(target)) {
     return forbidden(reply, 'Cannot block the sovereign admin')
   }
   // Rule B: only an admin may block an admin subject.
@@ -237,7 +238,7 @@ export async function resetMfaByAdmin(req: FastifyRequest, reply: FastifyReply) 
   }
 
   const mfaTarget = await req.server['userManager'].retrieveUserById(dataContext(req), id)
-  if (isFounderEmail(mfaTarget?.email) && !isFounderEmail(req.user?.email)) {
+  if (isFounder(mfaTarget) && !isFounder(req.user)) {
     return forbidden(reply, 'Cannot reset the sovereign admin MFA')
   }
 
@@ -276,7 +277,7 @@ export async function resetPasswordByAdmin(req: FastifyRequest, reply: FastifyRe
       return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'User not found' })
     }
 
-    if (isFounderEmail(user.email) && !isFounderEmail(req.user?.email)) {
+    if (isFounder(user) && !isFounder(req.user)) {
       return forbidden(reply, 'Cannot reset the sovereign admin password')
     }
 

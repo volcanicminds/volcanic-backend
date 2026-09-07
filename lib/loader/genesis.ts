@@ -1,13 +1,31 @@
 import type { FastifyInstance } from 'fastify'
 import crypto from 'crypto'
 import type { DataHandle, DataProvider } from '../../types/global.js'
-import { includesRole } from '../util/authz.js'
+import { includesRole, isFounder } from '../util/authz.js'
 import { isTenancyEnabled } from '../util/tenancy.js'
 
 // Random credential for a generated founder. base64url is alphanumeric; the suffix
 // satisfies any upper/lower/digit/symbol policy. Printed once; rotate after first login.
 function generatePassword(): string {
   return crypto.randomBytes(24).toString('base64url') + 'aA1!'
+}
+
+/**
+ * Whether this container already has a sovereign.
+ *
+ * Asked of the data, not of the environment: that is the whole of T-4.3. A container that
+ * predates the column simply has none, and the next genesis run gives it one.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function founderExists(um: any, ctx: DataHandle): Promise<boolean> {
+  try {
+    return Number(await um.countQuery(ctx, { 'isFounder:eq': true })) > 0
+  } catch (e) {
+    // A manager that cannot answer the question must not be read as "no founder yet": that
+    // would be the answer that mints one.
+    if (log?.e) log.error(`Startup: could not check for an existing founder: ${(e as Error)?.message}`)
+    return true
+  }
 }
 
 export interface GenesisOptions {
@@ -63,16 +81,40 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
 
   const existing = await um.retrieveUserByEmail(ctx, email)
   if (existing) {
+    const patch: Record<string, unknown> = {}
     if (!includesRole(existing.roles, adminCode)) {
-      await um.updateUserById(ctx, existing.getId(), { roles: [...(existing.roles || []), adminCode] })
-      if (log?.i) log.info(`Startup: promoted ${email} to admin (sovereign founder).`)
+      patch.roles = [...(existing.roles || []), adminCode]
+    }
+
+    // The sovereignty is written into the row, once (T-4.3). If some other row already
+    // carries it, this one does NOT get it: changing an environment variable must not be
+    // able to mint a second sovereign, which is the whole reason the flag stopped being an
+    // env comparison. Moving it is a deliberate act, not a redeploy.
+    if (!isFounder(existing) && !(await founderExists(um, ctx))) {
+      patch.isFounder = true
+    } else if (!isFounder(existing) && log?.w) {
+      log.warn(`Startup: ${email} is admin, but the sovereign founder is another row. ADMIN_EMAIL no longer moves it.`)
+    }
+
+    if (Object.keys(patch).length) {
+      await um.updateUserById(ctx, existing.getId(), patch)
+      if (log?.i) log.info(`Startup: reconciled ${email} (${Object.keys(patch).join(', ')}).`)
     }
     return
   }
 
   const envPassword = process.env.ADMIN_PASSWORD
   const password = envPassword || generatePassword()
-  const created = await um.createUser(ctx, { email, username: email, password, roles: [adminCode] })
+  const created = await um.createUser(ctx, {
+    email,
+    username: email,
+    password,
+    roles: [adminCode],
+    // The first identity on an empty container is the sovereign one, and from here on the
+    // question "is this the founder?" is answered by this column and never by the
+    // environment (defect D-27).
+    isFounder: !(await founderExists(um, ctx))
+  })
   await um.userConfirmation(ctx, created)
   if (!envPassword) {
     // The generated secret goes to stdout only — never through the structured logger,

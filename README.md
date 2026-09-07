@@ -437,15 +437,22 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
 | `AUTH_MODE`                    | Authentication mode: `BEARER` (default) or `COOKIE`                     |    No    | `BEARER`            |
 | `COOKIE_SECRET`                | Secret for signing cookies (Required if `AUTH_MODE=COOKIE`)             | **Yes**² |                     |
-| `ADMIN_EMAIL`                  | Sovereign founder email — provisioned as `admin` at boot (single-tenant, see below). | **Yes**³ |          |
+| `ADMIN_EMAIL`                  | Seeds the first identity at boot, and is read at no other time (see below). | **Yes**³ |          |
 | `ADMIN_PASSWORD`               | Password for the founder created from `ADMIN_EMAIL`; if unset, a strong one is generated and printed to stdout. | No |    |
 | `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response.            |    No    | `true` (prod)       |
 
 ² Required if `AUTH_MODE` is `COOKIE`.
 
-³ Single-tenant only, and only when no admin exists yet: a fresh instance provisions the sovereign founder
-from `ADMIN_EMAIL`. If an admin already exists it may be omitted; with **no** admin and **no** `ADMIN_EMAIL`,
-startup **fails fast**. See [docs/AUTHORIZATION_MODEL.md](docs/AUTHORIZATION_MODEL.md).
+³ Read **only at boot**, to seed the first identity: the application's sovereign founder on a single-tenant
+instance, the first platform administrator where a `tenants` block is declared. If one already exists it may be
+omitted; with no identity and no `ADMIN_EMAIL`, startup **fails fast**.
+
+After that first write the variable is never read again. Being the founder is the `is_founder` column of the
+user row, inside its own container, so two tenants each have their own and neither inherits the other's
+protections. In v4 the check compared the address against this variable at request time, which made the same
+address sovereign inside **every** tenant (defect D-27). Changing `ADMIN_EMAIL` afterwards does not move the
+sovereignty: a container that already has a founder keeps it, and the boot log says so.
+See [docs/AUTHORIZATION_MODEL.md](docs/AUTHORIZATION_MODEL.md).
 
 ¹ Required if `JWT_REFRESH` is enabled.
 
@@ -852,7 +859,8 @@ consumer-defined role can be granted a native surface (user or token management,
 without being `admin`. Gate a route with `requireCapability` instead of a role list; at boot the allowed set
 becomes `admin` plus every role that declares the capability. The `admin` apex is protected: only an admin can
 grant the `admin` role (and only with `allow_multiple_admin`), no capability holder can act on an admin subject,
-and the instance never boots with zero admins. The sovereign founder is provisioned at boot from `ADMIN_EMAIL`.
+and the instance never boots with zero admins. The sovereign founder is provisioned at boot from `ADMIN_EMAIL`,
+and from then on it is the `is_founder` column of that row, not a comparison against the environment.
 See `docs/AUTHORIZATION_MODEL.md`.
 
 > **Authorization responses:** a request with no authenticated subject gets **401** (must log in); an
