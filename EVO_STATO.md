@@ -49,7 +49,7 @@ documenti esistono e in che ordine si leggono.
 
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
-| T-2.1 | Schema base v5 | `[ ]` | |
+| T-2.1 | Schema base v5 | `[x]` | otto tabelle in `lib/database/schema/{pg,sqlite}.ts` con fabbriche per schema (`appTables`, `registryTables`), `timestamptz` su Postgres ed epoch ms su SQLite, UUID v7 generato nel processo (`lib/database/uuid.ts`, chiude D-28), registro fuori dai contenitori, `change` append-only. 14 test nuovi: parità fra i due dialetti, qualificazione dello schema, ordinamento degli id |
 | T-2.2 | Adattatore Postgres | `[ ]` | |
 | T-2.3 | Adattatore SQLite e libSQL | `[ ]` | |
 | T-2.4 | Magic Query v5 | `[ ]` | |

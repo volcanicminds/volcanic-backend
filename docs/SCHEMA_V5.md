@@ -41,6 +41,15 @@ These apply to every table below. They are not repeated in each definition.
 | Free-form objects | `jsonb` | `text` holding JSON |
 | Soft delete | `deleted_at` nullable; a row with `deleted_at` set is invisible to every default query | same |
 
+**A container is chosen by qualifying its tables, never by a session setting.** The Postgres
+factories take the schema name and produce `"tenant_acme"."user"`, which is what makes T-3.1
+possible. One exception is forced by the driver: Drizzle refuses `pgSchema('public')`, because
+Postgres resolves unqualified names there anyway, so a control plane living in `public` emits
+unqualified SQL. Two answers, both applied: prefer a **named** schema for the control plane,
+which is qualified like any other, and when it is `public` the adapter pins `search_path` on
+the connection itself at connect time. A value identical on every connection, that no request
+ever changes, is configuration and not session state.
+
 **Column naming is `snake_case` in the database and `camelCase` in TypeScript.** Drizzle maps
 the two explicitly in the table definition: never rely on an automatic conversion.
 
