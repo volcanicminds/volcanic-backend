@@ -4,6 +4,7 @@ import type { Role, Route, ConfiguredRoute, RouteConfig } from '../../types/glob
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { normalizePatterns } from '../util/path.js'
 import { normalizeRouteCache, buildCacheHooks, cacheEnabled } from '../util/cache.js'
+import { isSystemRoleCode, SYSTEM_CAPABILITIES, SYSTEM_PREFIX } from './roles.js'
 import { globSync } from 'glob'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -75,28 +76,68 @@ function resolveRequiredRoles(
   rs: (Role | string)[],
   capability: string | undefined,
   where: string,
-  roleErrors: string[]
+  roleErrors: string[],
+  scope: 'tenant' | 'control' = 'tenant'
 ): Role[] {
+  // Which catalogue the route is judged against, and it is the whole of T-4.1's boot half:
+  // a control route resolves against the control roles, a tenant route against the tenant
+  // ones, and the two maps never see each other's codes.
+  const isControl = scope === 'control'
+  // Read off globalThis, not as a bare identifier: a deployment that has not loaded the
+  // control catalogue must get an empty map and a legible error, not a ReferenceError from
+  // three frames down.
+  const system = ((globalThis as { systemRoles?: Record<string, Role> }).systemRoles ?? {}) as Record<string, Role>
+  const catalogue: Record<string, Role> = isControl ? system : roles
+  const catalogueName = isControl ? 'config/systemRoles.ts' : 'config/roles.ts'
+  const superuser: Role = isControl ? system['system:admin'] : roles.admin
+
   const declared: Role[] = []
   for (const ref of rs) {
     if (ref == null) {
       roleErrors.push(`${where} → references an undefined role`)
-    } else if (typeof ref === 'string') {
-      const resolved = roles[ref]
-      if (resolved) declared.push(resolved)
-      else roleErrors.push(`${where} → unknown role '${ref}' (not declared in config/roles.ts)`)
-    } else if (ref.code) {
-      declared.push(ref)
-    } else {
+      continue
+    }
+
+    const code = typeof ref === 'string' ? ref : ref.code
+    if (!code) {
       roleErrors.push(`${where} → a declared role has no code`)
+      continue
+    }
+
+    // docs/AUTHORIZATION_V5.md §2.1, the two refusals TypeScript cannot make: a route that
+    // mixes the scopes is a hole, and it must be impossible to ship rather than logged.
+    if (isControl && !isSystemRoleCode(code)) {
+      roleErrors.push(`${where} → control route lists the tenant role '${code}'. Control routes take '${SYSTEM_PREFIX}' roles only`)
+      continue
+    }
+    if (!isControl && isSystemRoleCode(code)) {
+      roleErrors.push(`${where} → tenant route lists the control role '${code}'. A control role never grants anything inside a tenant`)
+      continue
+    }
+
+    if (typeof ref === 'string') {
+      const resolved = catalogue[ref]
+      if (resolved) declared.push(resolved)
+      else roleErrors.push(`${where} → unknown role '${ref}' (not declared in ${catalogueName})`)
+    } else {
+      declared.push(ref as Role)
+    }
+  }
+
+  if (capability) {
+    if (isControl && !SYSTEM_CAPABILITIES.includes(capability as never)) {
+      roleErrors.push(`${where} → '${capability}' is not in the control catalogue: ${SYSTEM_CAPABILITIES.join(', ')}`)
+    }
+    if (!isControl && SYSTEM_CAPABILITIES.includes(capability as never)) {
+      roleErrors.push(`${where} → '${capability}' is a control capability and cannot gate a tenant route`)
     }
   }
 
   const capRoles: Role[] = capability
-    ? Object.values(roles).filter((r) => Array.isArray(r.capabilities) && r.capabilities.includes(capability))
+    ? Object.values(catalogue).filter((r) => Array.isArray(r.capabilities) && r.capabilities.includes(capability))
     : []
   if (capability && capRoles.length === 0 && log?.w) {
-    log.warn(`Route ${where} requires capability '${capability}' held by no role — admin-only`)
+    log.warn(`Route ${where} requires capability '${capability}' held by no role: superuser only`)
   }
 
   const seen = new Set<string>()
@@ -107,8 +148,9 @@ function resolveRequiredRoles(
       out.push(r)
     }
   }
-  if (out.length === 0 && !capability) out.push(roles.public)
-  if (!out.some((r) => r.code === roles.admin.code)) out.push(roles.admin)
+  // A control route is never open to `public`: the platform has no anonymous surface.
+  if (out.length === 0 && !capability && !isControl) out.push(roles.public)
+  if (superuser && !out.some((r) => r.code === superuser.code)) out.push(superuser)
   return out
 }
 
@@ -121,7 +163,7 @@ export function processRoute(
   defaultConfig: any,
   authMiddlewares: string[],
   validRoutes: ConfiguredRoute[],
-  roleErrors: string[] = []
+  integrityErrors: string[] = []
 ): ConfiguredRoute | null {
   const errors: string[] = []
   const {
@@ -136,11 +178,16 @@ export function processRoute(
     cache: cacheInput
   } = route
 
+  // Which plane the route acts on. Read before the roles are resolved, because it decides
+  // WHICH CATALOGUE they are resolved against (T-4.1).
+  const scope: 'tenant' | 'control' = (config?.scope || defaultConfig.scope || 'tenant') as 'tenant' | 'control'
+
   const requiredRoles = resolveRequiredRoles(
     rs,
     requireCapability,
     `${methodCase} ${pathName} (${handler})`,
-    roleErrors
+    integrityErrors,
+    scope === 'control' ? 'control' : 'tenant'
   )
 
   const reqAuth: boolean =
@@ -156,12 +203,6 @@ export function processRoute(
     description = '',
     enable = yn(defaultConfig.enable, true),
     deprecated = yn(defaultConfig.deprecated, false),
-    // `scope` is the v5 spelling (docs/AUTHORIZATION_V5.md §2): 'tenant' by default,
-    // 'control' for a route that acts on the platform. It is resolved here into the
-    // internal flag the hooks already honour, so a route that declares it actually gets
-    // it — a field that is documented, typed and never read is defect D-11.
-    scope = defaultConfig.scope || 'tenant',
-    tenantContext = scope === 'control' ? false : yn(defaultConfig.tenantContext, true),
     tags = defaultConfig.tags,
     version = defaultConfig.version || '',
     security = defaultConfig.security,
@@ -170,8 +211,42 @@ export function processRoute(
     body,
     response,
     consumes,
-    rawBody = false
+    rawBody = false,
+    // Audit trail behaviour for this route (T-3.5). What is tracked lives in
+    // `config/tracking.ts`; this says what happens when the write fails, and the default
+    // is strict: an untracked write on a system that promises an audit trail is worse than
+    // a visible error.
+    tracking
   } = config || {}
+
+  // Which plane the route acts on, and nothing else decides it (T-3.3).
+  //
+  // `tenantContext` was the v4 spelling and it is refused, not translated: v5 is breaking
+  // and a silent translation is how two spellings of one decision start disagreeing
+  // (invariant 9). Refusing at boot rather than at the first request is the point: a route
+  // that meant "the platform" and is read as "a tenant" would not fail, it would answer
+  // from the wrong container.
+  // `scope` is the v5 spelling (docs/AUTHORIZATION_V5.md §2): 'tenant' by default, 'control'
+  // for a route that acts on the platform. It is resolved into the internal flag the hooks
+  // honour, so a route that declares it actually gets it: a field that is documented, typed
+  // and never read is defect D-11.
+  const where = `${methodCase.toUpperCase()} ${pathName} (${handler}) in ${file}`
+  if (config && Object.prototype.hasOwnProperty.call(config, 'tenantContext')) {
+    const meant = (config as unknown as Record<string, unknown>).tenantContext === false ? 'control' : 'tenant'
+    integrityErrors.push(`${where}: \`tenantContext\` is the v4 spelling. Write \`scope: '${meant}'\`.`)
+  }
+  if (defaultConfig && Object.prototype.hasOwnProperty.call(defaultConfig, 'tenantContext')) {
+    integrityErrors.push(`${file}: \`tenantContext\` in the file-level config is the v4 spelling. Write \`scope\`.`)
+  }
+  if (scope !== 'tenant' && scope !== 'control') {
+    integrityErrors.push(`${where}: unknown scope '${scope}'. The two planes are 'tenant' (default) and 'control'.`)
+  }
+
+  // The internal flag the hooks read. It is derived here, in one place, and it is the only
+  // thing downstream sees: `scope` is what a consumer writes, this is what the framework
+  // runs on. The default stays the safe one, a route works inside the tenant unless it says
+  // otherwise, exactly as in v4.
+  const tenantContext = scope !== 'control'
 
   const endpoint = `${dir}${pathName.replace(/\/+$/, '')}`
   const method = methodCase.toUpperCase()
@@ -234,6 +309,7 @@ export function processRoute(
       tenantContext,
       rawBody,
       rateLimit,
+      tracking,
       // Per-route cache (falls back to the file-level `config.cache`); the default
       // key-group is the api folder (`dir`), overridable.
       cache: normalizeRouteCache(cacheInput ?? defaultConfig?.cache, dir),
@@ -253,7 +329,7 @@ export function processRoute(
 
 async function load(): Promise<ConfiguredRoute[]> {
   const validRoutes: ConfiguredRoute[] = []
-  const roleErrors: string[] = []
+  const integrityErrors: string[] = []
   const patterns = normalizePatterns(['..', 'api', '**', 'routes.{ts,js}'], ['src', 'api', '**', 'routes.{ts,js}'])
   const authMiddlewares = ['global.isAuthenticated', 'global.isAdmin']
 
@@ -284,7 +360,7 @@ async function load(): Promise<ConfiguredRoute[]> {
           defaultConfig,
           authMiddlewares,
           validRoutes,
-          roleErrors
+          integrityErrors
         )
         if (configuredRoute) {
           validRoutes.push(configuredRoute)
@@ -293,8 +369,8 @@ async function load(): Promise<ConfiguredRoute[]> {
     }
   }
 
-  if (roleErrors.length) {
-    const message = `Route/role integrity check failed — every route role must be declared in config/roles.ts:\n  - ${roleErrors.join(
+  if (integrityErrors.length) {
+    const message = `Route integrity check failed. Every route role must be declared in config/roles.ts, and every route must name a plane it acts on:\n  - ${integrityErrors.join(
       '\n  - '
     )}`
     if (log?.f) log.fatal(message)
@@ -315,7 +391,7 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
   let countRoutes = 0
   for (const route of routes) {
     if (route?.enable) {
-      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc, tenantContext, cache } =
+      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc, tenantContext, cache, tracking } =
         route
 
       if (log.d) log.debug(`* Add path ${method} ${path} on handle ${handler}`)
@@ -351,7 +427,8 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
           rawBody: rawBody || false,
           rateLimit: rateLimit || undefined,
           tenantContext: tenantContext,
-          cache: cache || undefined
+          cache: cache || undefined,
+          tracking: tracking || undefined
         },
         handler: async function (req: FastifyRequest, reply: FastifyReply) {
           let module

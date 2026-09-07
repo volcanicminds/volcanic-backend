@@ -67,7 +67,8 @@
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit && tsc -p tsconfig.test.json",
     "depcruise": "depcruise index.ts db.ts lib --config .dependency-cruiser.cjs",
-    "check-all": "npm run lint && npm run type-check && npm run depcruise",
+    "check:session-state": "node scripts/check-session-state.mjs",
+    "check-all": "npm run lint && npm run type-check && npm run depcruise && npm run check:session-state",
     "combine": "node combine.js"
   },
   "dependencies": {

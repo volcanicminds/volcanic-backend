@@ -135,7 +135,8 @@ The audit trail. **Append-only**: rows are never updated and never soft-deleted.
 | `created_at` | timestamp | no | |
 | `user_id` | text | yes | `null` when the write came from a job or a machine token |
 | `token_id` | text | yes | **new in v5**: which credential wrote, when it was not a user |
-| `status` | text | no | `created` / `updated` / `deleted` |
+| `impersonation_id` | text | yes | **added in T-4.2**: which impersonation session wrote, when one did. A column rather than a key inside `contents`, because an audit trail whose actor cannot be indexed or joined is half an audit trail. `docs/AUTHORIZATION_V5.md` §6 required the fact to be recorded and this table had nowhere to put it |
+| `status` | text | no | `create` / `update` / `delete` (this table first said `created`/`updated`/`deleted`; the code has always written the short forms, and the document was the side that was wrong) |
 | `entity_name` | text | no | |
 | `entity_id` | text | no | |
 | `contents` | jsonb / json text | no | the change payload, with sensitive fields already stripped (§5) |

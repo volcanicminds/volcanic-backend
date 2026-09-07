@@ -228,7 +228,8 @@ export interface SystemUserManagement {
 ```ts
 export interface TrackingManagement {
   isImplemented(): boolean
-  retrieveBy(ctx: DataHandle, entityName: string, entityId: string): Promise<Change[]>
+  /** The tracked row as it stands, for the baseline of the diff. */
+  retrieveBy(ctx: DataHandle, entityName: string, entityId: string): Promise<any | null>
   addChange(ctx: DataHandle, change: NewChange): Promise<Change>
 }
 ```
@@ -237,10 +238,29 @@ The v4 name said "database management" while the interface only wrote the audit 
 `synchronizeSchemas()` is **removed**: schemas are versioned by migrations (phase 5), and a
 method that rebuilds a schema from metadata is incompatible with that.
 
+**Correction, made in T-3.5.** This section first typed `retrieveBy` as returning `Change[]`,
+the audit history of an entity. The method has exactly one caller, the tracker, and what the
+tracker needs is the row as it stands *before* the request writes to it, which is what the v4
+method returned. A method whose declared type does not match the single job it exists for is a
+defect of the document, so the document was corrected rather than the caller bent around it
+(precedence rule, `EVO_FRAMEWORK.md` §0).
+
+`retrieveBy` answers `null` in two cases the caller does not need to tell apart: the row does
+not exist, or the table is not one the handle knows. The second is the normal case for a
+consumer's own entity, because v5 has no registry of consumer entities (`global.entity` is
+gone). Then the consumer supplies the baseline by setting `req.trackingData`, and if nobody
+does, the change is recorded with the previous values **absent** rather than invented: an entry
+without an `old` key means "not captured", which is not the same claim as `old: null`.
+
 **Behaviour, and it is a change** (defect D-05): the tracker receives `ctx` and writes inside the
 tenant container. If the write fails, the request fails, with an identifiable error code. A route
 may opt out declaring `tracking: { strict: false }`, and then the failure is logged and the
 request proceeds.
+
+The change is written after the handler has already written its own row, and the two are not
+in one transaction: strict mode therefore answers 500 on a request whose data change did
+happen. Making them atomic means running the handler inside the tracker's transaction, which
+is a different design. Until then, a visible inconsistency beats an invisible one.
 
 ---
 

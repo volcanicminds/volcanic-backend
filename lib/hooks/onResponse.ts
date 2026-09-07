@@ -6,8 +6,8 @@
 // reset `search_path`, so the connection went back to the pool still pointing at a tenant's
 // schema and the reset never ran. Two owners of one release is how that happens.
 //
-// v5 keeps releasing where the handle is created, in the data layer, and keeps no session
-// state to undo (T-3.1). Logging a response is this file's whole job.
+// v5 releases in ONE place, `lib/loader/tenant.ts`, and keeps no session
+// state to undo anyway (T-3.1). Logging a response is this file's whole job.
 //
 export default async (req, reply) => {
   let extraMessage = ''

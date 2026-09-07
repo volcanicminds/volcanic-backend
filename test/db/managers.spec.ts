@@ -14,6 +14,7 @@ import { createUserManager } from '../../lib/database/managers/user.js'
 import { createTokenManager } from '../../lib/database/managers/token.js'
 import { createTrackingManager } from '../../lib/database/managers/tracking.js'
 import { createTenantManager } from '../../lib/database/managers/tenant.js'
+import { createSystemUserManager } from '../../lib/database/managers/systemUser.js'
 
 process.env.MFA_DB_SECRET = process.env.MFA_DB_SECRET || 'unit-test-secret-please-change-32xyz'
 
@@ -34,11 +35,12 @@ let tenant: any
 const users = createUserManager()
 const tokens = createTokenManager()
 const tracking = createTrackingManager()
+const systemUsers = createSystemUserManager()
 
 before(() => {
   const sqlite = new Database(':memory:')
   const db = drizzle(sqlite)
-  for (const t of [tables.user, tables.token, tables.change, registry.tenant]) {
+  for (const t of [tables.user, tables.token, tables.change, registry.tenant, registry.systemUser]) {
     sqlite.exec(createTableSql(t))
   }
   control = { kind: 'control', dialect: 'sqlite', db, tables, registry }
@@ -149,17 +151,30 @@ describe('database/managers · tokens and tracking', () => {
 
   it('writes an audit row inside the container it was given', async () => {
     const written: any = await tracking.addChange(tenant, {
-      status: 'updated',
+      status: 'update',
       entityName: 'user',
       entityId: 'u1',
       userId: 'actor',
-      contents: { email: ['a', 'b'] }
+      contents: [{ key: 'email', old: 'a', new: 'b' }]
     })
     expect(written.id).toBeTruthy()
+    expect(written.contents).toEqual([{ key: 'email', old: 'a', new: 'b' }])
+  })
 
-    const history: any = await tracking.retrieveBy(tenant, 'user', 'u1')
-    expect(history.length).toBe(1)
-    expect(history[0].contents).toEqual({ email: ['a', 'b'] })
+  // T-3.5: `retrieveBy` is the baseline of the diff, not the audit history. The correction
+  // is recorded in docs/MANAGERS_V5.md §7: the method has one caller, the tracker, and what
+  // the tracker needs is the row as it stands before the request writes to it.
+  it('reads the tracked row so the diff has a baseline', async () => {
+    const user: any = await users.createUser(tenant, { email: 'baseline@acme.test', password: 'Baseline-pw-123' })
+    const before: any = await tracking.retrieveBy(tenant, 'user', user.id)
+    expect(before.email).toBe('baseline@acme.test')
+  })
+
+  it('answers null for a table it does not know, instead of failing', async () => {
+    // A consumer's own entity is registered nowhere in v5: the framework says it has no
+    // baseline rather than pretending the previous values were empty.
+    expect(await tracking.retrieveBy(tenant, 'Order', 'whatever')).toBeNull()
+    expect(await tracking.retrieveBy(tenant, 'user', 'no-such-id')).toBeNull()
   })
 })
 
@@ -194,5 +209,61 @@ describe('database/managers · tenants', () => {
 
     // And the irreversible one refuses to run before T-6.3 gives it its ceremony.
     await expect(manager.destroyContainer(tenantRow.id)).rejects.toThrow(/T-6.3/)
+  })
+})
+
+//
+// T-4.1. The property under test is the type of the first argument: a platform identity is
+// not reachable from inside a container, and the runtime says so as loudly as the compiler.
+// In v4 there was no such table at all, and the only thing separating the super-admin from a
+// tenant's admin was which schema resolved `user`, which is exactly what D-01 broke.
+//
+describe('database/managers · platform identities (T-4.1)', () => {
+  it('refuses a tenant handle where the control plane is required', async () => {
+    await expect(systemUsers.retrieveSystemUserByEmail(tenant as never, 'x@y.z')).rejects.toThrow(/control plane/)
+    await expect(systemUsers.createSystemUser(tenant as never, { email: 'a@b.c', password: 'x' })).rejects.toThrow(
+      /control plane/
+    )
+  })
+
+  it('provisions one, and never hands the credential back', async () => {
+    const created: any = await systemUsers.createSystemUser(control, {
+      email: 'Root@System.Test',
+      password: 'Root-pw-123456',
+      roles: ['system:admin']
+    })
+    expect(created.email).toBe('root@system.test')
+    expect(created.roles).toEqual(['system:admin'])
+    expect(created.password).not.toBe('Root-pw-123456')
+    // No `confirmed` column at all: system users are provisioned, never self-registered
+    // (docs/SCHEMA_V5.md §3.2), so there is no half-created state to be stuck in.
+    expect('confirmed' in created).toBe(false)
+  })
+
+  it('costs the same whether the address exists or not', async () => {
+    expect(await systemUsers.retrieveSystemUserByPassword(control, 'root@system.test', 'Root-pw-123456')).toBeTruthy()
+    expect(await systemUsers.retrieveSystemUserByPassword(control, 'root@system.test', 'wrong')).toBeNull()
+    // The comparison still runs against a real hash for an address that does not exist:
+    // without it the timing answers a question the uniform messages refuse to answer.
+    expect(await systemUsers.retrieveSystemUserByPassword(control, 'nobody@system.test', 'whatever')).toBeNull()
+  })
+
+  it('does not let a password through a generic update', async () => {
+    const user: any = await systemUsers.retrieveSystemUserByEmail(control, 'root@system.test')
+    const updated: any = await systemUsers.updateSystemUserById(control, user.id, {
+      password: 'plaintext',
+      roles: ['system:auditor']
+    })
+    expect(updated.roles).toEqual(['system:auditor'])
+    expect(updated.password).toBe(user.password)
+    expect(await systemUsers.retrieveSystemUserByPassword(control, 'root@system.test', 'plaintext')).toBeNull()
+  })
+
+  it('blocks and unblocks', async () => {
+    const user: any = await systemUsers.retrieveSystemUserByEmail(control, 'root@system.test')
+    await systemUsers.blockSystemUserById(control, user.id, 'left the company')
+    expect((await systemUsers.retrieveSystemUserById(control, user.id)).blocked).toBe(true)
+    await systemUsers.unblockSystemUserById(control, user.id)
+    expect((await systemUsers.retrieveSystemUserById(control, user.id)).blocked).toBe(false)
   })
 })

@@ -145,7 +145,7 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/tenants/:id/migrate` | `migrations` | applies the pending migrations to one container |
 | POST | `/tenants/:id/export` | `tenants:export` | |
 | POST | `/tenants/:id/impersonate` | `tenants:impersonate` | body: `{ userId, reason }`. `reason` is **required** |
-| POST | `/tenants/impersonate/end` | authenticated (control) | revokes the impersonation record |
+| POST | `/tenants/impersonate/end` | `tenants:impersonate` | revokes the impersonation record. Body: `{ impersonationId }`. First written as "authenticated (control)", which on a control route resolves to the superuser alone: whoever can open a session must be able to end one, and that is the capability |
 | POST | `/tenants/:id/destruction-request` | `tenants:destroy` | phase 1, see §6.2 |
 | DELETE | `/tenants/:id/data` | `tenants:destroy` | phase 2, see §6.2 |
 

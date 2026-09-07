@@ -105,6 +105,9 @@ export async function setup() {
   }
   ;(global as any).config = cfg
   ;(global as any).roles = await loaderRoles.load()
+  // The control catalogue, exactly as index.ts loads it: a control route resolves its roles
+  // against this map and never against the tenant one (T-4.1).
+  ;(global as any).systemRoles = await loaderRoles.loadSystem()
   ;(global as any).t = loaderTranslation.load()
 
   // The data layer is loaded through a variable specifier so this file keeps

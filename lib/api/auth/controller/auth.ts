@@ -3,7 +3,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import * as regExp from '../../../util/regexp.js'
 import { MfaPolicy } from '../../../config/constants.js'
 import { httpError } from '../../../util/httpError.js'
-import { dataContext } from '../../../util/tenancy.js'
+import { dataContext, isTenancyEnabled } from '../../../util/tenancy.js'
 
 // Upper bound for the password accepted at login: a cheap guard against oversized
 // payloads. Complexity is enforced only when a password is set, not at login.
@@ -406,11 +406,24 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
   // Verify the signature of the (possibly expired) access token: `ignoreExpiration`
   // lets a stale token through — which is the whole point of refresh — but a forged
   // or tampered token is now rejected (previously `decode` skipped signature checks).
-  let tokenData: { sub: number; iat?: number }
+  let tokenData: { sub: number; iat?: number; tid?: string }
   try {
-    tokenData = (await reply.server.jwt.verify(token, { ignoreExpiration: true })) as { sub: number; iat?: number }
+    tokenData = (await reply.server.jwt.verify(token, { ignoreExpiration: true })) as {
+      sub: number
+      iat?: number
+      tid?: string
+    }
   } catch {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid token' })
+  }
+
+  // Defect D-19. This is the one route where the token arrives in the BODY, so the tenant
+  // resolution of T-3.2 could not read it: it resolved the container from the header, as it
+  // does for any request without an Authorization token. The comparison therefore has to
+  // happen here, or renewal becomes the single door through which a token issued for one
+  // tenant is exchanged for a token valid in another.
+  if (isTenancyEnabled() && tokenData.tid !== req.tenantInfo?.id) {
+    return reply.status(403).send(httpError(403, 'The token does not belong to this tenant', 'TENANT_MISMATCH'))
   }
 
   // Reject refresh of access tokens issued too long ago. Use the real temporal
@@ -424,6 +437,11 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
   const refreshTokenData = await reply.server.jwt['refreshToken'].verify(refreshToken)
   if (tokenData?.sub && tokenData?.sub !== refreshTokenData?.sub) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Mismatched tokens' })
+  }
+  // The pair must agree on the tenant too: checking only the subject would let an access
+  // token of one tenant be renewed against a refresh token minted in another.
+  if (isTenancyEnabled() && refreshTokenData?.tid !== tokenData.tid) {
+    return reply.status(403).send(httpError(403, 'The token does not belong to this tenant', 'TENANT_MISMATCH'))
   }
 
   const user = await req.server['userManager'].retrieveUserByExternalId(dataContext(req), tokenData.sub)

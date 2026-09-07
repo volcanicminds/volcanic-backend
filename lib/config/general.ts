@@ -15,6 +15,10 @@ export default {
     reset_password_token_ttl: Number(process.env.RESET_PASSWORD_TOKEN_TTL) || 3600,
     mfa_admin_forced_reset_email: null,
     mfa_admin_forced_reset_until: null,
+    // Quanto dura una sessione di impersonificazione, in secondi (T-4.2). Trenta minuti,
+    // non le ventiquattro ore della v4: la durata è la sola cosa che limita una sessione che
+    // nessuno revoca a mano. Il massimo assoluto è quattro ore ed è applicato in codice.
+    impersonation_ttl: Number(process.env.IMPERSONATION_TTL) || 1800,
     // Dove vivono i dati della piattaforma: registro dei tenant, utenti di sistema e, quando
     // i tenant non ci sono, i dati dell'applicazione. Vedi docs/CONFIGURATION_V5.md §1.
     control: {

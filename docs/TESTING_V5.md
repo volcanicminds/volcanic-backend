@@ -145,6 +145,13 @@ The pipeline gains one job and one rule.
    honest statement that the rewrite is not finished.
 3. `tsconfig.json` no longer excludes `test`, so `npm run type-check` covers the suites too
    (defect D-25).
+4. **New rule `check:session-state`** (`npm run check:session-state`, inside `check-all` and
+   in the `verify` job): no `SET search_path` outside a transaction, anywhere in the sources.
+   It is the cheap half of T-3.1 point 3, so the statement cannot be *written*; the other
+   half sits on the driver (`lib/database/adapters/postgres/guard.ts`) and refuses it at the
+   wire, so it cannot be *emitted* either: not by the framework, not by a consumer's raw
+   SQL. Three files may name it: the check, the guard, and `test/db/session-state.spec.ts`,
+   which proves both. Adding a fourth is admitting the rule does not hold there.
 
 Everything else stays: lint, type-check, `depcruise`, build, `publint`,
 `@arethetypeswrong/cli`, then the test matrix.

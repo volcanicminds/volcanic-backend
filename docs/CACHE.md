@@ -5,11 +5,12 @@ any GET whose result rarely changes). It cuts database load and latency without 
 enable it per route (or per file), and the framework serves cache hits **after** authentication/role checks
 and **before** the handler runs.
 
-- **Zero dependency** — backed by an internal LRU + TTL store.
-- **Scope-safe by design** — the cache key includes tenant, authenticated subject and role set, so a cached
-  response is never served across tenants, users or privilege levels.
-- **GET + 2xx only** — mutations are never cached.
-- **Invalidation by key-group** — declarative (`invalidates`) or imperative (`invalidateCache()`).
+- **Zero dependency**: backed by an internal LRU + TTL store.
+- **Scope-safe by design**: the cache key states the container, the authenticated subject and the role set, so a
+  cached response is never served across tenants, users or privilege levels.
+- **GET + 2xx only**: mutations are never cached.
+- **Invalidation by key-group**: declarative (`invalidates`) or imperative (`invalidateCache()`), and it does not
+  travel between instances (section 6).
 
 Available since **3.5.0**.
 
@@ -89,18 +90,24 @@ so a "not found" never sticks.
 The key is:
 
 ```
-keyGroup :: tenant | subject | roles :: METHOD url
+keyGroup :: container :: subject | roles :: METHOD url
 ```
 
-- **tenant** — `req.tenant?.id` (empty in single-tenant mode).
-- **subject** — `req.user?.externalId` (or the API-token id), or `anon` for unauthenticated callers.
-- **roles** — the effective role codes, sorted.
+- **container**: `control` for the platform, `tenant:<id>` inside a customer's container.
+- **subject**: `req.user?.externalId` (or the API-token id), or `anon` for unauthenticated callers.
+- **roles**: the effective role codes, sorted.
+
+**Why the container is written out.** It could be inferred from the rest of the key in most
+shapes, and that is exactly the reason it is stated. Defect D-15 was a cache key that happened
+to be unique: the v4 data-layer cache keyed on the SQL, and with a schema-per-tenant strategy
+the SQL of two tenants is the same string, so the key stopped isolating the day the schema
+moved out of it. Isolation that holds by accident holds until something else changes.
 
 Consequences:
 
 - Anonymous / `public` callers share one entry (the storefront is the same for everyone).
-- Authenticated callers get **their own** entry per tenant/role — a cached admin response is never served to a
-  different admin, user or tenant.
+- Authenticated callers get **their own** entry per container and role set: a cached admin
+  response is never served to a different admin, user or tenant.
 - The full `url` (path + query string) is part of the key, so different filters/pages are cached separately.
 
 ---
@@ -130,12 +137,32 @@ export default {
 }
 ```
 
-`options.cache.enabled = false` (or a route `ttl`/global `ttl` of `0`) turns caching off — every request runs
+### The default TTL is two numbers, not one
+
+When `ttl` is not declared, the framework picks it from the shape of the deployment it can
+see:
+
+| Deployment | Default `ttl` | Why |
+|---|---|---|
+| no `tenants` block | **3600s** | a single application, usually a single process |
+| `tenants` declared | **60s** | the deployment that gets replicated, and the store is per process |
+
+The reason is section 6: an invalidation reaches the instance that served the request and no
+other, so behind several instances the TTL is what bounds how long the rest stay behind. One
+hour of that is not a cache, it is a stale read with a timer.
+
+The residual case is worth stating rather than hiding: a **single-tenant** application can also
+run behind several instances, and there the one-hour default is the unsafe one. Declare
+`cache.ttl` explicitly when that is the shape you run.
+
+`options.cache.enabled = false` (or a route `ttl`/global `ttl` of `0`) turns caching off: every request runs
 fresh. With the master switch off the store stays empty, so declared `invalidates` become no-ops (the `onSend`
-hook short-circuits, no store scan). The effective configuration is logged at startup:
+hook short-circuits, no store scan). The effective configuration is logged at startup, and it says where the
+number came from:
 
 ```
-Cache 🧊 enabled — ttl 3600s, maxEntries 1000, strategy LRU+TTL
+Cache 🧊 enabled: ttl 60s (default with tenants), maxEntries 1000, strategy LRU+TTL
+Cache 🧊 is per process: an invalidation reaches this instance only. TTL bounds the staleness.
 ```
 
 ---
@@ -177,8 +204,30 @@ global.cache.stats()                 // { size, hits, misses, enabled, ttl, maxE
 
 ## 6. Caveats
 
-- **Multi-tenant**: the key already includes the tenant id; tenant-scoped routes are skipped when no tenant is
-  resolved. If you add cross-tenant routes, make sure the response truly is tenant-independent before caching.
+### The store is per process, and an invalidation does not travel
+
+This is a **known limit and a decision**, not an oversight (defect D-26). The store is a `Map`
+in the process that serves the request. A declarative `invalidates`, or a call to
+`invalidateCache()`, empties that instance's entries and reaches no other instance, so behind a
+load balancer a stale entry survives on the other replicas until it expires.
+
+What follows from it:
+
+- the TTL is the only bound on cross-instance staleness, which is why the default is 60s as
+  soon as tenants are declared (section 4);
+- a write that must be visible everywhere immediately does not belong behind this cache: leave
+  those routes uncached rather than tuning the TTL down to nothing;
+- the alternative is a shared store behind a port, with a Redis adapter. It is deliberately not
+  shipped: it adds a service to operate and a new way to fail (an unreachable cache that has to
+  choose between failing the request and silently degrading), for a problem a low TTL bounds.
+  If a deployment genuinely needs it, that is the moment to add the port, not before.
+
+### Others
+
+- **Multi-tenant**: the key states the container, and a declarative invalidation only sweeps
+  the container the request ran in: a write inside one customer's data cannot have staled
+  another's. Tenant-scoped routes are skipped when no tenant is resolved. If you add
+  cross-tenant routes, make sure the response truly is tenant-independent before caching.
 - **Memory**: bound growth with `maxEntries`. A route with many distinct query-string combinations creates many
   keys — keep the client's allowed filters small, or lower `maxEntries`.
 - **Negative caching**: disabled on purpose — non-2xx responses are not cached, so a newly-published record is

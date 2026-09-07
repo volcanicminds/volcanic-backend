@@ -112,6 +112,10 @@ export function appTables(schemaName: string) {
       createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
       userId: text('user_id'),
       tokenId: text('token_id'),
+      // Which impersonation session wrote this, when one did (T-4.2). A column and not a
+      // key inside `contents`: an audit trail whose actor is buried in a JSON blob cannot be
+      // indexed, queried or joined, which is most of what an audit trail is for.
+      impersonationId: text('impersonation_id'),
       status: text('status').notNull(),
       entityName: text('entity_name').notNull(),
       entityId: text('entity_id').notNull(),

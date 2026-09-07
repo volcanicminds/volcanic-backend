@@ -4,50 +4,78 @@ import { ensureGenesisAdmin } from '../../lib/loader/genesis.js'
 
 // Records what the genesis reconciliation asked the (fake) userManager to do. The real
 // admin-code/config fall back to sensible defaults, so no shared globals are set here.
+const CONTROL: any = { kind: 'control' }
+
 function fakeManager(overrides: any = {}) {
-  const calls: any = { created: null, promoted: null, confirmed: null }
+  // T-3.3: every call is recorded WITH the handle it received. Genesis runs before any
+  // request exists, so if it could still reach a manager without a context, nothing at
+  // request time would catch it.
+  const calls: any = { created: null, promoted: null, confirmed: null, contexts: [] as any[] }
+  const seen = (ctx: any) => calls.contexts.push(ctx)
   return {
     calls,
     isImplemented: () => true,
-    countQuery: async () => overrides.count ?? 0,
-    retrieveUserByEmail: async () => overrides.existing ?? null,
-    createUser: async (data: any) => {
+    countQuery: async (ctx: any) => {
+      seen(ctx)
+      return overrides.count ?? 0
+    },
+    retrieveUserByEmail: async (ctx: any) => {
+      seen(ctx)
+      return overrides.existing ?? null
+    },
+    createUser: async (ctx: any, data: any) => {
+      seen(ctx)
       calls.created = data
       return { getId: () => 'new-id', ...data }
     },
-    userConfirmation: async (u: any) => {
+    userConfirmation: async (ctx: any, u: any) => {
+      seen(ctx)
       calls.confirmed = u
     },
-    updateUserById: async (id: any, data: any) => {
+    updateUserById: async (ctx: any, id: any, data: any) => {
+      seen(ctx)
       calls.promoted = { id, data }
     }
   }
 }
 
-const serverWith = (um: any) => ({ userManager: um }) as any
+const serverWith = (um: any) =>
+  ({
+    userManager: um,
+    provider: { control: async () => CONTROL }
+  }) as any
 
 describe('loader/genesis — ensureGenesisAdmin', () => {
   const savedEmail = process.env.ADMIN_EMAIL
   const savedPw = process.env.ADMIN_PASSWORD
 
-  beforeEach(() => {
-    ;(global as any).connection = {}
-  })
+
   afterEach(() => {
     if (savedEmail === undefined) delete process.env.ADMIN_EMAIL
     else process.env.ADMIN_EMAIL = savedEmail
     if (savedPw === undefined) delete process.env.ADMIN_PASSWORD
     else process.env.ADMIN_PASSWORD = savedPw
-    delete (global as any).connection
   })
 
-  it('skips when there is no live connection', async () => {
-    delete (global as any).connection
+  it('skips when no data layer is loaded', async () => {
     const um = fakeManager()
     let fatal = false
-    await ensureGenesisAdmin(serverWith(um), { onFatal: () => (fatal = true) })
+    // No provider: a core-only boot has nowhere to look for an administrator, so it says
+    // nothing rather than failing the startup. What it must NOT do is look anyway, which
+    // is what `global.connection` allowed in v4 (T-3.3).
+    await ensureGenesisAdmin({ userManager: um } as any, { onFatal: () => (fatal = true) })
     expect(um.calls.created).toBeNull()
+    expect(um.calls.contexts).toEqual([])
     expect(fatal).toBe(false)
+  })
+
+  it('passes the control plane to every manager call it makes', async () => {
+    process.env.ADMIN_EMAIL = 'founder@x.com'
+    process.env.ADMIN_PASSWORD = 'Given-pw-123'
+    const um = fakeManager({ existing: null })
+    await ensureGenesisAdmin(serverWith(um))
+    expect(um.calls.contexts.length).toBeGreaterThan(0)
+    expect(um.calls.contexts.every((c: any) => c === CONTROL)).toBe(true)
   })
 
   it('creates the founder when ADMIN_EMAIL is set and missing', async () => {

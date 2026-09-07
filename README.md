@@ -882,6 +882,19 @@ roles: [roles.admin, roles.public]
 
 ## Database (data layer)
 
+> **This chapter still describes v4, and v5 has replaced it.** It is left standing because a
+> project on 4.x is still reading it, and it will be rewritten when phase 7 of the rebuild
+> closes. What already changed: the subpath is `@volcanicminds/backend/db`, the ORM is not
+> part of the API any more, `global.connection` and `req.runner` are gone, a container is
+> chosen by qualifying the tables rather than by switching a session, and managers take the
+> data handle as their first argument. The conversion, entry by entry, is in
+> `docs/MIGRATION_V4_V5.md`; the v5 contracts are in `docs/SCHEMA_V5.md`,
+> `docs/MAGIC_QUERY_V5.md`, `docs/MANAGERS_V5.md` and `docs/CONFIGURATION_V5.md`.
+>
+> In particular, **`runInTenantContext` and `switchContext` below no longer exist**. A
+> background job declares its plane and receives its handle: see [Where a job
+> runs](#where-a-job-runs).
+
 The data layer (Magic Query + multi-tenant) is the subpath **`@volcanicminds/backend/typeorm`**. It dynamically
 translates HTTP query-string parameters into complex pagination, sorting, and filtering queries, with a
 database-agnostic abstraction layer that works with both SQL (e.g. PostgreSQL) and NoSQL (e.g. MongoDB) for most
@@ -1092,6 +1105,49 @@ await tenantManager.runInTenantContext('tenant-slug', async (em) => {
 
 - `node generate-hash.js <my-string>` — generate a bcrypt hash for a given string (passwords / seeding / testing).
 
+## Change tracking (audit trail)
+
+Declare which routes are tracked in `src/config/tracking.ts`. Every tracked write appends a row
+to the `change` table **inside the container the request worked in**, so a tenant's audit trail
+lives next to the data it describes.
+
+```ts
+// src/config/tracking.ts
+export default {
+  config: {
+    enableAll: true,
+    primaryKey: 'id',
+    strict: true // the deployment-wide default; see below
+  },
+  changes: [{ method: 'PUT', path: '/users/:id', entity: 'user', fields: { excludes: ['password'] } }]
+}
+```
+
+### When the trail cannot be written
+
+**The default is strict: the request fails**, with HTTP 500 and the code `TRACKING_FAILED`. A
+system that promises an audit trail and silently keeps none is worse than one that fails
+visibly, and in v4 that is exactly what happened: in multi-tenant the write was refused, the
+refusal was swallowed into a log line, and the response was still a 200.
+
+Where the trail is genuinely accessory, a route opts out:
+
+```ts
+{ method: 'PUT', path: '/preferences/:id', handler: 'prefs.update', config: { tracking: { strict: false } } }
+```
+
+Precedence is route, then `config.strict` in `src/config/tracking.ts`, then strict.
+
+Two things worth knowing before choosing:
+
+- the change is written **after** the handler wrote its own row, and the two are not in one
+  transaction. Strict mode therefore answers 500 on a request whose data change did happen;
+- the **previous values** of a diff are read automatically only for tables the framework knows
+  (`user`, `token`). A consumer's own entity is registered nowhere, so set `req.trackingData`
+  in a `preHandler` of your own if you want a real before/after. Without a baseline the change
+  is still recorded, with each entry carrying only what the field became: an entry with no
+  `old` key means "not captured", which is a different statement from `old: null`.
+
 ## Hooks
 
 It's possible add hook to application or request/reply lifecycles. More info on [Fastify Hooks](https://www.fastify.io/docs/latest/Reference/Hooks/).
@@ -1236,17 +1292,55 @@ Inside each job, both the configuration part and the job to be executed must be 
 
 ```ts
 // src/schedules/test.job.ts
-import { JobSchedule } from '@volcanicminds/backend'
+import { DataHandle, JobRun, JobSchedule } from '@volcanicminds/backend'
 
 export const schedule: JobSchedule = {
   active: true,
+  scope: 'control',
   interval: {
     seconds: 2
   }
 }
 
-export async function job() {
-  log.info('tick job 2 every 2 seconds')
+export async function job(ctx: DataHandle, run: JobRun) {
+  log.info(`tick job ${run.jobName} every 2 seconds`)
+}
+```
+
+### Where a job runs
+
+A job **declares** its plane and **receives** its handle. It never looks a connection up, and
+that is the whole difference from v4, where a job was called with no arguments and everything
+it read went through a global connection: in a multi-tenant deployment it therefore ran inside
+whichever customer's schema the pool happened to hold.
+
+| `scope` | Runs | Receives |
+|---|---|---|
+| `'control'` (default) | once, on the platform | a `ControlHandle` |
+| `'tenant'` | once, inside the container named by `tenant: '<slug>'` | that tenant's handle, and its registry row in `run.tenant` |
+| `'every-tenant'` | once per **active** tenant | each tenant's handle in turn |
+
+The default is `control` on purpose: a job that says nothing must not end up inside a
+customer's data. A job that names a plane the deployment does not have (`tenant` without a
+slug, `every-tenant` with no `tenants` block, an unknown scope) is refused at load, with the
+reason on the error log, rather than failing at its first tick.
+
+`every-tenant` walks the fleet with `concurrency` containers at a time (default 1, maximum
+16). One tenant's failure does not cancel the others: they all run, each failure is logged
+with its tenant, and the job then fails once with the whole list. `run.signal` is aborted when
+the server closes, so a long sweep stops instead of running on against a closing pool.
+
+```ts
+export const schedule: JobSchedule = {
+  active: true,
+  scope: 'every-tenant',
+  concurrency: 4,
+  cron: { expression: '0 3 * * *' }
+}
+
+export async function job(ctx: DataHandle, run: JobRun) {
+  if (run.signal.aborted) return
+  log.info(`nightly cleanup for ${run.tenant?.slug}`)
 }
 ```
 
@@ -1258,6 +1352,10 @@ export interface JobSchedule {
   type?: string // cron|interval, default: interval
   async?: boolean // boolean, default: true
   preventOverrun?: boolean // boolean, default: true
+
+  scope?: 'control' | 'tenant' | 'every-tenant' // default: 'control'
+  tenant?: string // required with scope 'tenant': the tenant slug
+  concurrency?: number // scope 'every-tenant' only, default 1, max 16
 
   cron?: {
     expression?: string // required if type = 'cron', use cron syntax (if not specified, cron will be disabled)

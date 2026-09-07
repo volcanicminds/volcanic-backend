@@ -36,6 +36,46 @@ export interface Roles {
   [option: string]: Role
 }
 
+// ---------------------------------------------------------------------------------------
+// System identity (T-4.1, docs/AUTHORIZATION_V5.md §2-§4)
+//
+// Who administers the PLATFORM is a different thing from who administers a tenant, and in v5
+// it is a different type. In v4 the only thing separating a super-admin from a tenant admin
+// was which schema resolved the `user` table, i.e. exactly what defect D-01 broke: every
+// administrative operation was one defect away from a privilege escalation.
+//
+// What the compiler can enforce, it does: a system role's code must start with `system:`,
+// and its capabilities must come from the closed control catalogue, so a system role cannot
+// name `users` and a control route cannot ask for a capability the framework does not
+// honour. What it cannot enforce is the other direction, because TypeScript has no way to
+// subtract a literal union from `string`: nothing stops a tenant role from writing
+// `capabilities: ['tenants:destroy']`. That gap is closed at boot instead, by the router's
+// integrity check (docs/AUTHORIZATION_V5.md §2.1), which refuses to start rather than warn.
+// ---------------------------------------------------------------------------------------
+
+/** The control catalogue. Closed and reserved: a consumer cannot coin one. */
+export type SystemCapability =
+  | 'tenants:read'
+  | 'tenants'
+  | 'tenants:impersonate'
+  | 'tenants:export'
+  | 'tenants:destroy'
+  | 'migrations'
+  | 'manifest'
+  | 'system-users'
+
+export interface SystemRole {
+  /** Always namespaced: the prefix is what keeps the two catalogues from ever merging. */
+  code: `system:${string}`
+  name: string
+  description: string
+  capabilities?: SystemCapability[]
+}
+
+export interface SystemRoles {
+  [option: string]: SystemRole
+}
+
 export interface Data {
   [option: string]: any
 }
@@ -61,10 +101,24 @@ export interface RouteConfig {
   description: string
   enable: boolean
   deprecated: boolean
-  /** 'tenant' (default) or 'control': which plane the route acts on. */
+  /**
+   * Which plane the route acts on: 'tenant' (the default) or 'control'.
+   *
+   * The v4 spelling `tenantContext` is not accepted, and not translated either: the router
+   * refuses to start on a route that still uses it (T-3.3, invariant 9). The conversion is
+   * one line and it is in docs/MIGRATION_V4_V5.md.
+   */
   scope?: 'tenant' | 'control'
-  /** @deprecated the v4 spelling of `scope`; `scope: 'control'` is `tenantContext: false`. */
-  tenantContext?: boolean
+  /**
+   * Audit trail behaviour for this route (T-3.5). WHAT is tracked is declared in
+   * `config/tracking.ts`; this says what happens when the change cannot be written.
+   *
+   * `strict` defaults to true: the request fails with `TRACKING_FAILED`. Declare
+   * `tracking: { strict: false }` where the trail is accessory, and the failure becomes a
+   * log line. The deployment-wide default can be moved with `config.strict` in
+   * `config/tracking.ts`.
+   */
+  tracking?: { strict?: boolean }
   tags?: string[]
   version: string
   security?: any
@@ -177,6 +231,38 @@ export type TenantHandle = { readonly [tenantBrand]: true; readonly tenantId: st
 /** Application data: the tenant container when tenancy is on, the control plane when it is not. */
 export type DataHandle = ControlHandle | TenantHandle
 
+/**
+ * What one request borrows from the data layer (T-3.1).
+ *
+ * It exists so that giving it back has ONE address. In v4 the release was written twice,
+ * an `onResponse` hook and a listener on `reply.raw`, and the two ran in the wrong order,
+ * which is how a tenant's `search_path` went back into the pool (D-01). One scope, one
+ * release, and a second call is a no-op rather than a double free.
+ */
+export interface DataRequestScope {
+  readonly requestId: string
+  tenantId?: string
+  /** Set by the single release point: a scope is given back once. */
+  released?: boolean
+}
+
+/**
+ * The data layer seam the core is allowed to know about. No ORM, no connection type, no
+ * import from `lib/database` (dependency-cruiser forbids it): the core receives this shape
+ * as a decorator and calls it.
+ */
+export interface DataProvider {
+  control(): ControlHandle | Promise<ControlHandle>
+  /** `scope` says which request is holding the container, so the LRU knows not to close it. */
+  tenant(tenantId: string, scope?: DataRequestScope): Promise<TenantHandle>
+  /**
+   * Returns whatever the request borrowed. `error` is passed when the client went away
+   * mid-flight: a connection given back after an abort must be destroyed, not reused.
+   */
+  releaseRequestScope(scope: DataRequestScope, error?: Error): Promise<void>
+  shutdown(): Promise<void>
+}
+
 /** A row of the tenant registry (docs/SCHEMA_V5.md §3.1). Never a connection: see `TenantHandle`. */
 export interface Tenant {
   id: string
@@ -208,6 +294,8 @@ export interface GeneralConfig {
     mfa_admin_forced_reset_until?: string
     // Lifetime of a /auth/forgot-password reset token, in seconds (default 3600).
     reset_password_token_ttl?: number
+    /** Seconds an impersonation session lasts (T-4.2). Default 1800, hard maximum 14400. */
+    impersonation_ttl?: number
     // Where the platform's own data lives: the tenant registry, the system users, and
     // the application data itself when there are no tenants (docs/CONFIGURATION_V5.md §1).
     control?: ControlConfig
@@ -227,11 +315,38 @@ export interface GeneralConfig {
   }
 }
 
+/**
+ * Where a scheduled job runs (T-3.4).
+ *
+ * `control` is the default because a job that says nothing must not touch a customer's
+ * data: in v4 a job ran with no context at all, which meant it ran on whatever connection
+ * the pool handed over, i.e. inside an arbitrary tenant (defect D-07).
+ */
+export type JobScope = 'control' | 'tenant' | 'every-tenant'
+
+/** What the framework hands a job besides its data handle. */
+export interface JobRun {
+  jobName: string
+  /** The registry row, on `tenant` and `every-tenant` runs. Never a connection. */
+  tenant?: Tenant
+  /** Aborted when the server closes: a fan-out over every tenant must be interruptible. */
+  signal: AbortSignal
+}
+
+export type JobFunction = (ctx: DataHandle, run: JobRun) => unknown | Promise<unknown>
+
 export interface JobSchedule {
   active: boolean // boolean (required)
   type?: string // cron|interval, default: interval
   async?: boolean // boolean, default: true
   preventOverrun?: boolean // boolean, default: true
+
+  /** Which plane the job runs on. Default 'control'. */
+  scope?: JobScope
+  /** Required with scope 'tenant': the slug of the tenant the job runs inside. */
+  tenant?: string
+  /** Scope 'every-tenant' only: how many containers are worked at a time. Default 1, max 16. */
+  concurrency?: number
 
   cron?: {
     expression?: string // required if type = 'cron', use cron syntax (if not specified cron will be disabled)
@@ -251,6 +366,7 @@ export interface JobSchedule {
 export interface ConfiguredRoute {
   enable: boolean
   tenantContext: boolean
+  tracking?: { strict?: boolean }
   method: any
   path: string
   handler: any
@@ -283,8 +399,13 @@ export interface TrackChanges {
   enable: boolean
   method: string
   path: string
+  /**
+   * The tracked entity. When it names a table the framework knows (`user`, `token`), the
+   * previous state is read automatically to build the diff; for a consumer's own entity the
+   * framework cannot reach the table, so the consumer sets `req.trackingData` itself and the
+   * change is otherwise recorded without the previous values.
+   */
   entity: string
-  changeEntity: string
   fields?: {
     includes?: string[] | null
     excludes?: string[] | null
@@ -369,8 +490,56 @@ export interface TokenManagement {
  */
 export interface TrackingManagement {
   isImplemented(): boolean
-  retrieveBy(ctx: DataHandle, entityName: string, entityId: string): Promise<any>
-  addChange(ctx: DataHandle, change: any): Promise<any>
+  /**
+   * The tracked row as it stands, for the baseline of the diff. `null` when the row does
+   * not exist or when the table is not one this handle knows (docs/MANAGERS_V5.md §7).
+   */
+  retrieveBy(ctx: DataHandle, entityName: string, entityId: string): Promise<any | null>
+  addChange(ctx: DataHandle, change: NewChange): Promise<any>
+}
+
+/** What the tracker asks to be recorded. Append-only: a change is never updated. */
+export interface NewChange {
+  entityName: string
+  entityId: string
+  status: 'create' | 'update' | 'delete'
+  userId?: string | null
+  tokenId?: string | null
+  /** The impersonation session behind the write, when there was one (T-4.2). */
+  impersonationId?: string | null
+  contents: Array<{ key: string; old?: unknown; new?: unknown }>
+}
+
+/**
+ * A system user acting as a tenant user, recorded before it can happen (T-4.2).
+ *
+ * In v4 an impersonation left a claim in a token and nothing else: no record, twenty-four
+ * hours of validity, no way to revoke it, and the privilege check guarding it compared a
+ * field the entity did not have (defect D-18). The row is the difference between an audited
+ * capability and a back door with a comment.
+ */
+export interface Impersonation {
+  id: string
+  systemUserId: string
+  tenantId: string
+  targetUserId: string
+  /** Free text, required. An impersonation without a stated reason is refused. */
+  reason: string
+  ip?: string | null
+  userAgent?: string | null
+  createdAt: Date | string
+  expiresAt: Date | string
+  revokedAt?: Date | string | null
+}
+
+export interface ImpersonationManagement {
+  isImplemented(): boolean
+  /** Written BEFORE any token is issued: the record is the permission, not the receipt. */
+  openImpersonation(ctx: ControlHandle, data: Omit<Impersonation, 'id' | 'createdAt' | 'revokedAt'>): Promise<Impersonation>
+  getImpersonation(ctx: ControlHandle, id: string): Promise<Impersonation | null>
+  /** Idempotent: revoking an already revoked session is not an error, it is the same state. */
+  revokeImpersonation(ctx: ControlHandle, id: string): Promise<boolean>
+  findQuery(ctx: ControlHandle, data: VQuery): Promise<VFindResult<Impersonation>>
 }
 
 export interface MfaManagement {
@@ -457,6 +626,22 @@ declare module 'fastify' {
     /** The registry row of this request's tenant. A record, never a connection. */
     tenantInfo?: Tenant
     /**
+     * The platform administrator behind a control-scope request (T-4.1).
+     *
+     * Deliberately NOT `req.user`: a system user is not a tenant user, and one field holding
+     * either would put the two identities back in the same slot, which is the shape the
+     * whole phase exists to remove.
+     */
+    systemUser?: any
+    /** What this request borrowed from the data layer, and gives back exactly once (T-3.1). */
+    dataScope?: DataRequestScope
+    /**
+     * The live impersonation session behind this request, when the token carries `imp`
+     * (T-4.2). Verified against the control plane on every request: a JWT that is still
+     * cryptographically valid is not a session that is still allowed.
+     */
+    impersonation?: Impersonation
+    /**
      * Reset token minted by `POST /auth/forgot-password`, handed to the
      * `global.postForgotPassword` middleware so the consumer can deliver it
      * (e.g. email a reset link). Set only when the account exists and is valid.
@@ -512,11 +697,15 @@ declare global {
   var transferConfig: TransferConfig
   var transferPath: string | null
   var roles: Roles
+  /** The control-scope catalogue. Separate map, separate namespace (T-4.1). */
+  var systemRoles: SystemRoles
   var tracking: TrackChangesList
   var trackingConfig: Data
-  var connection: any
-  var entity: any
-  var repository: any
+  // `connection`, `entity` and `repository` were the v4 ambient globals of the data layer.
+  // They are gone (T-3.3): a global connection is a context nobody declared, and reading it
+  // is how a request served whatever the pool happened to hold (D-01, D-06). Whoever needs
+  // the control plane receives a ControlHandle, whoever needs a tenant a TenantHandle, and
+  // both arrive on the request.
   var routes: ConfiguredRoute[]
   var cache: any
 }

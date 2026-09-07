@@ -19,7 +19,7 @@ export default {
     {
       method: 'GET',
       path: '/',
-      roles: [roles.admin],
+      requireCapability: 'tenants:read',
       handler: 'tenants.list',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -33,7 +33,7 @@ export default {
     {
       method: 'POST',
       path: '/',
-      roles: [roles.admin],
+      requireCapability: 'tenants',
       handler: 'tenants.create',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -48,7 +48,7 @@ export default {
     {
       method: 'GET',
       path: '/:id',
-      roles: [roles.admin],
+      requireCapability: 'tenants:read',
       handler: 'tenants.findOne',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -63,7 +63,7 @@ export default {
     {
       method: 'PUT',
       path: '/:id',
-      roles: [roles.admin],
+      requireCapability: 'tenants',
       handler: 'tenants.update',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -79,7 +79,7 @@ export default {
     {
       method: 'DELETE',
       path: '/:id',
-      roles: [roles.admin],
+      requireCapability: 'tenants',
       handler: 'tenants.remove',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -94,7 +94,7 @@ export default {
     {
       method: 'POST',
       path: '/:id/suspend',
-      roles: [roles.admin],
+      requireCapability: 'tenants',
       handler: 'tenants.suspend',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -104,8 +104,33 @@ export default {
     },
     {
       method: 'POST',
+      path: '/:id/impersonate',
+      requireCapability: 'tenants:impersonate',
+      handler: 'tenants.impersonate',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Act as a user of a tenant',
+        description: 'Records who, into which tenant, as whom and why, then issues a short-lived tenant token'
+      }
+    },
+    {
+      method: 'POST',
+      path: '/impersonate/end',
+      // Whoever can open a session can close one. `roles: []` would have resolved to the
+      // superuser alone on a control route, which is not what "authenticated (control)"
+      // meant: the operator who opened a session must be able to end it.
+      requireCapability: 'tenants:impersonate',
+      handler: 'tenants.endImpersonation',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'End an impersonation session',
+        description: 'Revokes the record, which invalidates the token even though the JWT is still signed'
+      }
+    },
+    {
+      method: 'POST',
       path: '/:id/restore',
-      roles: [roles.admin],
+      requireCapability: 'tenants',
       handler: 'tenants.restore',
       middlewares: ['global.isAuthenticated'],
       config: {

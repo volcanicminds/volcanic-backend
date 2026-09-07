@@ -1,4 +1,4 @@
-import type { ControlHandle, TenantHandle, Tenant, GeneralConfig } from '../../types/global.js'
+import type { TenantHandle, Tenant, GeneralConfig, DataProvider, DataRequestScope } from '../../types/global.js'
 
 //
 // The seams the adapters plug into (docs/MANAGERS_V5.md §9). Types only: no implementation
@@ -6,18 +6,16 @@ import type { ControlHandle, TenantHandle, Tenant, GeneralConfig } from '../../t
 // enforced in CI by dependency-cruiser, and it is why swapping the engine is a phase of work
 // instead of a rewrite of the framework.
 //
-export interface RequestScope {
-  readonly requestId: string
-  readonly tenantId?: string
-}
+/**
+ * Declared in `types/global.d.ts` and re-exported here, not redeclared: the core cannot
+ * import this file (dependency-cruiser) and two declarations of the same contract drift on
+ * the first change. One name, one definition, two places allowed to see it.
+ */
+export type RequestScope = DataRequestScope
 
-export interface ConnectionProvider {
-  control(): ControlHandle
+export interface ConnectionProvider extends DataProvider {
   /** Opens or reuses a tenant's container, honouring the LRU limit of T-7.1. */
-  tenant(tenantId: string): Promise<TenantHandle>
-  /** Called once per request, after the response: releases what the request borrowed. */
-  releaseRequestScope(scope: RequestScope): Promise<void>
-  shutdown(): Promise<void>
+  tenant(tenantId: string, scope?: RequestScope): Promise<TenantHandle>
 }
 
 export interface ContainerRef {

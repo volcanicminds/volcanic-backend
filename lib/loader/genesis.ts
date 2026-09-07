@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import crypto from 'crypto'
+import type { DataHandle, DataProvider } from '../../types/global.js'
 import { includesRole } from '../util/authz.js'
 import { isTenancyEnabled } from '../util/tenancy.js'
 
@@ -24,12 +25,22 @@ export interface GenesisOptions {
  * - `ADMIN_EMAIL` unset → allowed only when an admin already exists, otherwise fail-fast.
  */
 export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisOptions = {}): Promise<void> {
+  // The handle is asked for, not assumed (T-3.3). v4 read `global.connection` here, which
+  // is the same implicit context invariant 3 forbids at request time; worse, once that
+  // global stopped existing the guard turned this whole reconciliation into a no-op, and
+  // an instance could boot with no administrator at all without saying so.
+  const provider = (server as unknown as Record<string, DataProvider | undefined>)['provider']
+  if (!provider) return // no live data layer (e.g. a core-only boot)
+  const ctx = (await provider.control()) as DataHandle
+
+  // Which apex the deployment needs (T-4.1). With tenants declared, the first identity to
+  // exist is a PLATFORM one: a tenant admin is provisioned with its tenant, and seeding one
+  // here would put an application user in the container that administers the application.
+  if (isTenancyEnabled()) return await ensureGenesisSystemAdmin(server, ctx, opts)
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const um = (server as any)?.['userManager']
   if (!um?.isImplemented?.()) return
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!(global as any).connection) return // no live data layer (e.g. core-only boot)
-  if (isTenancyEnabled()) return
 
   const onFatal =
     opts.onFatal ||
@@ -43,17 +54,17 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
   const email = process.env.ADMIN_EMAIL?.trim()
 
   if (!email) {
-    const count = Number(await um.countQuery({ 'roles:in': adminCode }))
+    const count = Number(await um.countQuery(ctx, { 'roles:in': adminCode }))
     if (count === 0) {
       onFatal('Startup: no admin exists and ADMIN_EMAIL is not set to bootstrap one. Set ADMIN_EMAIL.')
     }
     return
   }
 
-  const existing = await um.retrieveUserByEmail(email)
+  const existing = await um.retrieveUserByEmail(ctx, email)
   if (existing) {
     if (!includesRole(existing.roles, adminCode)) {
-      await um.updateUserById(existing.getId(), { roles: [...(existing.roles || []), adminCode] })
+      await um.updateUserById(ctx, existing.getId(), { roles: [...(existing.roles || []), adminCode] })
       if (log?.i) log.info(`Startup: promoted ${email} to admin (sovereign founder).`)
     }
     return
@@ -61,8 +72,8 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
 
   const envPassword = process.env.ADMIN_PASSWORD
   const password = envPassword || generatePassword()
-  const created = await um.createUser({ email, username: email, password, roles: [adminCode] })
-  await um.userConfirmation(created)
+  const created = await um.createUser(ctx, { email, username: email, password, roles: [adminCode] })
+  await um.userConfirmation(ctx, created)
   if (!envPassword) {
     // The generated secret goes to stdout only — never through the structured logger,
     // which may be shipped, retained, or indexed. Set ADMIN_PASSWORD to avoid disclosure.
@@ -72,5 +83,67 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
     if (log?.w) log.warn(`Startup: created sovereign founder ${email} with a generated password (printed to stdout).`)
   } else if (log?.i) {
     log.info(`Startup: created sovereign founder ${email}.`)
+  }
+}
+
+/**
+ * The first platform administrator, on a deployment that has tenants.
+ *
+ * Same contract as the single-tenant apex and the same reason for existing: an instance that
+ * boots with nobody able to administer it has no way back in, and one that boots with an
+ * administrator nobody asked for is worse. So `ADMIN_EMAIL` creates the founding system user
+ * if it is missing, and its absence is fatal only when no system user exists at all.
+ *
+ * This is also the one place `ADMIN_EMAIL` is still allowed to decide who is sovereign
+ * (T-4.3): from here on, being a founder is a property of a row, not of the environment the
+ * process happens to have been started with.
+ */
+async function ensureGenesisSystemAdmin(
+  server: FastifyInstance,
+  ctx: DataHandle,
+  opts: GenesisOptions
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sm = (server as any)?.['systemUserManager']
+  if (!sm?.isImplemented?.()) return
+
+  const onFatal =
+    opts.onFatal ||
+    ((message: string) => {
+      if (log?.f) log.fatal(message)
+      process.exit(1)
+    })
+
+  const email = process.env.ADMIN_EMAIL?.trim()
+
+  if (!email) {
+    const count = Number(await sm.countQuery(ctx, {}))
+    if (count === 0) {
+      onFatal('Startup: this deployment has tenants and no platform administrator, and ADMIN_EMAIL is not set to bootstrap one.')
+    }
+    return
+  }
+
+  const existing = await sm.retrieveSystemUserByEmail(ctx, email)
+  if (existing) {
+    if (!includesRole(existing.roles, 'system:admin')) {
+      await sm.updateSystemUserById(ctx, existing.id, { roles: [...(existing.roles || []), 'system:admin'] })
+      if (log?.i) log.info(`Startup: promoted ${email} to system:admin.`)
+    }
+    return
+  }
+
+  const envPassword = process.env.ADMIN_PASSWORD
+  const password = envPassword || generatePassword()
+  await sm.createSystemUser(ctx, { email, password, roles: ['system:admin'] })
+
+  if (!envPassword) {
+    // stdout only, never the structured logger, which may be shipped, retained or indexed.
+    process.stdout.write(
+      `\n[genesis] Created platform administrator ${email} with a generated password: ${password}\n[genesis] Rotate it after first login.\n\n`
+    )
+    if (log?.w) log.warn(`Startup: created platform administrator ${email} with a generated password (printed to stdout).`)
+  } else if (log?.i) {
+    log.info(`Startup: created platform administrator ${email}.`)
   }
 }

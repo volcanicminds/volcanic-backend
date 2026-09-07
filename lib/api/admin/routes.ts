@@ -7,7 +7,7 @@ export default {
     description: 'Backoffice support: manifest descriptor (admin scope)',
     controller: 'controller',
     enable: isEnabled, // opt-in via config.options.manifest.enabled
-    tenantContext: false,
+    scope: 'control', // describes the platform, never a customer's container
     tags: ['admin']
   },
   routes: [

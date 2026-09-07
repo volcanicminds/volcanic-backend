@@ -47,7 +47,9 @@ import {
   defaultTrackingManager,
   defaultMfaManager,
   defaultTransferManager,
-  defaultTenantManager
+  defaultTenantManager,
+  defaultSystemUserManager,
+  defaultImpersonationManager
 } from './lib/defaults/managers.js'
 
 global.log = logger
@@ -144,6 +146,10 @@ const preload = async () => {
   global.config = await loaderConfig.load()
   global.t = loaderTranslation.load()
   global.roles = await loaderRoles.load()
+  // The control catalogue is a separate map, not extra entries in `roles` (T-4.1): a role
+  // that can suspend a customer and a role that can read a customer's orders are not two
+  // rows of one list.
+  global.systemRoles = await loaderRoles.loadSystem()
 }
 
 const start = async (decorators = {}) => {
@@ -274,6 +280,8 @@ const start = async (decorators = {}) => {
     mfaManager: defaultMfaManager,
     transferManager: defaultTransferManager,
     tenantManager: defaultTenantManager,
+    systemUserManager: defaultSystemUserManager,
+    impersonationManager: defaultImpersonationManager,
     ...decorators
   }
 

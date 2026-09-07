@@ -16,6 +16,9 @@ jobs:
       - run: npm run lint
       - run: npm run type-check
       - run: npm run depcruise
+      # T-3.1: `SET search_path` outside a transaction is what D-01 was. The grep is the
+      # cheap half of the rule; the driver guard is the other half and runs with the tests.
+      - run: npm run check:session-state
       - run: npm run build
       - run: npx publint
       - run: npx --yes @arethetypeswrong/cli@latest --pack . --profile esm-only

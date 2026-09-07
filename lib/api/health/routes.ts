@@ -15,7 +15,7 @@ export default {
       config: {
         title: 'Health check service',
         description: 'Health check service',
-        tenantContext: false,
+        scope: 'control',
         response: {
           200: { $ref: 'defaultResponse#' }
         }

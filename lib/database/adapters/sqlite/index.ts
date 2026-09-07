@@ -2,8 +2,9 @@ import path from 'path'
 import fs from 'fs'
 import { sql, type SQLWrapper } from 'drizzle-orm'
 import { eq } from 'drizzle-orm'
-import type { ControlHandle, TenantHandle, GeneralConfig, Tenant } from '../../../../types/global.js'
+import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestScope } from '../../../../types/global.js'
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/sqlite.js'
+import { RequestLeases } from '../../leases.js'
 
 //
 // SQLite and libSQL adapter (T-2.3).
@@ -73,6 +74,7 @@ export class SqliteProvider {
   private controlHandle: SqliteHandle | null = null
   /** Open containers, most recently used last. Each one holds a real file handle. */
   private readonly open = new Map<string, SqliteHandle>()
+  private readonly leases = new RequestLeases()
 
   constructor(options: SqliteProviderOptions = {}) {
     this.driver = options.driver || 'better-sqlite3'
@@ -146,14 +148,14 @@ export class SqliteProvider {
     return this.controlHandle as unknown as ControlHandle
   }
 
-  async tenant(tenantId: string): Promise<TenantHandle> {
+  async tenant(tenantId: string, scope?: DataRequestScope): Promise<TenantHandle> {
     const control: any = await this.control()
     const rows = await control.db.select().from(this.registry.tenant).where(eq(this.registry.tenant.id, tenantId)).limit(1)
     const row = (rows[0] as unknown as Tenant) ?? null
     if (!row) throw new Error(`Tenant '${tenantId}' is not in the registry`)
     if (row.status !== 'active') throw new Error(`Tenant '${row.slug}' is ${row.status}`)
 
-    return (await this.forLocator(row.locator, row.id)) as unknown as TenantHandle
+    return (await this.forLocator(row.locator, row.id, scope)) as unknown as TenantHandle
   }
 
   /**
@@ -161,8 +163,9 @@ export class SqliteProvider {
    * live container is an open file descriptor and a WAL: the LRU is what keeps a thousand
    * tenants from exhausting the process's file table.
    */
-  async forLocator(locator: string, tenantId: string): Promise<SqliteHandle> {
+  async forLocator(locator: string, tenantId: string, scope?: DataRequestScope): Promise<SqliteHandle> {
     const file = locator === ':memory:' ? locator : resolveContainerFile(this.directory, locator)
+    this.leases.take(scope, file)
 
     const existing = this.open.get(file)
     if (existing) {
@@ -174,15 +177,38 @@ export class SqliteProvider {
     const { db, close } = await this.openDatabase(file)
     const handle = this.buildHandle('tenant', db, close, file, tenantId)
     this.open.set(file, handle)
+    await this.evictContainers()
+    return handle
+  }
 
-    while (this.open.size > this.maxOpenContainers) {
-      const oldestKey = this.open.keys().next().value
-      if (!oldestKey) break
-      const oldest = this.open.get(oldestKey)!
-      this.open.delete(oldestKey)
+  /**
+   * Trims the open containers to the bound. Unlike Postgres, evicting here CLOSES a file
+   * descriptor, so a container a live request is holding is skipped: closing it under a
+   * running query is a crash, and the bound is not worth one. If every container is in use
+   * the process stays over the bound until a request ends, which is the honest failure,
+   * because the alternative is losing a query that was already in flight.
+   */
+  private async evictContainers(): Promise<void> {
+    for (const key of [...this.open.keys()]) {
+      if (this.open.size <= this.maxOpenContainers) break
+      if (this.leases.inUse(key)) continue
+      const oldest = this.open.get(key)!
+      this.open.delete(key)
       await oldest.close()
     }
-    return handle
+  }
+
+  /**
+   * The single release point (T-3.1, point 4). Here it has real work: it is what tells the
+   * LRU that a container's file may be closed again. Called once per request, from one
+   * place; a second call is a no-op, so the abort path and the response path cannot both
+   * release the same scope.
+   */
+  async releaseRequestScope(scope: DataRequestScope, _error?: Error): Promise<void> {
+    if (!scope || scope.released) return
+    scope.released = true
+    this.leases.release(scope)
+    await this.evictContainers()
   }
 
   async shutdown(): Promise<void> {

@@ -9,11 +9,17 @@ import { processRoute } from '../../lib/loader/router.js'
   backoffice: { code: 'backoffice' },
   ops: { code: 'ops', capabilities: ['users'] }
 }
+// T-4.1: the control catalogue is a separate map. A control route resolves against this
+// one and never sees a tenant role code.
+;(global as any).systemRoles = {
+  'system:admin': { code: 'system:admin', name: 'System admin', capabilities: [] },
+  'system:operator': { code: 'system:operator', name: 'System operator', capabilities: ['tenants', 'tenants:read'] }
+}
 ;(global as any).log = {} // all log.x flags falsy -> silent
 
 const AUTH_MIDDLEWARES = ['global.isAuthenticated', 'global.isAdmin']
-const run = (route: any, validRoutes: any[] = []) =>
-  processRoute(route, 0, 'users/routes.ts', 'users', '/base', {}, AUTH_MIDDLEWARES, validRoutes)
+const run = (route: any, validRoutes: any[] = [], errors: string[] = [], fileConfig: any = {}) =>
+  processRoute(route, 0, 'users/routes.ts', 'users', '/base', fileConfig, AUTH_MIDDLEWARES, validRoutes, errors)
 
 const codes = (r: any) => (r.roles || []).map((x: any) => x.code)
 
@@ -23,6 +29,67 @@ describe('loader/router — processRoute', () => {
   it('resolves scope: control into a route outside the tenant context', () => {
     const r: any = run({ method: 'GET', path: '/', handler: 'user.find', config: { scope: 'control' } })
     expect(r.tenantContext).toBe(false)
+  })
+
+  // T-3.3: `tenantContext` was the v4 spelling. It is refused at boot, not translated: a
+  // route that meant "the platform" and is silently read as "a tenant" does not fail, it
+  // answers from the wrong container.
+  it('refuses the v4 spelling instead of translating it', () => {
+    const errors: string[] = []
+    run({ method: 'GET', path: '/', handler: 'user.find', config: { tenantContext: false } }, [], errors)
+    expect(errors.length).toBe(1)
+    expect(errors[0]).toContain("scope: 'control'")
+
+    const fromFile: string[] = []
+    run({ method: 'GET', path: '/', handler: 'user.find' }, [], fromFile, { tenantContext: false })
+    expect(fromFile.length).toBe(1)
+  })
+
+  it('refuses a plane that does not exist', () => {
+    const errors: string[] = []
+    run({ method: 'GET', path: '/', handler: 'user.find', config: { scope: 'platform' } }, [], errors)
+    expect(errors.length).toBe(1)
+    expect(errors[0]).toContain("unknown scope 'platform'")
+  })
+
+  // docs/AUTHORIZATION_V5.md §2.1: a route that mixes the scopes is a hole, and it must be
+  // impossible to ship. These are refusals at boot, not warnings.
+  it('refuses a tenant role on a control route, and a control role on a tenant route', () => {
+    const mixedDown: string[] = []
+    run({ method: 'GET', path: '/', handler: 'x.y', roles: ['admin'], config: { scope: 'control' } }, [], mixedDown)
+    expect(mixedDown.length).toBe(1)
+    expect(mixedDown[0]).toContain("control route lists the tenant role 'admin'")
+
+    const mixedUp: string[] = []
+    run({ method: 'GET', path: '/', handler: 'x.y', roles: ['system:operator'] }, [], mixedUp)
+    expect(mixedUp.length).toBe(1)
+    expect(mixedUp[0]).toContain("tenant route lists the control role 'system:operator'")
+  })
+
+  it('refuses a capability from the wrong catalogue', () => {
+    const invented: string[] = []
+    run({ method: 'GET', path: '/', handler: 'x.y', requireCapability: 'users', config: { scope: 'control' } }, [], invented)
+    expect(invented.length).toBe(1)
+    expect(invented[0]).toContain('not in the control catalogue')
+
+    const borrowed: string[] = []
+    run({ method: 'GET', path: '/', handler: 'x.y', requireCapability: 'tenants:destroy' }, [], borrowed)
+    expect(borrowed.length).toBe(1)
+    expect(borrowed[0]).toContain('cannot gate a tenant route')
+  })
+
+  it('gives a control route the system superuser, and never public', () => {
+    const r: any = run({ method: 'GET', path: '/', handler: 'x.y', config: { scope: 'control' } })
+    expect(codes(r)).toEqual(['system:admin'])
+
+    const byCapability: any = run({
+      method: 'GET',
+      path: '/c',
+      handler: 'x.y',
+      requireCapability: 'tenants:read',
+      config: { scope: 'control' }
+    })
+    expect(codes(byCapability).sort()).toEqual(['system:admin', 'system:operator'])
   })
 
   it('keeps the tenant context by default, and for scope: tenant', () => {

@@ -19,7 +19,10 @@ export async function load() {
       const configTracking = module.default || module
 
       const { config, changes } = configTracking || {}
-      const { enableAll = true, primaryKey = 'id', changeEntity = 'Change' } = config || {}
+      // `changeEntity` is gone (T-3.5): in v4 the audit rows could be written to a custom
+      // entity resolved through `global.entity`. v5 has one `change` table, inside each
+      // container, and no registry of consumer entities to resolve a name against.
+      const { enableAll = true, primaryKey = 'id' } = config || {}
 
       trackConfig = { ...trackConfig, ...config }
 
@@ -31,7 +34,6 @@ export async function load() {
           // isValid() treating it as enabled.
           const tc: TrackChanges = {
             primaryKey: primaryKey,
-            changeEntity: changeEntity,
             enable: true,
             ...change
           } as TrackChanges

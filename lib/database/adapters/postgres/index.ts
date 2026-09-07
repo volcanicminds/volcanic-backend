@@ -2,8 +2,10 @@ import pg from 'pg'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { sql, type SQLWrapper } from 'drizzle-orm'
 import { eq } from 'drizzle-orm'
-import type { ControlHandle, TenantHandle, GeneralConfig, Tenant } from '../../../../types/global.js'
+import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestScope } from '../../../../types/global.js'
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/pg.js'
+import { RequestLeases } from '../../leases.js'
+import { guardPool } from './guard.js'
 
 //
 // Postgres adapter (T-2.2).
@@ -46,6 +48,12 @@ export interface PostgresProviderOptions {
   idleTimeoutMs?: number
   /** LRU bound on live containers. Only meaningful for the `container` strategy (T-7.1). */
   maxOpenContainers?: number
+  /**
+   * A pool to use instead of opening one. The seam exists so the session-state rule of
+   * T-3.1 can be proved against a double, without a database: a test hands in a recording
+   * pool and reads back every statement the data layer emitted.
+   */
+  pool?: pg.Pool
 }
 
 const DEFAULT_SCHEMA = 'public'
@@ -69,20 +77,28 @@ export class PostgresProvider {
   /** Qualified table sets, keyed by schema. Plain objects: no connection is held here. */
   private readonly containers = new Map<string, AppTables>()
   private readonly maxOpenContainers: number
+  private readonly leases = new RequestLeases()
 
   constructor(options: PostgresProviderOptions = {}) {
     this.controlSchema = options.schema || DEFAULT_SCHEMA
     this.maxOpenContainers = options.maxOpenContainers ?? 20
 
-    this.pool = new pg.Pool({
-      connectionString: connectionStringFrom(options),
-      max: options.poolMax ?? 10,
-      idleTimeoutMillis: options.idleTimeoutMs ?? 30000,
-      // Pinned once, at connect time, identical on every connection: configuration, not
-      // session state. It matters only for the control plane in `public`, which Drizzle
-      // cannot qualify (docs/SCHEMA_V5.md §1).
-      options: `-c search_path=${this.controlSchema}`
-    })
+    const pool =
+      options.pool ??
+      new pg.Pool({
+        connectionString: connectionStringFrom(options),
+        max: options.poolMax ?? 10,
+        idleTimeoutMillis: options.idleTimeoutMs ?? 30000,
+        // Pinned once, at connect time, identical on every connection: configuration, not
+        // session state. It matters only for the control plane in `public`, which Drizzle
+        // cannot qualify (docs/SCHEMA_V5.md §1).
+        options: `-c search_path=${this.controlSchema}`
+      })
+
+    // From here on the pool refuses to carry a session `search_path` (T-3.1, point 3).
+    // The check sits on the driver rather than on this class so it also covers raw SQL
+    // written by a consumer through `handle.execute`.
+    this.pool = guardPool(pool)
 
     this.db = drizzle(this.pool)
     this.registry = registryTables(this.controlSchema)
@@ -113,27 +129,64 @@ export class PostgresProvider {
    * locator and cached, because they are objects and cost nothing to keep — the LRU bound
    * exists for the `container` strategy, where a live container also means a live pool.
    */
-  async tenant(tenantId: string): Promise<TenantHandle> {
+  async tenant(tenantId: string, scope?: DataRequestScope): Promise<TenantHandle> {
     const row = await this.lookupTenant(tenantId)
     if (!row) throw new Error(`Tenant '${tenantId}' is not in the registry`)
     if (row.status !== 'active') throw new Error(`Tenant '${row.slug}' is ${row.status}`)
 
-    return this.forLocator(row.locator, row.id) as unknown as TenantHandle
+    return this.forLocator(row.locator, row.id, scope) as unknown as TenantHandle
   }
 
   /** Builds (or reuses) the handle for a container, without going through the registry. */
-  forLocator(locator: string, tenantId: string): PostgresHandle {
+  forLocator(locator: string, tenantId: string, scope?: DataRequestScope): PostgresHandle {
+    // Validated BEFORE it is used as a cache key: the name reaches `pgSchema()`, which
+    // prints it into every statement built from these tables. A locator that has not been
+    // through here has no business being remembered either (T-3.1, "attenzione").
+    assertLocator(locator)
+    this.leases.take(scope, locator)
+
     let tables = this.containers.get(locator)
-    if (!tables) {
+    if (tables) {
+      // Reinsert so the key order is recency, not first use: without this the bound evicts
+      // the container the whole deployment is hammering and keeps the idle ones.
+      this.containers.delete(locator)
+    } else {
       tables = appTables(locator)
-      this.containers.set(locator, tables)
-      if (this.containers.size > this.maxOpenContainers) {
-        // Map preserves insertion order, so the first key is the least recently added.
-        const oldest = this.containers.keys().next().value
-        if (oldest) this.containers.delete(oldest)
-      }
     }
+    this.containers.set(locator, tables)
+    this.evictContainers()
+
     return this.buildHandle('tenant', tables, tenantId)
+  }
+
+  /** Trims the cache to its bound, never dropping a container a live request is holding. */
+  private evictContainers(): void {
+    if (this.containers.size <= this.maxOpenContainers) return
+    for (const locator of [...this.containers.keys()]) {
+      if (this.containers.size <= this.maxOpenContainers) break
+      if (this.leases.inUse(locator)) continue
+      this.containers.delete(locator)
+    }
+  }
+
+  /**
+   * The single release point (T-3.1, point 4).
+   *
+   * On this adapter it gives back bookkeeping and nothing else, and that is the whole
+   * result of the task rather than an omission: a container is a set of qualified table
+   * objects, so a request never holds a connection between statements: each one is checked
+   * out and returned by the driver, unchanged. There is no session state to undo, so no
+   * ordering to get right, which is precisely what v4 got wrong (D-01).
+   *
+   * `error` is accepted, and ignored here, for the day T-7.1 gives a container its own pool:
+   * a connection handed back after the client went away must be destroyed, not reused, and
+   * this is the method that will do it. Nothing else may.
+   */
+  async releaseRequestScope(scope: DataRequestScope, _error?: Error): Promise<void> {
+    if (!scope || scope.released) return
+    scope.released = true
+    this.leases.release(scope)
+    this.evictContainers()
   }
 
   private async lookupTenant(tenantId: string): Promise<Tenant | null> {
@@ -160,10 +213,20 @@ export class PostgresProvider {
 
 /** Postgres identifiers cannot be parameterized: they are validated, then quoted. */
 export function escapeIdentifier(name: string): string {
+  assertLocator(name)
+  return `"${name}"`
+}
+
+/**
+ * The one gate a schema name goes through. Same rule as v4, which was already correct
+ * (appendix B), applied in one more place: v5 also uses the name as a cache key, and a key
+ * is a name that outlives the request that brought it.
+ */
+export function assertLocator(name: string): string {
   if (!/^[a-z_][a-z0-9_]{0,62}$/i.test(name)) {
     throw new Error(`Invalid identifier '${name}': it must match [a-z_][a-z0-9_]{0,62}`)
   }
-  return `"${name}"`
+  return name
 }
 
 export function createPostgresProvider(options: GeneralConfig['options']): PostgresProvider {
