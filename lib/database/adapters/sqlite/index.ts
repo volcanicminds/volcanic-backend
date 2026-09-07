@@ -24,6 +24,7 @@ export type SqliteDriver = 'better-sqlite3' | 'libsql'
 
 export interface SqliteHandle {
   readonly kind: 'control' | 'tenant'
+  readonly dialect: 'sqlite'
   readonly tenantId?: string
   readonly db: any
   readonly tables: AppTables
@@ -125,6 +126,7 @@ export class SqliteProvider {
   private buildHandle(kind: 'control' | 'tenant', db: any, close: () => Promise<void>, file: string, tenantId?: string): SqliteHandle {
     return {
       kind,
+      dialect: 'sqlite',
       tenantId,
       db,
       file,

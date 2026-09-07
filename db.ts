@@ -12,9 +12,20 @@
 // isolate before a single connection is opened.
 //
 import { assertSupported } from './lib/database/capabilities.js'
+import { createPostgresProvider } from './lib/database/adapters/postgres/index.js'
+import { createSqliteProvider } from './lib/database/adapters/sqlite/index.js'
+import { buildManagers } from './lib/database/managers/index.js'
 import type { DataLayerOptions } from './lib/database/ports.js'
 
 export * from './lib/database/ports.js'
+export * from './lib/database/managers/index.js'
+export * from './lib/database/query/index.js'
+export { appTables as pgTables, registryTables as pgRegistryTables } from './lib/database/schema/pg.js'
+export { appTables as sqliteTables, registryTables as sqliteRegistryTables } from './lib/database/schema/sqlite.js'
+export { encrypt, decrypt } from './lib/database/crypto.js'
+export { uuidv7 } from './lib/database/uuid.js'
+export { PostgresProvider } from './lib/database/adapters/postgres/index.js'
+export { SqliteProvider } from './lib/database/adapters/sqlite/index.js'
 export {
   assertSupported,
   supports,
@@ -33,8 +44,15 @@ export async function start(options?: DataLayerOptions) {
   const resolved = options ?? (global as any).config?.options
   assertSupported(resolved)
 
-  throw new Error(
-    'The Drizzle data layer is not implemented yet: phase 2 of EVO_FRAMEWORK.md builds it, ' +
-      'against docs/SCHEMA_V5.md and docs/MANAGERS_V5.md. Until then a consumer must inject its own managers.'
-  )
+  const engine = resolved?.control?.engine ?? 'postgres'
+  const provider = engine === 'sqlite' || engine === 'libsql' ? createSqliteProvider(resolved) : createPostgresProvider(resolved)
+
+  const managers = buildManagers(provider as never)
+
+  return {
+    ...managers,
+    /** Not a manager: the framework uses it to open a request's handles (T-3.1). */
+    provider,
+    shutdown: () => (provider as { shutdown(): Promise<void> }).shutdown()
+  }
 }

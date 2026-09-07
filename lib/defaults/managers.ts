@@ -20,13 +20,19 @@ import {
 // argument names nobody reads. One factory does the same job and cannot drift from the
 // interfaces, because there is nothing here to keep in sync.
 //
-function notImplemented<T extends object>(manager: string): T {
+function notImplemented<T extends object>(manager: string, methods: readonly string[]): T {
+  const known = new Set(methods)
+
   return new Proxy({} as T, {
     get(_target, property) {
-      // `then` must stay undefined: an object that answers to `then` is treated as a
-      // promise, and awaiting a manager by accident would hang or resolve to nonsense.
-      if (typeof property === 'symbol' || property === 'then') return undefined
+      if (typeof property === 'symbol') return undefined
       if (property === 'isImplemented') return () => false
+      // Only the contract's own methods answer. A proxy that responds to EVERY property is a
+      // liar with consequences: Fastify probes a decorator for `getter`/`setter` before
+      // registering it, so a catch-all answered "yes, I am an accessor" and the manager was
+      // wired as something else entirely. Found by the isolation bench, which is what a bench
+      // written before the code is for.
+      if (!known.has(property as string)) return undefined
 
       return async () => {
         throw new Error(
@@ -34,14 +40,51 @@ function notImplemented<T extends object>(manager: string): T {
             `or load the data layer from @volcanicminds/backend/db`
         )
       }
-    }
+    },
+    has: (_target, property) => property === 'isImplemented' || known.has(property as string)
   })
 }
 
-export const defaultUserManager = notImplemented<UserManagement>('userManager')
-export const defaultTokenManager = notImplemented<TokenManagement>('tokenManager')
-export const defaultTrackingManager = notImplemented<TrackingManagement>('trackingManager')
-export const defaultTenantManager = notImplemented<TenantManagement>('tenantManager')
-export const defaultSystemUserManager = notImplemented<SystemUserManagement>('systemUserManager')
-export const defaultMfaManager = notImplemented<MfaManagement>('mfaManager')
-export const defaultTransferManager = notImplemented<TransferManagement>('transferManager')
+const USER_METHODS = [
+  'isValidUser', 'createUser', 'updateUserById', 'deleteUser', 'resetExternalId',
+  'retrieveUserById', 'retrieveUserByExternalId', 'retrieveUserByEmail', 'retrieveUserByUsername',
+  'retrieveUserByResetPasswordToken', 'retrieveUserByConfirmationToken', 'retrieveUserByPassword',
+  'changePassword', 'forgotPassword', 'resetPassword', 'userConfirmation',
+  'blockUserById', 'unblockUserById', 'countQuery', 'findQuery',
+  'saveMfaSecret', 'retrieveMfaSecret', 'enableMfa', 'disableMfa', 'forceDisableMfa'
+] as const
+
+const TOKEN_METHODS = [
+  'isValidToken', 'createToken', 'updateTokenById', 'removeTokenById', 'resetExternalId',
+  'retrieveTokenById', 'retrieveTokenByExternalId', 'blockTokenById', 'unblockTokenById',
+  'countQuery', 'findQuery'
+] as const
+
+const TRACKING_METHODS = ['retrieveBy', 'addChange'] as const
+
+const TENANT_METHODS = [
+  'listTenants', 'getTenant', 'getTenantBySlug', 'createTenant', 'updateTenant',
+  'suspendTenant', 'restoreTenant', 'softDeleteTenant',
+  'openContainer', 'closeContainer', 'migrateContainer', 'exportContainer',
+  'destroyContainer', 'inspectContainer'
+] as const
+
+const SYSTEM_USER_METHODS = [
+  'createSystemUser', 'updateSystemUserById', 'deleteSystemUser', 'retrieveSystemUserById',
+  'retrieveSystemUserByEmail', 'retrieveSystemUserByExternalId', 'retrieveSystemUserByPassword',
+  'blockSystemUserById', 'unblockSystemUserById', 'countQuery', 'findQuery'
+] as const
+
+const MFA_METHODS = ['generateSetup', 'verify'] as const
+
+const TRANSFER_METHODS = [
+  'getPath', 'getServer', 'onUploadCreate', 'onUploadFinish', 'onUploadTerminate', 'handle', 'isValid'
+] as const
+
+export const defaultUserManager = notImplemented<UserManagement>('userManager', USER_METHODS)
+export const defaultTokenManager = notImplemented<TokenManagement>('tokenManager', TOKEN_METHODS)
+export const defaultTrackingManager = notImplemented<TrackingManagement>('trackingManager', TRACKING_METHODS)
+export const defaultTenantManager = notImplemented<TenantManagement>('tenantManager', TENANT_METHODS)
+export const defaultSystemUserManager = notImplemented<SystemUserManagement>('systemUserManager', SYSTEM_USER_METHODS)
+export const defaultMfaManager = notImplemented<MfaManagement>('mfaManager', MFA_METHODS)
+export const defaultTransferManager = notImplemented<TransferManagement>('transferManager', TRANSFER_METHODS)

@@ -53,8 +53,8 @@ documenti esistono e in che ordine si leggono.
 | T-2.2 | Adattatore Postgres | `[x]` | `lib/database/adapters/postgres/`: pool con `search_path` fissato alla connessione, handle di controllo e di tenant costruiti sulle tabelle qualificate, cache dei contenitori, `createSchema`/`dropSchema` con identificatori validati. 5 test, 4 dei quali contro Postgres reale (saltati senza `DATABASE_URL`): provano che dopo una lettura sul contenitore la connessione non resta puntata lì, e che un `SET LOCAL` non sopravvive alla transazione |
 | T-2.3 | Adattatore SQLite e libSQL | `[x]` | `lib/database/adapters/sqlite/`: un file per contenitore, percorsi vincolati dentro la directory configurata, pragma WAL, `foreign_keys`, `busy_timeout` applicati all'apertura, permessi 0600, LRU che chiude davvero i descrittori. libSQL è un driver dentro lo stesso adattatore. 7 test |
 | T-2.4 | Magic Query v5 | `[x]` | `lib/database/query/`: catalogo operatori con i motori dichiarati, parser di `_logic` a discesa ricorsiva con limiti, assemblatore con validazione in ordine fisso e 16 codici di errore stabili. Niente più degradi silenziosi: `:raw` rimosso, intervalli con `..`, jolly escapati, campi sensibili non filtrabili, operatori array/JSON che rispondono 400 su SQLite. 24 test sui due dialetti |
-| T-2.5 | Manager riscritti | `[ ]` | |
-| T-2.6 | Derivazione di chiave non bloccante | `[ ]` | |
+| T-2.5 | Manager riscritti | `[x]` | `lib/database/managers/`: user, token, tracking, tenant su Drizzle, contesto obbligatorio come primo argomento (`runtime()` lancia se manca), bcrypt costo 12 e confronto a costo costante portati dalla v4, token di reset con la scadenza dentro, segreto MFA cifrato. `db.start()` costruisce provider e manager. 21 test. Il null-object è stato ristretto al contratto: rispondeva a ogni proprietà e Fastify lo scambiava per un accessor |
+| T-2.6 | Derivazione di chiave non bloccante | `[x]` | `lib/database/crypto.ts`: `scrypt` asincrono, formato e parametri invariati, letture legacy conservate. 6 test, fra cui la prova che un timer scatta durante la derivazione |
 
 ## Fase 3: isolamento del tenant
 

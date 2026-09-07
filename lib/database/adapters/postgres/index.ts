@@ -26,6 +26,8 @@ import { appTables, registryTables, type AppTables, type RegistryTables } from '
 //
 export interface PostgresHandle {
   readonly kind: 'control' | 'tenant'
+  /** The dialect the Magic Query builds for: a handle knows its engine, callers do not ask. */
+  readonly dialect: 'postgres'
   readonly tenantId?: string
   /** Drizzle bound to the pool. Shared: it holds no per-container state. */
   readonly db: NodePgDatabase
@@ -91,6 +93,7 @@ export class PostgresProvider {
     const db = this.db
     return {
       kind,
+      dialect: 'postgres',
       tenantId,
       db,
       tables,
