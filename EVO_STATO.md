@@ -50,7 +50,7 @@ documenti esistono e in che ordine si leggono.
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
 | T-2.1 | Schema base v5 | `[x]` | otto tabelle in `lib/database/schema/{pg,sqlite}.ts` con fabbriche per schema (`appTables`, `registryTables`), `timestamptz` su Postgres ed epoch ms su SQLite, UUID v7 generato nel processo (`lib/database/uuid.ts`, chiude D-28), registro fuori dai contenitori, `change` append-only. 14 test nuovi: parità fra i due dialetti, qualificazione dello schema, ordinamento degli id |
-| T-2.2 | Adattatore Postgres | `[ ]` | |
+| T-2.2 | Adattatore Postgres | `[x]` | `lib/database/adapters/postgres/`: pool con `search_path` fissato alla connessione, handle di controllo e di tenant costruiti sulle tabelle qualificate, cache dei contenitori, `createSchema`/`dropSchema` con identificatori validati. 5 test, 4 dei quali contro Postgres reale (saltati senza `DATABASE_URL`): provano che dopo una lettura sul contenitore la connessione non resta puntata lì, e che un `SET LOCAL` non sopravvive alla transazione |
 | T-2.3 | Adattatore SQLite e libSQL | `[ ]` | |
 | T-2.4 | Magic Query v5 | `[ ]` | |
 | T-2.5 | Manager riscritti | `[ ]` | |
