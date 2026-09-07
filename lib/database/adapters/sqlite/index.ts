@@ -93,6 +93,10 @@ export class SqliteProvider {
       const client = createClient({ url: file === ':memory:' ? ':memory:' : `file:${file}` })
       const db = drizzle(client)
       await db.run(sql.raw('pragma foreign_keys = ON'))
+      // Base text operators are case-SENSITIVE by definition (docs/MAGIC_QUERY_V5.md §4):
+      // without this pragma SQLite's LIKE folds ASCII and `:contains` would quietly mean
+      // `:containsi`, i.e. the same URL answering differently on two engines.
+      await db.run(sql.raw('pragma case_sensitive_like = ON'))
       await db.run(sql.raw(`pragma busy_timeout = ${this.busyTimeoutMs}`))
       if (file !== ':memory:') await db.run(sql.raw('pragma journal_mode = WAL'))
       return { db, close: async () => client.close() }
@@ -103,6 +107,7 @@ export class SqliteProvider {
     // 0600: a container is one customer's data, and a shared filesystem is not an excuse.
     const sqlite = new Database(file, file === ':memory:' ? {} : { fileMustExist: false })
     sqlite.pragma('foreign_keys = ON')
+    sqlite.pragma('case_sensitive_like = ON')
     sqlite.pragma(`busy_timeout = ${this.busyTimeoutMs}`)
     if (file !== ':memory:') {
       sqlite.pragma('journal_mode = WAL')

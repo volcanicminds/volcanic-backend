@@ -196,12 +196,21 @@ asked is worse than answering with an error.
 |---|---|
 | `true` / `false` (any case) | boolean |
 | `null` (any case) | SQL `NULL` |
-| a number, for a numeric or date column | number / date |
+| a number, for a numeric column | number |
+| all digits, for a date column | epoch **milliseconds**, never a bare year: `new Date('1500')` would mean the year 1500 |
+| anything else, for a date column | parsed as a date string; unparseable is 400 |
 | anything else | string |
 
 Coercion is driven by the **column type**, not by the shape of the string: `code:eq=0042` on a
 text column stays the string `0042`. In v4 a numeric-looking string was coerced regardless, so
 leading zeros were lost.
+
+**Field names are the ones the response uses**, that is the camelCase form (`createdAt`), not
+the column name in the database (`created_at`). A client filters on what it reads back.
+
+On a text column the words `true`, `false` and `null` are those words, not booleans or SQL
+NULL: `:null=true` is how one asks for NULL, and it works on every column type. Only a boolean
+column coerces `true` / `false`, and only a non-text column coerces `null`.
 
 An empty value (`name:contains=`) responds **400**. In v4 it became the literal sentinel
 `notFound` and searched for that string.
