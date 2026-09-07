@@ -2,6 +2,7 @@
 import { getParams, getData } from '../util/common.js'
 import { httpError } from '../util/httpError.js'
 import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } from '../../types/global.js'
+import { isTenancyEnabled } from '../util/tenancy.js'
 
 const MFA_SETUP_WHITELIST = ['/auth/mfa/setup', '/auth/mfa/enable', '/auth/mfa/verify', '/auth/logout']
 
@@ -76,8 +77,7 @@ export default async (req, reply) => {
         const tokenData = reply.server.jwt.verify(bearerToken)
 
         // Validate Tenant Access
-        const { multi_tenant } = global.config?.options || {}
-        if (multi_tenant?.enabled && cfg.tenantContext !== false) {
+        if (isTenancyEnabled() && cfg.tenantContext !== false) {
           if (!req.tenant || !tokenData.tid) {
             return reply.status(403).send(httpError(403, 'Token does not belong to this tenant', 'TENANT_NOT_FOUND'))
           }

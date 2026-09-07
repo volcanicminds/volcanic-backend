@@ -39,7 +39,7 @@ documenti esistono e in che ordine si leggono.
 
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
-| T-1.1 | Configurazione `control` e `tenants` | `[ ]` | |
+| T-1.1 | Configurazione `control` e `tenants` | `[x]` | `multi_tenant` sostituito dai due blocchi in `lib/config/general.ts` e `lib/loader/general.ts`; fusione profonda in `lib/util/merge.ts` (D-21) e default del blocco tenant applicati solo se dichiarato (`normalizeOptions`); tipi `ControlConfig`/`TenantsConfig` in `types/global.d.ts`; sei punti del core passano da `lib/util/tenancy.ts`; gruppo `/tool` rimosso; 9 test nuovi in `test/lib/merge.spec.ts`, totale 58 verdi |
 | T-1.2 | Due tipi distinti, `ControlHandle` e `TenantHandle` | `[ ]` | |
 | T-1.3 | Porte del data layer e subpath `/db` | `[ ]` | |
 | T-1.4 | Matrice di capacità e rifiuto all'avvio | `[ ]` | |

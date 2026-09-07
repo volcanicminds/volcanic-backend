@@ -1,5 +1,6 @@
-const { multi_tenant } = global.config?.options || {}
-const isEnabled = multi_tenant?.enabled || false
+// The tenant registry only exists where there are tenants: with no `tenants` block the
+// whole group stays unmounted (docs/CONFIGURATION_V5.md §1).
+const isEnabled = !!global.config?.options?.tenants?.strategy
 
 export default {
   config: {

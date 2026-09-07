@@ -9,6 +9,7 @@
  * by BE-7 tests.
  */
 import type { ConfiguredRoute, ResourceHints } from '../../types/global.js'
+import { tenantsConfig } from '../util/tenancy.js'
 
 // ── Output types (mirror the v2 JSON Schema; the engine owns the canonical TS type) ──
 type CapabilityKind = 'list' | 'read' | 'create' | 'update' | 'delete' | 'action'
@@ -337,9 +338,9 @@ export function generateManifest(server: any, options: BuildOptions = {}): Manif
   const routes: ConfiguredRoute[] = ((global as any).routes as ConfiguredRoute[]) || []
   const schemas: Record<string, any> = typeof server?.getSchemas === 'function' ? server.getSchemas() : {}
   const authMode: 'cookie' | 'bearer' = process.env.AUTH_MODE === 'COOKIE' ? 'cookie' : 'bearer'
-  const mt = (global as any).config?.options?.multi_tenant
-  const tenancy: Manifest['tenancy'] = mt?.enabled
-    ? { mode: 'multi', switchable: true, header: mt.header_key || 'x-tenant-id', listEndpoint: '/tenants' }
+  const tenants = tenantsConfig()
+  const tenancy: Manifest['tenancy'] = tenants
+    ? { mode: 'multi', switchable: true, header: tenants.headerKey || 'x-tenant-id', listEndpoint: '/tenants' }
     : { mode: 'single' }
   return buildManifest({
     routes,

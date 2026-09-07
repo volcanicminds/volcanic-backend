@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import crypto from 'crypto'
 import { includesRole } from '../util/authz.js'
+import { isTenancyEnabled } from '../util/tenancy.js'
 
 // Random credential for a generated founder. base64url is alphanumeric; the suffix
 // satisfies any upper/lower/digit/symbol policy. Printed once; rotate after first login.
@@ -28,8 +29,7 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
   if (!um?.isImplemented?.()) return
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (!(global as any).connection) return // no live data layer (e.g. core-only boot)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if ((global as any).config?.options?.multi_tenant?.enabled) return
+  if (isTenancyEnabled()) return
 
   const onFatal =
     opts.onFatal ||

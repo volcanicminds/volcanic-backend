@@ -15,12 +15,21 @@ export default {
     reset_password_token_ttl: Number(process.env.RESET_PASSWORD_TOKEN_TTL) || 3600,
     mfa_admin_forced_reset_email: null,
     mfa_admin_forced_reset_until: null,
-    multi_tenant: {
-      enabled: false,
-      resolver: 'subdomain', // subdomain, header, query
-      header_key: 'x-tenant-id',
-      query_key: 'tid'
+    // Dove vivono i dati della piattaforma: registro dei tenant, utenti di sistema e, quando
+    // i tenant non ci sono, i dati dell'applicazione. Vedi docs/CONFIGURATION_V5.md §1.
+    control: {
+      engine: process.env.CONTROL_ENGINE || 'postgres',
+      url: process.env.DATABASE_URL || undefined,
+      schema: process.env.DB_SCHEMA || 'public',
+      pool: {
+        max: Number(process.env.DB_POOL_MAX) || 10,
+        idleTimeoutMs: Number(process.env.DB_POOL_IDLE_MS) || 30000
+      }
     },
+    // Assente = single tenant, ed è il default. Dichiarare il blocco È abilitare la tenancy:
+    // non esiste un flag `enabled` che possa contraddire la strategia (in v4 esisteva, e il
+    // resolver dichiarato non era quello eseguito: difetto D-11).
+    tenants: null,
     manifest: {
       // opt-in: exposes GET /admin/manifest (gated by the `manifest` capability) for the admin console
       enabled: false

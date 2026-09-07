@@ -113,6 +113,50 @@ export interface Route {
   cache?: boolean | number | RouteCache
 }
 
+export type Engine = 'postgres' | 'sqlite' | 'libsql' | 'pglite'
+export type TenantStrategy = 'schema' | 'container'
+export type TenantResolver = 'header' | 'subdomain'
+
+export interface PoolConfig {
+  max?: number
+  idleTimeoutMs?: number
+}
+
+export interface ControlConfig {
+  engine: Engine
+  /** Connection string; wins over the discrete DB_* variables. */
+  url?: string
+  /** Postgres only: the schema the control plane lives in. Explicit, never inferred. */
+  schema?: string
+  pool?: PoolConfig
+  [option: string]: unknown
+}
+
+export interface ContainersConfig {
+  /** LRU limit of live tenant containers (docs/CONFIGURATION_V5.md §1). */
+  maxOpen?: number
+  idleTimeoutMs?: number
+  poolMax?: number
+  /** `container` + sqlite/libsql only: where the per-tenant files live. */
+  directory?: string
+}
+
+export interface TenantsConfig {
+  strategy: TenantStrategy
+  engine: Engine
+  /** How the tenant is resolved for requests that carry no token. Never `query`: see D-11. */
+  resolver?: TenantResolver
+  headerKey?: string
+  /** Which label of the hostname carries the tenant, when resolver is `subdomain`. */
+  subdomainLevel?: number
+  containers?: ContainersConfig
+  migrations?: {
+    checkOnResolve?: boolean
+    refuseStartIfControlBehind?: boolean
+  }
+  [option: string]: unknown
+}
+
 export interface GeneralConfig {
   name: string
   options: {
@@ -130,13 +174,12 @@ export interface GeneralConfig {
     mfa_admin_forced_reset_until?: string
     // Lifetime of a /auth/forgot-password reset token, in seconds (default 3600).
     reset_password_token_ttl?: number
-    // Multi-Tenant Configs
-    multi_tenant?: {
-      enabled: boolean
-      resolver?: 'subdomain' | 'header' | 'query'
-      header_key?: string
-      query_key?: string
-    }
+    // Where the platform's own data lives: the tenant registry, the system users, and
+    // the application data itself when there are no tenants (docs/CONFIGURATION_V5.md §1).
+    control?: ControlConfig
+    // Absent = single tenant. Declaring the block is what enables tenancy: there is no
+    // separate `enabled` flag that could contradict the strategy.
+    tenants?: TenantsConfig | null
     // Admin manifest capability (opt-in): exposes GET /admin/manifest
     manifest?: {
       enabled: boolean

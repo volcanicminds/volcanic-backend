@@ -15,6 +15,7 @@
  */
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { NormalizedRouteCache, RouteCache } from '../../types/global.js'
+import { isTenancyEnabled } from './tenancy.js'
 
 interface Entry {
   value: any
@@ -194,9 +195,8 @@ function keyFor(req: any, keyGroup: string): string {
 /** Skip caching when a tenant is expected (multi-tenant + tenantContext) but missing,
  *  to avoid ever leaking data across tenants. */
 function tenantMissing(req: any): boolean {
-  const mt = global.config?.options?.multi_tenant?.enabled
   const tenantCtx = req.routeOptions?.config?.tenantContext
-  return Boolean(mt && tenantCtx !== false && !req.tenant)
+  return Boolean(isTenancyEnabled() && tenantCtx !== false && !req.tenant)
 }
 
 /** Build the per-route read (preHandler) and write (onSend) hooks for a cached route. */

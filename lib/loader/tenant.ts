@@ -1,102 +1,57 @@
 import { FastifyInstance } from 'fastify'
 import { TenantManagement } from '../../types/global.js'
+import { isTenancyEnabled, tenantsConfig } from '../util/tenancy.js'
 
+//
+// Tenant loader.
+//
+// v4 did three things here, and two of them were the defect: it created a QueryRunner per
+// request, mutated its session with `SET search_path`, and tried to undo that from a
+// listener on `finish` that Fastify never reached in time, so the tenant's schema went back
+// into the pool with the connection (D-01, proved in appendix A.2 of EVO_FRAMEWORK.md).
+//
+// v5 does not switch a session at all: the container is chosen by qualifying the tables,
+// so nothing is left behind to clean up. That mechanism, the token-bound resolution and the
+// single release path arrive with T-3.1 and T-3.2, on top of the data layer that T-1.3 and
+// phase 2 build. Until then this loader only does what it can do honestly: say which mode
+// the deployment is in, and refuse to pretend there is isolation when there is none.
+//
 export async function apply(server: FastifyInstance) {
-  const { multi_tenant } = global.config.options || {}
-
-  // Se multi-tenant non è abilitato, usciamo subito e iniettiamo il contesto single-tenant
-  if (!multi_tenant?.enabled) {
-    if (log.i) log.info('Multi-Tenant: Disabled (Using single-tenant DB context)')
-
-    server.addHook('onRequest', async (req) => {
-      const dataSource = global.connection
-      if (dataSource) {
-        req.db = dataSource.manager
-      }
-    })
+  if (!isTenancyEnabled()) {
+    if (log.i) log.info('Tenancy: single tenant (no `tenants` block declared)')
     return
   }
 
-  if (log.i) log.info('Multi-Tenant: 🟢 Enabled')
+  const tenants = tenantsConfig()
+  if (log.i) log.info(`Tenancy: 🟢 ${tenants?.strategy} on ${tenants?.engine}`)
 
-  // Hook globale per la risoluzione del tenant
-  // Deve essere eseguito all'inizio della richiesta
   server.addHook('onRequest', async (req, reply) => {
-    // Recuperiamo il gestore tenant iniettato o di default
-    const tm = server['tenantManager'] as TenantManagement
-
-    // Check if route opts out of tenant context
     const cfg = (req.routeOptions?.config as { tenantContext?: boolean }) || {}
-    if (cfg.tenantContext === false) {
-      if (log.t) log.trace(`Multi-Tenant: Route ${req.url} opted out of tenant context via config`)
-      // Inject global DB context (public schema) like single-tenant
-      const dataSource = global.connection
-      if (dataSource) req.db = dataSource.manager
-      return
-    }
+    if (cfg.tenantContext === false) return
 
-    // Controllo critico: se è abilitato il MT, DEVE esserci un manager implementato
+    // Fail-closed (invariant 2): tenancy declared and no manager able to serve it means the
+    // request cannot be isolated, so it is refused. It is never served on a shared context:
+    // that is what "no implicit fallback to the global context" means (invariant 3).
+    const tm = server['tenantManager'] as TenantManagement
     if (!tm || !tm.isImplemented()) {
-      const errorMsg = 'Multi-Tenant enabled but no TenantManager provided/implemented!'
-      if (log.f) log.fatal(errorMsg)
-      throw new Error(errorMsg)
-    }
-
-    try {
-      // 1. Risoluzione Tenant
-      const tenant = await tm.resolveTenant(req)
-
-      if (!tenant) {
-        if (log.w) log.warn(`Multi-Tenant: Tenant resolution failed for request ${req.id}`)
-        return reply.code(404).send({
-          statusCode: 404,
-          error: 'Not Found',
-          message: 'Tenant not found or resolution failed'
-        })
-      }
-
-      // 2. Setup Contesto
-      req.tenant = tenant
-      if (log.t) log.trace(`Multi-Tenant: Context switched to ${tenant.slug || tenant.id}`)
-
-      // 3. Creazione QueryRunner (Context-Chain Root)
-      // Questo è il cuore della "Golden Solution": ogni richiesta ha il suo QueryRunner isolato
-      const dataSource = global.connection
-      if (dataSource) {
-        const qr = dataSource.createQueryRunner()
-        await qr.connect()
-
-        // Assegnamo il manager del QueryRunner alla richiesta
-        req.db = qr.manager
-        req.runner = qr
-
-        // 4. Switch Schema su QUESTO QueryRunner
-        // Passiamo il manager affinché il TenantManager possa eseguire "SET search_path" su questa connessione specifica
-        await tm.switchContext(tenant, qr.manager)
-
-        // 5. Cleanup: Rilascio del QueryRunner alla fine della richiesta
-        reply.raw.on('finish', async () => {
-          if (!qr.isReleased) {
-            try {
-              // Vital: Reset search_path to public avoids polluting the connection pool
-              await qr.query('SET search_path TO public')
-            } catch (err) {
-              if (log.e) log.error(`Multi-Tenant: Failed to reset search_path: ${err}`)
-            }
-            await qr.release()
-          }
-        })
-      } else {
-        if (log.w) log.warn('Multi-Tenant: Global connection not found! Skipping DB context creation.')
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (log.e) log.error(`Multi-Tenant Error: ${message}`)
-      return reply.code(500).send({
-        statusCode: 500,
-        error: 'Internal Server Error',
-        message: 'Tenant Context Switch Failed'
+      if (log.e) log.error('Tenancy: declared but no tenant manager is implemented — refusing the request')
+      return reply.code(503).send({
+        statusCode: 503,
+        error: 'Service Unavailable',
+        message: 'Tenancy is declared but the data layer cannot resolve tenants',
+        code: 'TENANCY_NOT_AVAILABLE'
       })
     }
+
+    // T-3.2 resolves the tenant here, from the token first and from the resolver only for
+    // requests that carry none, then T-3.1 opens the container. Neither exists yet, and a
+    // half-resolution would be worse than none: refuse.
+    if (log.t) log.trace(`Tenancy: resolution not implemented yet for ${req.url}`)
+    return reply.code(503).send({
+      statusCode: 503,
+      error: 'Service Unavailable',
+      message: 'Tenant resolution is not implemented in this build',
+      code: 'TENANT_RESOLUTION_NOT_IMPLEMENTED'
+    })
   })
 }
