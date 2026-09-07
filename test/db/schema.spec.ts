@@ -73,8 +73,8 @@ describe('database/schema · postgres', () => {
     const unique = user.indexes.filter((i: any) => i.config.unique).map((i: any) => i.config.name)
     expect(unique).toEqual(expect.arrayContaining(['user_email_uq', 'user_external_id_uq', 'user_username_uq']))
 
-    const username = user.indexes.find((i: any) => i.config.name === 'user_username_uq')
-    expect(username.config.where).toBeDefined() // partial: many rows may have no username
+    const username: any = user.indexes.find((i: any) => i.config.name === 'user_username_uq')
+    expect(username?.config?.where).toBeDefined() // partial: many rows may have no username
   })
 
   it('locates a tenant with one field, not with a pair of engine-specific ones', () => {
