@@ -189,3 +189,6 @@ export function registryTables() {
 
   return { tenant, systemUser, impersonation, destructionRequest }
 }
+
+export type AppTables = ReturnType<typeof appTables>
+export type RegistryTables = ReturnType<typeof registryTables>
