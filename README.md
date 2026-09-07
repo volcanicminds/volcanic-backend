@@ -18,6 +18,20 @@ A Node.js framework based on Fastify to build robust APIs quickly, featuring an 
 > `docs/AUTHORIZATION_V5.md`, `docs/API_V5.md`, `docs/CONFIGURATION_V5.md` and
 > `docs/TESTING_V5.md`. **For production, use 4.x from `main`.**
 
+## What goes in the control plane
+
+> Outside the customer's container sits only what you could publish.
+
+The control plane holds the tenant registry, the platform administrators, identifiers,
+counters, status and configuration. It does **not** hold content written or uploaded by a
+customer, not even a title. A feature that needs to read across tenants is designed as an
+explicit aggregation; it is never solved by moving the data up into the control plane, because
+everything that lands there loses the boundary that makes a container deliverable, restorable
+and destroyable on its own.
+
+The rule is short on purpose: it is meant to be quotable in a review, where the question is
+always the same — could this row be published without harming the customer it belongs to?
+
 ## Two layers in one package
 
 `@volcanicminds/backend` ships a **DB-agnostic HTTP core** and an **optional data layer**, cleanly separated:

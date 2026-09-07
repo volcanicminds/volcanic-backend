@@ -41,9 +41,9 @@ documenti esistono e in che ordine si leggono.
 |---|---|---|---|
 | T-1.1 | Configurazione `control` e `tenants` | `[x]` | `multi_tenant` sostituito dai due blocchi in `lib/config/general.ts` e `lib/loader/general.ts`; fusione profonda in `lib/util/merge.ts` (D-21) e default del blocco tenant applicati solo se dichiarato (`normalizeOptions`); tipi `ControlConfig`/`TenantsConfig` in `types/global.d.ts`; sei punti del core passano da `lib/util/tenancy.ts`; gruppo `/tool` rimosso; 9 test nuovi in `test/lib/merge.spec.ts`, totale 58 verdi |
 | T-1.2 | Due tipi distinti, `ControlHandle` e `TenantHandle` | `[x]` | brand fantasma in `types/global.d.ts`, senza nominare l'ORM (invariante 10); `req.db`/`req.runner` spariti, al loro posto `req.control`, `req.tenant`, `req.tenantInfo`; 61 chiamate ai manager migrate a contesto-primo con `dataContext(req)`; interfacce dei manager riscritte su `docs/MANAGERS_V5.md` (`TrackingManagement`, `SystemUserManagement`, `TenantManagement` senza `switchContext`); null-object riscritti con una fabbrica; controller dei tenant riscritto senza `global.connection` e senza i cinque `@ts-ignore`; `scope: 'control'` letto davvero dal router; `onResponse` non rilascia più niente. 60 test verdi |
-| T-1.3 | Porte del data layer e subpath `/db` | `[ ]` | |
-| T-1.4 | Matrice di capacità e rifiuto all'avvio | `[ ]` | |
-| T-1.5 | Regola su cosa sta nel piano di controllo | `[ ]` | |
+| T-1.3 | Porte del data layer e subpath `/db` | `[x]` | `lib/database/ports.ts` (ConnectionProvider, MigrationRunner, ContainerLifecycle, DataLayer), entry `db.ts` esportato come `@volcanicminds/backend/db`, `depcruise` estesa al nuovo entry. Il nome dell'ORM non compare nell'API pubblica |
+| T-1.4 | Matrice di capacità e rifiuto all'avvio | `[x]` | `lib/database/capabilities.ts`: quattro motori, tre strategie, `assertSupported` con `onFatal` iniettabile chiamata da `db.start()` prima di aprire una connessione. 8 test in `test/db/capabilities.spec.ts`, suite `npm run test:db`. Chiude D-04 |
+| T-1.5 | Regola su cosa sta nel piano di controllo | `[x]` | scritta nel README, in forma citabile in revisione: fuori dal contenitore del cliente sta solo ciò che potresti pubblicare |
 
 ## Fase 2: il data layer su Drizzle
 
