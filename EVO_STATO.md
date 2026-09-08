@@ -17,10 +17,11 @@
 | `[x]` | fatto, con evidenza |
 | `[-]` | non applicabile, con motivo scritto |
 
-**Prossimo passo**: **fase 4 chiusa**. Si passa alla fase 5, migrazioni e migratore di flotta,
-da T-5.1 (motore, formato, collocazione della versione). È ciò su cui il banco nero è fermo
-adesso: nessuna tabella del framework viene creata, quindi la genesi non trova `system_user`.
-Si legge `docs/SCHEMA_V5.md` §2.4 e la decisione 10 (forward-only, expand/contract, snapshot). Il banco nero ora si ferma su una tabella che non
+**Prossimo passo**: T-5.2, due insiemi di migrazioni. Le due cartelle e i due comandi ci sono
+già da T-5.1 (generare richiede un bersaglio); restano da fissare la **regola di duplicazione
+esplicita** fra i due insiemi e il fatto che `tenant` sta solo nel primo. Poi T-5.3, il
+migratore di flotta, e T-5.4, il controllo di allineamento all'avvio, che è ciò che sblocca il
+banco nero. Il banco nero ora si ferma su una tabella che non
 esiste: `system_user`. **Non è un difetto, è l'ordine del piano**: le migrazioni sono la fase
 5, e finché non esistono nessuna tabella del framework viene creata. Da qui in avanti il banco
 resta rosso su questo, non su un buco del modello.
@@ -83,7 +84,7 @@ documenti esistono e in che ordine si leggono.
 
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
-| T-5.1 | Motore, formato, collocazione della versione | `[ ]` | |
+| T-5.1 | Motore, formato, collocazione della versione | `[x]` | formato: SQL leggibile generato da `drizzle-kit generate` e committato (`npm run db:generate`, `db:generate:tenant`), con `drizzle.config.ts` che sceglie l'insieme via `MIGRATION_SET`. Il motore è del framework, non quello a runtime di `drizzle-kit`, e il motivo è strutturale: le nostre tabelle nascono da una fabbrica su uno schema deciso a runtime, quindi l'SQL generato è **non qualificato** e lo stesso file deve finire in `tenant_acme` un minuto e in `tenant_globex` quello dopo; `drizzle-kit` non ha un argomento per dirglielo. `lib/database/migrations/runner.ts` lo applica con `SET LOCAL search_path` dentro una transazione, che è l'unico uso di search_path che T-3.1 ammette e il motivo per cui quella porta era rimasta aperta. Tre proprietà, ognuna una decisione: **una transazione per migrazione** e non una per l'insieme (su mille contenitori «ricominciare» significa «non finire mai»); **il record scritto nella stessa transazione della modifica** (altrimenti una migrazione applicata e non registrata viene riapplicata e fallisce); **una migrazione modificata è un errore, non uno skip** (hash SHA-256 confrontato). Versione registrata nella tabella `migration` **dentro ogni contenitore**, con colonna `set` perché il piano di controllo applica entrambi gli insiemi. Forward-only, nessun `down`. Regola expand/contract scritta nel README. `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` e `/tool/synchronize-schemas` verificati assenti dal codice; cartello messo su `docs/PGLITE.md`, che era rimasto senza. Corretto `docs/SCHEMA_V5.md` §2.4 (regola §0): diceva che la tabella è «gestita da drizzle-kit», mentre drizzle-kit **genera** e il framework **applica**. 10 test in `test/migrations/runner.spec.ts` contro Postgres reale, fra cui la prova che dopo una migrazione la connessione torna al pool con `search_path` invariato. Suite `test:migrations` in `npm test` e nel job `test-pg`. 249 verdi |
 | T-5.2 | Due insiemi di migrazioni | `[ ]` | |
 | T-5.3 | Migratore di flotta, comando e API | `[ ]` | |
 | T-5.4 | Controllo di allineamento all'avvio | `[ ]` | |

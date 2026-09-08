@@ -124,7 +124,31 @@ export function appTables(schemaName: string) {
     (t) => [index('change_entity_idx').on(t.entityName, t.entityId), index('change_created_at_idx').on(t.createdAt)]
   )
 
-  return { user, token, change }
+  //
+  // The schema version of THIS container (T-5.1, docs/SCHEMA_V5.md §2.4).
+  //
+  // One table per container and never a central registry: when a tenant is restored from a
+  // backup its schema version has to travel back with it, and a central table would say the
+  // container is at a version its tables no longer have.
+  //
+  // `set` exists because the control plane applies two sets: its own (the registry, the
+  // platform identities) and the application one, which in a single-tenant deployment lives
+  // there too. A tenant container only ever carries the second.
+  //
+  const migration = table(
+    'migration',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      set: text('set').notNull(),
+      name: text('name').notNull(),
+      // The file's checksum, so an edited migration is caught instead of silently skipped.
+      hash: text('hash').notNull(),
+      appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow()
+    },
+    (t) => [uniqueIndex('migration_set_name_uq').on(t.set, t.name)]
+  )
+
+  return { user, token, change, migration }
 }
 
 /** The registry and the platform's own identities. Control plane only, never in a container. */

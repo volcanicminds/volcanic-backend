@@ -67,6 +67,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
       - run: npm ci
+      # The migration engine has to be judged against a real schema: PGlite has no pool and
+      # the point of these tests is that one unqualified file lands in a different container
+      # each time (T-5.1).
+      - run: npm run test:migrations
       - run: npm run test:e2e:mt:pg
 
   release:

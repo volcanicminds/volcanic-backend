@@ -1113,6 +1113,50 @@ await tenantManager.runInTenantContext('tenant-slug', async (em) => {
 
 - `node generate-hash.js <my-string>` — generate a bcrypt hash for a given string (passwords / seeding / testing).
 
+## Migrations
+
+The schema of every container is versioned. There is no synchronise-at-startup and no
+`POST /tool/synchronize-schemas`: both are incompatible with a schema that has a version, and
+both are gone in v5.
+
+```sh
+npm run db:generate          # the control set: registry, platform identities, app tables
+npm run db:generate:tenant   # the tenant set: what lives inside a customer's container
+```
+
+`drizzle-kit` emits **plain SQL** into `lib/database/migrations/<set>/`, and it is committed
+and reviewed like any other code: what runs against a customer's database is what a reviewer
+reads, in the language the database speaks. Your own entities' migrations go in
+`./migrations/<set>/` in your project; the framework applies both, its own folder first.
+
+The applied version is recorded in a `migration` table **inside each container**, never in a
+central one: when a tenant is restored from a backup its schema version has to travel back
+with it.
+
+### Forward only, and why
+
+There is no `down`. `drizzle-kit` does not generate one, and a `down` on a destructive
+migration restores the shape and not the data, which is a promise that fails exactly when it
+is called on.
+
+Reversibility lives in the release, and the rule is **expand / contract**:
+
+1. the migration that ships with a release is **additive**: a new column, a new table, a
+   double write. The old code still works against it;
+2. the destructive half (dropping the old column, removing the old table) ships in a **later**
+   release, once the new code is running everywhere.
+
+So rolling back means deploying the previous code, with the data untouched. A release that
+adds and drops in one step is a release that cannot be rolled back, whatever the migration
+tool claims.
+
+### Editing a migration that already ran
+
+You cannot. The framework stores each file's checksum next to its name and refuses to touch a
+container whose applied migration no longer matches the repository: the two disagree about
+what happened to that schema, and guessing which one is right is how a schema becomes
+unreadable. Add a new migration instead.
+
 ## Change tracking (audit trail)
 
 Declare which routes are tracked in `src/config/tracking.ts`. Every tracked write appends a row

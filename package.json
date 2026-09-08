@@ -68,6 +68,9 @@
     "type-check": "tsc --noEmit && tsc -p tsconfig.test.json",
     "depcruise": "depcruise index.ts db.ts lib --config .dependency-cruiser.cjs",
     "check:session-state": "node scripts/check-session-state.mjs",
+    "db:generate": "cross-env MIGRATION_SET=control drizzle-kit generate",
+    "db:generate:tenant": "cross-env MIGRATION_SET=tenant drizzle-kit generate",
+    "test:migrations": "cross-env NODE_ENV=memory mocha --import=tsx ./test/migrations/**/*.spec.ts -t 30000 --exit",
     "check-all": "npm run lint && npm run type-check && npm run depcruise && npm run check:session-state",
     "combine": "node combine.js"
   },

@@ -24,7 +24,7 @@ const green = (s) => c(32, s)
 // Drizzle data layer exists. The target suite map is docs/TESTING_V5.md §1; the specs
 // of the removed suites are recoverable from history, e.g.
 //   git show main:test/e2e/auth-lifecycle.e2e.spec.ts
-const SUITES = ['test:lib', 'test:db']
+const SUITES = ['test:lib', 'test:db', 'test:migrations']
 
 const ANSI = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const stripAnsi = (s) => s.replace(ANSI, '')

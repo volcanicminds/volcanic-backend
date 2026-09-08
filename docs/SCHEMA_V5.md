@@ -147,8 +147,27 @@ The audit trail. **Append-only**: rows are never updated and never soft-deleted.
 
 ### 2.4 `migration`
 
-Managed by `drizzle-kit`. One table **per container**, never a central registry: when a tenant
-is restored from a backup its schema version must travel back with it. Do not hand-write rows.
+One table **per container**, never a central registry: when a tenant is restored from a backup
+its schema version must travel back with it, and a central table would keep claiming a version
+the tables no longer have. Do not hand-write rows.
+
+| Column | Type | Null | Notes |
+|---|---|:---:|---|
+| `id` | uuid / text | no | |
+| `set` | text | no | `control` or `tenant`. The control plane applies both sets: its own, and the application one, which lives there when the deployment has no tenants |
+| `name` | text | no | the migration file's name, which is also its order |
+| `hash` | text | no | SHA-256 of the file. A migration that changed after it ran is refused, not skipped |
+| `applied_at` | timestamp | no | |
+
+**Unique**: `(set, name)`.
+
+**Correction, made in T-5.1.** This section first said the table was "managed by
+`drizzle-kit`". `drizzle-kit` **generates** the SQL and the framework **applies** it, and the
+distinction is not pedantic: the generated files are deliberately unqualified, because the
+same file has to land in `tenant_acme` one minute and `tenant_globex` the next, and
+`drizzle-kit`'s runtime migrator has no argument for that. The framework's runner puts each
+migration inside its container with `SET LOCAL search_path` in a transaction, which is the one
+use of a search_path T-3.1 sanctions and the reason that door was left open.
 
 ---
 

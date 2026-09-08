@@ -104,7 +104,23 @@ export function appTables() {
     (t) => [index('change_entity_idx').on(t.entityName, t.entityId), index('change_created_at_idx').on(t.createdAt)]
   )
 
-  return { user, token, change }
+  // The schema version of THIS container (T-5.1). See the Postgres file for why it is per
+  // container and why it carries a `set`.
+  const migration = sqliteTable(
+    'migration',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      set: text('set').notNull(),
+      name: text('name').notNull(),
+      hash: text('hash').notNull(),
+      appliedAt: integer('applied_at', { mode: 'timestamp_ms' })
+        .notNull()
+        .default(sql`(unixepoch() * 1000)`)
+    },
+    (t) => [uniqueIndex('migration_set_name_uq').on(t.set, t.name)]
+  )
+
+  return { user, token, change, migration }
 }
 
 export function registryTables() {
