@@ -58,6 +58,30 @@ describe('migrations · the format (T-5.1)', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
+  it('does not read an unreachable database as an empty one', async () => {
+    const dir = folderWith({ '0000_init.sql': 'select 1;' })
+    const unreachable = createMigrationRunner(
+      async () => ({
+        handle: {
+          execute: async () => {
+            throw Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:55432'), { code: 'ECONNREFUSED' })
+          },
+          transaction: async () => undefined
+        },
+        locator: 'public',
+        dialect: 'postgres' as const
+      }),
+      { control: { name: 'control', folders: [dir] }, tenant: { name: 'tenant', folders: [dir] } }
+    )
+
+    // The dangerous shape a migration tool can take is telling a system that HAS migrated
+    // that it has not. Only "the table does not exist yet" is an answer; everything else is
+    // a failure and travels as one.
+    await expect(unreachable.pending({ locator: 'public' })).rejects.toThrow(/ECONNREFUSED/)
+    await expect(unreachable.version({ locator: 'public' })).rejects.toThrow(/ECONNREFUSED/)
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
   it('refuses two migrations with the same name across folders', () => {
     const a = folderWith({ '0000_init.sql': 'select 1;' })
     const b = folderWith({ '0000_init.sql': 'select 2;' })

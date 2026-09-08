@@ -15,6 +15,18 @@ import type { SystemRole } from '../../types/global.js'
 //
 const systemRoles: SystemRole[] = [
   {
+    // The control plane's own `public`, and it exists for exactly one reason: you cannot
+    // authenticate before authenticating. Without it a route like `/system/auth/login`
+    // resolves to the superuser alone, which is a door only someone already inside can open.
+    //
+    // It is opted INTO, never a default: a control route that declares nothing stays
+    // superuser-only, because the platform has no anonymous surface worth defaulting to.
+    code: 'system:public',
+    name: 'System public',
+    description: 'Unauthenticated access to a control route. Only the authentication routes declare it',
+    capabilities: []
+  },
+  {
     code: 'system:admin',
     name: 'System admin',
     description: 'Superuser of the control scope. Appended to every control route, as `admin` is in the tenant scope',

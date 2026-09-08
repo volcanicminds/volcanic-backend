@@ -82,6 +82,22 @@ export function loadSet(set: MigrationSet): MigrationFile[] {
   return all.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 
+/**
+ * Whether a failure means "this container has no migration table yet".
+ *
+ * Postgres says `42P01`, SQLite says so in words. **Only these two are answers**: every other
+ * failure is rethrown, because a database that cannot be reached is not a database with
+ * nothing applied. Swallowing the difference makes `pending()` list the whole set against an
+ * unreachable server and `version()` report null, which is the most dangerous shape a
+ * migration tool can take: it says "you have not migrated yet" to a system that has.
+ */
+function isMissingTable(error: unknown): boolean {
+  const e = error as { code?: string; message?: string }
+  if (e?.code === '42P01') return true
+  const message = String(e?.message ?? '')
+  return /relation .* does not exist/i.test(message) || /no such table/i.test(message)
+}
+
 /** What a container has already applied, of one set, oldest first. */
 async function applied(target: MigrationTarget, set: string): Promise<Array<{ name: string; hash: string }>> {
   const table = target.locator ? `${assertLocator(target.locator)}.migration` : 'migration'
@@ -90,10 +106,11 @@ async function applied(target: MigrationTarget, set: string): Promise<Array<{ na
       sql.raw(`select name, hash from ${table} where "set" = '${set.replace(/'/g, "''")}' order by name asc`)
     )
     return (rows?.rows ?? rows ?? []) as Array<{ name: string; hash: string }>
-  } catch {
-    // No `migration` table yet: an empty container has applied nothing. This is the only
-    // failure read as an answer, and it is the one the first migration of the set fixes.
-    return []
+  } catch (error) {
+    // An empty container has applied nothing, and the first migration of the set is what
+    // creates the table this query just failed to read.
+    if (isMissingTable(error) || isMissingTable((error as { cause?: unknown })?.cause)) return []
+    throw error
   }
 }
 

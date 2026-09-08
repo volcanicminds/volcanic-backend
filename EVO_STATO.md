@@ -17,11 +17,10 @@
 | `[x]` | fatto, con evidenza |
 | `[-]` | non applicabile, con motivo scritto |
 
-**Prossimo passo**: T-5.2, due insiemi di migrazioni. Le due cartelle e i due comandi ci sono
-già da T-5.1 (generare richiede un bersaglio); restano da fissare la **regola di duplicazione
-esplicita** fra i due insiemi e il fatto che `tenant` sta solo nel primo. Poi T-5.3, il
-migratore di flotta, e T-5.4, il controllo di allineamento all'avvio, che è ciò che sblocca il
-banco nero. Il banco nero ora si ferma su una tabella che non
+**Prossimo passo**: T-5.3, il migratore di flotta (comando e API, chiude la parte «applicato
+N volte»), poi T-5.4, controllo di allineamento all'avvio. Il banco nero ora arriva a
+`createTenant` e si ferma su uno schema JSON v4 che pretende `dbSchema` invece di `locator`:
+è T-6.1, non un buco della fase 5. Il banco nero ora si ferma su una tabella che non
 esiste: `system_user`. **Non è un difetto, è l'ordine del piano**: le migrazioni sono la fase
 5, e finché non esistono nessuna tabella del framework viene creata. Da qui in avanti il banco
 resta rosso su questo, non su un buco del modello.
@@ -85,7 +84,7 @@ documenti esistono e in che ordine si leggono.
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
 | T-5.1 | Motore, formato, collocazione della versione | `[x]` | formato: SQL leggibile generato da `drizzle-kit generate` e committato (`npm run db:generate`, `db:generate:tenant`), con `drizzle.config.ts` che sceglie l'insieme via `MIGRATION_SET`. Il motore è del framework, non quello a runtime di `drizzle-kit`, e il motivo è strutturale: le nostre tabelle nascono da una fabbrica su uno schema deciso a runtime, quindi l'SQL generato è **non qualificato** e lo stesso file deve finire in `tenant_acme` un minuto e in `tenant_globex` quello dopo; `drizzle-kit` non ha un argomento per dirglielo. `lib/database/migrations/runner.ts` lo applica con `SET LOCAL search_path` dentro una transazione, che è l'unico uso di search_path che T-3.1 ammette e il motivo per cui quella porta era rimasta aperta. Tre proprietà, ognuna una decisione: **una transazione per migrazione** e non una per l'insieme (su mille contenitori «ricominciare» significa «non finire mai»); **il record scritto nella stessa transazione della modifica** (altrimenti una migrazione applicata e non registrata viene riapplicata e fallisce); **una migrazione modificata è un errore, non uno skip** (hash SHA-256 confrontato). Versione registrata nella tabella `migration` **dentro ogni contenitore**, con colonna `set` perché il piano di controllo applica entrambi gli insiemi. Forward-only, nessun `down`. Regola expand/contract scritta nel README. `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` e `/tool/synchronize-schemas` verificati assenti dal codice; cartello messo su `docs/PGLITE.md`, che era rimasto senza. Corretto `docs/SCHEMA_V5.md` §2.4 (regola §0): diceva che la tabella è «gestita da drizzle-kit», mentre drizzle-kit **genera** e il framework **applica**. 10 test in `test/migrations/runner.spec.ts` contro Postgres reale, fra cui la prova che dopo una migrazione la connessione torna al pool con `search_path` invariato. Suite `test:migrations` in `npm test` e nel job `test-pg`. 249 verdi |
-| T-5.2 | Due insiemi di migrazioni | `[ ]` | |
+| T-5.2 | Due insiemi di migrazioni | `[x]` | due cartelle, due entry di generazione, due comandi. `npm run db:migrate` porta avanti il **piano di controllo, una volta sola** (`--dry` elenca senza toccare); il tenant, applicato N volte, è di T-5.3. La duplicazione è esplicita e **verificata**, non emergente: `scripts/check-migration-sets.mjs` (in `check-all` e nel job `verify`) rifiuta cartelle condivise, nomi di file riusati fra gli insiemi, una tabella di piattaforma dentro l'insieme tenant e una tabella condivisa che manchi da uno dei due. Provato che morde: aggiungendo `create table "tenant"` all'insieme tenant esce con 1. 4 test in `test/migrations/sets.spec.ts`. **Difetto trovato provando il comando davvero**: `applied()` inghiottiva qualsiasi errore, quindi un database irraggiungibile veniva letto come «nessuna migrazione applicata», e `pending()` elencava l'insieme intero contro un server che aveva già migrato. Ora solo «la tabella non esiste» è una risposta (`42P01`, «no such table»), il resto rilancia; test dedicato. **Secondo difetto trovato dal banco**: `/system/auth/login` aveva `roles: []` su gruppo di controllo, che si risolve nel solo superuser, cioè una porta apribile solo da chi è già dentro. Aggiunto `system:public` al catalogo di controllo, dichiarato **solo** dalle tre rotte di autenticazione e mai come default. Il banco nero ora supera login di sistema e migrazione del piano di controllo, e si ferma su `createTenant` (T-6.1). 254 verdi |
 | T-5.3 | Migratore di flotta, comando e API | `[ ]` | |
 | T-5.4 | Controllo di allineamento all'avvio | `[ ]` | |
 

@@ -19,6 +19,9 @@ jobs:
       # T-3.1: `SET search_path` outside a transaction is what D-01 was. The grep is the
       # cheap half of the rule; the driver guard is the other half and runs with the tests.
       - run: npm run check:session-state
+      # T-5.2: the two migration sets stay two. A tenant container that quietly gained a copy
+      # of the registry is the shape D-01 needed to become a privilege escalation.
+      - run: npm run check:migration-sets
       - run: npm run build
       - run: npx publint
       - run: npx --yes @arethetypeswrong/cli@latest --pack . --profile esm-only

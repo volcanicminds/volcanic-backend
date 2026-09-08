@@ -126,6 +126,13 @@ export async function setup() {
   }
 
   const managers = await dataLayer.start()
+
+  // What a deployment does before the first request: bring the control plane to the current
+  // schema version (T-5.2, `npm run db:migrate`). Not a workaround for a defect, which this
+  // harness never contains: a database nobody migrated has no tables, and a framework that
+  // created them on boot from its entity metadata is exactly what v5 removed.
+  await managers.migrations.apply({ locator: 'public' })
+
   server = await startServer(managers)
   await server.ready()
 

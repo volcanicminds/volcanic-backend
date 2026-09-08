@@ -27,6 +27,9 @@ export const SYSTEM_CAPABILITIES: readonly SystemCapability[] = [
 
 export const isSystemRoleCode = (code: unknown): boolean => typeof code === 'string' && code.startsWith(SYSTEM_PREFIX)
 
+/** The control plane's `public`. Declared by the authentication routes and by nothing else. */
+export const SYSTEM_PUBLIC = 'system:public'
+
 /** Built-in control roles: labels are a consumer's to change, codes and capabilities are not. */
 export const PROTECTED_SYSTEM_ROLE_CODES = builtinSystemRoles.map((r) => r.code)
 

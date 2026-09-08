@@ -206,9 +206,57 @@ export class PostgresProvider {
     await this.db.execute(sql.raw(`drop schema if exists ${escapeIdentifier(locator)} cascade`))
   }
 
+  /**
+   * Runs `fn` while holding an advisory lock on a container, or answers `null` when someone
+   * else already holds it (T-5.3).
+   *
+   * A DEDICATED client, not a pooled query: a Postgres advisory lock belongs to the session
+   * that took it, so taking one on a connection that goes back to the pool would leave the
+   * lock on a connection any later request could be handed. That is D-01 wearing a different
+   * hat, and it is why the client is checked out for the whole of `fn` and released in a
+   * `finally`.
+   *
+   * `pg_try_advisory_lock` and not `pg_advisory_lock`: a fleet migrator that BLOCKS on a
+   * container someone else is migrating turns two operators into a deadlock with a queue.
+   * Not acquiring is an outcome to report, not a reason to wait.
+   */
+  async withContainerLock<T>(locator: string, fn: () => Promise<T>): Promise<T | null> {
+    assertLocator(locator)
+    const client = await this.pool.connect()
+    try {
+      const key = advisoryKey(locator)
+      const taken = await client.query('select pg_try_advisory_lock($1) as ok', [key])
+      if (!taken.rows[0]?.ok) return null
+      try {
+        return await fn()
+      } finally {
+        await client.query('select pg_advisory_unlock($1)', [key])
+      }
+    } finally {
+      client.release()
+    }
+  }
+
   async shutdown(): Promise<void> {
     await this.pool.end()
   }
+}
+
+/**
+ * A stable 64-bit key for a container name.
+ *
+ * Computed here rather than with `hashtext()` so the value does not depend on a Postgres
+ * internal that is explicitly documented as not stable across versions: an advisory lock
+ * whose key changes with a server upgrade is a lock that stops locking on the day of the
+ * upgrade, silently.
+ */
+export function advisoryKey(locator: string): string {
+  let hash = 0n
+  for (const char of locator) {
+    hash = (hash * 131n + BigInt(char.charCodeAt(0))) % 9223372036854775783n
+  }
+  // Postgres advisory keys are signed 64-bit; the modulus above keeps it in range.
+  return hash.toString()
 }
 
 /** Postgres identifiers cannot be parameterized: they are validated, then quoted. */

@@ -1129,6 +1129,24 @@ and reviewed like any other code: what runs against a customer's database is wha
 reads, in the language the database speaks. Your own entities' migrations go in
 `./migrations/<set>/` in your project; the framework applies both, its own folder first.
 
+### Two sets, because they have different lives
+
+| Set | Contains | Applied |
+|---|---|---|
+| `control` | the tenant registry, the platform identities, the impersonation log, **and** the application tables (they live here when there is no `tenants` block) | **once**, `npm run db:migrate` |
+| `tenant` | the application tables and the container's own audit trail. Nothing about the platform | **once per container**, by provisioning and by the fleet migrator |
+
+The tables that exist in both (`user`, `token`, `change`, `migration`) are **duplicated**, on
+purpose: the two sets never share a file. A shared migration would make "two sets" a naming
+convention, and one edit would move a customer's container and the registry together whether
+or not that was the intent. `npm run check:migration-sets` enforces it in CI, including that
+no tenant container ever gains a copy of the registry.
+
+```sh
+npm run db:migrate           # the control plane, once
+npm run db:migrate -- --dry  # list what would be applied, touch nothing
+```
+
 The applied version is recorded in a `migration` table **inside each container**, never in a
 central one: when a tenant is restored from a backup its schema version has to travel back
 with it.

@@ -211,6 +211,37 @@ export class SqliteProvider {
     await this.evictContainers()
   }
 
+  /**
+   * The same contract as the Postgres advisory lock, on a filesystem (T-5.3).
+   *
+   * A lock FILE created with the exclusive flag, which is atomic on every filesystem worth
+   * running a database on. It carries the pid and the time, so an operator looking at a
+   * container nobody is migrating can tell a crash from a colleague.
+   */
+  async withContainerLock<T>(locator: string, fn: () => Promise<T>): Promise<T | null> {
+    const file = locator === ':memory:' ? locator : resolveContainerFile(this.directory, locator)
+    const lock = `${file}.migrating`
+
+    try {
+      fs.mkdirSync(path.dirname(lock), { recursive: true })
+      fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }), { flag: 'wx' })
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code === 'EEXIST') return null
+      throw e
+    }
+
+    try {
+      return await fn()
+    } finally {
+      try {
+        fs.unlinkSync(lock)
+      } catch {
+        // A lock we cannot remove is worse left unmentioned than left behind.
+        if (log?.w) log.warn(`SQLite: could not remove the migration lock ${lock}`)
+      }
+    }
+  }
+
   async shutdown(): Promise<void> {
     for (const handle of this.open.values()) await handle.close()
     this.open.clear()
