@@ -1147,6 +1147,41 @@ npm run db:migrate           # the control plane, once
 npm run db:migrate -- --dry  # list what would be applied, touch nothing
 ```
 
+### The fleet migrator
+
+Tenant containers are migrated N times, so they get their own command:
+
+```sh
+npx volcanic migrate --tenants --snapshot rds:prod-2026-09-08T10:00Z --dry-run
+npx volcanic migrate --tenants --snapshot rds:prod-2026-09-08T10:00Z --concurrency 4
+npx volcanic migrate --tenants --snapshot ... --only acme,globex   # retry, or a staged rollout
+npx volcanic migrate --tenants --snapshot ... --target 0002_add_tags
+```
+
+The same thing from a script or a job of your own, because the command is a thin wrapper
+around it:
+
+```ts
+const layer = await start(config.options)
+const result = await layer.migrateTenants({ snapshot: 'rds:...', dryRun: true, concurrency: 4 })
+```
+
+**`--snapshot` is required, and the run refuses to start without it.** It is the reference you
+would restore from, it is recorded in the run log, and a fleet migration without one is an
+irreversible operation performed hopefully.
+
+What the run guarantees, and why each one is there:
+
+| | |
+|---|---|
+| **Run `--dry-run` first** | it is the only step that costs nothing |
+| **Failures are named** | the exit code is non-zero and the output lists *which* containers failed and what the database said. "3 of 100 failed" is never the end of the question |
+| **One failure does not stop the run** | the other 97 are migrated |
+| **Interrupting is supported** | Ctrl-C finishes the containers in flight and reports what it did not reach |
+| **Resuming is just running it again** | the applied migrations are recorded inside each container, so a second run picks up where the first stopped |
+| **A container being migrated elsewhere is skipped** | an advisory lock per container, tried and not waited on: blocking would turn two operators into a deadlock with a queue |
+| **Concurrency defaults to 2** | a hundred parallel migrations saturate the database they are migrating. The maximum is 16 |
+
 The applied version is recorded in a `migration` table **inside each container**, never in a
 central one: when a tenant is restored from a backup its schema version has to travel back
 with it.
@@ -1167,6 +1202,36 @@ Reversibility lives in the release, and the rule is **expand / contract**:
 So rolling back means deploying the previous code, with the data untouched. A release that
 adds and drops in one step is a release that cannot be rolled back, whatever the migration
 tool claims.
+
+### The instance refuses to serve a schema it does not match
+
+At boot the framework compares the version the code expects with the one recorded in the
+control plane. If they differ it **does not start**, and the message says what to run. This is
+not a warning by design: a process that boots against an older schema does not crash, it
+answers requests and writes rows into columns that mean something else, and it is found out
+later by the data.
+
+A tenant container is treated differently on purpose. It is checked when the tenant is
+resolved, and a container that is behind answers **503 `SCHEMA_BEHIND`** for that tenant only:
+one customer left behind must not take the other nine hundred down with it, and the operator
+finds out from a request that names the tenant. A container is asked once and then remembered
+as current; a container that is behind is asked again every time, so migrating it takes effect
+on the next request rather than after a deploy.
+
+Both are on by default. For a staged rollout:
+
+```ts
+tenants: {
+  migrations: {
+    checkOnResolve: false,            // serve a tenant container that is behind
+    refuseStartIfControlBehind: false // boot with the control plane behind
+  }
+}
+```
+
+A deployment with no `tenants` block has nowhere to declare them, and that is the answer
+rather than a gap: with one container and one schema, running new code against old tables has
+no staged-rollout reading. Migrate first.
 
 ### Editing a migration that already ran
 

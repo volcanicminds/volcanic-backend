@@ -32,7 +32,16 @@ export interface MigrationRunner {
   pending(container: ContainerRef): Promise<Migration[]>
   /** Applies the pending migrations and returns the version reached. Forward only. */
   apply(container: ContainerRef, target?: string): Promise<string>
+  /** What the container has applied. Reads the container, never a central table. */
   version(container: ContainerRef): Promise<string | null>
+  /**
+   * What the CODE expects this container to be at: the newest migration of its set (T-5.4).
+   *
+   * Reads the folders and nothing else, so it answers without touching a database. That is
+   * what makes it usable at boot, before anything is serving, and on every tenant resolution
+   * without a query per request.
+   */
+  expected(container: ContainerRef): string | null
 }
 
 export interface ExportResult {

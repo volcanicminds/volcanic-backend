@@ -13,7 +13,13 @@ const assets = [
   // types (attw "Internal resolution error"). The data layer types live in
   // `types/database/typeorm/global.ts` (a real `.ts`, emitted by tsc) → no copy.
   ['types/global.d.ts', 'dist/types/global.d.ts'],
-  ['types/orm.d.ts', 'dist/types/orm.d.ts']
+  ['types/orm.d.ts', 'dist/types/orm.d.ts'],
+  // The migration SQL (T-5.1). `tsc` emits no `.sql`, and the runner resolves the folders
+  // relative to the compiled `dist/db.js`, so without this the published package ships a
+  // migrator with nothing to apply: `npx volcanic migrate` would report "nothing to do" on
+  // an empty database, which is the one answer a migrator must never give wrongly.
+  ['lib/database/migrations/control', 'dist/lib/database/migrations/control'],
+  ['lib/database/migrations/tenant', 'dist/lib/database/migrations/tenant']
 ]
 
 for (const [from, to] of assets) {

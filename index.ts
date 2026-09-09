@@ -18,6 +18,7 @@ import * as loaderTracking from './lib/loader/tracking.js'
 import * as loaderTranslation from './lib/loader/translation.js'
 import * as loaderConfig from './lib/loader/general.js'
 import { ensureGenesisAdmin } from './lib/loader/genesis.js'
+import { assertControlSchemaCurrent } from './lib/loader/schemaVersion.js'
 import * as loaderSchedules from './lib/loader/schedules.js'
 import * as loaderTenant from './lib/loader/tenant.js'
 
@@ -291,6 +292,11 @@ const start = async (decorators = {}) => {
       await server.decorate(key, decorators[key])
     })
   )
+
+  // Before anything writes: an instance does not serve traffic on a schema its code does not
+  // match (T-5.4). It runs BEFORE the genesis reconciliation on purpose, because that one
+  // writes into tables whose shape this check is what guarantees.
+  await assertControlSchemaCurrent(server)
 
   // Provision/verify the admin apex before serving (single-tenant, data layer present).
   await ensureGenesisAdmin(server)

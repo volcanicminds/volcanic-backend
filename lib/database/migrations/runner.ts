@@ -184,6 +184,16 @@ export function createMigrationRunner(
       return last ?? ''
     },
 
+    /**
+     * The newest migration of the container's set, from disk. No database is touched, which
+     * is what lets the boot check run before anything serves and the resolution check run on
+     * every request without a query.
+     */
+    expected(container: ContainerRef): string | null {
+      const files = loadSet(setFor(container))
+      return files.length ? files[files.length - 1].name : null
+    },
+
     async version(container: ContainerRef): Promise<string | null> {
       const set = setFor(container)
       const target = await open(container)

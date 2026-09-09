@@ -16,6 +16,9 @@ import { createPostgresProvider } from './lib/database/adapters/postgres/index.j
 import { createSqliteProvider } from './lib/database/adapters/sqlite/index.js'
 import { buildManagers } from './lib/database/managers/index.js'
 import { createMigrationRunner, type MigrationSet, type MigrationTarget } from './lib/database/migrations/runner.js'
+import { migrateFleet, type FleetOptions, type FleetResult } from './lib/database/migrations/fleet.js'
+import { createTenantManager } from './lib/database/managers/index.js'
+import type { ControlHandle, Tenant } from './types/global.js'
 import type { ContainerRef, DataLayerOptions } from './lib/database/ports.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -28,6 +31,7 @@ export { appTables as sqliteTables, registryTables as sqliteRegistryTables } fro
 export { encrypt, decrypt } from './lib/database/crypto.js'
 export { uuidv7 } from './lib/database/uuid.js'
 export * from './lib/database/migrations/runner.js'
+export * from './lib/database/migrations/fleet.js'
 export { readMigrations, statementsOf } from './lib/database/migrations/files.js'
 export { PostgresProvider } from './lib/database/adapters/postgres/index.js'
 export { SqliteProvider } from './lib/database/adapters/sqlite/index.js'
@@ -53,14 +57,51 @@ export async function start(options?: DataLayerOptions) {
   const provider = engine === 'sqlite' || engine === 'libsql' ? createSqliteProvider(resolved) : createPostgresProvider(resolved)
 
   const managers = buildManagers(provider as never)
+  const migrations = buildMigrationRunner(provider, resolved)
 
   return {
     ...managers,
     /** Not a manager: the framework uses it to open a request's handles (T-3.1). */
     provider,
     /** Applies the schema of a container and says which version it is at (T-5.1). */
-    migrations: buildMigrationRunner(provider, resolved),
+    migrations,
+    /**
+     * Brings every tenant container to the current version (T-5.3).
+     *
+     * The exported half of the double surface the plan requires: `npx volcanic migrate
+     * --tenants` is a thin wrapper around this call, so an operator at a terminal and a
+     * deploy script running unattended go through the same code and get the same refusals.
+     */
+    migrateTenants: (options: FleetOptions): Promise<FleetResult> =>
+      migrateFleet(
+        {
+          tenants: () => activeTenants(managers.tenantManager, provider),
+          migrations,
+          withContainerLock: (locator, fn) =>
+            (provider as { withContainerLock<T>(l: string, f: () => Promise<T>): Promise<T | null> }).withContainerLock(
+              locator,
+              fn
+            )
+        },
+        options
+      ),
     shutdown: () => (provider as { shutdown(): Promise<void> }).shutdown()
+  }
+}
+
+/** Every active tenant, paged: a fleet is not something to read in one query. */
+async function activeTenants(
+  manager: ReturnType<typeof createTenantManager>,
+  provider: unknown
+): Promise<Tenant[]> {
+  const control = (await (provider as { control(): ControlHandle | Promise<ControlHandle> }).control()) as ControlHandle
+  const all: Tenant[] = []
+  const pageSize = 100
+  for (let page = 1; ; page++) {
+    const result = await manager.listTenants(control, { 'status:eq': 'active', _page: page, _pageSize: pageSize } as never)
+    const records = ((result as { records?: Tenant[] })?.records ?? []) as Tenant[]
+    all.push(...records)
+    if (records.length < pageSize) return all
   }
 }
 

@@ -42,9 +42,13 @@
     },
     "./package.json": "./package.json"
   },
+  "bin": {
+    "volcanic": "bin/volcanic.mjs"
+  },
   "files": [
     "dist",
-    "lib"
+    "lib",
+    "bin"
   ],
   "scripts": {
     "clean": "rm -rf dist",

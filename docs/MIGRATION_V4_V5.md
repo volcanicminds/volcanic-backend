@@ -205,6 +205,12 @@ Forward only: there is no `down`. Reversibility comes from shipping additive mig
 and the destructive half in a later release (expand/contract, see the README), so a rollback
 is a code deploy and never a data restore.
 
+**New refusals.** The instance does not start when the control plane is behind the code, and a
+tenant container that is behind answers 503 `SCHEMA_BEHIND` for that tenant alone. Both are on
+by default (`tenants.migrations.refuseStartIfControlBehind`, `tenants.migrations.checkOnResolve`).
+A v4 deployment that relied on the schema being synchronised at boot has to run
+`npm run db:migrate` as a deploy step instead.
+
 ## 14. Routes that no longer exist
 
 | Route | Why |

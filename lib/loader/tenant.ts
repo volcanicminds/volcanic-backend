@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { ControlHandle, DataProvider, Tenant, TenantManagement } from '../../types/global.js'
 import { isTenancyEnabled, tenantsConfig } from '../util/tenancy.js'
 import { declaredTenant } from '../util/tenantResolution.js'
+import { migrationChecks } from './schemaVersion.js'
 import { bearerTokenOf } from '../util/bearer.js'
 import { httpError } from '../util/httpError.js'
 
@@ -143,9 +145,53 @@ export async function apply(server: FastifyInstance) {
       return reply.code(404).send(httpError(404, 'Not found', 'TENANT_NOT_FOUND'))
     }
 
+    // A container whose schema is behind the code is refused here, one container at a time
+    // (T-5.4). Not at boot: on a fleet, one tenant left behind must not take the other nine
+    // hundred down with it, and the operator finds out from a request that names the tenant
+    // rather than from a process that will not start.
+    const behind = await containerBehind(req, tenant)
+    if (behind) {
+      if (log.e) log.error(`Schema 🧱 ${tenant.slug} is at ${behind.applied ?? 'no migration'}, the code expects ${behind.expected}`)
+      return reply
+        .code(503)
+        .send(httpError(503, 'This tenant is being upgraded and cannot be served right now', 'SCHEMA_BEHIND'))
+    }
+
     req.tenantInfo = tenant
     await openTenantContext(req, tenant.id)
   })
+}
+
+/**
+ * Containers already seen at the version the code expects.
+ *
+ * Only the GOOD answer is remembered, and that asymmetry is the whole design: a container
+ * cannot move backwards without a restore, which is an operational event and a restart; a
+ * container that is behind is checked again on its next request, so migrating it takes effect
+ * immediately instead of after a deploy. Bounded by the number of tenants, which is bounded
+ * by the registry.
+ */
+const current = new Map<string, string>()
+
+async function containerBehind(
+  req: FastifyRequest,
+  tenant: Tenant
+): Promise<{ applied: string | null; expected: string } | null> {
+  if (!migrationChecks().onResolve) return null
+
+  const migrations = (req.server as unknown as Record<string, any>)['migrations']
+  if (!migrations?.expected) return null
+
+  const container = { tenantId: tenant.id, locator: tenant.locator }
+  const expected = migrations.expected(container)
+  if (!expected || current.get(tenant.id) === expected) return null
+
+  const applied = await migrations.version(container)
+  if (applied === expected) {
+    current.set(tenant.id, expected)
+    return null
+  }
+  return { applied, expected }
 }
 
 /** A control token declares its plane and carries no tenant: it is not a missing `tid`. */
