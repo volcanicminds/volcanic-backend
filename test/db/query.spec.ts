@@ -10,7 +10,7 @@
 //
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
-import { sql } from 'drizzle-orm'
+import { sql, eq } from 'drizzle-orm'
 import { expect } from 'expect'
 import { getTableConfig, SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
 import { PgDialect } from 'drizzle-orm/pg-core'
@@ -91,6 +91,18 @@ describe('database/query · filtering', () => {
 
   it('counts what the filter matches, ignoring the page', async () => {
     expect(await executeCount(handle, lite.user, { 'email:contains': 'acme' }, options)).toBe(3)
+  })
+
+  it('applies a route restriction the URL cannot argue with (extraWhere)', async () => {
+    // v4 carried this as a fourth argument of executeFindQuery, and consumers used it for
+    // row-level security. It is AND-ed last, so no `_logic` a caller writes can reach around
+    // it: the OR below matches everyone and still returns only the row the route allows.
+    const only = { extraWhere: eq(lite.user.id, '2') }
+    expect((await find({}, only)).records.map((r: any) => r.id)).toEqual(['2'])
+    expect(await executeCount(handle, lite.user, {}, { ...options, ...only })).toBe(1)
+
+    const wideOpen = { 'email:contains[a]': 'acme', 'id:eq[b]': '1', _logic: 'a OR b' }
+    expect((await find(wideOpen, only)).records.map((r: any) => r.id)).toEqual(['2'])
   })
 })
 

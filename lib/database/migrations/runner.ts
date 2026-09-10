@@ -177,7 +177,7 @@ export function createMigrationRunner(
 
       let last = [...done.keys()].sort().pop() ?? null
       for (const file of run) {
-        if (log?.i) log.info(`Migration ${set.name}/${file.name}: applying to ${container.locator}`)
+        if (globalThis.log?.i) globalThis.log.info(`Migration ${set.name}/${file.name}: applying to ${container.locator}`)
         await applyOne(target, set.name, file)
         last = file.name
       }

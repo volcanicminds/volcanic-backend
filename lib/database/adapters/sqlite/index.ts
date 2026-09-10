@@ -133,7 +133,7 @@ export class SqliteProvider {
       } catch {
         // A filesystem that cannot chmod (a mounted volume, Windows) is not a reason to fail
         // the boot, but it IS a reason to say so once.
-        if (log?.w) log.warn(`SQLite: could not restrict permissions on ${file}`)
+        if (globalThis.log?.w) globalThis.log.warn(`SQLite: could not restrict permissions on ${file}`)
       }
     }
     return { db: drizzle(sqlite), close: async () => sqlite.close() }
@@ -233,7 +233,7 @@ export class SqliteProvider {
       await handle.close()
       closed.push(file)
     }
-    if (closed.length && log?.d) log.debug(`SQLite: closed ${closed.length} idle container(s)`)
+    if (closed.length && globalThis.log?.d) globalThis.log.debug(`SQLite: closed ${closed.length} idle container(s)`)
     return closed
   }
 
@@ -381,7 +381,7 @@ export class SqliteProvider {
         fs.unlinkSync(lock)
       } catch {
         // A lock we cannot remove is worse left unmentioned than left behind.
-        if (log?.w) log.warn(`SQLite: could not remove the migration lock ${lock}`)
+        if (globalThis.log?.w) globalThis.log.warn(`SQLite: could not remove the migration lock ${lock}`)
       }
     }
   }

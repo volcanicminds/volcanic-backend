@@ -465,7 +465,17 @@ export type {
   MfaManagement,
   TransferManagement,
   TransferCallback,
-  JobSchedule
+  JobSchedule,
+  // The handles a route receives. A consuming project types its own service layer with
+  // these — without them the only way to name `req.tenant` is `any`, and a seam typed `any`
+  // is a seam where the control plane and a container are interchangeable, which is exactly
+  // the confusion the two brands exist to prevent.
+  ControlHandle,
+  TenantHandle,
+  DataHandle,
+  Tenant,
+  JobRun,
+  JobScope
 } from './types/global.js'
 
 export { MfaPolicy } from './lib/config/constants.js'

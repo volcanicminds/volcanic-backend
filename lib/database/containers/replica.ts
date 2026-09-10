@@ -123,7 +123,7 @@ export function createLitestreamReplica(target: ReplicaTarget, runner: ProcessRu
 
       child.stderr?.on('data', (chunk: Buffer) => {
         const line = String(chunk).trim()
-        if (line && log?.w) log.warn(`Litestream ${locator}: ${line}`)
+        if (line && globalThis.log?.w) globalThis.log.warn(`Litestream ${locator}: ${line}`)
         entry.status = { ...entry.status, lastError: line || entry.status.lastError }
       })
 
@@ -131,11 +131,11 @@ export function createLitestreamReplica(target: ReplicaTarget, runner: ProcessRu
       // the deployment goes on believing its containers are copied somewhere.
       child.on('exit', (code) => {
         entry.status = { ...entry.status, running: false }
-        if (code !== 0 && log?.e) log.error(`Litestream ${locator}: replication stopped with code ${code}`)
-        else if (log?.i) log.info(`Litestream ${locator}: replication stopped`)
+        if (code !== 0 && globalThis.log?.e) globalThis.log.error(`Litestream ${locator}: replication stopped with code ${code}`)
+        else if (globalThis.log?.i) globalThis.log.info(`Litestream ${locator}: replication stopped`)
       })
 
-      if (log?.i) log.info(`Litestream ${locator}: replicating ${file} to ${url}`)
+      if (globalThis.log?.i) globalThis.log.info(`Litestream ${locator}: replicating ${file} to ${url}`)
       return entry.status
     },
 
@@ -172,7 +172,7 @@ export function createLitestreamReplica(target: ReplicaTarget, runner: ProcessRu
         child.on('error', (e) => reject(new ReplicaFailedError(String(e?.message || e))))
       })
 
-      if (log?.i) log.info(`Litestream ${locator}: restored into ${destination}`)
+      if (globalThis.log?.i) globalThis.log.info(`Litestream ${locator}: restored into ${destination}`)
     },
 
     async shutdown(): Promise<void> {

@@ -39,6 +39,17 @@ export interface QueryOptions {
   allowWithDeleted?: boolean
   allowedRelations?: string[]
   logicLimits?: LogicLimits
+  /**
+   * A condition the caller cannot relax: row-level security, a scope, a soft ownership rule.
+   * It is AND-ed **after** everything the URL asked for, `_logic` included, so no expression
+   * a client can write reaches around it.
+   *
+   * v4 had this as a fourth argument of `executeFindQuery`, and consuming projects used it to
+   * carry their permission rules. Losing it in the port would have meant every consumer
+   * filtering in application code after the page had already been cut, which returns short
+   * pages and a wrong total.
+   */
+  extraWhere?: SQL
 }
 
 export interface ParsedQuery {
@@ -183,6 +194,12 @@ export function parseQuery(table: Table, params: Record<string, unknown>, option
   const deletedAt = columns['deletedAt']
   if (deletedAt && !withDeleted) {
     where = where ? (and(where, isNull(deletedAt)) as SQL) : (isNull(deletedAt) as SQL)
+  }
+
+  // Last, and deliberately: a restriction the route imposes is not a condition the URL can
+  // argue with.
+  if (options.extraWhere) {
+    where = where ? (and(where, options.extraWhere) as SQL) : options.extraWhere
   }
 
   return {

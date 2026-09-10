@@ -212,7 +212,7 @@ export class PostgresProvider {
     const fail =
       onFatal ||
       ((message: string) => {
-        if (log?.f) log.fatal(message)
+        if (globalThis.log?.f) globalThis.log.fatal(message)
         process.exit(1)
       })
 
@@ -236,8 +236,8 @@ export class PostgresProvider {
       )
     }
 
-    if (this.maxOpenContainers > 100 && log?.w) {
-      log.warn(
+    if (this.maxOpenContainers > 100 && globalThis.log?.w) {
+      globalThis.log.warn(
         `Postgres: ${this.maxOpenContainers} live containers is past where PgBouncer in transaction mode is the ` +
           'recommended configuration. The framework holds no session state, so it is already compatible.'
       )
@@ -362,7 +362,7 @@ export class PostgresProvider {
     try {
       await entry.pool.end()
     } catch (e) {
-      if (log?.w) log.warn(`Postgres: could not close the container ${locator}: ${(e as Error)?.message}`)
+      if (globalThis.log?.w) globalThis.log.warn(`Postgres: could not close the container ${locator}: ${(e as Error)?.message}`)
     }
   }
 

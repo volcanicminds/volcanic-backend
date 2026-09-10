@@ -64,7 +64,7 @@ export function assertSupported(options: GeneralConfig['options'], opts: AssertO
   const onFatal =
     opts.onFatal ||
     ((message: string) => {
-      if (log?.f) log.fatal(message)
+      if (globalThis.log?.f) globalThis.log.fatal(message)
       process.exit(1)
     })
 

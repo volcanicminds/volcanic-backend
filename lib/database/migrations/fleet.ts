@@ -99,8 +99,8 @@ export async function migrateFleet(deps: FleetDeps, options: FleetOptions): Prom
     // reorders itself between attempts is not staged.
     .sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))
 
-  if (log?.i) {
-    log.info(
+  if (globalThis.log?.i) {
+    globalThis.log.info(
       `Fleet migration ${dryRun ? '(dry run) ' : ''}starting: ${fleet.length} container(s), ` +
         `concurrency ${width}, snapshot '${snapshot}'`
     )
@@ -149,16 +149,16 @@ export async function migrateFleet(deps: FleetDeps, options: FleetOptions): Prom
     interrupted
   }
 
-  if (log?.i) {
+  if (globalThis.log?.i) {
     const done = outcomes.filter((o) => o.status === 'migrated').length
-    log.info(
+    globalThis.log.info(
       `Fleet migration finished: ${done} migrated, ${outcomes.filter((o) => o.status === 'up-to-date').length} already current, ` +
         `${failed.length} failed, ${outcomes.filter((o) => o.status === 'locked').length} locked, ` +
         `${outcomes.filter((o) => o.status === 'not-attempted').length} not attempted. Snapshot '${snapshot}'`
     )
   }
   for (const failure of failed) {
-    if (log?.e) log.error(`Fleet migration failed on ${failure.slug} (${failure.locator}): ${failure.error}`)
+    if (globalThis.log?.e) globalThis.log.error(`Fleet migration failed on ${failure.slug} (${failure.locator}): ${failure.error}`)
   }
 
   return result
@@ -195,11 +195,11 @@ async function one(deps: FleetDeps, tenant: Tenant, options: FleetOptions, dryRu
     const reached = await deps.withContainerLock(tenant.locator, () => deps.migrations.apply(container, options.target))
 
     if (reached === null) {
-      if (log?.w) log.warn(`Fleet migration: ${tenant.slug} is being migrated elsewhere, skipping`)
+      if (globalThis.log?.w) globalThis.log.warn(`Fleet migration: ${tenant.slug} is being migrated elsewhere, skipping`)
       return { ...base, status: 'locked', from, to: from, pending: planned }
     }
 
-    if (log?.i) log.info(`Fleet migration: ${tenant.slug} ${from ?? 'empty'} to ${reached}`)
+    if (globalThis.log?.i) globalThis.log.info(`Fleet migration: ${tenant.slug} ${from ?? 'empty'} to ${reached}`)
     return { ...base, status: 'migrated', from, to: reached, pending: [] }
   } catch (error) {
     return { ...base, status: 'failed', from: null, to: null, pending: [], error: describeError(error) }

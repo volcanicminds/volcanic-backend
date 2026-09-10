@@ -4,11 +4,15 @@
 > break landed, and not reconstructed at the end (task T-8.3); it was then read through in
 > full, once, with the API stable. Everything below is true of the code on `develop`.
 >
-> Twenty sections, in the order a port meets them: the data layer and the configuration
+> Twenty-three sections, in the order a port meets them: the data layer and the configuration
 > first, because nothing else compiles until they are right; then what changed inside a
 > request; then the routes, the answers and the two core defaults. If you are porting a
 > project, read §1 to §4 before touching anything, and keep §18 open while you test the
 > login: the status code changed.
+>
+> The last three sections (§21 to §23) were written **by** a port rather than for one:
+> `volcanic-backend-sample` was carried to v5 and every place the guide fell short became a
+> row here.
 
 v5 is breaking on purpose. There is no compatibility branch, no deprecated alias and no
 automatic translation of a v4 configuration: invariant 9 of `EVO_FRAMEWORK.md` says the
@@ -341,3 +345,67 @@ credentials with it.
 The cron fix moves jobs that declared a timezone: they ran on the host's zone, which on a UTC
 container is an hour or two away from `Europe/Rome` and drifts twice a year. Check any cron
 expression whose hour matters.
+
+## 21. Bootstrapping, in an order that matters
+
+```ts
+// v4
+import { start as startServer } from '@volcanicminds/backend'
+import { start as startDatabase, userManager } from '@volcanicminds/backend/typeorm'
+await startDatabase(myDbConfig)
+await startServer({ userManager })
+
+// v5
+import { preload, start as startServer } from '@volcanicminds/backend'
+import { start as startDataLayer } from '@volcanicminds/backend/db'
+
+await preload()                                   // reads config/general.ts into global.config
+const layer = await startDataLayer()              // reads the control/tenants blocks from it
+await layer.migrations.apply({ locator: 'public' })
+await startServer(layer)                          // the managers become the server's decorators
+```
+
+**`preload()` is not optional, and forgetting it does not raise.** It is what loads
+`config/general.ts`, and the data layer reads the `control` and `tenants` blocks from there.
+Called out of order, `startDataLayer()` finds no configuration and falls back to its own
+defaults — a different database, reached without an error. `startServer()` calls `preload()`
+too, but by then the data layer has already opened its pool against the wrong host.
+
+The managers are no longer module-level singletons imported from a subpath: they are values
+`startDataLayer()` returns and the caller hands to the server. That is what makes a different
+implementation a parameter rather than a patch.
+
+## 22. Your own tables, in the right container
+
+A consuming project declares its tables in its own schema files and never redefines a
+framework one (`docs/SCHEMA_V5.md` §6). Three things it needs, and where they are:
+
+| | |
+|---|---|
+| The handle types | `ControlHandle`, `TenantHandle`, `DataHandle` from `@volcanicminds/backend`. Typing that seam `any` makes the control plane and a container interchangeable, which is what the two brands exist to prevent |
+| The inside of a handle | `access(handle)` from `@volcanicminds/backend/db`: `db`, `dialect`, `locator`, `execute`, `transaction`. Reaching into `lib/` instead couples the project to an internal path |
+| A restriction the URL cannot relax | `QueryOptions.extraWhere`, AND-ed after everything the caller asked for, `_logic` included. This is v4's fourth argument of `executeFindQuery` under a name |
+
+**Build the table objects per locator.** Drizzle prints the schema name into the SQL, so a
+table object *is* the choice of container: that is what makes tenancy work without touching
+`search_path` on a pooled connection, and it is why a cache of those objects must be keyed by
+`locator`. A cache that ignores it hands tenant B the object naming tenant A's schema —
+defect D-01, rebuilt in application code.
+
+**Extending the framework's `user` is the one thing not to do.** v4 subclassed the `User`
+entity to add columns. In v5 those fields go in a table of the project's own, keyed by
+`user.id`: a framework table redefined by a consumer collides with every future framework
+migration, and the collision surfaces at upgrade time on a deployment already in production.
+
+## 23. Developing against a local checkout
+
+`drizzle-orm`, `pg` and `bcrypt` are **peer** dependencies: one instance, shared. Installed
+from the registry that is what happens, because the package brings no `node_modules` of its
+own.
+
+A `file:` dependency is a symlink to a working checkout that *does* have one, and Node
+resolves through the realpath: the framework finds its copy, the project finds its own, and a
+table object built by one is a foreign object to the other. The symptom is a type error naming
+two identical-looking paths, or a runtime that disagrees silently. Collapse the duplicates onto
+the checkout's copies — `volcanic-backend-sample/scripts/link-peers.mjs` does it on
+`postinstall` and is a development convenience production never sees.
