@@ -284,7 +284,7 @@ export function start(server: any, jobs: any[]) {
       const taskJob = new CronJob(
         {
           cronExpression: schedule.cron.expression,
-          timezone: schedule.cron.tomezone
+          timezone: schedule.cron.timezone
         },
         task,
         {

@@ -677,7 +677,12 @@ declare module 'fastify' {
     user?: AuthenticatedUser
     token?: AuthenticatedToken
     startedAt?: Date
+    /** Query string and body merged, the body winning on a shared key (defect D-29). */
     data(): Data & VQuery
+    /** Only the query string. */
+    queryData(): Data & VQuery
+    /** Only the body. */
+    bodyData(): Data & VQuery
     parameters(): Data
     roles(): string[]
     hasRole(role: Role): boolean
@@ -730,6 +735,8 @@ export interface FastifyRequest extends FastifyRequest {
   token?: AuthenticatedToken
   startedAt?: Date
   data(): Data & VQuery
+  queryData(): Data & VQuery
+  bodyData(): Data & VQuery
   parameters(): Data
   roles(): string[]
   hasRole(role: Role): boolean

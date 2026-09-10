@@ -1,8 +1,14 @@
 # Migrating from v4 to v5
 
-> **Status: accumulating.** This file is written one line at a time, as each break lands,
-> and not reconstructed at the end (task T-8.3). Everything below is already true of the
-> code on `develop`; the phases still open will add rows, never remove them.
+> **Status: complete for the v5 surface.** This file was written one line at a time, as each
+> break landed, and not reconstructed at the end (task T-8.3); it was then read through in
+> full, once, with the API stable. Everything below is true of the code on `develop`.
+>
+> Twenty sections, in the order a port meets them: the data layer and the configuration
+> first, because nothing else compiles until they are right; then what changed inside a
+> request; then the routes, the answers and the two core defaults. If you are porting a
+> project, read §1 to §4 before touching anything, and keep §18 open while you test the
+> login: the status code changed.
 
 v5 is breaking on purpose. There is no compatibility branch, no deprecated alias and no
 automatic translation of a v4 configuration: invariant 9 of `EVO_FRAMEWORK.md` says the
@@ -269,3 +275,69 @@ data remains in any backup taken before the destruction, and the response says s
 | `POST /tool/synchronize-schemas`, `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` | schemas are versioned migrations now |
 | `POST /tenants/impersonate` | it left no record and its privilege check was dead code; it returns with a persisted, revocable record |
 | `switchContext` on the tenant manager | choosing a container is not a session change any more |
+
+## 18. Authentication answers (defect D-17)
+
+| Situation | v4 | v5 |
+|---|---|---|
+| unknown address at login | 403 `Wrong credentials` | **401** `AUTH_INVALID_CREDENTIALS` |
+| wrong password | 403 `Wrong credentials` | **401** `AUTH_INVALID_CREDENTIALS` |
+| unconfirmed account | 403 `User email unconfirmed` | **401** `AUTH_INVALID_CREDENTIALS` |
+| blocked account | 403 `User blocked` | **401** `AUTH_INVALID_CREDENTIALS` |
+| expired password | 403 `PASSWORD_TO_BE_CHANGED` | unchanged: 403 `PASSWORD_TO_BE_CHANGED` |
+| `POST /auth/register` on an address already registered | 400 `Email already registered` | **200**, the body of a successful registration, and nothing created |
+
+Four distinct messages are a directory: fed a list of addresses they say which ones have an
+account here, and for those that do, whether the account is merely unconfirmed or has been
+shut off. The client now gets one code; the real cause is written to the log with a distinct
+internal code (`AUTH_UNKNOWN_EMAIL`, `AUTH_BAD_PASSWORD`, `AUTH_UNCONFIRMED`, `AUTH_BLOCKED`),
+where the operator answering the support call can read it and the internet cannot.
+
+The expired password stays distinct because it is reached **after** the password verified: it
+tells the caller nothing they had not already proved they knew. It is also now checked after
+the blocked flag rather than before it, so a blocked account never receives it.
+
+**What a client has to change.** Any code branching on the four v4 message strings, and any
+HTTP layer that treats 401 as "the session expired, redirect to the login screen": on the
+login route itself that reading turns a wrong password into a redirect loop. Branch on
+`code`, which is what it is there for. Registration no longer reports a duplicate address, so
+a form that showed «that email is taken» has nothing to show; the account confirmation email
+is the channel that tells the real owner, and the one that does not answer to a stranger.
+
+## 19. `req.data()` merges (defect D-29)
+
+| v4 | v5 |
+|---|---|
+| the query string **or** the body, never both | both, merged, with the **body winning** on a shared key |
+| one non-null query value dropped the whole body | nothing is dropped |
+| — | `req.queryData()` and `req.bodyData()` read one source alone |
+
+In v4 a single unrelated query parameter — a `utm_source` added by a mail client, a
+cache-buster — made the body vanish, so `POST /auth/login?utm=x` with the credentials in the
+body answered «Email not valid». The precedence is now declared: the body is the payload of
+the request, the query string is addressing, and when a caller sends both the one they meant
+is the body. A `null` in the body survives the merge, because there it is a value ("clear this
+field") and not an absence; an `undefined` never overrides.
+
+**What a client has to change.** Nothing, unless it relied on the query string shadowing the
+body, which no documented call did. A handler that must not be steerable from the URL now says
+so with `req.bodyData()`.
+
+## 20. Two defaults of the core
+
+| | v4 | v5 |
+|---|---|---|
+| CORS | `origin: '*'` with `credentials: true`, compiled in | allowlist from `CORS_ORIGINS`; `credentials` only against a real allowlist; the wildcard pair **refuses to boot in production**, and so does a wildcard that arrived by omission |
+| `onError` | echoed the exception on a 500 whatever `HIDE_ERROR_DETAILS` said | honours it, like every other error path |
+| cron `timezone` | read from a misspelt property, so it was always ignored | honoured (defect D-24) |
+
+The v4 CORS pair was not a lax setting, it was a broken one: browsers refuse to honour
+credentials against a wildcard, so cookie mode never worked cross-origin, and in bearer mode
+the wildcard left the API callable from any page the user happened to visit. **Set
+`CORS_ORIGINS`** to the comma-separated list of origins allowed to call the API before
+deploying; a deployment that really wants a public API writes `CORS_ORIGINS=*` and gets no
+credentials with it.
+
+The cron fix moves jobs that declared a timezone: they ran on the host's zone, which on a UTC
+container is an hour or two away from `Europe/Rome` and drifts twice a year. Check any cron
+expression whose hour matters.

@@ -4,6 +4,8 @@ import * as regExp from '../../../util/regexp.js'
 import { MfaPolicy } from '../../../config/constants.js'
 import { httpError } from '../../../util/httpError.js'
 import { dataContext, isTenancyEnabled } from '../../../util/tenancy.js'
+import { uuidv7 } from '../../../util/uuid.js'
+import { EMAIL_ALREADY_REGISTERED } from '../../../config/constants.js'
 
 // Upper bound for the password accepted at login: a cheap guard against oversized
 // payloads. Complexity is enforced only when a password is set, not at login.
@@ -52,6 +54,25 @@ function evaluateMfaResult(result: number | boolean | null): { valid: boolean; c
   return { valid: true, counter: null }
 }
 
+/**
+ * The single answer every login failure that happens *before* a verified password gets
+ * (defect D-17, docs/API_V5.md §2.1).
+ *
+ * v4 said which of «Wrong credentials», «Invalid user», «User email unconfirmed» and «User
+ * blocked» applied. Those four messages are a directory: they tell anyone who asks whether an
+ * address has an account here, and whether that account is merely unconfirmed or has been
+ * shut off — the two facts a credential-stuffing list is built out of. The caller now gets
+ * one code for all four; the cause goes to the log, where the operator answering the support
+ * call can read it and the internet cannot.
+ *
+ * 401 and not 403: the request was not authenticated, which is what 401 means. v4 answered
+ * 403 for all of them, and that is one of the breaks written down in the migration guide.
+ */
+function refuseLogin(reply: FastifyReply, cause: string, email: string) {
+  if (log.w) log.warn(`Login refused (${cause}) for ${email}`)
+  return reply.status(401).send(httpError(401, 'Invalid credentials', 'AUTH_INVALID_CREDENTIALS'))
+}
+
 export async function register(req: FastifyRequest, reply: FastifyReply) {
   const { password1: password, password2, ...data } = req.data()
 
@@ -72,11 +93,6 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Repeated password not match' })
   }
 
-  const existings = await req.server['userManager'].retrieveUserByEmail(dataContext(req), data.email)
-  if (existings) {
-    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Email already registered' })
-  }
-
   // Registration never grants the admin role — the admin apex is provisioned only at boot
   // from ADMIN_EMAIL (see docs/AUTHORIZATION_MODEL.md §6). `public` is the default.
   const publicRole = global.roles?.public?.code || 'public'
@@ -88,7 +104,33 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     data.roles.push(publicRole)
   }
 
-  const user = await req.server['userManager'].createUser(dataContext(req), { ...data, password: password })
+  // No lookup before the insert, on purpose. A pre-check answers before anything expensive
+  // has happened, so a taken address comes back in milliseconds and a free one comes back
+  // after a bcrypt hash: the two are one stopwatch apart, and the uniform body of decision A5
+  // would be undone by the latency. Letting the unique index decide means both paths hash,
+  // both paths touch the database, and both cost the same.
+  let user: any
+  try {
+    user = await req.server['userManager'].createUser(dataContext(req), { ...data, password: password })
+  } catch (err: any) {
+    if (err?.code !== EMAIL_ALREADY_REGISTERED) throw err
+
+    // An address that is already registered gets the answer a new one gets (decision A5).
+    // Anything else — a different status, a different body, a different latency — walks a
+    // list of addresses and learns which of them have accounts here. Nothing is created; the
+    // identifiers below are minted for this response alone and are stored nowhere, in the
+    // same v7 shape the database mints so the version nibble does not answer the question
+    // either.
+    if (log.w) log.warn(`Registration refused (AUTH_EMAIL_TAKEN) for ${data.email}`)
+    return {
+      id: uuidv7(),
+      externalId: uuidv7(),
+      username: data.username ?? null,
+      email: String(data.email).trim().toLowerCase(),
+      roles: data.roles
+    }
+  }
+
   if (!user) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not registered' })
   }
@@ -293,26 +335,37 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
 
   let user = await req.server['userManager'].retrieveUserByPassword(dataContext(req), email, password)
   if (!user) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
+    // The manager cannot say which of the two it was: it compares against a dummy hash when
+    // the address is unknown, precisely so the answer costs the same either way. The lookup
+    // that tells them apart therefore runs here, on the failure path only, for the log. It
+    // gives an attacker nothing — the response, its code and its body are identical — and it
+    // gives the operator the one line that makes a support call answerable.
+    const known = await req.server['userManager'].retrieveUserByEmail(dataContext(req), email)
+    return refuseLogin(reply, known ? 'AUTH_BAD_PASSWORD' : 'AUTH_UNKNOWN_EMAIL', email)
   }
 
   const isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid user' })
+    return refuseLogin(reply, 'AUTH_INVALID_USER', email)
   }
 
   if (!(user.confirmed === true)) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User email unconfirmed' })
+    return refuseLogin(reply, 'AUTH_UNCONFIRMED', email)
   }
 
+  // Before the expiry check, and not after it as in v4: a blocked account whose password had
+  // aged out was answered `PASSWORD_TO_BE_CHANGED`, which is a distinct code handed to
+  // someone the deployment has decided to shut out.
+  if (user.blocked) {
+    return refuseLogin(reply, 'AUTH_BLOCKED', email)
+  }
+
+  // Stays distinct, and stays 403: it is reached only after the password verified, so it
+  // tells the caller nothing they did not already prove they knew.
   const isPasswordToBeChanged = req.server['userManager'].isPasswordToBeChanged(user)
   if (isPasswordToBeChanged) {
     return reply.status(403).send(httpError(403, 'Password is expired', 'PASSWORD_TO_BE_CHANGED'))
-  }
-
-  if (user.blocked) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   // MFA Logic Interception

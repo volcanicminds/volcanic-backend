@@ -10,7 +10,7 @@
 import { expect } from 'expect'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { load, runnerFor } from '../../lib/loader/schedules.js'
+import { load, runnerFor, start } from '../../lib/loader/schedules.js'
 
 ;(global as any).log = {}
 
@@ -165,5 +165,54 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
     expect(names).toEqual(['good.job', 'plain.job'])
     expect(jobs.find((j: any) => j.jobName === 'good.job').schedule.concurrency).toBe(2)
     expect(jobs.find((j: any) => j.jobName === 'plain.job').schedule.scope).toBe('control')
+  })
+})
+
+describe('loader/schedules · the cron timezone reaches the scheduler (D-24)', () => {
+  //
+  // The refuso was `schedule.cron.tomezone`. Nothing failed: the property was undefined, the
+  // scheduler fell back to the host timezone, and a job declared for 03:00 Europe/Rome ran at
+  // 03:00 UTC on a UTC container — an hour or two off, twice a year in a different direction,
+  // and never with a message. The only way to catch that class of typo is to assert on what
+  // the scheduler was actually handed.
+  //
+  const previousLog = (global as any).log
+
+  before(() => {
+    ;(global as any).log = { trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }
+  })
+
+  after(() => {
+    ;(global as any).log = previousLog
+  })
+
+  function capture(cron: any) {
+    const added: any[] = []
+    const server: any = {
+      addHook: () => {},
+      scheduler: {
+        addCronJob: (job: any) => added.push(job),
+        addSimpleIntervalJob: (job: any) => added.push(job)
+      }
+    }
+    start(server, [
+      {
+        jobName: 'tz.job',
+        schedule: { active: true, type: 'cron', async: false, cron },
+        job: () => {}
+      }
+    ])
+    return added[0]
+  }
+
+  it('hands the declared timezone to the cron job', () => {
+    const job = capture({ expression: '0 3 * * *', timezone: 'Europe/Rome' })
+    expect(job.schedule.timezone).toBe('Europe/Rome')
+    expect(job.schedule.cronExpression).toBe('0 3 * * *')
+  })
+
+  it('leaves it undefined when nothing is declared, so the host timezone stays the default', () => {
+    const job = capture({ expression: '0 3 * * *' })
+    expect(job.schedule.timezone).toBeUndefined()
   })
 })

@@ -20,6 +20,20 @@ const BCRYPT_COST = 12
 // address registered?" that the uniform messages of docs/API_V5.md §2.1 refuse to answer.
 const DUMMY_PASSWORD_HASH = '$2b$12$4sLKI6Ag4n6KjUBPqA4oJuAthEdYgbwUj7oIR8yj7IekjUCzUFRD2'
 
+// Same literal as `EMAIL_ALREADY_REGISTERED` in lib/config/constants.ts, which is where it is
+// documented. It cannot be imported from there: the boundary checked in CI forbids the data
+// layer from pulling a runtime value out of the core.
+const EMAIL_TAKEN_CODE = 'EMAIL_ALREADY_REGISTERED'
+
+// Every engine we support names a unique violation somewhere in the code or the message:
+// Postgres answers 23505, better-sqlite3 and libSQL answer SQLITE_CONSTRAINT_UNIQUE. The test
+// is deliberately loose because it is not what decides: the lookup that follows it is.
+function isUniqueViolation(err: any): boolean {
+  const code = String(err?.code ?? '')
+  const message = String(err?.message ?? '').toLowerCase()
+  return code === '23505' || code.startsWith('SQLITE_CONSTRAINT') || message.includes('unique')
+}
+
 const NAME = 'userManager'
 
 export function createUserManager(): UserManagement {
@@ -79,24 +93,50 @@ export function createUserManager(): UserManagement {
       return elapsedDays >= days
     },
 
+    /**
+     * Insert, and let the unique index on the address decide.
+     *
+     * There is no lookup first, and that is the point: registration must not answer faster
+     * for an address that is taken than for one that is free (defect D-17), and a pre-check
+     * returns before the hash below has cost anything. Here both paths hash and both paths
+     * reach the database, so the two are the same length. A collision comes back as an error
+     * carrying `EMAIL_ALREADY_REGISTERED`, which the caller turns into the same 200 a real
+     * registration gets.
+     */
     async createUser(ctx: DataHandle, data: any) {
       const { handle, user } = users(ctx, 'createUser')
+      const email = String(data.email).trim().toLowerCase()
       const password = await bcrypt.hash(String(data.password), BCRYPT_COST)
 
-      const rows = await handle.db
-        .insert(user)
-        .values({
-          email: String(data.email).trim().toLowerCase(),
-          username: data.username ?? null,
-          password,
-          confirmed: data.confirmed ?? false,
-          confirmedAt: data.confirmed ? new Date() : null,
-          roles: data.roles ?? [],
-          isFounder: data.isFounder ?? false,
-          passwordChangedAt: new Date()
-        })
-        .returning()
-      return rows[0]
+      try {
+        const rows = await handle.db
+          .insert(user)
+          .values({
+            email,
+            username: data.username ?? null,
+            password,
+            confirmed: data.confirmed ?? false,
+            confirmedAt: data.confirmed ? new Date() : null,
+            roles: data.roles ?? [],
+            isFounder: data.isFounder ?? false,
+            passwordChangedAt: new Date()
+          })
+          .returning()
+        return rows[0]
+      } catch (err: any) {
+        // Which constraint fired is spelled differently by every engine, so the answer comes
+        // from asking the table rather than from parsing a message: if a row now holds that
+        // address, the address is why the insert failed. Anything else is rethrown as it is,
+        // because a caller that reads a taken address into a broken migration is worse off
+        // than one that sees the real error.
+        if (isUniqueViolation(err)) {
+          const existing = await one(ctx, 'createUser', eq(column(user, 'email'), email as never))
+          if (existing) {
+            throw Object.assign(new Error('Email already registered'), { code: EMAIL_TAKEN_CODE })
+          }
+        }
+        throw err
+      }
     },
 
     async updateUserById(ctx: DataHandle, id: string, data: any) {

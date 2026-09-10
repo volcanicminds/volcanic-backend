@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getParams, getData } from '../util/common.js'
+import { getParams, getData, getQueryData, getBodyData } from '../util/common.js'
 import { httpError } from '../util/httpError.js'
 import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } from '../../types/global.js'
 import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
@@ -36,6 +36,8 @@ export default async (req, reply) => {
   if (log.i) req.startedAt = new Date()
 
   req.data = () => getData(req)
+  req.queryData = () => getQueryData(req)
+  req.bodyData = () => getBodyData(req)
   req.parameters = () => getParams(req)
 
   if (global.transferPath) {

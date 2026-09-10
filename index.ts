@@ -38,6 +38,7 @@ import cookie from '@fastify/cookie'
 
 import require from './lib/util/require.js'
 import { assertSecretStrength } from './lib/util/secret.js'
+import { assertCorsOptions } from './lib/util/cors.js'
 import { configureCache, cache } from './lib/util/cache.js'
 
 import type { TransferManagement } from './types/global.js'
@@ -235,7 +236,13 @@ const start = async (decorators = {}) => {
   })
 
   if (plugins?.multipart) await server.register(multipart, plugins.multipart || {})
-  if (plugins?.cors) await server.register(cors, plugins.cors || {})
+  if (plugins?.cors) {
+    // Checked on the EFFECTIVE options, not on the framework default: a consuming project
+    // that writes its own `config/plugins.ts` replaces that default whole, and the one
+    // combination that must never reach production has to be caught wherever it was written.
+    assertCorsOptions(plugins.cors, { prod: process.env.NODE_ENV === 'production' })
+    await server.register(cors, plugins.cors || {})
+  }
   if (plugins?.compress) await server.register(compress, plugins.compress || {})
   // Static file serving (e.g. a public uploads folder in dev; behind nginx/CDN in
   // prod). Dynamically imported so consumers that don't use it needn't install it.

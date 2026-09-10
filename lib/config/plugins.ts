@@ -1,12 +1,20 @@
+import { corsOriginFromEnv, corsCredentialsFor } from '../util/cors.js'
+
+// The allowlist is a deployment decision, not a source-code one: it changes between the
+// developer's laptop, the staging host and production, and a value compiled into the
+// framework would be wrong in at least two of the three (defect D-16). `credentials` follows
+// the allowlist and is never granted against a wildcard, because no browser honours that pair.
+const corsOrigin = corsOriginFromEnv(process.env.CORS_ORIGINS)
+
 export default [
   {
     name: 'cors',
     enable: true,
     options: {
-      origin: '*',
+      origin: corsOrigin,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
       maxAge: 31536000,
-      credentials: true,
+      credentials: corsCredentialsFor(corsOrigin),
       allowedHeaders: [
         'Accept',
         'Accept-Language',

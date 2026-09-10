@@ -64,6 +64,32 @@ describe('database/managers · context', () => {
 describe('database/managers · users', function () {
   this.timeout(30000)
 
+  it('reports a duplicate address as a code, not as a database error (D-17)', async () => {
+    // The unique index is the one that decides, so this test needs a container that has it.
+    // The shared fixture above builds tables from the column list only, and a test running
+    // against a table without the constraint would prove the opposite of what it claims.
+    const sqlite = new Database(':memory:')
+    const db = drizzle(sqlite)
+    sqlite.exec(createTableSql(tables.user))
+    sqlite.exec('create unique index "user_email_uq" on "user" ("email")')
+    const container: any = { kind: 'tenant', dialect: 'sqlite', tenantId: 'dup', db, tables }
+
+    await users.createUser(container, { email: 'taken@acme.test', password: 'Acme-pw-123456' })
+
+    // Same address, different case: normalisation happens before the index sees it, so the
+    // collision is caught whatever the caller typed.
+    const failure: any = await users
+      .createUser(container, { email: 'Taken@ACME.test', password: 'Other-pw-123456' })
+      .then(() => null)
+      .catch((err: any) => err)
+
+    expect(failure?.code).toBe('EMAIL_ALREADY_REGISTERED')
+
+    const rows = await db.select().from(tables.user)
+    expect(rows.length).toBe(1) // nothing was created on the way to the refusal
+    sqlite.close()
+  })
+
   it('creates a user with a hashed password and a generated identity', async () => {
     const created: any = await users.createUser(tenant, { email: 'Anna@Acme.test', password: 'Acme-pw-123456' })
     expect(created.email).toBe('anna@acme.test') // normalised, so a login cannot miss it by case

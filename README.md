@@ -57,7 +57,7 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 | **Refresh token** | ✅ | — | ✅ | Separate `refreshToken` JWT namespace. Disable with `JWT_REFRESH=false` |
 | **Cookie auth mode** | ✅ | — | — | `@fastify/cookie`. HttpOnly/Secure/SameSite signed cookie; needs `COOKIE_SECRET`. Enabled by `AUTH_MODE=COOKIE` |
 | **Token revocation** | ✅ | — | ✅ | `externalId` pattern in the JWT: regenerating it invalidates all tokens (global logout / password change) |
-| **CORS** | ✅ | — | ✅ | `@fastify/cors`. Preset exposing `v-*` pagination headers (`v-total`, `v-page`, …) |
+| **CORS** | ✅ | — | ✅ | `@fastify/cors`. Allowlist from `CORS_ORIGINS`, credentials only against a real allowlist, `v-*` pagination headers exposed |
 | **Helmet** | ✅ | — | ✅ | `@fastify/helmet`. Security HTTP headers |
 | **Rate limit** | ✅ | — | ✅ | `@fastify/rate-limit`, registered `global:false` → limits only opt-in routes (e.g. MFA) + 404 handler |
 | **Central error handler** | ✅ | — | ✅ | Preserves controller status; hides details via `HIDE_ERROR_DETAILS` (default on in prod) |
@@ -439,13 +439,20 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `COOKIE_SECRET`                | Secret for signing cookies (Required if `AUTH_MODE=COOKIE`)             | **Yes**² |                     |
 | `ADMIN_EMAIL`                  | Seeds the first identity at boot, and is read at no other time (see below). | **Yes**³ |          |
 | `ADMIN_PASSWORD`               | Password for the founder created from `ADMIN_EMAIL`; if unset, a strong one is generated and printed to stdout. | No |    |
-| `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response.            |    No    | `true` (prod)       |
+| `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response. Honoured by every error path, the `onError` hook included. |    No    | `true` (prod)       |
+| `CORS_ORIGINS`                 | Comma-separated allowlist of origins allowed to call the API. Credentials are granted only against a real allowlist. | **Yes**⁴ |          |
 
 ² Required if `AUTH_MODE` is `COOKIE`.
 
 ³ Read **only at boot**, to seed the first identity: the application's sovereign founder on a single-tenant
 instance, the first platform administrator where a `tenants` block is declared. If one already exists it may be
 omitted; with no identity and no `ADMIN_EMAIL`, startup **fails fast**.
+
+⁴ Required in production. v4 shipped `origin: '*'` together with `credentials: true`, which browsers refuse to
+honour — so cookie mode never worked cross-origin — and which in bearer mode left the API callable from any page
+the user happened to visit. In production a wildcard that arrived by omission **refuses the boot**, and so does
+the wildcard-with-credentials pair however it was written; off production both are a warning. A deployment that
+really wants a public API writes `CORS_ORIGINS=*`, and gets no credentials with it.
 
 After that first write the variable is never read again. Being the founder is the `is_founder` column of the
 user row, inside its own container, so two tenants each have their own and neither inherits the other's
@@ -787,7 +794,11 @@ export function user(req: FastifyRequest, reply: FastifyReply) {
 Useful methods / objects:
 
 - `req.user` to grab **user** data (validated and linked by JWT).
-- `req.data()` to grab **query** or **body** parameters.
+- `req.data()` to grab **query and body** parameters merged, the body winning on a key present
+  in both. In v4 it returned one source *or* the other, so an unrelated query parameter made
+  the whole body disappear (defect D-29).
+- `req.queryData()` / `req.bodyData()` to read one source alone, for a handler that must not be
+  steerable from the URL.
 - `req.parameters()` to grab **params** data.
 - `req.roles()` to grab **Roles** (as `string[]`) from `req.user` if compiled.
 - `req.hasRole(role:Role)` to check if the **Role** is appliable for `req.user`.
