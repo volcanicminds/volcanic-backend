@@ -114,8 +114,11 @@ describe('database · session state (T-3.1)', () => {
 
       const err = await refused(() => acme.execute(sql.raw('set search_path to tenant_globex')))
       expect(err.code).toBe('DB_SESSION_STATE_FORBIDDEN')
-      // Refused BEFORE the wire: the pool never saw it.
-      expect(pool.statements.length).toBe(0)
+      // Raw SQL on a tenant handle now runs inside a transaction that enters the container
+      // (T-6.1), so `begin` and the container's own SET LOCAL do reach the wire. What never
+      // does is the statement that would have pointed the session at somebody else.
+      expect(pool.statements.some((s) => /set local search_path to "tenant_acme"/i.test(s))).toBe(true)
+      expect(pool.statements.some((s) => /tenant_globex/i.test(s))).toBe(false)
     })
 
     it('lets a transaction use SET LOCAL, and still refuses the session form there', async () => {

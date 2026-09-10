@@ -17,10 +17,13 @@
 | `[x]` | fatto, con evidenza |
 | `[-]` | non applicabile, con motivo scritto |
 
-**Prossimo passo**: **fase 5 chiusa**. Si passa alla fase 6, ciclo di vita del tenant, da
-T-6.1 (creazione). È lì che il banco nero è fermo: `createTenant` risponde 400 perché lo
-schema JSON è ancora quello v4 e pretende `dbSchema` invece di `locator`. T-6.1 chiude anche
-D-08 (tenant creato e inutilizzabile) e D-20 (nome di schema salvato grezzo e usato sanificato). Il banco nero ora si ferma su una tabella che non
+**IL BANCO NERO È VERDE.** Gli otto test di `docs/TESTING_V5.md` §2.4 passano contro Postgres
+reale, e il banco non è stato modificato per farlo passare: è quello scritto in T-0.2 prima di
+qualunque codice v5. Le quattro proprietà che dovevano fallire sulla v4 (1, 2, 4, 5) passano
+sulla v5. Da qui in avanti è un cancello, non un promemoria: se torna rosso, qualcosa che
+funzionava si è rotto.
+
+**Prossimo passo**: T-6.2, export del contenitore, poi T-6.3, distruzione a due fasi. Il banco nero ora si ferma su una tabella che non
 esiste: `system_user`. **Non è un difetto, è l'ordine del piano**: le migrazioni sono la fase
 5, e finché non esistono nessuna tabella del framework viene creata. Da qui in avanti il banco
 resta rosso su questo, non su un buco del modello.
@@ -92,7 +95,7 @@ documenti esistono e in che ordine si leggono.
 
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
-| T-6.1 | Creazione | `[ ]` | |
+| T-6.1 | Creazione | `[x]` | **il banco nero di T-0.2 passa, 8 test su 8, senza essere stato toccato.** L'ordine è il compito: contenitore creato, schema migrato, admin seminato e riga di registro scritta **per ultima**, perché in v4 la riga veniva scritta per prima e una creazione fallita lasciava un tenant che puntava a un contenitore che non funziona. Se qualcosa fallisce prima, il contenitore viene rimosso e nessuna riga viene scritta: è sicuro proprio perché siamo prima della riga, quindi si rimuove uno schema creato pochi secondi fa che nessuno indicizza e che non ha mai contenuto dati di un cliente. D-08 chiuso: `admin` è parte del corpo e `adminConfirmed` vale **true** di default su questa rotta, e il test «l'amministratore entra subito» lo prova via HTTP. D-20 chiuso: locator sanificato una volta sola prima del salvataggio, e un valore che cambia sotto sanificazione riceve 400 invece di essere accettato con un altro nome. **Sei difetti trovati dal banco, nessuno visibile ai test unitari**, e questo è il motivo per cui il banco esiste: (1) SQL grezzo su un handle di tenant leggeva il **piano di controllo** in silenzio, perché la qualificazione non raggiunge una stringa; ora `execute` e `transaction` di un handle di tenant entrano nel contenitore con `SET LOCAL` dentro transazione; (2) `scope` sta al livello della **rotta** nella specifica e il router lo leggeva solo dentro `config`, quindi una rotta che dichiarava `scope: 'control'` girava nel tenant: D-11 ricresciuto; (3) la regola «una rotta di controllo non è mai pubblica» rendeva irraggiungibili `/health` e il login di piattaforma, quindi `public` è diventato neutro rispetto al piano (non è un'identità di tenant, è l'assenza di identità) e `system:public` è stato eliminato; (4) `isAuthenticated` e `isAdmin` conoscevano solo `req.user`, quindi ogni rotta di controllo rispondeva 401 a un token di sistema valido; (5) `isPasswordToBeChanged` non era stata portata in T-2.5 e ogni login di tenant rispondeva 500; (6) **`getId()` non esiste sulle righe v5**, quindi `req.user.getId()` lanciava e l'errore riemergeva tre livelli dopo come 401 inspiegabile: era un metodo di entità dell'ORM colato nell'API pubblica, ora è `req.user.id`. In più `GET /tenants` rispondeva 500 perché mandava `{headers, records}` contro uno schema che dichiara un array. 275 verdi più gli 8 del banco |
 | T-6.2 | Export del contenitore | `[ ]` | |
 | T-6.3 | Distruzione a due fasi | `[ ]` | |
 

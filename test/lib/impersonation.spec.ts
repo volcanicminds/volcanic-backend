@@ -58,7 +58,10 @@ function fakes(over: any = {}) {
     },
     userManager: {
       isImplemented: () => true,
-      retrieveUserById: async (_ctx: any, id: string) => (id === TARGET.id ? TARGET : null)
+      retrieveUserById: async (_ctx: any, id: string) => (id === TARGET.id ? TARGET : null),
+      // The route accepts an id or an email: an operator has the address, and the id of a
+      // row inside a customer's container is not something they can look up.
+      retrieveUserByEmail: async (_ctx: any, email: string) => (email === TARGET.email ? TARGET : null)
     },
     provider: {
       control: async () => ({ kind: 'control' }),
@@ -152,6 +155,14 @@ describe('impersonation · the record comes first (T-4.2)', () => {
     // v4 issued these for twenty-four hours. The ceiling is not configurable.
     ;(global as any).config = { options: { impersonation_ttl: 48 * 3600 } }
     expect(impersonationTtl()).toBe(4 * 3600)
+  })
+
+  it('finds the target by email as well as by id', async () => {
+    const { server, impersonationManager } = await build()
+    const res = await open(server, { userId: TARGET.email, reason: 'ticket 4412' })
+    expect(res.statusCode).toBe(200)
+    expect(impersonationManager.written[0].targetUserId).toBe(TARGET.id)
+    await server.close()
   })
 
   it('refuses a target that does not exist inside the container', async () => {

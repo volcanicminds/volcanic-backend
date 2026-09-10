@@ -34,7 +34,7 @@ function fakeManager(overrides: any = {}) {
     createUser: async (ctx: any, data: any) => {
       seen(ctx)
       calls.created = data
-      return { getId: () => 'new-id', ...data }
+      return { id: 'new-id', ...data }
     },
     userConfirmation: async (ctx: any, u: any) => {
       seen(ctx)
@@ -98,7 +98,7 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
 
   it('promotes an existing non-admin founder', async () => {
     process.env.ADMIN_EMAIL = 'founder@x.com'
-    const um = fakeManager({ existing: { getId: () => 'u1', roles: ['public'] } })
+    const um = fakeManager({ existing: { id: 'u1', roles: ['public'] } })
     await ensureGenesisAdmin(serverWith(um))
     expect(um.calls.promoted.id).toBe('u1')
     expect(um.calls.promoted.data.roles).toContain('admin')
@@ -109,7 +109,7 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
   // that ADMIN_EMAIL will be compared again on every later request.
   it('marks an existing admin as the founder when the container has none', async () => {
     process.env.ADMIN_EMAIL = 'founder@x.com'
-    const um = fakeManager({ existing: { getId: () => 'u1', roles: ['admin'] }, founders: 0 })
+    const um = fakeManager({ existing: { id: 'u1', roles: ['admin'] }, founders: 0 })
     await ensureGenesisAdmin(serverWith(um))
     expect(um.calls.created).toBeNull()
     expect(um.calls.promoted).toEqual({ id: 'u1', data: { isFounder: true } })
@@ -117,7 +117,7 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
 
   it('does not mint a second sovereign when one already exists', async () => {
     process.env.ADMIN_EMAIL = 'someone-else@x.com'
-    const um = fakeManager({ existing: { getId: () => 'u2', roles: ['admin'] }, founders: 1 })
+    const um = fakeManager({ existing: { id: 'u2', roles: ['admin'] }, founders: 1 })
     await ensureGenesisAdmin(serverWith(um))
     // Changing an environment variable must not be able to hand sovereignty to another row:
     // that is exactly what made D-27 a privilege issue rather than a naming one.
@@ -127,7 +127,7 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
 
   it('is a no-op when the founder row is already reconciled', async () => {
     process.env.ADMIN_EMAIL = 'founder@x.com'
-    const um = fakeManager({ existing: { getId: () => 'u1', roles: ['admin'], isFounder: true }, founders: 1 })
+    const um = fakeManager({ existing: { id: 'u1', roles: ['admin'], isFounder: true }, founders: 1 })
     await ensureGenesisAdmin(serverWith(um))
     expect(um.calls.promoted).toBeNull()
     expect(um.calls.created).toBeNull()

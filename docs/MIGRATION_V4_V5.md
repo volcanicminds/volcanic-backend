@@ -211,7 +211,44 @@ by default (`tenants.migrations.refuseStartIfControlBehind`, `tenants.migrations
 A v4 deployment that relied on the schema being synchronised at boot has to run
 `npm run db:migrate` as a deploy step instead.
 
-## 14. Routes that no longer exist
+## 14. Provisioning a tenant
+
+```js
+// v4
+POST /tenants { name, slug, dbSchema }
+
+// v5 (docs/API_V5.md §6.1)
+POST /tenants { name, slug, strategy?, engine?, locator?, config?, admin: { email, password, adminConfirmed? } }
+```
+
+- `dbSchema` is now `locator`, and it is **optional**: absent, it is derived from the slug.
+  A value that changes under sanitisation is refused with 400 rather than accepted under a
+  different name (defect D-20).
+- `admin` is part of the request, and `adminConfirmed` defaults to **true** on this route. In
+  v4 the seeded administrator was created unconfirmed, login refused unconfirmed users, and no
+  API could confirm one: a tenant that could not be used (defect D-08). `POST /auth/register`
+  still creates unconfirmed users, because self-registration is a different path.
+- The container is created, **migrated**, and the version recorded on the registry row. If any
+  step fails the container is dropped and **no registry row is written**: v4 wrote the row
+  first, so a failed provisioning left a tenant pointing at a container that does not work.
+
+## 15. Two things that were shaped like the ORM
+
+| v4 | v5 |
+|---|---|
+| `req.user.getId()`, `req.token.getId()` | `req.user.id`, `req.token.id` |
+| `scope` read only inside `config` | read on the route, in `config`, or on the file config |
+
+`getId()` was an ORM entity method that had leaked into the public surface. v5 hands back
+plain rows: the ORM is not part of the API, and a data row that answers method calls is the
+ORM pretending otherwise.
+
+`public` is plane-neutral. It is not a tenant identity, it is the absence of one, so a
+control-scope route uses the same `public` code for "answer before anyone is authenticated".
+A control route that declares nothing is superuser-only: being public is opted into, never
+inherited.
+
+## 16. Routes that no longer exist
 
 | Route | Why |
 |---|---|

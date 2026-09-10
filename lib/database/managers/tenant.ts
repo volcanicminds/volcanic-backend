@@ -142,7 +142,11 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       if (provider.closeContainer) await provider.closeContainer(handle)
     },
 
-    migrateContainer: async (tenantId: string) => notImplemented('migrateContainer', 'phase 5, migrations') as never,
+    // Phase 5 is closed, but this entry point is not the way in: a container is migrated
+    // through `layer.migrations.apply(container)` or, for the fleet, `layer.migrateTenants`.
+    // Left refusing rather than made into a third door onto the same operation.
+    migrateContainer: async (_tenantId: string) =>
+      notImplemented('migrateContainer', 'nothing: use layer.migrations.apply() or npx volcanic migrate --tenants') as never,
     exportContainer: async () => notImplemented('exportContainer', 'T-6.2') as never,
     destroyContainer: async () => notImplemented('destroyContainer', 'T-6.3, which puts a two-phase flow and a mandatory export in front of it') as never,
     inspectContainer: async () => notImplemented('inspectContainer', 'T-6.2') as never
