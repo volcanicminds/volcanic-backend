@@ -57,6 +57,22 @@ function fakeRunner(over: any = {}) {
   }
 }
 
+/**
+ * The machine `code` of a rejection.
+ *
+ * Asserted alongside the class because they are not the same promise: the class name is
+ * internal and a consumer never sees it, while the code travels in the response body and is
+ * what a client branches on. A test that pins only the class lets the contract change silently.
+ */
+const codeOfRejection = async (p: Promise<unknown>): Promise<string> => {
+  try {
+    await p
+  } catch (e: any) {
+    return e?.code ?? 'NO_CODE'
+  }
+  return 'NO_ERROR'
+}
+
 describe('replica · supervising Litestream (T-7.3)', () => {
   let dir: string
   let file: string
@@ -86,6 +102,7 @@ describe('replica · supervising Litestream (T-7.3)', () => {
     // A container the deployment believes is being copied, and is not, is worse than one
     // nobody promised to copy.
     await expect(replica.start('acme', file)).rejects.toThrow(ReplicaToolMissingError)
+    expect(await codeOfRejection(replica.start('acme', file))).toBe('REPLICA_TOOL_MISSING')
     await expect(replica.restore('acme', path.join(dir, 'restored.db'))).rejects.toThrow(ReplicaToolMissingError)
   })
 
@@ -150,5 +167,6 @@ describe('replica · supervising Litestream (T-7.3)', () => {
     const { runner } = fakeRunner({ restoreFails: true })
     const replica = createLitestreamReplica({ url: 's3://backups/tenants' }, runner)
     await expect(replica.restore('acme', path.join(dir, 'out.db'))).rejects.toThrow(ReplicaFailedError)
+    expect(await codeOfRejection(replica.restore('acme', path.join(dir, 'out.db')))).toBe('REPLICA_FAILED')
   })
 })

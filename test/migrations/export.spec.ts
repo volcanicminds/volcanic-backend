@@ -26,6 +26,22 @@ const suite = URL ? describe : describe.skip
 
 const ACME: any = { id: 'id-acme', slug: 'acme', locator: 'test_export_acme', status: 'active' }
 
+/**
+ * The machine `code` of a rejection.
+ *
+ * Asserted alongside the class because they are not the same promise: the class name is
+ * internal and a consumer never sees it, while the code travels in the response body and is
+ * what a client branches on. A test that pins only the class lets the contract change silently.
+ */
+const codeOfRejection = async (p: Promise<unknown>): Promise<string> => {
+  try {
+    await p
+  } catch (e: any) {
+    return e?.code ?? 'NO_CODE'
+  }
+  return 'NO_ERROR'
+}
+
 describe('export · where the file goes (T-6.2)', () => {
   let dir: string
   before(() => {
@@ -92,6 +108,18 @@ describe('export · a file container (T-6.2)', () => {
         throw new Error('database is locked')
       })
     ).rejects.toThrow(ExportFailedError)
+
+    expect(
+      await codeOfRejection(
+        exportSqliteFile(ACME, { directory: dir, schemaVersion: null }, source, async () => {
+          throw new Error('database is locked')
+        })
+      )
+    ).toBe('EXPORT_FAILED')
+    // The tool-missing refusal carries its own code: a deployment without the binary must be
+    // able to tell "I cannot export" from "the export failed", because only one is fixable
+    // by retrying.
+    expect(new ExportToolMissingError('pg_dump').code).toBe('EXPORT_TOOL_MISSING')
 
     // A truncated dump is a trap, not a partial result.
     expect(fs.readdirSync(dir).length).toBe(before)

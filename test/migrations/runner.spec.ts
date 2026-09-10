@@ -32,6 +32,22 @@ function folderWith(files: Record<string, string>): string {
   return dir
 }
 
+/**
+ * The machine `code` of a rejection.
+ *
+ * Asserted alongside the class because they are not the same promise: the class name is
+ * internal and a consumer never sees it, while the code travels in the response body and is
+ * what a client branches on. A test that pins only the class lets the contract change silently.
+ */
+const codeOfRejection = async (p: Promise<unknown>): Promise<string> => {
+  try {
+    await p
+  } catch (e: any) {
+    return e?.code ?? 'NO_CODE'
+  }
+  return 'NO_ERROR'
+}
+
 describe('migrations · the format (T-5.1)', () => {
   it('orders by file name, and carries a checksum', () => {
     const dir = folderWith({
@@ -197,6 +213,7 @@ suite('migrations · applying a set (T-5.1)', function () {
     // The container and the repository disagree about what happened. Skipping it would leave
     // a schema nobody can reason about; the answer is to stop.
     await expect(runner.pending({ tenantId: 'a', locator: ACME })).rejects.toThrow(MigrationMismatchError)
+    expect(await codeOfRejection(runner.pending({ tenantId: 'a', locator: ACME }))).toBe('MIGRATION_CHANGED')
     fs.writeFileSync(path.join(dir, '0001_add_note.sql'), 'ALTER TABLE "widget" ADD COLUMN "note" text;')
   })
 

@@ -181,7 +181,10 @@ describe('loader/tenant · resolving which tenant (T-3.2)', () => {
       const suspended = await server.inject({ method: 'GET', url: '/data', headers: { [HEADER]: 'dormant' } })
       expect(unknown.statusCode).toBe(404)
       expect(suspended.statusCode).toBe(404)
+      // Byte for byte the same, code included: anything that differs — a status, a code, a
+      // message, a timing — turns the registry into something probable from outside.
       expect(body(unknown)).toEqual(body(suspended))
+      expect(body(unknown).code).toBe('TENANT_NOT_FOUND')
       await server.close()
     })
 

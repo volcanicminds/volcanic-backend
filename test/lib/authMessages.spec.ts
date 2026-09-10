@@ -11,7 +11,7 @@
 // registration on a taken address is indistinguishable from one on a free address.
 //
 import { expect } from 'expect'
-import { login, register } from '../../lib/api/auth/controller/auth.js'
+import { login, register, refreshToken } from '../../lib/api/auth/controller/auth.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../lib/config/constants.js'
 
 ;(global as any).log = {}
@@ -175,5 +175,28 @@ describe('auth · a taken address registers like a free one (D-17, decision A5)'
       }
     })
     await expect(register(fakeRequest({ ...body }, broken), fakeReply())).rejects.toThrow('connection terminated')
+  })
+})
+
+describe('auth · refresh when refresh tokens are turned off (T-9.5)', () => {
+  //
+  // `JWT_REFRESH=false` is a supported deployment: an instance that only issues access tokens.
+  // The route still exists, because routes are loaded from the filesystem and not from the
+  // configuration, so it has to answer something sensible instead of throwing on a verifier
+  // that was never registered — which is what "answer a clean 404 instead of a 500 later"
+  // means in the comment beside it. Nothing had ever asked.
+  //
+  it('answers 404 NOT_FOUND rather than failing on a verifier that was never registered', async () => {
+    const reply = fakeReply()
+    const req = fakeRequest({ token: 'a', refreshToken: 'b' }, { isImplemented: () => true })
+    // A jwt without the `refreshToken` namespace: exactly what @fastify/jwt leaves behind
+    // when JWT_REFRESH is off.
+    ;(req as any).server.jwt = {}
+    ;(reply as any).server = (req as any).server
+
+    await refreshToken(req, reply)
+
+    expect(reply.sent.code).toBe(404)
+    expect(reply.sent.body.code).toBe('NOT_FOUND')
   })
 })

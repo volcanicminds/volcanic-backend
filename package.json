@@ -77,10 +77,13 @@
     "db:generate": "cross-env MIGRATION_SET=control MIGRATION_DIALECT=pg drizzle-kit generate",
     "db:generate:tenant": "cross-env MIGRATION_SET=tenant MIGRATION_DIALECT=pg drizzle-kit generate",
     "test:migrations": "cross-env NODE_ENV=memory mocha --import=tsx ./test/migrations/**/*.spec.ts -t 30000 --exit",
-    "check-all": "npm run lint && npm run type-check && npm run depcruise && npm run check:session-state && npm run check:migration-sets",
+    "check-all": "npm run lint && npm run type-check && npm run depcruise && npm run check:session-state && npm run check:migration-sets && npm run check:refusals",
     "combine": "node combine.js",
     "db:generate:sqlite": "cross-env MIGRATION_SET=control MIGRATION_DIALECT=sqlite drizzle-kit generate",
-    "db:generate:tenant:sqlite": "cross-env MIGRATION_SET=tenant MIGRATION_DIALECT=sqlite drizzle-kit generate"
+    "db:generate:tenant:sqlite": "cross-env MIGRATION_SET=tenant MIGRATION_DIALECT=sqlite drizzle-kit generate",
+    "coverage": "c8 --config .c8rc.json cross-env NODE_ENV=memory mocha --import=tsx \"./test/lib/**/*.spec.ts\" \"./test/db/**/*.spec.ts\" \"./test/migrations/**/*.spec.ts\" -t 30000 --exit",
+    "coverage:report": "c8 --config .c8rc.json --check-coverage=false cross-env NODE_ENV=memory mocha --import=tsx \"./test/lib/**/*.spec.ts\" \"./test/db/**/*.spec.ts\" \"./test/migrations/**/*.spec.ts\" -t 30000 --exit",
+    "check:refusals": "node scripts/check-refusals.mjs"
   },
   "dependencies": {
     "@fastify/compress": "^8.3.0",
@@ -155,6 +158,7 @@
     "autocannon": "^8.0.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.11.1",
+    "c8": "^12.0.0",
     "cross-env": "^10.1.0",
     "dependency-cruiser": "^18.0.0",
     "drizzle-kit": "^0.31.10",

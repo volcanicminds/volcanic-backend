@@ -485,8 +485,29 @@ npm run test:lib          # the core alone
 npm run test:db           # the data layer, on SQLite in memory
 npm run test:migrations   # the migration runner
 npm run test:e2e:mt:pg    # the isolation bench, against a real Postgres
-npm run check-all         # lint, types, layer boundary, session state, migration sets
+npm run coverage          # measures, and fails under the floor
+npm run check-all         # lint, types, layer boundary, session state, migration sets, refusals
 ```
+
+### Every refusal has a test that fires it
+
+`npm run check:refusals` reads every error code the source can answer with — `QUERY_*`,
+`TENANT_*`, `SCOPE_*`, `AUTH_*`, `MIGRATION_*`, the boot refusals — and fails when one of them
+is named by no test. It is part of `check-all`, so a new refusal arrives with a test or it does
+not arrive.
+
+The reason it exists rather than a coverage number: v5 refuses a great deal on purpose, and a
+refusal nobody has watched fire is a refusal whose intent is known and whose behaviour is not.
+Defect D-03 was exactly that — an anti-spoofing check comparing a field the entity did not
+have, in a hook that ran before the one that would have populated it. It never fired, nothing
+failed, and the tenant came from a header for two years. Writing this check found one more of
+the same kind: `QUERY_DUPLICATE_CONDITION` compared keys of an object, which are unique by
+definition, so it could never fire — and a repeated query parameter went through as a joined
+string, which is v4's "silently keep the last one" wearing a different hat.
+
+Coverage is measured too (`npm run coverage`) and the thresholds are a **floor against
+regression**, not a target. What is excluded from the measurement, and why, is written down in
+[COVERAGE.md](COVERAGE.md).
 
 ### The suites that need a real database say so
 

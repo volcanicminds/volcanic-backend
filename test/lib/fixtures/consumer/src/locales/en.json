@@ -1,0 +1,4 @@
+{
+  "consumer": { "greeting": "Hello from the consumer" },
+  "hello": "Overridden by the consumer"
+}

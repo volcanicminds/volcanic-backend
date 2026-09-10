@@ -191,6 +191,26 @@ describe('database/query · refusals', () => {
   it('refuses an empty value and a repeated condition', () => {
     expect(codeOf(() => parseQuery(lite.user, { 'email:contains': '' }, options))).toBe('QUERY_EMPTY_VALUE')
     expect(codeOf(() => parseQuery(lite.user, { 'roles:in': 'a,,b' }, options))).toBe('QUERY_EMPTY_VALUE')
+
+    // The same field and operator twice with no alias is ambiguous, and v4 silently kept the
+    // last one — so a caller narrowing a search got a different result than the URL says.
+    // A query string can carry a repeated key, so this is reachable from outside.
+    expect(codeOf(() => parseQuery(lite.user, { 'email:contains': ['a', 'b'] as never }, options))).toBe(
+      'QUERY_DUPLICATE_CONDITION'
+    )
+  })
+
+  it('refuses a value the column cannot hold, rather than coercing it into one it can', () => {
+    // Coercion follows the COLUMN, not the shape of the string (docs/MAGIC_QUERY_V5.md §6).
+    // Each of these is a value that looks fine until the column is consulted.
+    expect(codeOf(() => parseQuery(lite.user, { 'confirmed:eq': 'yes' }, options))).toBe('QUERY_INVALID_VALUE')
+    expect(codeOf(() => parseQuery(lite.user, { 'mfaLastUsedCounter:eq': 'many' }, options))).toBe(
+      'QUERY_INVALID_VALUE'
+    )
+    expect(codeOf(() => parseQuery(lite.user, { 'createdAt:eq': 'last tuesday' }, options))).toBe('QUERY_INVALID_VALUE')
+    // And the one that must NOT be refused, or the rule would be "digits are dates": all
+    // digits on a date column is epoch milliseconds, which is what a client sends back.
+    expect(codeOf(() => parseQuery(lite.user, { 'createdAt:eq': '1700000000000' }, options))).toBe('NO_ERROR')
   })
 
   it('refuses a relation the route does not join', () => {

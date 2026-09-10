@@ -1,0 +1,22 @@
+{
+  "all": true,
+  "include": ["lib/**/*.ts", "index.ts", "db.ts"],
+  "exclude": [
+    "**/*.d.ts",
+    "lib/api/*/routes.ts",
+    "lib/schemas/**",
+    "lib/config/**",
+    "lib/database/schema/entry/**",
+    "lib/util/mark.ts",
+    "lib/middleware/pre*.ts",
+    "lib/middleware/post*.ts"
+  ],
+  "reporter": ["text-summary", "lcov", "json-summary"],
+  "reports-dir": "coverage",
+  "skip-full": true,
+  "clean": true,
+  "lines": 70,
+  "branches": 74,
+  "functions": 72,
+  "check-coverage": true
+}

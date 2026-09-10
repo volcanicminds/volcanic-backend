@@ -147,6 +147,19 @@ describe('impersonation · the record comes first (T-4.2)', () => {
     await server.close()
   })
 
+  it('refuses without a subject, and says which of the two is missing', async () => {
+    // Two separate codes for two separate mistakes. One message covering both would leave an
+    // operator retrying with the field they already sent.
+    const { server, impersonationManager } = await build()
+
+    const res = await open(server, { reason: 'ticket 4412, customer cannot check out' })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).code).toBe('USER_REQUIRED')
+
+    expect(impersonationManager.written.length).toBe(0)
+    await server.close()
+  })
+
   it('expires in half an hour by default, and never past four', async () => {
     ;(global as any).config = { options: {} }
     expect(impersonationTtl()).toBe(1800)

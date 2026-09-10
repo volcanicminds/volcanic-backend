@@ -144,15 +144,36 @@ export function parseQuery(table: Table, params: Record<string, unknown>, option
       throw queryError('QUERY_RELATION_NOT_ALLOWED', `filtering through '${relation}' requires the route to join it`)
     }
 
+    //
+    // A repeated query-string key arrives as an ARRAY, because that is what a query parser
+    // does with `?a=1&a=2` — it never arrives as two entries, since an object has one value
+    // per key. Comparing keys, which is what this did until T-9.5, therefore compared things
+    // that cannot collide: the guard was unreachable, and a repeated condition went through as
+    // `String(['1','2'])`, the single value `'1,2'`. That is v4's "silently keep the last one"
+    // wearing a different hat, and it is precisely the case the refusal was written for.
+    //
+    // An array is unambiguous here: the list operators (`:in`, `:nin`) take a comma-separated
+    // STRING, so nothing legitimate sends one.
+    //
+    if (Array.isArray(value)) {
+      if (!explicitAlias) {
+        throw queryError('QUERY_DUPLICATE_CONDITION', `'${bare}' appears more than once: give each one an [alias]`)
+      }
+      throw queryError(
+        'QUERY_DUPLICATE_CONDITION',
+        `'${bare}' appears more than once under the same alias '${alias}': give each one its own`
+      )
+    }
+
     const raw = value === undefined || value === null ? '' : String(value)
     if (raw === '') throw queryError('QUERY_EMPTY_VALUE', `'${fieldName}' has no value`)
 
-    if (!explicitAlias) {
-      if (seen.has(bare)) {
-        throw queryError('QUERY_DUPLICATE_CONDITION', `'${bare}' appears twice: give each one an [alias]`)
-      }
-      seen.add(bare)
+    // Two DIFFERENT keys can still reduce to the same condition once an alias suffix is
+    // stripped, which is the other way to write the same filter twice.
+    if (seen.has(bare)) {
+      throw queryError('QUERY_DUPLICATE_CONDITION', `'${bare}' appears more than once: give each one an [alias]`)
     }
+    if (!explicitAlias) seen.add(bare)
 
     const operator = operatorFor(operatorName, options.dialect)
     conditions.push({

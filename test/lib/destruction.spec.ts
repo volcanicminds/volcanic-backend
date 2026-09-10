@@ -105,6 +105,15 @@ async function build(over: any = {}) {
   for (const [name, value] of Object.entries(f)) {
     if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Map)) server.decorate(name, value)
   }
+  // A build that cannot destroy: either the manager is absent or the data layer cannot drop a
+  // container. Both are the deployment's shape, not the caller's mistake.
+  if (over.noDestructionManager) {
+    server.destructionManager.isImplemented = () => false
+  }
+  if (over.noDropSupport) {
+    delete (server.provider as any).dropContainer
+    delete (server.provider as any).inspectContainer
+  }
   server.decorate('migrations', { version: async () => '0001_init' })
 
   server.addHook('onRequest', async (req: any) => {
@@ -179,6 +188,24 @@ describe('destruction · phase 1, what would be lost (T-6.3)', () => {
 })
 
 describe('destruction · phase 2, every way it says no (T-6.3)', () => {
+  it('answers 503 DESTRUCTION_NOT_AVAILABLE when the build cannot destroy', async () => {
+    // 503 and not 403: the operator has the permission and typed everything right, the
+    // deployment simply cannot do it. Answering 403 would send them looking for a missing
+    // capability that is not the problem.
+    for (const shape of [{ noDestructionManager: true }, { noDropSupport: true }]) {
+      const { server } = await build(shape)
+
+      const asked = await ask(server)
+      expect(asked.statusCode).toBe(503)
+      expect(JSON.parse(asked.body).code).toBe('DESTRUCTION_NOT_AVAILABLE')
+
+      const attempted = await destroy(server, { token: 'anything', slug: 'acme', otp: '123456' })
+      expect(attempted.statusCode).toBe(503)
+      expect(JSON.parse(attempted.body).code).toBe('DESTRUCTION_NOT_AVAILABLE')
+      await server.close()
+    }
+  })
+
   beforeEach(() => {
     ACTOR.mfaEnabled = true
     ACTOR.mfaLastUsedCounter = null

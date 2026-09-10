@@ -46,6 +46,14 @@ describe('fleet · what it refuses (T-5.3)', () => {
     // default: without it the operation is irreversible and performed hopefully.
     await expect(migrateFleet(deps, {} as never)).rejects.toThrow(SnapshotRequiredError)
     await expect(migrateFleet(deps, { snapshot: '   ' })).rejects.toThrow(/only way back/)
+
+    // The class is internal; the code is what an operator's script reads to tell this refusal
+    // apart from a migration that failed.
+    const code = await migrateFleet(deps, {} as never).then(
+      () => 'NO_ERROR',
+      (e: any) => e?.code ?? 'NO_CODE'
+    )
+    expect(code).toBe('SNAPSHOT_REQUIRED')
   })
 
   it('accepts a reference and records it in the result', async () => {
