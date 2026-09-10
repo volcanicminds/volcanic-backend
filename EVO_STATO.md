@@ -17,19 +17,23 @@
 | `[x]` | fatto, con evidenza |
 | `[-]` | non applicabile, con motivo scritto |
 
-**IL BANCO NERO È VERDE.** Gli otto test di `docs/TESTING_V5.md` §2.4 passano contro Postgres
-reale, e il banco non è stato modificato per farlo passare: è quello scritto in T-0.2 prima di
-qualunque codice v5. Le quattro proprietà che dovevano fallire sulla v4 (1, 2, 4, 5) passano
-sulla v5. Da qui in avanti è un cancello, non un promemoria: se torna rosso, qualcosa che
-funzionava si è rotto.
+**IL BANCO NERO È VERDE, 8 test su 8**, contro `postgres:16-alpine`, e non è stato modificato
+per farlo passare: è quello scritto in T-0.2 prima di qualunque codice v5. Le quattro proprietà
+che dovevano fallire sulla v4 (1, 2, 4, 5) passano sulla v5. Da qui in avanti è un **cancello
+di regressione**: se torna rosso, qualcosa che funzionava si è rotto.
 
-**Prossimo passo**: **fase 7 chiusa**. Resta la **fase 8**: T-8.1 sicurezza del core (D-16,
-D-17, D-22), T-8.2 raccolta dei difetti minori (D-23, D-24, D-29), T-8.3 guida di migrazione
-(già aperta e accumulata a ogni rottura), T-8.4 allineamento di `volcanic-backend-sample` e
-`volcanic-admin`. Il banco nero ora si ferma su una tabella che non
-esiste: `system_user`. **Non è un difetto, è l'ordine del piano**: le migrazioni sono la fase
-5, e finché non esistono nessuna tabella del framework viene creata. Da qui in avanti il banco
-resta rosso su questo, non su un buco del modello.
+**Prossimo passo**: **fasi da 0 a 7 chiuse**. Resta la **fase 8**: T-8.1 sicurezza del core
+(D-16 CORS, D-17 enumerazione utenti, D-22 dipendenze), T-8.2 raccolta dei difetti minori
+(D-23, D-24, D-29), T-8.3 guida di migrazione (già aperta in `docs/MIGRATION_V4_V5.md` e
+accumulata a ogni rottura, resta da rileggere per intero alla fine), T-8.4 allineamento di
+`volcanic-backend-sample` e `volcanic-admin`.
+
+**Come si verifica tutto, da una sessione nuova.** Serve un Postgres 16: `docker run -d --name
+vm-pg -e POSTGRES_USER=volcanic -e POSTGRES_PASSWORD=volcanic -e POSTGRES_DB=volcanic -p
+55432:5432 postgres:16-alpine`, poi con `DATABASE_URL=postgres://volcanic:volcanic@127.0.0.1:55432/volcanic`
+si lanciano `npm run check-all`, `npm test` e `npm run test:e2e:mt:pg`. Senza `DATABASE_URL` le
+suite che vogliono un database reale **saltano** invece di fallire, quindi un verde senza quella
+variabile non dice quello che sembra.
 
 **Prima di toccare qualsiasi cosa**, leggere la sezione 0 di `EVO_FRAMEWORK.md`: dice quali
 documenti esistono e in che ordine si leggono.
@@ -130,5 +134,5 @@ documenti esistono e in che ordine si leggono.
 | `docs/AUTHORIZATION_MODEL.md` | `[-]` | resta valido: `AUTHORIZATION_V5.md` lo estende, non lo sostituisce |
 | Dipendenze Drizzle installate e verificate su Node 24.11 | `[ ]` | `drizzle-orm`, `drizzle-kit`, `better-sqlite3` (build nativo, da provare), `@libsql/client`. `pg` e `bcrypt` ci sono già |
 | `npm audit fix` sulla baseline | `[ ]` | da fare **prima** di aggiungere le dipendenze nuove, altrimenti l'audit successivo non dice più chi ha portato cosa |
-| Finestra senza rete di test | `[~]` | aperta il 6 settembre 2026. `check-all` e `npm test` sono verdi, e i test risaliti a 156 (89 sul data layer, contro Postgres reale) contro i 432 della v4: le suite end-to-end si rifanno in fase 2 su `docs/TESTING_V5.md` §1, recuperando gli spec da `main` (`git show main:test/e2e/auth-lifecycle.e2e.spec.ts`). Ripristino del codice vecchio: `git checkout main -- lib/database typeorm.ts` |
+| Finestra senza rete di test | `[x]` | chiusa. Aperta il 6 settembre 2026 con 49 test su 432, richiusa il 10 settembre 2026: **319 test** (171 core, 116 data layer, 32 migrazioni) più gli **8 del banco nero** su Postgres reale. Le suite end-to-end della v4 non sono state recuperate e non lo saranno: il banco di T-0.2 copre le proprietà che contavano, e gli spec vecchi restano in `main` (`git show main:test/e2e/auth-lifecycle.e2e.spec.ts`) per chi volesse rileggerli |
 | Misure di tempo rifatte su macchina dedicata | `[ ]` | quelle dell'appendice A vengono da un portatile condiviso: non usarle per dimensionare |
