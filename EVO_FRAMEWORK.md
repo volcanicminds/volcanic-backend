@@ -290,9 +290,13 @@ nella pratica, si segnala e ci si ferma.
 
 ## 6. Il piano
 
-Nove fasi. **Le fasi non si sovrappongono**, salvo la 8, che tocca solo il core e può
+Dieci fasi. **Le fasi non si sovrappongono**, salvo la 8, che tocca solo il core e può
 procedere in parallelo dalla fase 2 in poi. Dentro una fase i compiti procedono in parallelo
 salvo dipendenze dichiarate.
+
+Le fasi da 0 a 8 sono **chiuse**: il piano originale finiva lì. La fase 9 è stata aggiunta
+dopo, e non è un ripensamento: tre delle sue cinque voci sono cose che il piano aveva promesso
+senza accorgersene, e che si sono viste solo quando qualcuno ha provato a usare il risultato.
 
 | Fase | Titolo | Perché in questo punto |
 |---|---|---|
@@ -305,6 +309,7 @@ salvo dipendenze dichiarate.
 | **6** | Ciclo di vita del tenant | creazione, export, distruzione: richiede i ruoli (4) e le migrazioni (5) |
 | **7** | Contenitore per tenant | il valore nuovo: un database o un file per cliente |
 | **8** | Igiene del core e chiusura | sicurezza, difetti minori, guida di migrazione, allineamento dei repo nostri |
+| **9** | Ciò che il piano prometteva senza dirlo | migrazioni per dialetto, documentazione v5, taratura misurata, copertura dei rifiuti |
 
 ---
 
@@ -1267,6 +1272,170 @@ L'elenco delle rotture note, che è anche l'indice del documento:
 il porting è la prova che la guida è completa. Poi **`volcanic-admin`**, che dipende dalla
 sintassi della Magic Query e va allineato alla tabella di corrispondenza di T-0.3. Ogni punto
 in cui la guida risulta insufficiente si corregge nella guida, non solo nel repository.
+
+---
+
+## Fase 9: ciò che il piano prometteva senza dirlo
+
+Obiettivo della fase: **ciò che la matrice dichiara è raggiungibile, ciò che il pacchetto
+documenta è la v5, e ciò che il codice rifiuta è dimostrato da un test.**
+
+Nessuna delle cinque voci è un ripensamento. T-9.1 e T-9.2 chiudono una promessa che la
+matrice di capacità fa da T-1.4 e che il migratore non può mantenere. T-9.3 è la riscrittura
+che i cartelli del README rimandano «a quando chiude la fase 7», chiusa da un pezzo. T-9.4 è
+la misura che l'appendice A dichiara inaffidabile nella riga sotto ai suoi stessi numeri.
+T-9.5 è l'unica voce nuova, e nasce da una domanda a cui oggi non si sa rispondere: quali
+rifiuti del framework non ha mai visto nessuno scattare.
+
+I compiti sono indipendenti fra loro salvo T-9.2, che dipende da T-9.1.
+
+### T-9.1 · Migrazioni per dialetto
+
+| | |
+|---|---|
+| **Scopo** | SQLite e libSQL smettono di essere motori che il framework sa aprire e non sa preparare |
+| **File** | `drizzle.config.ts`, `lib/database/schema/entry/`, `lib/database/migrations/`, `db.ts` (`migrationSets`), `lib/database/migrations/runner.ts` |
+| **Dipende da** | niente |
+| **Chiude** | il buco trovato in T-8.4 |
+
+**Il difetto, per esteso.** `drizzle.config.ts` genera con `dialect: 'postgresql'` e le uniche
+cartelle sono `migrations/{control,tenant}`, il cui SQL dice `timestamp with time zone` e
+`USING btree`. Un deployment SQLite le applicherebbe e fallirebbe alla prima istruzione. Nel
+frattempo la matrice di T-1.4 dichiara supportate due righe serverless (`sqlite`/`libsql` come
+piano di controllo, e il contenitore su file), l'adattatore le implementa, i contenitori si
+aprono e si chiudono, Litestream li replica. Tutto pronto tranne il modo di creare le tabelle.
+
+**Cosa fare.**
+
+1. Le cartelle diventano `migrations/<set>/<dialect>`: `control/pg`, `control/sqlite`,
+   `tenant/pg`, `tenant/sqlite`. Non un file per dialetto nella stessa cartella: il runner
+   sceglie una cartella e non deve mai trovarsi a decidere quale file di due è il suo.
+2. `drizzle.config.ts` legge `MIGRATION_DIALECT` accanto a `MIGRATION_SET`, e le entrate di
+   generazione diventano quattro (`entry/control.pg.ts`, `entry/control.sqlite.ts`, e le due
+   per il tenant). Gli script npm passano entrambe le variabili.
+3. `migrationSets()` in `db.ts` prende il dialetto e restituisce le cartelle di quel dialetto,
+   framework prima e consumer dopo, come già fa.
+4. Il runner sceglie in base a `target.dialect`, che ha già. Un insieme mancante per il
+   dialetto in uso è **fatale all'avvio**, non un insieme vuoto applicato con successo:
+   «zero migrazioni applicate» e «non esistono migrazioni per questo motore» sono due fatti
+   diversi e oggi darebbero la stessa risposta.
+5. `scripts/check-migration-sets.mjs` verifica che i quattro insiemi esistano e che ogni
+   migrazione Postgres abbia la sua controparte SQLite **con lo stesso nome**: due insiemi che
+   divergono nei nomi sono due schemi diversi che nessuno ha dichiarato tali.
+
+**Criterio di chiusura.** Un contenitore SQLite creato da zero, migrato e usato da un test che
+scrive e rilegge attraverso i manager. Il banco di T-0.2 gira anche su SQLite dove le proprietà
+si applicano.
+
+### T-9.2 · libSQL aperto davvero
+
+| | |
+|---|---|
+| **Scopo** | un motore dichiarato supportato è un motore contro cui gira un test |
+| **File** | `test/db/libsql.spec.ts` (nuovo) |
+| **Dipende da** | T-9.1 |
+
+Oggi `@libsql/client` viene importato e la matrice di capacità lo accetta, ma nessun test apre
+una connessione: quello che è verificato è la configurazione, non il motore. Il compito è una
+suite che apre un file locale con il driver libSQL, applica le migrazioni di T-9.1, e ripete
+contro di esso la batteria che `test/db/sqlite.spec.ts` fa su better-sqlite3. Se il client
+remoto (Turso) richiede credenziali, quel pezzo **salta** dichiarando perché, come fanno già le
+suite che vogliono un Postgres reale: una suite che salta lo dice, una che passa senza aver
+girato mente.
+
+### T-9.3 · Il README è la v5
+
+| | |
+|---|---|
+| **Scopo** | chi installa il pacchetto legge come si usa, non come si usava |
+| **File** | `README.md` |
+| **Dipende da** | niente |
+
+Il README ha due cartelli che rimandano la riscrittura «a quando chiude la fase 7». La fase 7 e
+la 8 sono chiuse, e nel frattempo il documento insegna `@volcanicminds/backend/typeorm`,
+`req.db`, `startDatabase(config)` e `global.repository`: quattro cose che non esistono più. La
+guida di migrazione è completa, ma serve a chi **arriva** dalla v4; chi parte da zero legge il
+README e sbaglia tutto.
+
+Il materiale c'è già ed è verificato: il bootstrap in tre passi, le tabelle costruite per
+locator, `access()`, il service layer legato al contenitore vengono da `volcanic-backend-sample`,
+che gira contro Postgres reale. La riscrittura riporta quelli, non ne inventa altri.
+
+I capitoli v4 non si cancellano tutti: quelli che descrivono parti immutate (rotte, ruoli,
+cache, hook, swagger) si correggono; quelli sul data layer si riscrivono; i cartelli spariscono.
+
+### T-9.4 · Banco di taratura
+
+| | |
+|---|---|
+| **Scopo** | i parametri di dimensionamento vengono da una misura sulla macchina che li userà |
+| **File** | `scripts/tune.ts` (nuovo), `docs/TUNING.md` (nuovo) |
+| **Dipende da** | niente |
+
+**Perché.** L'appendice A porta i numeri che dimensionano costo bcrypt, derivazione MFA,
+dimensione dei pool, limite dell'LRU e TTL della cache, e la riga sotto dice di non usarli
+perché vengono da un portatile condiviso. Un numero che il documento stesso dichiara
+inaffidabile non è una misura, è un segnaposto.
+
+**Cosa misura**, e ognuna con la sua ragione di esistere:
+
+| Misura | Decide |
+|---|---|
+| costo bcrypt per raggiungere un bersaglio di millisecondi | `BCRYPT_COST`: il costo giusto è quello che sulla macchina di produzione impiega il tempo scelto, non un 12 copiato |
+| derivazione della chiave MFA | se la derivazione blocca l'event loop, e per quanto |
+| `max_connections` letto dal server, contro l'aritmetica dei pool | `DB_POOL_MAX`, `TENANT_CONTAINERS_MAX_OPEN`, `poolMax` per contenitore |
+| apertura e chiusura di un contenitore | `idleTimeoutMs`: chiudere costa, e riaprire costa di più |
+| costo di una pagina di Magic Query al crescere di `_pageSize` | `VOLCANIC_MAX_PAGE_SIZE` |
+
+**Cosa scrive.** `tuning.json`, con la **provenienza** accanto a ogni numero: macchina, versione
+di Node, motore e versione del database, data, numero di ripetizioni e varianza osservata. Un
+numero senza provenienza è indistinguibile da un numero inventato, ed è così che l'appendice A
+è finita dov'è.
+
+**Non tocca la configurazione viva**, salvo che glielo si chieda: `--write-config` applica i
+valori dove vengono letti davvero, dopo aver copiato il file precedente accanto con un
+suffisso e aver stampato il diff. Senza quel flag il tool misura, scrive `tuning.json` e dice
+quali valori cambierebbe. Il motivo è che una misura presa su una macchina occupata è
+plausibile e sbagliata, e la differenza fra le due si vede solo rileggendola.
+
+**Rifiuta di misurare** quando la macchina non è in condizione di essere misurata: carico medio
+alto, batteria in risparmio energetico, un altro `tune` in corso. Meglio nessun numero che un
+numero preso mentre girava un `npm install`.
+
+### T-9.5 · Inventario dei rifiuti, e la copertura che lo dimostra
+
+| | |
+|---|---|
+| **Scopo** | nessun rifiuto del framework è mai stato visto scattare solo da chi l'ha scritto |
+| **File** | `scripts/check-refusals.mjs` (nuovo), suite esistenti, configurazione di c8 |
+| **Dipende da** | niente |
+
+**La domanda a cui oggi non si sa rispondere:** quali `throw` e quali codici d'errore non ha mai
+eseguito nessun test. Il framework rifiuta molto e di proposito — è metà del disegno della v5,
+dove un fallimento visibile sostituisce ovunque un ripiego silenzioso — e un rifiuto che nessuno
+ha mai fatto scattare è un rifiuto di cui si conosce solo l'intenzione.
+
+**Cosa fare, in questo ordine.**
+
+1. **Misurare per trovare**, non per esibire: `c8` sopra le suite esistenti, per sapere quali
+   righe non ha mai eseguito nessuno. Il numero serve a compilare l'elenco del punto 2.
+2. **Enumerare i rifiuti.** Uno script raccoglie ogni codice d'errore del sorgente
+   (`QUERY_*`, `TENANT_*`, `SCOPE_*`, `AUTH_*`, `MIGRATION_*`, `SCHEMA_BEHIND`,
+   `TRACKING_FAILED`, `NO_DATA_CONTEXT`, i rifiuti all'avvio della matrice, di CORS e dei
+   segreti) e ogni `throw` fuori dai percorsi già coperti, e li confronta con i codici che i
+   test asseriscono davvero. Il residuo è la lista di lavoro, e diventa parte di `check-all`:
+   un codice nuovo senza un test che lo faccia scattare fa fallire il controllo.
+3. **Scrivere i test mancanti**, uno per rifiuto, ognuno che provoca la condizione reale invece
+   di invocare la funzione che rifiuta. La differenza conta: la seconda dimostra che una
+   guardia lancia, la prima che la guardia si trova sul percorso dove serve.
+4. **Una soglia in CI**, e va detto cosa è: un **pavimento contro le regressioni**, non un
+   bersaglio. Si fissa appena sotto il valore raggiunto alla fine del punto 3. Una percentuale
+   usata come obiettivo produce test che eseguono righe senza dimostrare niente, che è il modo
+   più caro di non avere test.
+
+**Criterio di chiusura.** `npm run check-all` fallisce se un codice d'errore del sorgente non ha
+un test che lo fa scattare, e la copertura sotto il pavimento fa fallire la CI. Nessuna delle
+due cose è mai stata vera prima.
 
 ---
 

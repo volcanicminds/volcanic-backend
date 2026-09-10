@@ -26,11 +26,16 @@ di regressione**: se torna rosso, qualcosa che funzionava si è rotto.
 D-22) e **T-8.2** (D-23, D-24, D-29). **Tutti i difetti accertati della sezione 4 sono
 assegnati e chiusi.** Restano T-8.3, la rilettura per intero di `docs/MIGRATION_V4_V5.md` ora
 che l'API è ferma, e T-8.4, l'allineamento di `volcanic-backend-sample` e `volcanic-admin`.
-**La fase 8 è chiusa, e con lei il piano.** Tutti i difetti accertati della sezione 4 sono
-assegnati e chiusi, la guida di migrazione è stata riletta per intero e i due repository nostri
-girano sulla v5. Restano fuori piano le voci qui sotto, di cui una nuova e non piccola: **SQLite
-non ha un insieme di migrazioni**, quindi è un motore che il framework sa aprire e non sa
-preparare.
+**Le fasi da 0 a 8 sono chiuse**: tutti i difetti accertati della sezione 4 sono assegnati e
+chiusi, la guida di migrazione è stata riletta per intero e i due repository nostri girano sulla
+v5. **Aperta la fase 9**, cinque compiti su ciò che il piano prometteva senza dirlo: le
+migrazioni per dialetto senza cui SQLite è un motore che il framework sa aprire e non sa
+preparare (T-9.1, T-9.2), il README che è ancora la v4 (T-9.3), la taratura misurata al posto
+dei numeri che l'appendice A stessa dichiara inaffidabili (T-9.4), e l'inventario dei rifiuti
+che nessun test ha mai fatto scattare (T-9.5).
+
+Le prime tre voci non sono lavoro nuovo: sono promesse già fatte dalla matrice di capacità e
+dai cartelli del README, che si sono viste solo quando qualcuno ha provato a usare il risultato.
 
 La rottura da guardare per prima in qualunque consumer: il login risponde **401** dove v4
 rispondeva 403, e un livello HTTP che tratta il 401 come «sessione scaduta, torna al login»
@@ -131,6 +136,16 @@ documenti esistono e in che ordine si leggono.
 | T-8.3 | Guida di migrazione v4 → v5 | `[x]` | `docs/MIGRATION_V4_V5.md`, **ventitré sezioni** (venti alla rilettura, tre aggiunte da T-8.4), riletta per intero con l'API ferma. Alle diciassette accumulate durante le fasi si aggiungono le tre della fase 8: le risposte di autenticazione (§18), la fusione di `req.data()` (§19) e i due default del core, CORS e `onError`, più il fuso dei cron (§20). Verificati contro il codice i codici che la guida promette: `NO_DATA_CONTEXT`, `TENANT_MISMATCH`, `TENANT_REQUIRED`, `SCOPE_MISMATCH`, `SCHEMA_BEHIND`, `TRACKING_FAILED`, `PASSWORD_TO_BE_CHANGED`, `AUTH_INVALID_CREDENTIALS`, e la tabella di corrispondenza della Magic Query in `docs/MAGIC_QUERY_V5.md` §9. L'intestazione non dice più «accumulating»: dice in che ordine si leggono le sezioni durante un porting, che è l'unica cosa che serve a chi arriva |
 | T-8.4 | Allineamento di `volcanic-backend-sample` e `volcanic-admin` | `[x]` | entrambi portati, ed è servito: il porting ha trovato **sei buchi** che la guida non copriva, tutti chiusi nel framework e scritti in `docs/MIGRATION_V4_V5.md` §21-23. (1) `preload()` va chiamata **prima** di `startDataLayer()`, e dimenticarla non alza niente: il data layer non trova configurazione e ripiega sui propri default, cioè su un altro database, raggiunto senza un errore. (2) `ControlHandle`, `TenantHandle` e `DataHandle` non erano esportati da `@volcanicminds/backend`: un consumer non poteva tipizzare il proprio service layer se non con `any`, e una giuntura tipizzata `any` è una giuntura dove piano di controllo e contenitore sono intercambiabili. (3) Nessun modo di aprire un handle: aggiunta `access(handle)` in `lib/database/access.ts`, che dà `db`, `dialect`, `locator`, `execute` e `transaction`: senza, l'unica strada era un cast dentro `lib/`. (4) `QueryOptions.extraWhere`, il quarto argomento di `executeFindQuery` della v4, perso nel porto: senza, un consumer filtra in codice applicativo **dopo** che la pagina è già stata tagliata, e restituisce pagine corte con un totale sbagliato. Messo in AND per ultimo, così nessun `_logic` scritto dal client lo aggira. (5) Ogni `log?.x` del data layer era un `ReferenceError` fuori dal server: l'optional chaining non protegge da un identificatore non dichiarato, quindi uno script di migrazione moriva sulla prima riga di log. Passati tutti a `globalThis.log`. (6) Le peer dependency vanno collassate su una copia sola quando il framework è un checkout locale, altrimenti due copie di Drizzle della stessa versione si rifiutano a vicenda. **Il sample**: `file:../volcanic-backend`, entità TypeORM sostituite da tabelle Drizzle costruite **per locator**, `firstName`/`lastName`/`language` usciti dalla tabella `user` del framework verso un `user_profile` di sua proprietà, migrazioni committate in `migrations/{control,tenant}`, ricerca semantica pgvector eseguita dentro il contenitore invece che su una connessione globale. Verificato a runtime contro Postgres 16: migrazione applicata (10 tabelle), login del fondatore, CRUD dei partner, Magic Query v5 (`name:containsi` trova, `name:contains` no, campo sconosciuto 400, `:raw` 400) e cancellazione logica. `npm run check-all` verde, 4 test della suite più 4 della ricerca semantica. **`volcanic-admin`** era già stato allineato prima (bridge Magic Query riscritto sulla sintassi v5, ricerca omni in `_logic`, `code` letto prima della prosa) |
 
+## Fase 9: ciò che il piano prometteva senza dirlo
+
+| | Compito | Stato | Evidenza |
+|---|---|---|---|
+| T-9.1 | Migrazioni per dialetto (SQLite e libSQL) | `[ ]` | |
+| T-9.2 | libSQL aperto davvero in un test | `[ ]` | |
+| T-9.3 | Il README è la v5 | `[ ]` | |
+| T-9.4 | Banco di taratura | `[ ]` | |
+| T-9.5 | Inventario dei rifiuti e soglia di copertura | `[ ]` | |
+
 ---
 
 ## Fuori piano, da non perdere
@@ -140,8 +155,8 @@ documenti esistono e in che ordine si leggono.
 | Push forzato di `develop` su `origin` | `[ ]` | il remoto è indietro di 209 commit; serve una richiesta esplicita |
 | Cartelli sui documenti v4 | `[x]` | `DATA_LAYER_MAGIC.md` e `CONFIGURATION.md` marcati come sostituiti, `AUTH_COMPOSABLE_EVOLUTION.md` come rinviato fuori dalla v5 |
 | `docs/AUTHORIZATION_MODEL.md` | `[-]` | resta valido: `AUTHORIZATION_V5.md` lo estende, non lo sostituisce |
-| Dipendenze Drizzle installate e verificate su Node 24.11 | `[~]` | verificate su Node **v24.11.0**: `better-sqlite3` **12.11.1** compila e apre un database (è il motore di 118 test del data layer), `drizzle-orm` 0.45.2 e `drizzle-kit` 0.31.10 generano e applicano, `pg` e `bcrypt` girano contro Postgres 16 reale. Resta a metà `@libsql/client` 0.18.0: si importa e espone `createClient`, ma nessun test lo apre davvero — lo tocca solo la matrice di capacità, che è un test di configurazione e non di connessione |
+| Dipendenze Drizzle installate e verificate su Node 24.11 | `[~]` | verificate su Node **v24.11.0**: `better-sqlite3` **12.11.1** compila e apre un database (è il motore di 118 test del data layer), `drizzle-orm` 0.45.2 e `drizzle-kit` 0.31.10 generano e applicano, `pg` e `bcrypt` girano contro Postgres 16 reale. Resta a metà `@libsql/client` 0.18.0: si importa e espone `createClient`, ma nessun test lo apre davvero — lo tocca solo la matrice di capacità, che è un test di configurazione e non di connessione. **Quella metà è T-9.2** |
 | `npm audit fix` sulla baseline | `[x]` | assorbito in T-8.1. Produzione: **0 vulnerabilità**. Sviluppo: da 13 a 7, tutte in `drizzle-kit` e `autocannon`, dove l'unico rimedio proposto è un downgrade di major e non si applica |
 | Finestra senza rete di test | `[x]` | chiusa. Aperta il 6 settembre 2026 con 49 test su 432, richiusa il 10 settembre 2026: **357 test** (207 core, 118 data layer, 32 migrazioni) più gli **8 del banco nero** su Postgres reale. Le suite end-to-end della v4 non sono state recuperate e non lo saranno: il banco di T-0.2 copre le proprietà che contavano, e gli spec vecchi restano in `main` (`git show main:test/e2e/auth-lifecycle.e2e.spec.ts`) per chi volesse rileggerli |
-| Insieme di migrazioni per SQLite e libSQL | `[ ]` | trovato portando il sample. `lib/database/schema/sqlite.ts` e l'adattatore esistono, le migrazioni no: `drizzle.config.ts` genera solo `dialect: 'postgresql'` e le uniche cartelle sono quelle Postgres. Un deployment SQLite applicherebbe DDL Postgres e fallirebbe. Finché non c'è, SQLite è un motore che il framework sa aprire e non sa preparare, e il sample dichiara Postgres per questo |
-| Misure di tempo rifatte su macchina dedicata | `[ ]` | quelle dell'appendice A vengono da un portatile condiviso: non usarle per dimensionare |
+| Insieme di migrazioni per SQLite e libSQL | `[-]` | **promosso a T-9.1**, non è più fuori piano. Trovato portando il sample: `lib/database/schema/sqlite.ts` e l'adattatore esistono, le migrazioni no: `drizzle.config.ts` genera solo `dialect: 'postgresql'` e le uniche cartelle sono quelle Postgres. Un deployment SQLite applicherebbe DDL Postgres e fallirebbe. Finché non c'è, SQLite è un motore che il framework sa aprire e non sa preparare, e il sample dichiara Postgres per questo |
+| Misure di tempo rifatte su macchina dedicata | `[-]` | **promosso a T-9.4**. Quelle dell'appendice A vengono da un portatile condiviso e non vanno usate per dimensionare; il compito è il banco che le rifà dove serve, con la provenienza accanto a ogni numero |
