@@ -1,42 +1,41 @@
 # Volcanic Stack: System Context for AI Agents (llms.txt)
-> **⚠️ THIS DOCUMENT DESCRIBES v4, AND v5 HAS REPLACED THE DATA LAYER.** Read it as the 4.x
-> reference. Every data-access snippet below — `service.use(req.db)`, `global.repository`,
-> `executeFindQuery`, `@volcanicminds/backend/typeorm`, `switchContext`,
-> `runInTenantContext`, TypeORM entities, the `page`/`sort` query parameters — names an API
-> that no longer exists. Generating code from them produces a project that does not start.
+
+> **AI AGENT DIRECTIVE**: this is the system context for `@volcanicminds/backend` **v5**. Read
+> it before proposing architecture changes, generating services or debugging. **In any conflict,
+> the package source code wins** — and where a section still shows a v4 shape, `README.md` and
+> `docs/MIGRATION_V4_V5.md` win over this file.
 >
-> **For v5, read in this order**: `README.md` (rewritten), `docs/MIGRATION_V4_V5.md` (every
-> break, with the new form beside the old one), then the contracts —
-> `docs/CONFIGURATION_V5.md`, `docs/SCHEMA_V5.md`, `docs/MAGIC_QUERY_V5.md`,
-> `docs/MANAGERS_V5.md`, `docs/AUTHORIZATION_V5.md`, `docs/API_V5.md`. The rewrite of this
-> file is task T-9.6 in `EVO_FRAMEWORK.md`; until it lands, **the package source code wins
-> over anything written here.**
+> **Coming from 4.x?** `docs/MIGRATION_V4_V5.md` lists every break with the new form beside the
+> old one. The short version of what is GONE and must never be generated:
 >
-> **AI AGENT DIRECTIVE**: This document was the source of truth for the @volcanicminds/backend
-> framework on 4.x. Read this entirely before proposing architecture changes, generating
-> services, or debugging a 4.x project.
->
-> **⚠️ DOC STATUS (updated 2026-06) — CANONICAL DATA-ACCESS PATTERN**:
-> The official, canonical pattern is the **context-aware Service Layer: `service.use(req.db)`** (required for strong
-> multi-tenancy; RLS enforced in `applyPermissions` on `BaseService`). Direct access to
-> **`global.repository.X` is FORBIDDEN at runtime** (`@volcanicminds/backend/typeorm` throws a fail-fast
-> `[Volcanic Architecture 2.0] FATAL ... FORBIDDEN`). Any snippet below still showing `repository.orders…`
-> direct access reflects the old/superseded pattern — prefer `service.use(req.db)`. Canonical reference:
-> `docs/ADVANCED_ARCHITECTURE.md`. **In any conflict, the package source code wins.**
->
+> | Removed | Now |
+> |---|---|
+> | `@volcanicminds/backend/typeorm` | `@volcanicminds/backend/db` — the subpath names no engine |
+> | TypeORM entities, `@Entity`, `@Column`, `BaseEntity` | Drizzle tables, built **per container** |
+> | `req.db`, `req.runner` | `req.control`, `req.tenant` — two distinct types |
+> | `global.connection`, `global.entity`, `global.repository` | nothing. There is no ambient container |
+> | `executeFindQuery`, `executeCountQuery`, `applyQuery` | `executeFind`, `executeCount`, `parseQuery` |
+> | `switchContext`, `runInTenantContext` | a job declares its plane and is handed a handle |
+> | `options.multi_tenant` | the `control` and `tenants` blocks |
+> | `page`, `pageSize`, `sort=f:desc` | `_page`, `_pageSize`, `_sort=-f` |
+> | `:raw`, `:eqs`, `:isEmpty`, `:notNull` | removed. `:eq`, `:empty=true`, `:null=false` |
+> | `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP`, `POST /tool/synchronize-schemas` | committed migrations |
+> | MongoDB, PGlite as a deployment engine | Postgres, SQLite, libSQL |
+
 > **Core Paradigms (MANDATORY)**:
 > 1. **Framework**: Node.js (v24+ required), Fastify v5, pure ESM (`NodeNext`).
 > 2. **Architecture**: Thin Controllers, Fat Services. Controllers only map HTTP to Services. Services handle business logic and never know about HTTP.
-> 3. **Data Layer**: `@volcanicminds/backend/typeorm` (Active Record pattern via `BaseEntity`). Access data ONLY through the context-aware Service Layer (`service.use(req.db)`), never via `global.repository.X` (legacy/forbidden). NEVER use raw SQL unless for extreme reporting (`@ViewEntity`). Use "Magic Queries" (`req.data()`) for filtering.
-> 4. **Security**: Row Level Security (RLS) is enforced in `applyPermissions` on the `BaseService`. Do not bypass it.
-> 5. **TypeScript**: Strict typing required. Always use provided types (`FastifyRequest`, `FastifyReply`, `UserContext`).
+> 3. **Data Layer**: `@volcanicminds/backend/db`, Drizzle underneath and that is an implementation detail. Reach data through a Service Layer bound to the request's **container** (`service.on(req.tenant ?? req.control)`). There is no global connection to fall back on, and a call with no handle **throws** rather than guessing. Use Magic Query (`req.data()`) for filtering.
+> 4. **Security**: row-level security goes in `applyPermissions` and travels as `QueryOptions.extraWhere`, which is AND-ed **after** everything the URL asked for — `_logic` included — so no filter a caller writes reaches around it. Do not bypass it.
+> 5. **Failures are visible**: v5 has no silent fallbacks. A query with no container throws; an audit write that fails fails the request; a filter the engine cannot honour answers 400. Never "recover" by widening a scope.
+> 6. **TypeScript**: strict typing required. Use the provided types (`FastifyRequest`, `FastifyReply`, `ControlHandle`, `TenantHandle`, `DataHandle`).
 
 ## How to read this document (3 audiences)
 
-This file is the **single, self-contained source of truth** for `@volcanicminds/backend` **v3**. It is written so
+This file is the **single, self-contained source of truth** for `@volcanicminds/backend` **v5**. It is written so
 that three different readers can use it without any other source:
 
-1. **A developer new to the project** who only ever sees v3 — wants to start a server, expose public and private
+1. **A developer new to the project** — wants to start a server, expose public and private
    routes, choose an auth mode, optionally add a database, optionally add `@volcanicminds/tools`, in single- or
    multi-tenant mode. → Start at **Part 0 (Mental Model)**, then **Part 12 (Usage Scenarios & Recipes)**.
 2. **An LLM coding agent reading the repository directly** — needs exact, code-accurate API surface, types, and
@@ -45,103 +44,128 @@ that three different readers can use it without any other source:
 3. **An LLM using only the Context7 MCP tool** (no repo access) — receives chunks of this file. Each Part is
    self-describing and cross-links the others, so a single retrieved Part is still actionable.
 
+A fourth reader worth naming: **a working example**. `volcanic-backend-sample` is this document as a running
+project, ported to v5 and verified against a real Postgres. Where the two disagree, the sample is the one that
+runs.
+
 ## Part 0 — Mental Model (Core vs Data Layer)
 
 `@volcanicminds/backend` ships **two cleanly separated layers** in one npm package:
 
 - **The HTTP Core** (`@volcanicminds/backend`) — Fastify wrapper: routing autodiscovery, JSON-Schema validation,
   hooks, JWT/cookie auth, RBAC, MFA gatekeeper, Swagger, scheduler, and the **native API** (`/auth`, `/users`,
-  `/token`, `/tenants`, `/health`, `/tool`). **The core needs no database to run.** With no managers injected it
-  boots on **Null-Object defaults** (every manager reports `isImplemented() === false`) — perfect for a pure
+  `/token`, `/tenants`, `/system/*`, `/health`). **The core needs no database to run.** With no managers injected
+  it boots on **Null-Object defaults** (every manager reports `isImplemented() === false`) — perfect for a pure
   public API.
-- **The Data Layer** (subpath `@volcanicminds/backend/typeorm`) — TypeORM wrapper: Magic Query, base entities,
-  multi-tenant context, and the concrete **managers** you inject into the core. Its deps (`typeorm`, `pg`,
-  `bcrypt`, `pluralize`, `reflect-metadata`) are **optional peer dependencies** — installed only if you use it.
+- **The Data Layer** (subpath `@volcanicminds/backend/db`) — Magic Query, the framework's own tables, per-tenant
+  containers, versioned migrations, and the concrete **managers** you inject into the core. Drizzle is what is
+  behind it and is nobody's business: in v4 the subpath was `/typeorm`, so the ORM was part of the public API and
+  replacing it broke every consumer. Its deps (`drizzle-orm`, `pg` or `better-sqlite3`/`@libsql/client`, `bcrypt`)
+  are **optional peer dependencies**.
 
-The two layers meet at exactly **one seam**: you call `start(decorators)` on the core and pass it **managers**
-(plain objects implementing a known interface). The data layer provides ready-made managers; you can also write
-your own, mix-and-match, or replace the data layer entirely (see Part 10.4). This is the whole integration
-contract — there is no hidden coupling (the core ↛ data-layer boundary is enforced in CI by `dependency-cruiser`).
+The two layers meet at exactly **one seam**: the data layer's `start()` returns the managers, and you hand those
+to the core's `start(decorators)`. They are values you own, not singletons imported from a subpath, which is what
+makes a different implementation a parameter rather than a patch.
+
+The separation is **checked in CI** by `dependency-cruiser`: the core may not import `lib/database/**` or any of
+its peer dependencies, and the data layer may import only *types* from the core. A rule a build enforces is a
+rule; one a document states is a hope. (It is also why `uuid` and the environment reader exist twice — see
+`lib/database/uuid.ts` and `lib/database/env.ts`.)
 
 ```
 ┌─────────────────────────── @volcanicminds/backend ───────────────────────────┐
 │  HTTP CORE  (always present, DB-agnostic)                                     │
 │    Fastify · routes · auth (Bearer/Cookie) · RBAC · MFA · native API · jobs   │
 │                              ▲  start(decorators)                             │
-│                              │  injects managers (Null-Object if omitted)     │
-│  DATA LAYER  (optional, subpath /typeorm, optional peer deps)                 │
-│    TypeORM · Magic Query · base entities · multi-tenant · managers            │
+│                              │  the managers the data layer returned          │
+│  DATA LAYER  (optional, subpath /db, optional peer deps)                       │
+│    Magic Query · framework tables · containers · migrations · managers        │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**The one thing to internalise before generating any data code**: a request is **handed** its
+container and never reaches for one.
+
+| | |
+|---|---|
+| `req.control` | the control plane: tenant registry, platform identities |
+| `req.tenant` | this request's tenant container. Absent on a single-tenant deployment |
+| `req.tenantInfo` | the registry row of that tenant. A record, never a connection |
+
+`const container = req.tenant ?? req.control` is the whole idiom, and there is no third answer.
+In v4 this was `req.db`, an `EntityManager` a service could do without: a call with no context
+fell back to `global.connection`, which meant reading whichever container the pool happened to
+hold. That is defect D-01, and it was not theoretical — a tenant's `search_path` survived in the
+pool, so a control-plane route could list another customer's users. In v5 there is no global to
+fall back to and a manager called with nothing **throws**.
+
+To reach inside a handle — for your own tables, or a query an ORM has no business expressing:
+
+```ts
+import { access } from '@volcanicminds/backend/db'
+const { db, dialect, locator, execute, transaction } = access(container)
+```
+
+`locator` is the load-bearing field: it is the schema (or file) this handle addresses, and what
+your own table objects must be built for.
+
 **Decision shortcuts:**
 - *No persistence?* Use the core alone, expose public routes, inject nothing. (Part 12, Scenario A)
-- *Need users/login/persistence?* Add the `/typeorm` subpath, inject `userManager` (+ `tokenManager`, …). (Scenarios C–F)
+- *Need users/login/persistence?* Add the `/db` subpath, `await preload()`, then `startDataLayer()`, then hand the result to `startServer()`. (Scenarios C–F)
 - *Need MFA / file upload / mail?* Add `@volcanicminds/tools` and inject `mfaManager` / `transferManager`. (Part 12.7)
-- *Need tenant isolation?* Flip `multi_tenant.enabled` and inject `tenantManager`. (Part 12.6)
+- *Need tenant isolation?* **Declare the `tenants` block** — declaring it is what enables tenancy; there is no `enabled` flag to contradict the strategy. (Part 12.6)
 
 # Index: The Volcanic Stack - Definitive Backend Guide
 
 1.  **[Part 1: Foundations and Infrastructure](#part-1-foundations-and-infrastructure)**
     - **1.1 Introduction and Stack Philosophy**
-      - The Three Pillars (`backend`, `typeorm`, `tools`)
+      - The Three Pillars (`backend`, `backend/db`, `tools`)
       - Architectural Principles (Thin Controllers, Fat Services)
       - The "Globals" Pattern
     - **1.2 Project Structure**
       - Folder Anatomy and Autodiscovery
     - **1.3 Bootstrapping (`index.ts`)**
       - DB and Server startup orchestration
-    - **1.4 Database Configuration (Production Grade)**
-      - Custom Naming Strategy
-      - SSL Management and Connection Pool (`pg` driver)
+    - **1.4 Where the data lives (`config/general.ts`)**
+      - The `control` and `tenants` blocks, and the four supported combinations
     - **1.5 Environment Variables (Reference)**
+    - **1.7 Single vs Multi-Tenant Architecture**
+      - The tenant comes from the token; what isolation is, mechanically
 
-2.  **[Part 2: Deep Dive Data Modeling & Entities](#part-2-deep-dive-data-modeling--entities)**
-    - **2.1 Anatomy of a Volcanic Entity**
-      - Active Record (`BaseEntity`) and Decorators
-      - Global Access (`global.entity`)
-    - **2.2 Type and Enum Management**
-      - TypeScript Enum vs Postgres Enum
-    - **2.3 Advanced Relationship Management**
-      - One-to-One, Many-to-One, One-to-Many
-      - Avoiding Circular Dependencies (using strings)
-    - **2.4 Relationship Options: Performance Tuning**
-      - `eager` vs `lazy` strategies
-      - Referential integrity (`onDelete: CASCADE`)
-    - **2.5 Logic in Entities: Computed Fields & Hooks**
-      - Virtual fields and `@AfterLoad` decorator
-    - **2.6 SQL Views and `@ViewEntity`**
-      - Complex reporting and aggregations
+2.  **[Part 2: Your Own Tables](#part-2-your-own-tables)**
+    - **2.1 The shape of a table module**
+      - A factory per container, and why it is not a style choice
+    - **2.2 Resolving tables for the request's container** (`tablesFor`, cached by locator)
+    - **2.3 Never redefine a framework table** (add your own, keyed by `user.id`)
+    - **2.4 Enums and domain vocabularies** (a frozen list, plus a CHECK)
+    - **2.5 Relations** (declared in the query, not as eager/lazy on the model)
+    - **2.6 Migrations own the shape** (two sets, two dialects, forward only)
     - **2.7 Modeling Best Practices**
 
 3.  **[Part 3: Magic Queries & Data Access](#part-3-magic-queries--data-access)**
-    - **3.1 Translation Layer: URL to SQL**
-      - Translation flow and usage (`executeFindQuery`)
-    - **3.2 Filter Operator Reference**
-      - Complete table (`:eq`, `:gt`, `:like`, `:in`, `:null`, etc.)
-    - **3.3 Deep Filtering (Relational Filters)**
-      - Dot Notation on relations (e.g., `client.name`)
-    - **3.4 Advanced Boolean Logic (`_logic`)**
-      - Building complex queries `(A OR B) AND C`
-    - **3.5 Pagination and Sorting**
-      - Input Parameters and Response Headers (`v-total`)
-    - **3.6 Customizing QueryBuilder (Global Search)**
-    - **3.7 Security Hardening (Sensitive Fields, Prototype Pollution, ReDoS, `:raw`)**
-    - **3.8 Data Layer Configuration (Init Options & Environment Variables)**
-    - **3.9 Data Layer API Reference (`start`, `executeFindQuery`, `applyQuery`, …)**
-    - **3.10 Standalone Usage (without the HTTP core)**
-    - **3.11 Multi-Tenancy: Unified Context Pattern (`switchContext`, `runInTenantContext`)**
-    - **3.12 Utility: Password Hash Generation (`generate-hash.js`)**
-    - **3.13 Local Database Setup (Docker & pgAdmin)**
+    - **3.1 Translation Layer: URL to SQL** (`executeFind`, `parseQuery`)
+    - **3.2 Reserved parameters** (`_page`, `_pageSize`, `_sort`, `_logic`, …)
+    - **3.3 Filter Operator Reference**
+      - The naming rule with no exceptions: base is case-SENSITIVE, `i` insensitive, `n` negates
+    - **3.4 Boolean Logic (`_logic`)**
+      - What v4 hid and v5 answers 400 for
+    - **3.5 Pagination and Sorting** (input, and the `v-*` response headers)
+    - **3.6 Global search** (there is no `q`: build the OR, combine with `_logic`)
+    - **3.7 Security Hardening** (sensitive fields are unfilterable; `extraWhere` is AND-ed last)
+    - **3.8 Data Layer API Reference** (`start`, `access`, `executeFind`, `parseQuery`, …)
+    - **3.9 Standalone Usage (without the HTTP core)**
+    - **3.10 Multi-tenancy in one paragraph** (there is nothing to switch)
+    - **3.11 Utility: Password Hash Generation**
+    - **3.12 Local Database Setup (Docker)**
 
 4.  **[Part 4: API Layer (Routing & Controllers)](#part-4-api-layer-routing--controllers)**
     - **4.1 Route Autodiscovery**
       - File matching rules
     - **4.2 `routes.ts` Configuration**
-      - Structure and Swagger configuration
+      - Structure, `scope`, capabilities, and Swagger configuration
     - **4.3 Controllers: Best Practices**
-      - Input Normalization (`req.data`) and Relations
-      - Accessing Context (`req.userContext`)
+      - Input Normalization (`req.data()`, `req.bodyData()`)
+      - The container, and the caller
     - **4.4 Implementation Pattern: From Controller to Service**
       - Complete practical example
     - **4.5 Middleware: Global vs Local**
@@ -150,15 +174,14 @@ contract — there is no hidden coupling (the core ↛ data-layer boundary is en
 
 5.  **[Part 5: Service Layer Architecture](#part-5-service-layer-architecture)**
     - **5.1 The `BaseService` Pattern**
-      - CRUD Abstraction and `use(req.db)` Hook
+      - CRUD abstraction bound to a container (`service.on(handle)`)
     - **5.2 Security Context & RLS (Row Level Security)**
-      - `applyPermissions` implementation
-    - **5.3 Advanced QueryBuilder**
-      - Automatic Joins (`addRelations`) and computed fields
+      - `applyPermissions` returns a condition carried as `extraWhere`
+    - **5.3 Relations and computed fields**
     - **5.4 Transaction Management (Complex Writes)**
-      - Using manual `QueryRunner`
+      - `access(handle).transaction(fn)` — one owner, one release
     - **5.5 Globals vs Dependency Injection**
-      - Singleton Pattern and Repository access
+      - Singleton services, per-call scoped clones
     - **5.6 Caching**
 
 6.  **[Part 6: Authentication and Security](#part-6-authentication-and-security)**
@@ -224,7 +247,7 @@ The system supports two mutually exclusive authentication modes, configurable vi
     - **10.4 Replacing or customizing the data layer**
 
 7.  **[Part 11: Native API Surface (built-in routes)](#part-11-native-api-surface-built-in-routes)**
-    - **11.1 `/health`, `/auth/*`, `/users/*`, `/token/*`, `/tenants/*`, `/tool/*`**
+    - **11.1 `/health`, `/auth/*`, `/users/*`, `/token/*`, `/tenants/*`, `/system/*`**
     - **11.2 Auth modes (Bearer vs Cookie) and `embedded_auth`**
     - **11.3 Public vs private routes and the `roles` gate**
 
@@ -251,20 +274,19 @@ The framework is an **opinionated** system composed of three modular packages wo
     - **Fastify** wrapper.
     - Manages the HTTP lifecycle, automatic route loading (`Auto-Discovery`), JSON Schema validation, and the Global Hooks system.
     - Natively integrates the Authentication system (JWT, Refresh Token) and Security (MFA Gatekeeper).
-    - **Universal Database Context**: Automatically injects strictly-scoped `EntityManager` into `req.db` (Single & Multi-Tenant support).
-2.  **`@volcanicminds/backend/typeorm` (Data Layer)**
-    - **TypeORM** wrapper.
-    - Introduces **"Magic Queries"**: a translation engine that automatically converts complex query strings (filters, sort, pagination, boolean logic) into optimized SQL.
-    - Manages database connection and Entity initialization.
-    - **v3 note — the data layer ships inside the backend as the subpath `@volcanicminds/backend/typeorm`.**
-      It is **optional and decoupled, not bundled into the core**: its dependencies (`typeorm`, `bcrypt`,
-      `pluralize`, `reflect-metadata`, `pg`) are declared as *optional peer dependencies*, so a project that
-      uses only the HTTP core never installs them and never imports the data layer (the core ↛ data-layer
-      boundary is enforced in CI). It is also **replaceable**: the implementation lives under
-      `lib/database/typeorm/**`, so an alternative data adapter can be added under `lib/database/` without
-      touching the core. Integration stays the same — inject the managers (`userManager`, `tokenManager`, …)
-      via `start(decorators)`; if you don't, the core boots with no-op defaults. See the full data-layer
-      reference in [Part 3](#part-3-magic-queries--data-access) and `docs/configuration.md`.
+    - **The container of a request**: hands every request `req.control`, and `req.tenant` where tenancy is declared. Two distinct types, no ambient fallback, and a call with neither throws.
+2.  **`@volcanicminds/backend/db` (Data Layer)**
+    - Drizzle underneath, and the subpath says so nowhere on purpose: in v4 it was `/typeorm`, so the ORM was
+      part of the public API and replacing it was a breaking change for every consumer.
+    - Introduces **"Magic Queries"**: a translation engine that turns a query string (filters, sort, pagination,
+      boolean logic) into SQL — and answers **400 with a code** wherever v4 degraded into a different query.
+    - Owns the framework's own tables, per-tenant containers, and versioned migrations.
+    - **Optional and decoupled, not bundled into the core**: its dependencies (`drizzle-orm`, `bcrypt`, and `pg`
+      or `better-sqlite3`/`@libsql/client`) are *optional peer dependencies*, so a project using only the HTTP
+      core never installs them. The boundary is **enforced in CI**: the core may not import `lib/database/**`,
+      and the data layer may import only *types* from the core. It is also **replaceable** — the managers are
+      values you hand to `startServer()`, so an alternative implementation is a parameter. Full reference in
+      [Part 3](#part-3-magic-queries--data-access), `docs/CONFIGURATION_V5.md` and `docs/SCHEMA_V5.md`.
 3.  **`@volcanicminds/tools` (Utilities)**
     - A _tree-shakeable_ support library.
     - Provides standardized tools for Logger, Mailer, and MFA/OTP code generation.
@@ -273,18 +295,27 @@ The framework is an **opinionated** system composed of three modular packages wo
 
 Every line of code in the project must adhere to these principles:
 
-- **Thin Controllers ("Adapters"):** Controllers contain no business logic. Their only job is to normalize input (`req.data()`), extract user context (`req.userContext`), call a Service, and return the response.
-- **Fat Services ("Business Logic"):** All logic, transactions, and data security controls reside here. Services do not know about `req` or `res`.
-- **Secure by Default:** Data access is never direct. It always passes through methods requiring a `UserContext` to apply security filters (Row Level Security).
+- **Thin Controllers ("Adapters"):** Controllers contain no business logic. Their only job is to normalize input (`req.data()`), resolve the container (`req.tenant ?? req.control`) and the caller's context, call a Service, and return the response.
+- **Fat Services ("Business Logic"):** All logic, transactions, and data security controls reside here. Services do not know about `req` or `res` — they are **bound to a container** (`service.on(handle)`) and refuse to work without one.
+- **Secure by Default:** Data access is never direct. It always passes through methods taking a context, and the security filter travels as `extraWhere`, AND-ed after everything the URL asked for.
+- **No silent recovery:** a missing container, a failed audit write, an operator the engine cannot honour — each one is an error. Widening a scope to make a call succeed is the class of defect v5 was rewritten to remove.
 
 ### The "Globals" Pattern
 
 Unlike architectures that use explicit Dependency Injection everywhere, the Volcanic Stack injects certain key utilities into the Node.js `global scope` during bootstrap. This drastically reduces circular imports and speeds up development.
 
 - **`log`**: Pino Logger instance. Available everywhere.
-- **`entity.[PascalCase]`**: Direct access to the Entity class (e.g., `entity.User`). Useful for static methods like `.create()`.
-- **`repository.[camelCasePlural]`**: ⚠️ LEGACY/FORBIDDEN for data access — direct `global.repository.X` throws at runtime (Architecture 2.0). Resolve the repository from the request context instead: `req.db.getRepository(Entity)` or, in a service, `service.use(req.db)`.
-- **`config`**: Configuration loaded at startup.
+- **`config`**: configuration loaded at startup, by `preload()`.
+- **`roles`**, **`systemRoles`**: the two role catalogues, kept separate on purpose (T-4.1).
+- **`t`**: the i18n instance.
+
+**What is NOT global any more, and must never be generated:** `global.entity`, `global.repository`
+and `global.connection`. All three were ways to reach a container without being given one, and
+that is exactly how a request ended up reading another tenant's schema (defects D-01, D-06). A
+container arrives on the request or it does not arrive; there is nothing ambient to fall back on.
+The environment reader (`lib/util/env.ts`) is the one place a `process.env` value is turned into a
+setting, so a documented variable cannot end up read by nobody — which happened anyway, to four of
+them, until T-9.4 (defect D-11b).
 
 ---
 
@@ -307,61 +338,63 @@ The framework uses an **autodiscovery** system based on `glob` patterns. Adherin
     │       │   └── [name].ts
     │       └── routes.ts   # Endpoint definition, Swagger, and Middleware
     ├── config              # GLOBAL CONFIGURATIONS
-    │   ├── database.ts     # TypeORM and Pool configuration
-    │   ├── general.ts      # Framework Config (MFA, Scheduler)
+    │   ├── general.ts      # Framework config, AND the `control` / `tenants` blocks
     │   ├── plugins.ts      # Fastify Plugins (CORS, Helmet, RateLimit)
     │   ├── roles.ts        # Static RBAC Role definition
     │   └── tracking.ts     # Automatic Audit Log configuration
-    ├── entities            # DATA MODELS (TypeORM .e.ts)
+    ├── schema              # YOUR TABLES (Drizzle), built per container
+    │   ├── pg.ts           # the factory: appTables(schemaName)
+    │   ├── index.ts        # tablesFor(handle), cached by locator
+    │   └── entry/          # static modules drizzle-kit generates from
     ├── services            # BUSINESS LOGIC (Service Layer)
     ├── schemas             # JSON SCHEMAS (Validation & Swagger Override)
-    ├── hooks               # GLOBAL HOOKS (e.g., preHandler for UserContext)
+    ├── hooks               # GLOBAL HOOKS
     ├── schedules           # CRON JOBS (*.job.ts)
     └── utils               # Helper functions
+
+# and, beside src/:
+├── migrations
+│   ├── control/{pg,sqlite}   # your migrations for the control plane
+│   └── tenant/{pg,sqlite}    # your migrations for a tenant container
+└── drizzle.config.ts         # how they are generated
 ```
+
+`src/config/database.ts` is **gone**: where the data lives is declared in `config/general.ts`,
+in two blocks that cannot contradict each other. `src/entities` is gone with TypeORM.
 
 ---
 
 ## 1.3 Bootstrapping (`index.ts`)
 
-The `index.ts` file is the entry point. It orchestrates starting the database before the server and injects dependencies critical for the integrated auth core.
+Three steps, and the order is not a style choice.
 
 ```typescript
 'use strict'
 
-import { start as startServer, yn } from '@volcanicminds/backend'
-import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
-// Import the MFA adapter from tools (concrete implementation)
+import { preload, start as startServer } from '@volcanicminds/backend'
+import { start as startDataLayer } from '@volcanicminds/backend/db'
+// The MFA adapter from tools (a concrete implementation you own)
 import { mfaAdapter } from './src/services/mfa.adapter.js'
-// Import DB config
-import { database } from './src/config/database.js'
 
 const start = async () => {
-  let db: DataSource | null = null
+  // 1. Read config/general.ts into global.config.
+  //
+  //    NOT optional, and forgetting it raises NOTHING: the data layer reads the `control` and
+  //    `tenants` blocks from global.config, so out of order it finds no configuration and falls
+  //    back to its own defaults — a different database, reached without an error. `startServer`
+  //    calls preload() too, but by then the pool is already open against the wrong host.
+  await preload()
 
-  // 1. Start Database (Conditional or Mandatory depending on ENV)
-  if (yn(process.env.START_DB, true)) {
-    const options = database?.default || {}
-    // startDatabase initializes TypeORM and populates global.entity / global.connection.
-    // (global.repository is installed as a fail-fast Proxy — any access throws; use service.use(req.db).)
-    db = await startDatabase(options)
+  // 2. Open the data layer. It returns the managers plus `provider`, `migrations` and
+  //    `migrateTenants`. They are values you own, not singletons imported from a subpath.
+  const layer = await startDataLayer()
 
-    if (db && log.i) {
-      const opts = db.options as any
-      log.info(`Database attached at ${opts.host}:${opts.port} (${opts.database})`)
-    }
-  } else {
-    if (log.w) log.warn('Database not loaded, check START_DB property on environment')
-  }
+  // 3. Bring the control plane to the schema this code expects. In production this is a deploy
+  //    step (`npm run db:migrate`); here it makes a clean machine work.
+  await layer.migrations.apply({ locator: process.env.DB_SCHEMA || 'public' })
 
-  // 2. Start Server
-  // It is CRUCIAL to pass 'userManager' (from typeorm) and 'mfaManager' (adapter)
-  // This allows the backend framework to handle /auth/* routes (login, refresh, mfa)
-  // using your DB logic without the framework knowing your entities beforehand.
-  await startServer({
-    userManager: userManager, // Handles user CRUD and password validation
-    mfaManager: mfaAdapter // Handles OTP generation/verification
-  })
+  // 4. Start the server with those managers as its decorators, plus anything of your own.
+  await startServer({ ...layer, mfaManager: mfaAdapter })
 }
 
 start().catch((err) => {
@@ -370,164 +403,73 @@ start().catch((err) => {
 })
 ```
 
+**With no database at all** it is one line: `await startServer()`. The core falls back to
+Null-Object managers, `/auth` reports that it is not implemented, and everything that does not
+need a row keeps working.
+
+**What changed from v4.** `startDatabase(config)` took the configuration as an argument and
+populated `global.entity` / `global.connection`; the managers were module-level singletons
+imported from `@volcanicminds/backend/typeorm`. None of that exists. There is no ambient
+connection to populate, and the managers are returned rather than imported — which is what makes
+swapping one a parameter instead of a patch.
+
 ---
 
-## 1.4 Database Configuration (Production Grade)
+## 1.4 Where the data lives (`config/general.ts`)
 
-Reference file: `src/config/database.ts`.
-
-This configuration is optimized for production environments (PostgreSQL) and handles pooling, timeouts, and conditional SSL.
-
-### 1. Custom Naming Strategy
-
-PostgreSQL uses `snake_case`, TypeScript uses `camelCase`. This strategy enforces a predictable conversion.
+Two declared blocks, and no flag. `control` says where the platform's own data is; **declaring
+`tenants` is what turns tenancy on**, so a flag and a strategy can no longer contradict each
+other — in v4 they could, and the `resolver` that was documented was not the one that ran (D-11).
 
 ```typescript
-import { DefaultNamingStrategy, NamingStrategyInterface } from 'typeorm'
-
-class CustomNamingStrategy extends DefaultNamingStrategy implements NamingStrategyInterface {
-  // Converts "firstName" to "first_name"
-  columnName(propertyName: string, customName: string, embeddedPrefixes: string[]): string {
-    return embeddedPrefixes
-      .concat(customName || propertyName)
-      .map((s, i) => (i > 0 ? s.replace(/^(.)/, (c) => c.toUpperCase()) : s))
-      .join('')
-  }
-}
-```
-
-### 2. SSL Management and Full Configuration
-
-The `extra` object passes parameters directly to the `node-postgres` (`pg`) driver, essential for network stability.
-
-```typescript
-import { Database } from '@volcanicminds/backend/typeorm'
-import { GLOBAL_CACHE_TTL } from './constants.js'
-import fs from 'node:fs'
-
-const isTrue = (val: string | undefined, defaultVal: boolean) => {
-  if (val === undefined) return defaultVal
-  return val === 'true' || val === '1'
-}
-
-// Logic for SSL certificates (e.g., for AWS RDS or OVH)
-const getSslConfig = () => {
-  if (process.env.DB_SSL !== 'true') return false
-  if (process.env.DB_SSL_CA_PATH) {
-    try {
-      return {
-        rejectUnauthorized: true,
-        ca: fs.readFileSync(process.env.DB_SSL_CA_PATH).toString()
-      }
-    } catch (e) {
-      console.error('SSL CA Load Error:', e)
-      return { rejectUnauthorized: false } // Fallback
-    }
-  }
-  return { rejectUnauthorized: false }
-}
-
-export const database: Database = {
-  default: {
-    type: 'postgres',
-    host: process.env.DB_HOST || '127.0.0.1',
-    port: Number(process.env.DB_PORT) || 5432,
-    username: process.env.DB_USERNAME,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-
-    // NEVER use synchronize: true in production (risk of data loss)
-    synchronize: false,
-    logging: isTrue(process.env.DB_LOGGING, true),
-    namingStrategy: new CustomNamingStrategy(),
-
-    // Pool Settings (TypeORM level)
-    connectTimeoutMS: Number(process.env.DB_CONNECTION_TIMEOUT) || 60000,
-    poolSize: Number(process.env.DB_MAX_CONNECTING) || 50,
-
-    // Native Driver Settings (pg)
-    extra: {
-      application_name: process.env.APP_NAME || 'volcanic-sample-backend',
-
-      // Connection Pool Tuning
-      max: Number(process.env.DB_MAX_CONNECTING) || 50,
-      min: Number(process.env.DB_MIN_CONNECTING) || 5,
-      idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT) || 30000,
-
-      // Network Stability (KeepAlive prevents Idle connections from being cut by Load Balancers)
-      keepAlive: isTrue(process.env.DB_KEEP_ALIVE, true),
-      keepAliveInitialDelayMillis: 10000,
-
-      // Safety Timeouts (prevents zombie queries)
-      statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT) || 60000,
-      query_timeout: Number(process.env.DB_QUERY_TIMEOUT) || 65000
+// src/config/general.ts
+export default {
+  name: 'general',
+  options: {
+    control: {
+      engine: 'postgres',                 // 'postgres' | 'sqlite' | 'libsql'
+      url: process.env.DATABASE_URL,      // or the discrete DB_* variables
+      schema: process.env.DB_SCHEMA || 'public',   // Postgres only: explicit, never inferred
+      pool: { max: Number(process.env.DB_POOL_MAX) || 10, idleTimeoutMs: 30_000 }
     },
 
-    ssl: getSslConfig(),
-
-    // Query caching on a dedicated DB table
-    cache: {
-      type: 'database',
-      tableName: 'query_result_cache',
-      duration: GLOBAL_CACHE_TTL || 60000
+    // Absent = single tenant. This is most projects.
+    tenants: {
+      strategy: 'schema',                 // 'schema' | 'container'
+      engine: 'postgres',
+      resolver: 'header',                 // 'header' | 'subdomain'
+      headerKey: 'x-tenant-id',
+      containers: { maxOpen: 20, idleTimeoutMs: 300_000, poolMax: 2 }
     }
   }
 }
 ```
 
----
+The merge over the framework defaults is **deep**: declaring one key inside `tenants` no longer
+erases its siblings, which in v4 is how `multi_tenant: { enabled: true }` silently discarded the
+resolver (D-21).
 
-## 1.4b Embedded Database (PGlite) — zero‑setup Postgres for dev/test
+**The four supported combinations**, checked at boot by the capability matrix. Anything else logs
+fatal and exits — a deployment the framework cannot isolate must not start, because the
+alternative is starting and mixing two customers' rows.
 
-The data layer can run on **PGlite**, an in‑process WASM build of Postgres, instead of an external server or a
-Docker container. It speaks the **same Postgres dialect**, so entities, Magic Queries, services and multi‑tenancy
-are unchanged — only the engine differs. Select it with `type: 'pglite'`:
+| `control.engine` | `tenants` | Meaning |
+|---|---|---|
+| `postgres` | absent | single tenant |
+| `postgres` | `strategy: 'schema'`, `engine: 'postgres'` | many tenants, one database, a schema each |
+| `postgres` | `strategy: 'container'`, `engine: 'postgres'` | one database per tenant |
+| `postgres` | `strategy: 'container'`, `engine: 'sqlite' \| 'libsql'` | one file per tenant |
+| `sqlite` / `libsql` | absent, or `strategy: 'container'` | serverless processes: CLI, agents, desktop |
 
-```ts
-// src/config/database.ts
-export const database: Database = {
-  default: {
-    type: 'pglite',
-    // dataDir omitted -> in-memory (ephemeral); a path -> persisted on disk
-    // dataDir: './.pglite',
-    vector: true,          // optional: load pgvector for embeddings / similarity search
-    synchronize: true
-  }
-}
-```
+**No naming strategy to configure.** Columns are declared explicitly (`text('first_name')`), so
+`snake_case` in the database and `camelCase` in TypeScript is written down rather than derived
+from a convention that a future version of an ORM might read differently.
 
-Optional dependencies (loaded only when `type: 'pglite'` is used; declared as optional so pure‑Postgres apps never
-install them): `typeorm-pglite`, `@electric-sql/pglite`, and `@electric-sql/pglite-pgvector` (only for `vector`).
-
-**Config keys** (alongside the standard TypeORM options): `dataDir` (folder to persist, omit for in‑memory),
-`vector` (boolean, loads pgvector), `extensions` (extra PGlite contrib extensions; `uuid_ossp` is always enabled
-so `@PrimaryGeneratedColumn('uuid')` works), `relaxedDurability` (default true in‑memory).
-
-**When to use which:**
-- `type: 'postgres'` → **production**, staging, load. Real server, real connection pool, durable, networked.
-- `type: 'pglite'` → **dev, tests, CI, demos, prototypes**. Zero setup, in‑process, single serialized instance —
-  NOT for production traffic.
-
-**AI AGENT DIRECTIVE:** never recommend PGlite for production. It is a single in‑process instance with serialized
-access. Use it to remove local/CI friction; keep a real Postgres for deployed environments.
-
-**Multi‑tenant caveat:** on PGlite every `DataSource` shares ONE instance (`PGlitePool.end()` closes that shared
-singleton). The framework already avoids destroying the ephemeral schema‑sync `DataSource` in embedded mode. Never
-call `.destroy()` on a secondary PGlite `DataSource` unless you mean to close the whole DB; use `closeEmbedded()`
-to shut it down (e.g. end of a test suite).
-
-**Vector / embeddings:** with `vector: true`, use pgvector operators (`<->`, `<=>`, `<#>`) directly, or the
-engine‑agnostic `PgVectorStore` + `embedText`/`createEmbedder` from `@volcanicminds/tools/ai` (works identically
-on real Postgres with pgvector). Tests: `npm run test:pglite`. Full guide: `docs/PGLITE.md`.
-
-**Reading records is engine- AND tenant-transparent:** the controller is IDENTICAL for PGlite/Postgres and for
-single/multi tenant. Always read via `productService.use(req.db).findAll(req.userContext, req.data())` (or
-`req.db.getRepository(Entity)`). Single tenant → `req.db` targets `public`. Multi tenant (`multi_tenant.enabled`)
-→ the framework reads `x-tenant-id`, resolves the tenant and sets `search_path` on `req.db`, so the SAME code reads
-only that tenant's rows; outside HTTP use `new TenantManager(global.connection).runInTenantContext(slug, em => …)`.
-See `docs/PGLITE.md` ("Reading records — single vs multi tenant") and §3.11.
-
----
+**PGlite and MongoDB are not deployment engines.** PGlite exposes a single connection, so it
+cannot isolate anything under concurrency — which is the entire class of defect v5 was rewritten
+to remove; it survives only as a test double. MongoDB is removed outright: its multi-tenant path
+was **fail-open**, logging a warning and then working on the whole database with no isolation
+(D-04).
 
 ## 1.5 Environment Variables (Reference)
 
@@ -557,32 +499,83 @@ An example `.env` for production.
 | `MFA_POLICY`                   | MFA Security Policy (`OPTIONAL`, `MANDATORY`, `ONE_WAY`)                |    No    | `OPTIONAL`          |
 | `MFA_ADMIN_FORCED_RESET_EMAIL` | Admin email for emergency MFA reset                                     |    No    |                     |
 | `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
-| `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response.            |    No    | `true` (prod)       |
+| `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response. Honoured by **every** error path, the `onError` hook included. |    No    | `true` (prod)       |
+| `CORS_ORIGINS`                 | Comma-separated allowlist. **Required in production**: a wildcard that arrived by omission refuses the boot, and so does the wildcard-with-credentials pair. |  **Yes**²  |          |
+| `MFA_DB_SECRET`                | Key the MFA secrets are encrypted with. Falls back to `JWT_SECRET`.     |    No    |                     |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Seeds the **first** identity, at boot and at no other time.           | **Yes**³ |                     |
+| `DATABASE_URL`                 | Control-plane connection. Wins over the discrete `DB_*` variables.      |    No    |                     |
+| `DB_SCHEMA`                    | Control-plane schema. Explicit, never inferred.                        |    No    | `public`            |
+| `DB_POOL_MAX`                  | Control-plane pool size.                                                |    No    | `10`                |
+| `BCRYPT_COST`                  | Password work factor. **Never below 12**, whatever is written. Measure it with `npm run tune`. |    No    | `12`  |
+| `VOLCANIC_MAX_PAGE_SIZE`       | Upper clamp on `_pageSize`.                                             |    No    | `100`               |
+| `TENANT_CONTAINERS_MAX_OPEN`   | LRU bound on live tenant containers.                                    |    No    | `20`                |
+| `TENANT_CONTAINERS_DIR`        | Where per-tenant files live (file-per-container engines).               |    No    | `./data/tenants`    |
+| `DESTRUCTION_TOKEN_TTL`        | Seconds a container-destruction request stays valid.                    |    No    | `600`               |
+| `IMPERSONATION_TTL`            | Seconds an impersonation token lasts. Hard maximum 14400.               |    No    | `1800`              |
 
 ¹ Required if `JWT_REFRESH` is enabled.
+² Required in production.
+³ Read only at boot, to seed the first identity. With no identity and no `ADMIN_EMAIL`, startup fails fast.
+
+**Removed in v5**, and not renamed: `START_DB` and `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` (the schema
+is versioned migrations now, applied as a deploy step), `VOLCANIC_CUSTOM_QUERY_OPERATORS` (the
+`:raw` operator is gone), `VOLCANIC_CASE_INSENSITIVE_DEFAULT` (case sensitivity is a property of
+the operator, so one URL cannot mean two things on two servers).
+
+> Four of the variables above — `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`,
+> `TENANT_CONTAINERS_DIR`, `DESTRUCTION_TOKEN_TTL` — were documented from the start of v5 and
+> read by **nobody** until T-9.4 found it, which is defect D-11 in another shape. If you are
+> generating configuration, the rule the framework holds itself to is: the declared default is
+> what the code does, and no field is typed, documented and never read.
 
 ---
 
 ## 1.7 Single vs Multi-Tenant Architecture
 
-The framework supports both architectures OOTB. The behavior is controlled by `req.db`.
+Both are supported, and the difference a consumer sees is **one field**: `req.tenant` is present
+or it is not. `const container = req.tenant ?? req.control` is the whole idiom, so the same
+service code serves both.
 
-- **Single-Tenant** (Default): `req.db` is injected from the global connection pool. Zero overhead.
-- **Multi-Tenant**: If enabled, `req.db` is injected from a dedicated `QueryRunner` that isolates data (e.g., via `SET search_path`).
-
-To enable multi-tenancy, configure `src/config/general.ts`:
+- **Single tenant** (default): no `tenants` block. The application's data lives in the control
+  plane, and `req.tenant` is never set.
+- **Multi tenant**: declare the block. **Declaring it is what enables tenancy** — there is no
+  `enabled` flag that can contradict the strategy beside it.
 
 ```typescript
+// src/config/general.ts
 export default {
   options: {
-    multi_tenant: {
-      enabled: true,
-      resolver: 'header', // or 'subdomain', 'query'
-      header_key: 'x-tenant-id'
+    tenants: {
+      strategy: 'schema',        // 'schema' | 'container'
+      engine: 'postgres',
+      resolver: 'header',        // 'header' | 'subdomain'. No 'query': a tenant id in a URL
+      headerKey: 'x-tenant-id'   // lands in access logs, Referer headers and browser history
     }
   }
 }
 ```
+
+**How the tenant is chosen, and it is not the header.** The tenant comes from the token's `tid`
+claim whenever there is a token. The resolver is consulted only for requests that carry none —
+login and public routes — and only the configured one is read, never both. In v4 the header
+decided always, the `resolver` option was typed and documented and never read (D-11), and the
+anti-spoofing check meant to catch a mismatch compared a field the entity did not have, in a hook
+that ran too early (D-03). It never fired.
+
+**What isolation is, mechanically.** A container is chosen by **qualifying the table objects**,
+not by `SET search_path` on a pooled connection. Drizzle prints the schema name into the SQL, so
+choosing a container is choosing an object, nothing is left on the session, and nothing has to be
+reset before the connection goes back to the pool. That last clause is defect D-01 designed out:
+in v4 the reset was written twice, in the wrong order, and never ran — so a tenant's `search_path`
+survived in the pool and a control-plane route could list another customer's users.
+
+| Situation | Answer |
+|---|---|
+| nothing names a tenant, and tenancy is on | 400 `TENANT_REQUIRED` |
+| the tenant is unknown **or suspended** | 404 — the same answer for both, so the registry cannot be probed from outside |
+| the token's `tid` disagrees with the resolved tenant | 403 `TENANT_MISMATCH` |
+| a control token inside a tenant, or the reverse | 403 `SCOPE_MISMATCH` |
+| the container is behind its schema version | 503 `SCHEMA_BEHIND`, for that tenant alone |
 
 Here is a full configuration file:
 
@@ -595,31 +588,30 @@ APP_NAME=volcanic-sample-backend
 HIDE_ERROR_DETAILS=true
 
 # --- Database ---
-START_DB=true
-DB_HOST=10.0.0.5
-DB_PORT=5432
-DB_NAME=db_prod
-DB_USERNAME=admin
-DB_PASSWORD=secret_password
-DB_SSL=true
-DB_SSL_CA_PATH=/usr/src/app/certs/ca.pem
+# One URL wins over the discrete variables. The schema is explicit, never inferred.
+DATABASE_URL=postgres://admin:secret_password@10.0.0.5:5432/db_prod
+DB_SCHEMA=public
+DB_POOL_MAX=10
+# Measured, not copied: npm run tune (docs/TUNING.md)
+BCRYPT_COST=12
+TENANT_CONTAINERS_MAX_OPEN=20
 
-# --- Pool & Timeouts ---
-DB_MAX_CONNECTING=50
-DB_MIN_CONNECTING=5
-DB_STATEMENT_TIMEOUT=60000
-DB_IDLE_TIMEOUT=30000
-DB_KEEP_ALIVE=true
-DB_CONNECTION_TIMEOUT=60000
-DB_QUERY_TIMEOUT=65000
+# The schema is applied by `npm run db:migrate`, a deploy step. There is no
+# DB_SYNCHRONIZE_SCHEMA_AT_STARTUP: a restart that rewrites the shape of a production
+# database is not a feature.
 
 # --- Auth & Security ---
+# Required in production: the origins allowed to call this API.
+CORS_ORIGINS=https://app.example.com
+# Seeds the FIRST identity, at boot and at no other time.
+ADMIN_EMAIL=admin@example.com
 # Generate with: openssl rand -base64 64
 JWT_SECRET=super_secret_key_change_me
 JWT_EXPIRES_IN=1h
 JWT_REFRESH=true
 JWT_REFRESH_SECRET=super_secret_refresh_key_change_me
 JWT_REFRESH_EXPIRES_IN=30d
+MFA_DB_SECRET=a_third_secret_at_least_32_characters
 
 # MFA
 MFA_POLICY=OPTIONAL
@@ -689,7 +681,7 @@ Protects the API from abuse. Global configuration in `plugins.ts`:
 
 You can override limits per route by defining the `rateLimit` object in the route definition.
 
-### Static Files (optional, since 3.4.0)
+### Static Files (optional)
 
 An **opt-in** named `static` plugin serves a static folder (e.g. a `public/uploads` directory in dev; typically
 fronted by nginx/CDN in prod) via `@fastify/static`. Disabled by default. `@fastify/static` is dynamically
@@ -707,7 +699,7 @@ imported, so consumers that don't enable it needn't install it.
 `options` may also be an **array** of option objects to expose multiple roots/prefixes; the framework sets
 `decorateReply: true` only on the first mount (subsequent mounts get `false` to avoid re-decorating `reply`).
 
-## 1.6b Per-route Response Cache (optional, since 3.5.0)
+## 1.6b Per-route Response Cache (optional)
 
 An **opt-in**, in-memory response cache for read-heavy, slow-changing endpoints (e.g. a public storefront).
 Declare it per route in `routes.ts` — or once at the file level in `config.cache` (inherited by every route in
@@ -762,829 +754,401 @@ Full guide (guards, key scoping, LRU/TTL store, caveats): **docs/CACHE.md**.
 
 ---
 
-# Part 2: Deep Dive Data Modeling & Entities
+# Part 2: Your Own Tables
 
-In `@volcanicminds/backend/typeorm`, the Data Layer is not just a table mapper (ORM), but the engine enabling "Magic Query" and "Auto-Discovery" features.
+> **Ported from v4.** TypeORM entities, `@Entity`, `@Column`, `BaseEntity`, `global.entity` and
+> `.e.ts` files are gone. Tables are Drizzle, they are declared by the project that owns them,
+> and they are built **per container**. `docs/SCHEMA_V5.md` is the contract.
 
-Entities in this stack follow the **Active Record** pattern (extending `BaseEntity`), meaning the entity itself possesses methods for saving and finding (`User.save()`, `User.findOne()`).
+## 2.1 The shape of a table module
 
-## 2.1 Anatomy of a Volcanic Entity
-
-Every entity file must reside in `src/entities/` and have the `.e.ts` extension (e.g., `user.e.ts`). This is fundamental for the automatic loader.
-
-### Standard Base Structure
-
-Every entity must extend `BaseEntity` and define a Primary Key (preferably UUID) and audit fields (`createdAt`, `updatedAt`).
-
-**Example: `src/entities/client.e.ts`**
+A **factory**, not a module of constants. This is the single most important thing to get right,
+and the reason is mechanical rather than stylistic: Drizzle prints the schema name into the SQL
+it builds — `select … from "tenant_acme"."product"` — so a table object **is** the choice of
+container. Building them per locator is what makes tenancy work without touching `search_path`
+on a pooled connection.
 
 ```typescript
-import {
-  Entity,
-  Unique,
-  Index,
-  BaseEntity,
-  Column,
-  OneToMany,
-  PrimaryGeneratedColumn,
-  CreateDateColumn,
-  UpdateDateColumn
-} from 'typeorm'
+// src/schema/pg.ts
+import { pgSchema, pgTable, text, timestamp, index, check } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { uuidv7 } from '@volcanicminds/backend/db'
 
-// Import the type for the relationship (using 'import type' to avoid runtime cycles)
-import type { Order } from './order.e.js'
-
-@Entity() // Table name: 'client' (automatic snake_case)
-@Unique(['code']) // DB Constraint: client code must be unique
-export class Client extends BaseEntity {
-  @PrimaryGeneratedColumn('uuid')
-  id: string
-
-  @CreateDateColumn()
-  createdAt: Date
-
-  @UpdateDateColumn()
-  updatedAt: Date
-
-  // INDEX: Fundamental for search and join performance
-  @Index()
-  @Column({ nullable: false, type: 'varchar' })
-  code: string
-
-  @Column({ nullable: false, type: 'varchar' })
-  name: string
-
-  // Native Postgres Array (very performant for simple lists)
-  @Column('text', { array: true, default: [] })
-  companies: string[]
-
-  // OneToMany Relationship (Lazy by default in this project)
-  // Note: We use the string 'Order' to refer to the other entity
-  @OneToMany('Order', (order: Order) => order.client, { lazy: true })
-  orders: Promise<Order[]>
-}
-```
-
-> ⚠️ **Always declare an explicit column `type`** (`@Column({ type: 'varchar' })`, `{ type: 'boolean' }`,
-> `{ type: 'timestamp' }`, `{ type: 'int' }`, …) — as in the example above. TypeORM can infer the type from the
-> TS property only when `emitDecoratorMetadata` is emitted, and the **`tsx`/esbuild** dev runner (`npm run dev`,
-> `npm start`) does **not** emit it. An untyped `@Column()` boots under `tsc` (`npm run build`) but throws
-> `ColumnTypeUndefinedError` under `tsx`. Explicit types keep dev and build identical. The audit decorators
-> (`@PrimaryGeneratedColumn`, `@CreateDateColumn`, `@UpdateDateColumn`, `@DeleteDateColumn`, `@VersionColumn`)
-> already have a known type and need no `type` option.
-
-### Global Access (`global.entity`)
-
-At bootstrap, the framework populates the global `entity` object.
-Although importing the class is preferred for Type Safety, `entity` is useful in seeding scripts or dynamic contexts.
-
-- `import { Client } from ...` -> Standard usage.
-- `entity.Client` -> Runtime instance loaded (useful in `src/utils/initialData.ts`).
-
----
-
-## 2.2 Type and Enum Management
-
-In `volcanic-sample-backend`, Enums are centralized in `src/entities/all.enums.ts`. This avoids duplication and magic strings.
-
-**Example: Enum Management (`UserLanguage`)**
-
-```typescript
-// src/entities/all.enums.ts
-export enum UserLanguage {
-  EN = 'en',
-  IT = 'it'
-}
-```
-
-**Usage in Entity (`src/entities/user.e.ts`)**
-
-```typescript
-@Column({
-  type: 'enum', // Native Postgres ENUM type
-  enum: UserLanguage,
-  default: UserLanguage.EN,
-  nullable: false
+const stamps = () => ({
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true })
 })
-language: UserLanguage
+
+// `public` is left unqualified because Drizzle refuses `pgSchema('public')`; the adapter pins
+// `search_path` on the connection once, at connect time, so unqualified names still resolve to
+// one place and to the same place for every request.
+const tableFactory = (schemaName: string): typeof pgTable =>
+  (schemaName && schemaName !== 'public' ? pgSchema(schemaName).table : pgTable) as typeof pgTable
+
+export function appTables(schemaName: string) {
+  const table = tableFactory(schemaName)
+
+  const product = table(
+    'product',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      name: text('name'),
+      // A text column with a CHECK, not a Postgres `enum` type: adding a value to a native enum
+      // is a DDL migration that takes a lock, and this list changes with the business.
+      status: text('status', { enum: ['draft', 'published'] }).notNull().default('draft'),
+      ...stamps()
+    },
+    (t) => [index('product_name_idx').on(t.name), check('product_status_check', sql`"status" in ('draft', 'published')`)]
+  )
+
+  return { product }
+}
+
+export type AppTables = ReturnType<typeof appTables>
 ```
 
-> **Best Practice**: If enum values are expected to change often, it is better to use `type: 'varchar'` and handle validation via code/schema to avoid complex DB migrations (DROP TYPE enum).
+**Conventions**, applied everywhere and declared rather than derived:
 
----
+- `snake_case` in the database, `camelCase` in TypeScript, **written out**. No naming strategy to
+  configure and no convention a future ORM version might read differently.
+- `timestamptz`, never a naive timestamp. On SQLite the same value is an integer of epoch
+  **milliseconds**, always UTC — no local time ever reaches the database.
+- Identifiers minted in process with `uuidv7()`: time-ordered, so inserts stay local in the
+  b-tree instead of scattering, and a row carries its creation instant. v4 looked up a free id
+  with a `do/while` around a SELECT — a round trip per insert, to solve a collision that does not
+  happen (D-28).
+- `deletedAt` is what makes a soft delete: the query layer hides those rows automatically unless a
+  route declares `allowWithDeleted`.
 
-## 2.3 Advanced Relationship Management
-
-Relationship management is where most errors occur (Circular Dependency).
-**Golden Rule:** Always use **strings** (e.g., `'Order'`, `'Client'`) in decorators, never the imported class directly as a value.
-
-### One-to-One (`User` <-> `Professional`)
-
-This relationship is critical: it links the login account (`User`) to the personal profile (`Professional`).
-
-```typescript
-// src/entities/user.e.ts (Owner Side)
-@Entity()
-export class User extends UserEx {
-  // ...
-
-  // EAGER: TRUE -> Always loads the profile when reading the user
-  // NULLABLE: TRUE -> A user (e.g., pure admin) might not have a professional profile
-  @OneToOne('Professional', { eager: true, nullable: true })
-  @JoinColumn() // Creates the physical column 'professionalId'
-  professional: Professional
-}
-
-// src/entities/professional.e.ts (Inverse Side)
-@Entity()
-export class Professional extends BaseEntity {
-  // ...
-
-  // Inverse side for navigation
-  @OneToOne('User', (user: User) => user.professional, { lazy: true })
-  user: Promise<User>
-}
-```
-
-### Many-to-One / One-to-Many (`Order` <-> `WorkOrder`)
-
-Classic Parent-Child hierarchy.
+## 2.2 Resolving tables for the request's container
 
 ```typescript
-// src/entities/workOrder.e.ts (Child)
-@Entity()
-export class WorkOrder extends BaseEntity {
-  // ...
+// src/schema/index.ts
+import type { DataHandle } from '@volcanicminds/backend'
+import { access } from '@volcanicminds/backend/db'
+import { appTables, type AppTables } from './pg.js'
 
-  // ManyToOne is the side possessing the Foreign Key ('orderId')
-  // INDEX: Essential to filter work orders of an order
-  @Index()
-  @ManyToOne('Order', { eager: false, nullable: false })
-  @JoinColumn()
-  order: Order
-}
+const cache = new Map<string, AppTables>()
 
-// src/entities/order.e.ts (Parent)
-@Entity()
-export class Order extends BaseEntity {
-  // ...
+export function tablesFor(handle: DataHandle): AppTables {
+  const { dialect, locator } = access(handle, 'tablesFor')
+  if (dialect !== 'postgres') throw new Error(`this project's tables are Postgres; container speaks '${dialect}'`)
 
-  // LAZY: TRUE -> Fundamental not to download thousands of WOs when reading an Order
-  @OneToMany('WorkOrder', (workOrder: WorkOrder) => workOrder.order, { lazy: true })
-  workOrders: Promise<WorkOrder[]>
+  const key = locator || 'public'
+  if (!cache.has(key)) cache.set(key, appTables(key))
+  return cache.get(key)!
 }
 ```
 
----
+**The cache key must be the locator.** Two tenants differ in nothing else, and a cache that
+ignored it would hand tenant B the object naming tenant A's schema — which is defect D-01 rebuilt
+inside application code. Two lines well spent.
 
-## 2.4 Relationship Options: Performance Tuning
+## 2.3 Never redefine a framework table
 
-Options passed to decorators determine the loading strategy and referential integrity.
+The framework owns `user`, `token`, `change`, `migration` and, in the control plane, `tenant`,
+`system_user`, `impersonation`, `destruction_request`. **Do not extend them.**
 
-### 1. `eager` vs `lazy`
-
-- **`eager: true`**: TypeORM performs an automatic `LEFT JOIN`.
-  - _Where to use:_ Critical 1:1 relations (`User.professional`) or small lookup tables (`Order.state`, `Order.type`).
-  - _Where to avoid:_ 1:N relations or heavy entities.
-- **`lazy: true`**: Returns a `Promise`. Data is loaded only if requested.
-  - _Where to use:_ Collections (`Client.orders`, `Order.workOrders`).
-
-### 2. `onDelete: 'CASCADE'`
-
-Defines DB behavior when the parent record is deleted.
-
-**Example: `src/entities/orderCommentRead.e.ts`**
-If a comment is deleted, associated "read" flags must disappear automatically.
+In v4 the way to add `firstName` to a user was to subclass the framework's `User` entity. In v5
+those fields go in a table of your own, keyed by `user.id`:
 
 ```typescript
-@ManyToOne('OrderComment', (comment: OrderComment) => comment.reads, {
-  nullable: false,
-  onDelete: 'CASCADE' // DB Constraint: ON DELETE CASCADE
+const userProfile = table('user_profile', {
+  userId: text('user_id').primaryKey(),
+  firstName: text('first_name'),
+  lastName: text('last_name'),
+  ...stamps()
 })
-@JoinColumn()
-comment: OrderComment
 ```
 
----
+No foreign key is declared, deliberately: the framework owns `user` and migrates it, so a
+constraint pointing into a table this project does not migrate would make the two sets of
+migrations depend on each other's order.
 
-## 2.5 Logic in Entities: Computed Fields & Hooks
+The reason for the rule is not tidiness. A framework table redefined by a consumer collides with
+every future framework migration, and the collision arrives **at upgrade time, on a deployment
+already in production** — the worst moment and the hardest to attribute.
 
-Entities are not just data containers. They can have virtual properties calculated after loading.
+## 2.4 Enums and domain vocabularies
 
-**Real World Example: `Activity.e.ts`**
-An activity needs to show how many hours were worked (`doneHours`), but this data is the sum of `Timesheet`s.
+A frozen list plus a string union, and the list is what the check constraint and the JSON schema
+are built from — so the values live in one place and a new one cannot enter the type without
+appearing in the validation.
 
 ```typescript
-import { AfterLoad, OneToMany } from 'typeorm'
-
-@Entity()
-export class Activity extends BaseEntity {
-  @Column({ type: 'float' })
-  expectedHours: number
-
-  @OneToMany('Timesheet', (timesheet: Timesheet) => timesheet.activity)
-  timesheets: Promise<Timesheet[]>
-
-  // --- Virtual Properties (Do not exist in DB) ---
-  doneHours: number = 0
-  deltaHours: number = 0
-  remainingToWork: number = 0
-
-  // Hook executed after find/findOne
-  @AfterLoad()
-  load() {
-    // Case 1: Timesheets were loaded (join)
-    if (Array.isArray(this.timesheets)) {
-      const sheets = this.timesheets as unknown as { logTime: number }[]
-      this.doneHours = sheets.reduce((acc, t) => acc + (Number(t.logTime) || 0), 0)
-    }
-    // Case 2: 'doneHours' was populated via addSelect() in the Service (more common for performance)
-
-    // Calculate derivatives
-    const expected = Number(this.expectedHours ?? 0)
-    const done = Number(this.doneHours ?? 0)
-
-    this.deltaHours = done - expected
-    this.remainingToWork = expected - done
-  }
-}
+export const PARTNER_TYPES = ['client', 'supplier', 'contact'] as const
+export type PartnerType = (typeof PARTNER_TYPES)[number]
 ```
 
----
+A TypeScript `enum` would give a second source of truth that the database never sees. A `CHECK`
+keeps the database honest anyway: a union does not survive a `psql` session.
 
-## 2.6 SQL Views and `@ViewEntity`
+## 2.5 Relations
 
-For complex reporting, dashboards, or aggregations that would require too many joins in code, Views are used. `@volcanicminds/backend/typeorm` treats views as read-only entities, allowing standard filters, pagination, and sorting.
+Declared where they are used — in the query — rather than as eager/lazy metadata on the table.
+A join is a decision about one endpoint's cost, and putting it on the model makes it a decision
+about every endpoint at once. v4's `eager: true` is the reason a list endpoint could quietly
+become six joins.
 
-**Example: `src/entities/planningView.e.ts`**
-This view aggregates data from 8 different tables to provide a performant "flat table" for the planning report.
+Routes that allow joining declare which relations are joinable (`allowedRelations` in
+`QueryOptions`), and a relation a route does not allow answers **400
+`QUERY_RELATION_NOT_ALLOWED`** rather than being silently ignored.
 
-```typescript
-import { ViewEntity, ViewColumn } from 'typeorm'
+## 2.6 Migrations own the shape
 
-@ViewEntity({
-  expression: `
-    SELECT
-      "ac"."id" AS "activityId",
-      "ac"."expectedHours" AS "expectedHours",
-      (SELECT COALESCE(SUM("ts"."logTime"), 0) FROM "timesheet" "ts" WHERE "ts"."activityId" = "ac"."id") AS "doneHours",
-      "prof"."id" AS "professionalId",
-      "prof"."firstName" AS "professionalFirstName",
-      "wo"."code" AS "workOrderCode",
-      "o"."name" AS "orderName",
-      "cl"."name" AS "clientName",
-      "pl"."month_1", "pl"."month_2" -- ... other months
-    FROM "activity" "ac"
-    LEFT JOIN "planning" "pl" ON "ac"."id" = "pl"."activityId"
-    LEFT JOIN "professional" "prof" ON "ac"."professionalId" = "prof"."id"
-    LEFT JOIN "work_order" "wo" ON "ac"."workOrderId" = "wo"."id"
-    LEFT JOIN "order" "o" ON "wo"."orderId" = "o"."id"
-    LEFT JOIN "client" "cl" ON "o"."clientId" = "cl"."id"
-  `
-})
-export class PlanningView {
-  // Mapping view columns -> class properties
-  @ViewColumn()
-  activityId: string
+There is no `synchronize: true` and no `POST /tool/synchronize-schemas`. The schema is committed
+SQL, generated by `drizzle-kit`, applied in order, and recorded **inside each container**:
 
-  @ViewColumn()
-  doneHours: number // Calculated via SQL
-
-  @ViewColumn()
-  clientName: string
-
-  // ... other fields
-}
+```sh
+npm run db:generate          # control, Postgres
+npm run db:generate:tenant   # tenant, Postgres
+npm run db:migrate           # apply — a deploy step, not a boot step
 ```
 
-Usage in Service (`PlanningService`):
+Two sets (`control`, `tenant`) because the two have different lives, and two dialects (`pg`,
+`sqlite`) because the SQL genuinely differs: `timestamp with time zone` against an integer of
+epoch milliseconds, `USING btree` against nothing at all. Translating one into the other at apply
+time would put a statement **nobody has read** in front of a customer's data, which is the whole
+reason migrations are committed SQL. The two dialects of a set carry the **same names**, and
+`npm run check:migration-sets` fails when one gains a migration the other does not.
 
-```typescript
-const { records } = await executeFindView(entity.PlanningView, req.data())
-```
+Forward only: `drizzle-kit` generates no `down`, and a `down` on a destructive migration restores
+the form and not the data — a promise that fails exactly when it is called on. Reversibility lives
+in expand/contract releases.
 
----
+## 2.7 Modeling best practices
 
-## 2.7 Modeling Best Practices
-
-1.  **UUID**: Always use `id: uuid` as primary key. Avoids enumeration attacks and merge conflicts.
-2.  **UTC Dates**: TypeORM and Postgres handle dates. Ensure the application saves in UTC.
-3.  **Relation Naming**:
-    - Single side: `order` (object), `orderId` (generated physical column).
-    - Collection side: `orders` (array).
-4.  **Avoid Circular Imports**:
-    - **Incorrect**: `import { Order } from './order.e.js'` used inside `@ManyToOne(() => Order)`
-    - **Correct**: `@ManyToOne('Order')` (string) + `import type { Order } ...` (type only).
+- One table per thing the business names. Resist the urge to widen a framework table.
+- Soft delete with `deletedAt` where history matters; the query layer hides those rows for you.
+- Put the check constraint in the database, not only in the type.
+- Index what you filter on, and say why in a comment — an index nobody can justify is an index
+  nobody dares remove.
+- Never store a tenant identifier in a tenant's own table. The container **is** the tenancy; a
+  column repeating it is a second source of truth and the first thing to drift.
 
 ---
 
 # Part 3: Magic Queries & Data Access
 
-In a traditional backend architecture, developers spend 30-40% of their time writing "boilerplate code" to parse filters, handle pagination, and sort results.
-
-The Volcanic Stack eliminates this layer. The `@volcanicminds/backend/typeorm` package provides a translation engine that allows the client (Frontend or API Consumer) to define exactly what data it wants, how it wants it sorted and filtered, without writing a single line of SQL or logic in the controller.
+> **Ported from v4.** The grammar changed: reserved parameters carry an underscore, sorting is
+> `_sort=-field`, operator names lost the `s` suffix and gained `i`, ranges use `..`, and `:raw`
+> is gone. The full v4 → v5 correspondence table is `docs/MAGIC_QUERY_V5.md` §9. Nothing degrades
+> silently any more: every shape v4 answered differently is now a **400 with a code**.
 
 ## 3.1 Translation Layer: URL to SQL
 
-The flow of a read request (`find` or `count`) is as follows:
-
-1.  **Input**: Client calls `GET /orders?status:eq=active&amount:gt=100`.
-2.  **Normalization**: The controller uses `req.data()` to unify query string and body.
-3.  **Application**: The Service (via `BaseService` or `executeFindQuery`) applies permissions (RLS).
-4.  **Translation**: The engine analyzes data object keys looking for **suffix operators** (e.g., `:eq`, `:gt`) and manipulates TypeORM's `QueryBuilder`.
-5.  **Execution**: SQL is generated and executed.
-
-### Usage in Code
-
-There are two ways to invoke this engine:
-
-**Mode 1: Direct Usage (for simple endpoints)**
+`HTTP query string` → `parseQuery()` → SQL, built for the dialect the handle speaks.
 
 ```typescript
-import { executeFindQuery } from '@volcanicminds/backend/typeorm'
-import { Order } from '../../../entities/order.e.js'
+// src/api/products/controller/product.ts
+import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
+import { access, executeFind } from '@volcanicminds/backend/db'
+import { tablesFor } from '../../../schema/index.js'
 
-// Controller
-export async function find(req, reply) {
-  // Resolve the repository from the request context (multi-tenant safe).
-  // NEVER use global.repository.orders — it is forbidden at runtime.
-  const orderRepo = req.db.getRepository(Order)
+export async function find(req: FastifyRequest, reply: FastifyReply) {
+  // The container this request works on. No fallback: a route that arrives here without one has
+  // lost its context, and reading "whichever container the pool last touched" is the defect v5
+  // exists to remove.
+  const container = req.tenant ?? req.control
+  if (!container) throw new Error('no container on this request')
 
-  // Translates req.data() into SQL, executes and formats response
-  const { headers, records } = await executeFindQuery(
-    orderRepo,
-    { client: true }, // Relations
-    req.data()
-  )
-  return reply.headers(headers).send(records)
+  const { db, dialect } = access(container)
+  const { product } = tablesFor(container)
+
+  const { headers, records } = await executeFind({ db }, product, req.data(), {
+    dialect,
+    sensitiveFields: ['secret'],       // never returned, and never filterable either
+    extraWhere: onlyMine(req)          // row-level security the URL cannot argue with
+  })
+
+  return reply.headers(headers).send(records)   // v-total, v-count, v-page, v-pageSize, v-pageCount
 }
 ```
 
-**Mode 2: Via `BaseService` (Enterprise Architecture)**
-In `volcanic-sample-backend`, logic is encapsulated in `BaseService.findAll`. This allows injecting security (`applyPermissions`) before magic filters are applied.
+## 3.2 Reserved parameters
+
+Underscore-prefixed, so a column called `page` is a column and not a directive — in v4 it could
+not be both.
+
+| | |
+|---|---|
+| `_page` | 1-based. `_page=0` answers 400 `QUERY_INVALID_PAGE` |
+| `_pageSize` | default 25, clamped to `VOLCANIC_MAX_PAGE_SIZE` (100). The applied value comes back in `v-pageSize` |
+| `_sort` | comma-separated, a leading `-` is descending: `_sort=-createdAt,name`. An unknown field answers 400 |
+| `_fields` | projection: `_fields=id,name` |
+| `_relations` | relations to join, dot notation for depth |
+| `_logic` | boolean expression over aliased conditions |
+| `_withDeleted` | only where the route declares `allowWithDeleted`, otherwise 400 |
+
+Removed: `page`, `pageSize`, `sort`, `skip`, `take`. `skip`/`take` do not come back under another
+name — page and page size describe the same thing, and having both invites two answers to one
+question.
+
+## 3.3 Filter operator reference
+
+`field[:operator][alias]=value`. Omitting the operator means `:eq`.
+
+**The naming rule has no exceptions**: the base form is **case-sensitive**, the suffix `i` makes
+it insensitive, the prefix `n` negates it. In v4 the base form was insensitive or not depending on
+`VOLCANIC_CASE_INSENSITIVE_DEFAULT`, so one URL returned different results on two servers of the
+same product. That switch is removed; case sensitivity is visible in the URL.
+
+| Operator | Meaning |
+|---|---|
+| `:eq` `:neq` `:eqi` `:neqi` | equality, sensitive and insensitive |
+| `:in` `:nin` | set membership, comma-separated. An empty element (`a,,b`) answers 400 |
+| `:gt` `:ge` `:lt` `:le` | comparison, on numbers/dates/timestamps |
+| `:between` `:nbetween` | inclusive range, written **`from..to`** |
+| `:contains` `:starts` `:ends` `:like` (+ `i`/`n` variants) | text matching |
+| `:null` | `:null=true` / `:null=false` |
+| `:empty` | `= ''` / `<> ''`, text columns only |
+| `:arrayContains` `:arrayContainedBy` `:arrayOverlaps` | Postgres arrays |
+| `:jsonHasKey` `:jsonHasAnyKey` `:jsonHasAllKeys` | Postgres JSONB |
+
+**Gone, with no replacement:** `:raw` (it interpolated a caller's SQL fragment; with a tenant
+container in reach that is a way across the boundary — D-12), the `s` suffix family
+(`:eqs`, `:containss`…, where "strict" is now the base form), `:notNull` (use `:null=false`) and
+`:isEmpty`/`:isNotEmpty` (use `:empty=true|false`) — three operators that duplicated two meanings,
+two of which ignored their value entirely.
+
+**Escaping is mandatory and automatic.** For `contains`, `starts` and `ends` the value is user
+data: `%`, `_` and the escape character are escaped before the pattern is built, and the query is
+emitted with `ESCAPE '\'`. In v4 they were not, so `amount:contains=50%` quietly searched for
+anything starting with `50`. For `:like` the wildcards are the caller's intent and stay.
+
+**Coercion follows the column, not the string.** `code:eq=0042` on a text column stays the string
+`0042`; on a date column all digits mean epoch **milliseconds**, because `new Date('1500')` would
+otherwise mean the year 1500 and a client sending a timestamp would get eight centuries of
+nonsense back with no error. A value the column cannot hold answers 400 `QUERY_INVALID_VALUE`.
+
+Field names are the ones the **response** uses — `createdAt`, not `created_at`. A client filters
+on what it reads back.
+
+## 3.4 Boolean logic (`_logic`)
+
+```text
+# active OR expensive
+?status:eq[a]=active&price:ge[b]=100&_logic=a OR b
+
+# (active from Italy) OR (pending from Germany)
+?status:eq[s1]=active&country:eq[c1]=IT&status:eq[s2]=pending&country:eq[c2]=DE&_logic=(s1 AND c1) OR (s2 AND c2)
+```
+
+Grammar: aliases, `AND`/`OR`/`NOT` (case-insensitive), parentheses. Nothing else. Limits, all
+enforced and all answering 400: expression length 512, nesting depth 8, 32 aliases.
+
+When `_logic` is present **every** condition must carry an alias and appear in the expression. The
+framework refuses a half-aliased query rather than guessing which conditions it meant.
+
+**What v4 hid and v5 reports:**
+
+| Situation | v4 | v5 |
+|---|---|---|
+| unparseable expression | fell back to `AND` of everything, silently returning a different result set | 400 `QUERY_LOGIC_INVALID` |
+| depth or length exceeded | recursion error caught, same silent fallback | 400 `QUERY_LOGIC_TOO_COMPLEX` |
+| alias used and never defined | condition ignored | 400 `QUERY_LOGIC_UNKNOWN_ALIAS` |
+| condition defined and never used | condition silently dropped | 400 `QUERY_LOGIC_UNUSED_ALIAS` |
+| `_logic` present, some conditions unaliased | ambiguous | 400 `QUERY_LOGIC_MISSING_ALIAS` |
+| the same field twice with no alias | kept the last one | 400 `QUERY_DUPLICATE_CONDITION` |
+
+## 3.5 Pagination and sorting
+
+`_page` is 1-based, `_pageSize` is clamped, and the applied values come back in headers:
+`v-total`, `v-count`, `v-page`, `v-pageSize`, `v-pageCount`. A client paginates from the headers,
+never from a count it computed.
+
+`_sort=-createdAt,name` — descending on the first, ascending on the second. An unknown field
+answers 400 rather than being skipped, because a skipped sort field returns the right rows in the
+wrong order, which looks like data and is not.
+
+## 3.6 Global search
+
+There is no `q` parameter. A console or client that wants "search everywhere" builds the OR
+itself, over the fields the manifest declares searchable, and combines it with any other filters
+through `_logic`:
+
+```text
+?name:containsi[c0]=mario&email:containsi[c1]=mario&status:in[c2]=a,b&_logic=(c0 OR c1) AND c2
+```
+
+`@volcanicminds/admin` does exactly this (`src/engine/magic-query.ts`). A `q` handled server-side
+would need the server to know which of a consumer's fields are searchable, which is what the
+manifest is for.
+
+## 3.7 Security hardening
+
+- **Sensitive fields are never returned and — new in v5 — never filterable.** `password`,
+  `mfaSecret`, `resetPasswordToken`, `confirmationToken` by default; extend with
+  `sensitiveFields` in `QueryOptions`. Filtering a hash is an oracle: it answers questions about a
+  value nobody is allowed to read. v4 allowed it.
+- **`extraWhere` is AND-ed last**, after everything the URL asked for and `_logic` included, so no
+  expression a client can write reaches around a row-level-security rule.
+- **Operators an engine cannot honour answer 400** `QUERY_OPERATOR_NOT_SUPPORTED_BY_ENGINE`,
+  naming the operator and the engine — never silently ignored, never emulated with a slower
+  approximation that returns different rows.
+- **`:raw` is removed**, and so is the environment flag that gated it.
+
+## 3.8 Data layer API reference
+
+| | |
+|---|---|
+| `start(options?)` | opens the data layer; returns the managers, `provider`, `migrations`, `migrateTenants`, `shutdown`. Reads `global.config.options` when called with nothing |
+| `access(handle)` | the inside of a handle: `db`, `dialect`, `tenantId`, `locator`, `execute`, `transaction` |
+| `executeFind(handle, table, params, options)` | find and count in one call: `{ records, headers }` |
+| `executeCount(handle, table, params, options)` | how many rows match, ignoring the page |
+| `parseQuery(table, params, options)` | the translation alone, for a query you assemble yourself |
+| `uuidv7()` | a time-ordered identifier, minted in process |
+| `encrypt` / `decrypt` | AES-256-GCM, per-record derivation. **Async** in v5: the v4 pair blocked the event loop for 82 ms per call, on the MFA login path (D-14) |
+| `migrationSets()`, `migrationDialect(engine)` | where migrations are read from, per set and dialect |
+
+`QueryOptions`: `dialect`, `sensitiveFields`, `maxPageSize`, `defaultPageSize`,
+`allowWithDeleted`, `allowedRelations`, `logicLimits`, `extraWhere`.
+
+Replaced from v4: `executeFindQuery` → `executeFind`, `executeCountQuery` → `executeCount`,
+`applyQuery` → `parseQuery`. `useWhere` and `useOrder` have no successor — `parseQuery` returns
+`where` and `orderBy` separately.
+
+## 3.9 Standalone usage
+
+`parseQuery` takes a table and a plain object, so it runs outside the HTTP core:
 
 ```typescript
-// Service
-const { headers, records } = await orderService.use(req.db).findAll(req.userContext, req.data())
+import { parseQuery } from '@volcanicminds/backend/db'
+const { where, orderBy, limit, offset } = parseQuery(product, req.query, { dialect: 'postgres' })
 ```
 
----
+## 3.10 Multi-tenancy in one paragraph
 
-## 3.2 Filter Operator Reference
+There is nothing to switch. `switchContext` and `runInTenantContext` do not exist, because
+choosing a container is not a session change: application code is handed `req.tenant ?? req.control`,
+and a background job **declares its plane** and receives the matching handle (Part 7.3). What made
+the v4 helpers necessary — a global connection whose `search_path` had to be moved and moved back
+— is the defect that was designed out.
 
-This table is the "Rosetta Stone" for the frontend developer. Every key in the JSON payload or Query String can have a suffix determining the SQL operator.
+## 3.11 Utility: password hash generation
 
-**Syntax:** `field:operator=value`
-
-> **CASE SENSITIVITY (v3): base text operators are CASE-INSENSITIVE BY DEFAULT.** Convention: **base = insensitive**,
-> suffix **`s` = strict/case-sensitive**, suffix **`i` = insensitive (explicit alias)**. So `:eq` ≡ `:eqi`
-> (insensitive) and `:eqs` is strict; same for `contains`/`starts`/`ends`/`like` and their `n*` negations.
-> `:eq`/`:neq` stay **type-aware**: numeric/boolean/null values use exact matching (no `ILIKE` on non-text columns);
-> only genuine strings become case-insensitive. Toggle globally via the data-layer option
-> `caseInsensitiveByDefault: false` or env `VOLCANIC_CASE_INSENSITIVE_DEFAULT=false` (restores legacy
-> base=case-sensitive). Perf note: insensitive matching cannot use a plain B-tree index → use `*s` for indexed
-> exact lookups.
-
-### Equality and Basic Logic Operators
-
-| Operator   | Type    | SQL                       | Description                                                            |
-| :--------- | :------ | :------------------------ | :-------------------------------------------------------------------- |
-| **(none)** | Any     | `= / ILIKE`               | Implicit equality (= `:eq`). Insensitive on strings, exact otherwise. |
-| `:eq`      | Any     | `= / ILIKE`               | Equality. Insensitive on strings by default; exact for number/bool/null. |
-| `:eqs`     | Any     | `=`                       | **Strict** equality, case-sensitive. `code:eqs=AbC`                    |
-| `:eqi`     | String  | `ILIKE`                   | Case-insensitive equality (explicit alias). `country:eqi=it`          |
-| `:neq` · `:neqs` · `:neqi` | Any | `!= / NOT ILIKE` | Not-equal (same insensitive/strict/insensitive scheme).           |
-| `:isEmpty` | String  | `= ''`                    | Equals the empty string. `note:isEmpty=1`                             |
-| `:isNotEmpty` | String | `!= ''`                | Not the empty string. `note:isNotEmpty=1`                            |
-| `:null`    | Boolean | `IS NULL` / `IS NOT NULL` | `deleted:null=true` (is null) / `deleted:null=false` (not null)       |
-| `:notNull` | Boolean | `IS NOT NULL`             | `code:notNull=true` (readability alias)                               |
-
-### Numeric and Date Operators
-
-| Operator   | Type        | SQL       | Description                                                                     |
-| :--------- | :---------- | :-------- | :------------------------------------------------------------------------------ |
-| `:gt`      | Number/Date | `>`       | Greater Than. `price:gt=100`                                                    |
-| `:ge`      | Number/Date | `>=`      | Greater or Equal. `created:ge=2024-01-01`                                       |
-| `:lt`      | Number/Date | `<`       | Less Than. `qty:lt=10`                                                          |
-| `:le`      | Number/Date | `<=`      | Less or Equal. `qty:le=10`                                                      |
-| `:between` | String      | `BETWEEN` | Inclusive Range. Syntax `min:max`. <br>Ex: `date:between=2024-01-01:2024-01-31` |
-| `:nbetween`| String      | `NOT BETWEEN` | Outside an inclusive range. <br>Ex: `price:nbetween=10:20`                  |
-
-### String Operators (Pattern Matching)
-
-> **Scheme:** base = **case-insensitive** (default); suffix `s` = case-**s**ensitive (`LIKE`); suffix `i` =
-> case-**i**nsensitive (`ILIKE`, explicit alias). Each has an `n…` negation. e.g. `:contains` (insensitive),
-> `:containss` (sensitive), `:containsi` (insensitive), and `:ncontains`/`:ncontainss`/`:ncontainsi`.
-
-| Operator (base · `s` · `i`)                         | SQL              | Description                                                           |
-| :-------------------------------------------------- | :--------------- | :------------------------------------------------------------------- |
-| `:like` · `:likes` · `:likei`                       | `ILIKE`/`LIKE`   | Manual pattern. Requires wildcards `%`. <br>Ex: `code:like=a-%`      |
-| `:contains` · `:containss` · `:containsi`           | `ILIKE`/`LIKE`   | Contains. Adds `%` on both sides. <br>Ex: `name:contains=rossi`      |
-| `:starts` · `:startss` · `:startsi`                 | `ILIKE`/`LIKE`   | Starts with. Adds trailing `%`. <br>Ex: `sku:starts=abc` → `abc%`    |
-| `:ends` · `:endss` · `:endsi`                       | `ILIKE`/`LIKE`   | Ends with. Adds leading `%`. <br>Ex: `file:ends=.pdf` → `%.pdf`      |
-| Negations: `:ncontains*`, `:nstarts*`, `:nends*`, `:nlike*` | `NOT (I)LIKE` | Same scheme, negated. <br>Ex: `tag:ncontains=deprecated`         |
-
-### List / Array Operators
-
-| Operator            | SQL            | Description                                                                                         |
-| :------------------ | :------------- | :------------------------------------------------------------------------------------------------- |
-| `:in`               | `IN (...)`     | Included in list. <br>URL: `status:in=open,pending` (CSV)<br>Body: `status:in: ["open", "pending"]` |
-| `:nin`              | `NOT IN (...)` | Excluded from list. `role:nin=admin,root`                                                           |
-| `:overlap`          | `&& ARRAY[…]`  | Array overlap — at least one common element. Postgres array column. On MongoDB degrades to `$in`.   |
-| `:arrayContains`    | `@> ARRAY[…]`  | Array contains ALL given elements. `tags:arrayContains=fruit,red`                                   |
-| `:arrayContainedBy` | `<@ ARRAY[…]`  | Array is contained by the given set. `tags:arrayContainedBy=a,b,c`                                  |
-
-### JSONB Operators (Postgres)
-
-| Operator           | SQL  | Description                                                              |
-| :----------------- | :--- | :---------------------------------------------------------------------- |
-| `:jsonHasKey`      | `?`  | JSONB column has the given top-level key. `meta:jsonHasKey=color`       |
-| `:jsonHasAnyKey`   | `?\|`| JSONB has ANY of the keys (CSV). `meta:jsonHasAnyKey=color,size`        |
-| `:jsonHasAllKeys`  | `?&` | JSONB has ALL of the keys (CSV). `meta:jsonHasAllKeys=color,size`       |
-
-> Notes: **Operator names are case-insensitive** — `:isEmpty`, `:isempty`, `:ISEMPTY` are equivalent (any
-> operator). `:between`/`:nbetween` work on numbers AND dates (value `min:max`; date values must not contain `:`,
-> i.e. use `YYYY-MM-DD`). `:in`/`:nin` remain exact set membership. Array/JSONB operators target real Postgres
-> `text[]`/`jsonb` columns (not `simple-array`); each Raw-based operator binds one param name → one occurrence per
-> query.
-
-### Raw / Dangerous Operator (off by default)
-
-| Operator | SQL              | Description                                                                                                                                                            |
-| :------- | :--------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:raw`   | _(raw fragment)_ | Injects a raw SQL fragment after the column alias (e.g. `age:raw=> 18`). **⚠️ SQL injection risk.** Disabled unless `VOLCANIC_CUSTOM_QUERY_OPERATORS=true`; logs a `SECURITY RISK!` warning when active. Never expose to untrusted clients. |
-
-### Database Compatibility (Postgres vs MongoDB)
-
-The translation engine is **hybrid**: the same endpoint works against PostgreSQL and MongoDB for the common
-operators. Insensitive operators (the base text operators and the `i` variants) compile to `ILIKE` on Postgres and
-to case-insensitive `RegExp` on MongoDB. The strict `s` variants (`:eqs`, `:containss`, `:startss`, `:endss`,
-`:likes`, …) map to `LIKE`/exact on Postgres and to case-sensitive `RegExp` on MongoDB. Array operators
-(`:overlap`/`:arrayContains`/`:arrayContainedBy`) map to Postgres array operators and degrade to `$in` on MongoDB.
-Since base text operators are insensitive by default, plain APIs are portable out of the box; use `*s` only when
-you explicitly need case-sensitive/indexed matching.
-
----
-
-## 3.3 Deep Filtering (Relational Filters)
-
-TypeORM allows filtering based on joined table columns. The framework exposes this capability via **Dot Notation**.
-
-**Requirement:** The relation must be loaded in the Service via `addRelations` (or `executeFindQuery`).
-
-### Examples
-
-1.  **Filter Orders by Client name:**
-    - Query: `GET /orders?client.name:containsi=Acme`
-    - Prerequisite in Service: `qb.leftJoinAndSelect('order.client', 'client')` (alias 'client' must match the first part of filter).
-    - Generated SQL: `... AND client.name ILIKE '%Acme%'`
-
-2.  **Filter Activities by Professional's Company:**
-    - Query: `GET /activities?professional.company:eq=volcanicminds`
-    - Structure: `Activity` -> `Professional` -> `company`.
-
-3.  **Relational Sorting:**
-    - Query: `GET /orders?sort=client.name:asc` (Sort orders alphabetically by client).
-
-> **Warning:** If you attempt to filter on a non-loaded (not joined) relation, the SQL query will fail with a "missing FROM-clause entry for table" error.
-
----
-
-## 3.4 Advanced Boolean Logic (`_logic`)
-
-By default, all parameters in query string are combined with **AND**.
-`?status=active&type=vip` → `WHERE status='active' AND type='vip'`.
-
-For complex scenarios (OR, nested groups), use the special `_logic` parameter combined with **Filter Aliases**.
-
-### Syntax
-
-1.  **Define Filters with Alias:** Add `[alias]` at the end of the filter key.
-    - Syntax: `key:operator[alias]=value`
-2.  **Logic Composition:** Define the boolean string in `_logic` using aliases.
-
-### Real Example: "Alerts" Dashboard
-
-We want to find Orders that are:
-
-1.  **Urgent** (priority > 8)
-2.  **OR** (**Late** AND **Not Closed**)
-
-**Request Construction:**
-
-- Urgent Condition: `priority:gt[urgent]=8`
-- Late Condition: `dueDate:lt[late]=2025-01-01` (past date)
-- Not Closed Condition: `status:neq[open]=closed`
-
-**Final URL:**
-
-```
-GET /orders?priority:gt[urgent]=8&dueDate:lt[late]=2025-01-01&status:neq[open]=closed&_logic=urgent OR (late AND open)
-```
-
-**Resulting SQL:**
-
-```sql
-WHERE (priority > 8) OR (due_date < '2025-01-01' AND status != 'closed')
-```
-
----
-
-## 3.5 Pagination and Sorting
-
-Pagination standards are rigid to ensure compatibility with frontend tables (e.g., React Table, AG Grid).
-
-### Input Parameters
-
-- **`page`** (number, default: 1): Requested page (1-based).
-- **`pageSize`** (number, default: 25): Rows per page.
-- **`sort`** (string | array):
-  - `field` (ascending)
-  - `field:asc`
-  - `field:desc`
-  - Multiple: `?sort=priority:desc&sort=createdAt:asc`
-
-### Response Headers
-
-The JSON payload contains only the record array (`data`). Pagination metadata is in **HTTP Headers** to keep the payload clean.
-
-- `v-page`: Current page.
-- `v-pageSize`: Applied page size.
-- `v-count`: Number of records returned in this request.
-- **`v-total`**: TOTAL number of records in DB matching filters (without pagination).
-- `v-pageCount`: Total number of pages.
-
----
-
-## 3.6 Customizing QueryBuilder (Global Search)
-
-Sometimes standard operators are not enough. The `applyCustomFilters` method in `BaseService` allows intercepting special parameters.
-
-**Example: "Global Search" Implementation (`q`)**
-
-If we want a single search field searching across Code, Name, and Client Name.
-
-```typescript
-// src/services/order.service.ts
-
-protected applyCustomFilters(qb: SelectQueryBuilder<Order>, params: any, alias: string): any {
-
-  // If parameter 'q' exists, build a complex OR condition
-  if (params.q) {
-    const term = `%${params.q}%`;
-
-    qb.andWhere(new Brackets(sqb => {
-      sqb.where(`${alias}.code ILIKE :term`, { term })
-         .orWhere(`${alias}.name ILIKE :term`, { term })
-         // Note: requires 'client' relation to be already joined in addRelations
-         .orWhere(`client.name ILIKE :term`, { term });
-    }));
-
-    // Remove 'q' from params to prevent standard parser from looking for column 'q'
-    delete params.q;
-  }
-
-  return params;
-}
-```
-
----
-
-## 3.7 Security Hardening (Data Layer)
-
-The Magic Query engine is **secure by default**. These protections live in `lib/database/typeorm/query.ts` and
-apply to every filter that flows through `applyQuery` / `useWhere` (and therefore through `executeFindQuery`,
-`executeCountQuery`, and the `BaseService`).
-
-### 1. Sensitive Field Blocking
-
-Filters targeting sensitive columns are **silently dropped** (the condition is skipped, not an error) so an
-attacker cannot probe secrets through the query string (e.g. `?password:containsi=a`).
-
-- **Default blacklist:** `['password', 'mfaSecret', 'resetPasswordToken', 'confirmationToken']`.
-- The match is by **substring on the full field path**, so nested relation fields (e.g. `user.password`) are
-  covered too.
-- **Customizable** at startup or runtime:
-
-```typescript
-import { start, configureSensitiveFields } from '@volcanicminds/backend/typeorm'
-
-// At startup — overrides the default blacklist entirely
-await start({ type: 'postgres', sensitiveFields: ['password', 'secretKey', 'ssn'] })
-
-// Or at runtime
-configureSensitiveFields(['password', 'mfaSecret', 'apiKey', 'ssn'])
-```
-
-### 2. Prototype Pollution Protection
-
-Every incoming key — the raw key, each dotted path segment, and the final field name — is validated by
-`hasProtoRisk`. Keys equal to `__proto__`, `constructor`, or `prototype` are rejected, blocking attempts to
-poison the generated query object or the Object prototype.
-
-### 3. ReDoS Protection
-
-User input compiled into `RegExp` (the MongoDB code path for the case-insensitive operators) is passed through
-`escapeRegExp` first, neutralizing crafted patterns designed to cause catastrophic backtracking.
-
-### 4. SQL Injection Control
-
-Filtering is built exclusively from a fixed **allowlist of operators** (`reservedOperators`) mapped to
-parameterized TypeORM helpers (`Equal`, `In`, `ILike`, `Between`, …) — never string concatenation. The only
-escape hatch is `:raw`, which is **disabled unless `VOLCANIC_CUSTOM_QUERY_OPERATORS=true`** and emits a runtime
-`SECURITY RISK!` warning when enabled. Treat `:raw` as trusted-callers-only.
-
----
-
-## 3.8 Data Layer Configuration (Init Options & Environment Variables)
-
-The data layer is configured through options passed to `start()` and through environment variables. Full table
-in `docs/configuration.md`; summarized here.
-
-### Initialization Options (`start(options)`)
-
-| Option            | Type       | Default                                                              | Description                                            |
-| :---------------- | :--------- | :------------------------------------------------------------------ | :----------------------------------------------------- |
-| `sensitiveFields` | `string[]` | `['password', 'mfaSecret', 'resetPasswordToken', 'confirmationToken']` | Fields blocked from filtering (see 3.7).            |
-| `caseInsensitiveByDefault` | `boolean` | `true`                                                     | Base text operators (`eq`/`contains`/`starts`/`ends`/`like` + negations) are case-insensitive on strings. Set `false` for legacy case-sensitive base operators (the `s`/`i` variants are always available). |
-| `cacheTimeout`    | `number`   | `30000`                                                             | Global query cache timeout (ms).                       |
-| `logging`         | `boolean`  | `true`                                                             | Enables global TypeORM logging.                        |
-| _…TypeORM options_ |            |                                                                     | All standard TypeORM `DataSourceOptions` are accepted (`type`, `host`, `port`, `entities`, `synchronize`, …). |
-
-### Environment Variables
-
-| Variable                           | Type      | Default     | Description                                                                                  |
-| :--------------------------------- | :-------- | :---------- | :------------------------------------------------------------------------------------------- |
-| `DB_HOST`                          | `string`  | `127.0.0.1` | Postgres host.                                                                               |
-| `DB_PORT`                          | `number`  | `5432`      | Postgres port.                                                                               |
-| `DB_USERNAME`                      | `string`  | `vminds`    | DB user.                                                                                     |
-| `DB_PASSWORD`                      | `string`  | `vminds`    | DB password.                                                                                 |
-| `DB_NAME`                          | `string`  | `vminds`    | DB name.                                                                                     |
-| `LOG_DB_LEVEL`                     | `string`  | `warn`      | Data-layer log level: `trace`, `debug`, `info`, `warn`, `error` (maps to TypeORM levels).   |
-| `LOG_COLORIZE`                     | `boolean` | `true`      | Colorize console output.                                                                     |
-| `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` | `boolean` | `false`     | Auto-synchronize schema at startup. **Ignored when multi-tenant mode is enabled.**          |
-| `VOLCANIC_CUSTOM_QUERY_OPERATORS`  | `boolean` | `false`     | Enables the `:raw` operator. ⚠️ SQL injection risk — see 3.7.                                |
-| `VOLCANIC_CASE_INSENSITIVE_DEFAULT` | `boolean` | `true`     | Default case sensitivity of base text operators (overridden by the `caseInsensitiveByDefault` init option). |
-
-> See Part 1.4/1.5 for the production-grade connection pool, SSL, and timeout variables (`DB_SSL`,
-> `DB_MAX_CONNECTING`, `DB_STATEMENT_TIMEOUT`, …).
-
----
-
-## 3.9 Data Layer API Reference
-
-Everything below is exported from `@volcanicminds/backend/typeorm`.
-
-| Export                                                          | Purpose                                                                                                          |
-| :------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------- |
-| `start(options)`                                               | Initializes the TypeORM `DataSource`, autoloads entities, wires managers, sets globals. Returns the `DataSource`. |
-| `configureSensitiveFields(fields: string[])`                  | Replaces the sensitive-fields blacklist at runtime (see 3.7).                                                   |
-| `applyQuery(data, extraWhere, repo)`                          | **Core translator.** Turns raw query params into a TypeORM query object (`where`, `order`, `take`, `skip`).      |
-| `useWhere(where, repo?)`                                       | Translates only the **filter** portion into a TypeORM `where`.                                                  |
-| `useOrder(order: string[])`                                   | Translates only the **sort** portion (`field:asc`/`field:desc`) into a TypeORM `order`.                          |
-| `executeFindQuery(repo, relations?, data?, extraWhere?, extraOptions?)` | High-level find: runs `findAndCount`, returns `{ records, headers }` with the `v-*` pagination headers.   |
-| `executeCountQuery(repo, data?, extraWhere?)`                 | Count-only variant (respects filters, no pagination).                                                            |
-| `executeFindView(viewEntity, data?, extraWhere?, extraOptions?, runner?)` | Same as `executeFindQuery` but for `@ViewEntity` (read-only SQL views); optional `QueryRunner` for tenant context. |
-| `executeCountView(viewEntity, data?, extraWhere?, runner?)`  | Count-only variant for views.                                                                                   |
-| `DataSource`                                                  | Re-export of TypeORM's `DataSource`.                                                                            |
-| `User`, `Tenant`, `Token`, `Change`                          | Framework base entities.                                                                                        |
-| `userManager`, `tokenManager`, `dataBaseManager`, `TenantManager` | Managers injected into the core via `start(decorators)`.                                                  |
-| `Database`                                                    | Type of the database manager interface.                                                                         |
-
-**Headers returned by `executeFindQuery` / `executeFindView`:** `v-count`, `v-total`, `v-page`, `v-pageSize`,
-`v-pageCount` (see 3.5).
-
----
-
-## 3.10 Standalone Usage (without the HTTP core)
-
-The Magic Query translator does not require the Fastify core — `applyQuery` works against any TypeORM repository,
-so you can use it with Express, raw TypeORM, background jobs, etc.
-
-```typescript
-import { applyQuery } from '@volcanicminds/backend/typeorm'
-import { myUserRepository } from './repositories.js' // any TypeORM repository
-
-app.get('/users', async (req, reply) => {
-  // Translate the HTTP query into a TypeORM query object…
-  const typeOrmQuery = applyQuery(req.query, {}, myUserRepository)
-  // …then run it however you like
-  const [records, total] = await myUserRepository.findAndCount(typeOrmQuery)
-  reply.send({ data: records, total })
-})
-```
-
-For the full find-and-paginate behavior (including the `v-*` headers) use `executeFindQuery` instead, passing any
-repository you resolved yourself.
-
----
-
-## 3.11 Multi-Tenancy: Unified Context Pattern
-
-Postgres multi-tenancy is implemented via **schema isolation** (`SET search_path`). The `TenantManager`
-(`lib/database/typeorm/loader/tenantManager.ts`) enforces a strict, leak-proof context pattern.
-
-### Critical Security Rules
-
-1. **Global context switching is forbidden.** `switchContext(tenant)` **without** an `EntityManager` throws a
-   FATAL error — modifying the global `search_path` would poison the shared connection pool and leak data across
-   tenants. You must always pass the transactional `EntityManager` from a dedicated `QueryRunner`.
-
-   ```typescript
-   // ❌ FORBIDDEN — throws "CRITICAL: Attempted UNSAFE global context switch"
-   await tenantManager.switchContext(tenant)
-
-   // ✅ CORRECT — bound to a single QueryRunner
-   const qr = dataSource.createQueryRunner()
-   await qr.connect()
-   await tenantManager.switchContext(tenant, qr.manager)
-   ```
-
-2. **Tenant resolution is strict.** `resolveTenant(req)` requires the tenant header (default `x-tenant-id`,
-   configurable via `multi_tenant.header_key`). If the JWT carries a tenant binding (`req.user.tid`) and it does
-   **not** match the header, the request is **rejected** (tenant-isolation / IDOR protection) — not merely logged.
-   Only `active` tenants resolve. A privileged System-Admin impersonation flow, if ever needed, must be gated here
-   behind an explicit verified role — never by relaxing this default.
-
-3. **Background jobs / system tasks** must use the helper, which creates, switches, and releases a `QueryRunner`
-   safely (and always resets `search_path` to `public` on exit):
-
-   ```typescript
-   await tenantManager.runInTenantContext('tenant-slug', async (em) => {
-     // `em` is an isolated EntityManager already bound to the tenant schema
-     return em.getRepository(Order).find()
-   })
-   ```
-
-### Tenant Lifecycle
-
-- `createTenant(data)` — creates the tenant row, then (Postgres) `CREATE SCHEMA`, synchronizes the tables into
-  that schema via an ephemeral `DataSource`, and optionally seeds an admin user (`adminEmail`/`adminPassword`) —
-  all inside one transaction using `SET LOCAL search_path`. `dbSchema` is sanitized (`[^a-z0-9_]` stripped).
-- `getTenant` / `listTenants` / `updateTenant` (cannot change `dbSchema`) / `deleteTenant` (soft delete) /
-  `restoreTenant`.
-
-> Multi-tenancy is enabled via `src/config/general.ts` (`options.multi_tenant`) — see Part 1.7. When enabled,
-> `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` is ignored (each tenant schema is synchronized at `createTenant` time).
-
----
-
-## 3.12 Utility: Password Hash Generation
-
-The data layer hashes passwords with **bcrypt** (`saltRounds = 12`). For seeding, fixtures, or manual DB edits
-you can generate a compatible hash from the CLI — the repo ships a small helper equivalent to:
-
-```javascript
-// generate-hash.js
-import * as bcrypt from 'bcrypt'
-const password = process.argv[2]
-const hash = await bcrypt.hash(password, 12)
-console.log(`Password ${password}`)
-console.log(`Hash ${hash}`)
-```
-
-```bash
+```sh
 node generate-hash.js 'MyS3cretP@ss'
-# Password MyS3cretP@ss
-# Hash $2b$12$....
+# $2b$12$....
 ```
 
-Use the resulting hash anywhere a pre-hashed password is expected (seed scripts, manual inserts). Never store
-plaintext passwords.
+The work factor is `BCRYPT_COST` (default 12, never lower), and `npm run tune` measures the right
+one for the machine that will run it. See `docs/TUNING.md`.
 
----
+## 3.12 Local database setup (Docker)
 
-## 3.13 Local Database Setup (Docker & pgAdmin)
+```sh
+docker run -d --name vm-pg \
+  -e POSTGRES_USER=volcanic -e POSTGRES_PASSWORD=volcanic -e POSTGRES_DB=volcanic \
+  -p 5432:5432 postgres:16-alpine
 
-For local development/testing against real Postgres (the test suites run in-memory with `NODE_ENV=memory` and do
-**not** need this). Defaults match the data layer's `DB_*` defaults (`vminds`/`vminds`).
-
-```bash
-docker pull postgres:latest
-
-# Without a data mount (ephemeral)
-docker run -itd -e POSTGRES_USER=vminds -e POSTGRES_PASSWORD=vminds \
-  -p 5432:5432 --name postgresql postgres
-
-# With a persistent data mount
-docker run -itd -e POSTGRES_USER=vminds -e POSTGRES_PASSWORD=vminds \
-  -p 5432:5432 -v ${PWD}/data:/var/lib/postgresql/data --name postgresql postgres
+npm run db:migrate
 ```
 
-Optional pgAdmin UI:
-
-```bash
-docker pull dpage/pgadmin4:latest
-docker run --name pgadmin-vminds -p 5051:80 \
-  -e "PGADMIN_DEFAULT_EMAIL=developers@volcanicminds.com" \
-  -e "PGADMIN_DEFAULT_PASSWORD=vminds" -d dpage/pgadmin4
-
-# Find the Postgres container IP to connect from pgAdmin:
-docker ps -aqf "name=postgres"
-docker inspect <container_id> | grep IPAddress
-# Or list all container IPs at once:
-docker ps -q | xargs -n 1 docker inspect --format '{{ .NetworkSettings.IPAddress }} {{ .Name }}'
-```
+PGlite is **not** an option here: it exposes a single connection, so it cannot isolate anything
+under concurrency, which is the class of defect the v5 data layer exists to remove. It survives
+only as a test double.
 
 ---
 
@@ -1733,39 +1297,47 @@ To access URL parameters (e.g., `/orders/:id`), use the helper:
 const { id } = req.parameters()
 ```
 
-### 3. Accessing Context (`req.userContext`)
+### 3. The container, and the caller
 
-Thanks to the global `preHandler` hook, every authenticated request possesses a typed user context. This object is fundamental for **Row Level Security** in Services.
+Two things every data-touching controller resolves, and neither is ambient.
 
 ```typescript
-// Defined in types/index.d.ts
-const ctx = req.userContext
-// { userId: '...', role: 'manager', company: 'volcanicminds', ... }
+// src/utils/context.ts — yours, not the framework's
+import type { DataHandle, FastifyRequest } from '@volcanicminds/backend'
+
+/** The container this request works on. There is no third answer, and no fallback. */
+export function container(req: FastifyRequest): DataHandle {
+  const handle = (req.tenant ?? req.control) as DataHandle | undefined
+  if (!handle) throw new Error(`No container on ${req.method} ${req.url}`)
+  return handle
+}
+
+/** What the application knows about the caller. Derived from the TOKEN, never from a header. */
+export function userContext(req: FastifyRequest) {
+  return {
+    userId: req.user?.id ?? null,
+    roles: req.roles?.() ?? [],
+    container: req.tenantInfo?.id ? `tenant:${req.tenantInfo.id}` : 'control'
+  }
+}
 ```
 
-### 4. Relations Normalization (Id-to-Object Pattern)
+`req.userContext` was a v4 convention populated by a consumer `preHandler`; keep it if you like
+the name, but derive it from `req.user` and `req.roles()` rather than from anything the caller
+sends. The identity comes from the token, and so does the tenant.
 
-When creating or updating an entity with relations (e.g., assigning an `Order` to a `Client`), frontend sends ID as string. TypeORM prefers a partial object to handle Foreign Key without extra queries.
+### 4. Writing relations
 
-**Controller Best Practice:**
+A foreign key is a column, and a controller assigns it directly — `data.clientId = '…'`. There is
+no id-to-object dance: that existed because TypeORM's active-record wanted a partial entity to
+avoid an extra query. Drizzle takes the value.
 
 ```typescript
-// Example from src/api/orders/controller/order.ts
 export async function update(req: FastifyRequest, reply: FastifyReply) {
   const { id } = req.parameters()
-  const data = req.data()
-
-  // Transformation: "client": "uuid-123" -> "client": { id: "uuid-123" }
-  if (data.client && typeof data.client === 'string') {
-    data.client = { id: data.client }
-  }
-
-  if (data.type && typeof data.type === 'string') {
-    data.type = { code: data.type } // If PK is a code
-  }
-
-  // Passing to Service
-  return await orderService.use(req.db).update(req.userContext, id, data)
+  // Only the body: an update steered by the query string is an update whose values can be put
+  // in a link. `req.data()` merges the two since v5, so the distinction is now expressible.
+  return orderService.on(container(req)).update(userContext(req), id, req.bodyData())
 }
 ```
 
@@ -1790,13 +1362,12 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(new Error('Missing order code'))
   }
 
-  // 3. Normalization
-  if (payload.client && typeof payload.client === 'string') payload.client = { id: payload.client }
-  if (payload.category && typeof payload.category === 'string') payload.category = { code: payload.category }
+  // 3. Foreign keys are columns: assign the value, there is no entity to hydrate.
 
   try {
-    // 4. Delegate to Service (Business Logic & Security)
-    const result = await orderService.use(req.db).create(req.userContext, payload)
+    // 4. Delegate to Service, BOUND to this request's container. A service used without one
+    //    throws: there is no global connection to fall back on (defects D-01, D-06).
+    const result = await orderService.on(container(req)).create(userContext(req), payload)
 
     // 5. Response
     // If result is null or errors occur, service will have thrown exception
@@ -1927,352 +1498,352 @@ In this stack, Services must respect three fundamental rules:
 
 ## 5.1 The `BaseService` Pattern
 
-To avoid rewriting search, pagination, and filtering logic endlessly, all CRUD services extend an abstract `BaseService` class. This class acts as a smart wrapper around TypeORM's `Repository`.
+All CRUD services extend an abstract `BaseService`, so search, pagination and filtering are
+written once. What changed in v5 is what a service is bound to: **a container**, not an
+`EntityManager` — and where v4 let a service work without one by falling back to
+`global.connection`, here there is nothing to fall back to.
 
-### Abstract Class Implementation (`src/services/base.service.ts`)
+### Reference implementation (`src/services/base.service.ts`)
 
-Here is the reference structure implemented in `volcanic-sample-backend`. Note how it integrates "Magic Queries" seen in Part 3.
+Taken from `volcanic-backend-sample`, where it runs against a real Postgres.
 
 ```typescript
-import { ObjectLiteral, Repository, SelectQueryBuilder, Brackets, EntityManager, ObjectType } from 'typeorm'
-import { UserContext } from '../../types/index.js'
+import { and, eq, inArray, isNull, type SQL, type Table } from 'drizzle-orm'
+import type { DataHandle } from '@volcanicminds/backend'
+import { access, executeCount, executeFind, type QueryOptions } from '@volcanicminds/backend/db'
+import { tablesFor, type AppTables } from '../schema/index.js'
+import type { UserContext } from '../../types/index.js'
 
-export abstract class BaseService<T extends ObjectLiteral> {
-  protected manager?: EntityManager
-  protected cacheTTL: number = 0 // Default: no cache
+export abstract class BaseService<K extends keyof AppTables> {
+  protected handle?: DataHandle
 
-  // CANONICAL v2: pass the ENTITY TYPE, never a global repository.
-  constructor(protected readonly entityType: ObjectType<T>) {}
+  /** Never returned, and — new in v5 — never filterable either: filtering a hash is an oracle. */
+  protected sensitiveFields: string[] = []
 
-  // Bind the service to the request-scoped manager (req.db). Returns a scoped clone.
-  // Controllers MUST call: service.use(req.db).findAll(...)
-  use(manager: EntityManager): this {
+  constructor(protected readonly tableName: K) {}
+
+  /** Bind to the container this request works on. Returns a scoped clone. */
+  on(handle?: DataHandle): this {
     const scoped = Object.create(this) as this
-    scoped.manager = manager
+    scoped.handle = handle
     return scoped
   }
 
-  // Repository ALWAYS resolved from req.db (multi-tenant safe). global.repository.X is forbidden.
-  protected get repository(): Repository<T> {
-    if (!this.manager) throw new Error('Service used without context: call service.use(req.db) first')
-    return this.manager.getRepository(this.entityType)
-  }
-
-  /**
-   * SECURITY HOOK (Abstract)
-   * Mandatory method. Defines "Who can see what" rules.
-   * Automatically applied to findAll, findOne, count.
-   */
-  protected abstract applyPermissions(qb: SelectQueryBuilder<T>, ctx: UserContext, alias: string): SelectQueryBuilder<T>
-
-  /**
-   * RELATIONS HOOK
-   * Defines which relations to load by default (Controlled Eager Loading).
-   */
-  protected addRelations(qb: SelectQueryBuilder<T>, _alias: string): SelectQueryBuilder<T> {
-    return qb
-  }
-
-  /**
-   * CUSTOM FILTERS HOOK
-   * Allows handling parameters that are not DB columns (e.g., 'q' search).
-   */
-  protected applyCustomFilters(qb: SelectQueryBuilder<T>, queryParams: any, _alias: string): any {
-    return queryParams
-  }
-
-  protected createQueryBuilder(alias: string): SelectQueryBuilder<T> {
-    return this.repository.createQueryBuilder(alias)
-  }
-
-  // --- Standard CRUD Methods ---
-
-  async findAll(ctx: UserContext, queryParams: any = {}): Promise<{ headers: any; records: T[] }> {
-    const alias = this.repository.metadata.tableName
-    let qb = this.createQueryBuilder(alias)
-
-    // 1. Setup Base Query
-    qb = this.addRelations(qb, alias)
-    qb = this.applyPermissions(qb, ctx, alias)
-
-    // 2. Custom Filters (e.g. Global Search)
-    const paramsToProcess = this.applyCustomFilters(qb, { ...queryParams }, alias)
-
-    // 3. Magic Filters (Standard Volcanic: :eq, :gt, :like...)
-    // Note: applyStandardFilters is internal helper mapping params -> where
-    this.applyStandardFilters(qb, paramsToProcess, alias)
-
-    // 4. Caching
-    if (this.cacheTTL > 0) qb.cache(this.cacheTTL)
-
-    // 5. Pagination & Sort
-    if (paramsToProcess.page && paramsToProcess.pageSize) {
-      const page = Math.max(1, parseInt(paramsToProcess.page))
-      const pageSize = parseInt(paramsToProcess.pageSize) || 25
-      qb.skip((page - 1) * pageSize).take(pageSize)
+  protected get bound() {
+    if (!this.handle) {
+      throw new Error(`[${this.constructor.name}] used without a container. Call service.on(req.tenant ?? req.control).`)
     }
-
-    // ... sort handling ...
-
-    const [records, total] = await qb.getManyAndCount()
-
-    // 6. Pagination Headers
-    const headers = {
-      'v-count': records.length,
-      'v-total': total,
-      'v-page': paramsToProcess.page || 1,
-      'v-pageSize': paramsToProcess.pageSize || records.length || 1,
-      'v-pageCount': Math.ceil(total / (parseInt(paramsToProcess.pageSize) || 25))
+    const { db, dialect } = access(this.handle, this.constructor.name)
+    return {
+      db,
+      table: tablesFor(this.handle)[this.tableName] as unknown as Table,
+      options: { dialect, sensitiveFields: this.sensitiveFields } as QueryOptions
     }
-
-    return { headers, records }
   }
 
-  async findOne(ctx: UserContext, id: string): Promise<T | null> {
-    const alias = this.repository.metadata.tableName
-    let qb = this.createQueryBuilder(alias)
-
-    qb = this.addRelations(qb, alias)
-
-    // CRITICAL: Permissions apply to findOne too!
-    // If ID exists but user has no rights, returns null (simulates 404).
-    qb = this.applyPermissions(qb, ctx, alias)
-
-    qb.andWhere(`${alias}.id = :id`, { id })
-
-    if (this.cacheTTL > 0) qb.cache(this.cacheTTL)
-
-    return qb.getOne()
+  /**
+   * Row-level security. Whatever this returns is AND-ed AFTER everything the URL asked for,
+   * `_logic` included, so no filter a caller writes reaches around it.
+   */
+  protected applyPermissions(_ctx: UserContext, _table: any): SQL | undefined {
+    return undefined
   }
 
-  // ... private internal methods (applyStandardFilters) ...
+  protected alive(table: any): SQL | undefined {
+    return table.deletedAt ? isNull(table.deletedAt) : undefined
+  }
+
+  async findAll(ctx: UserContext, params: Record<string, unknown> = {}) {
+    const { db, table, options } = this.bound
+    const restriction = and(...([this.alive(table), this.applyPermissions(ctx, table)].filter(Boolean) as SQL[]))
+    return executeFind<any>({ db }, table, params, { ...options, extraWhere: restriction })
+  }
+
+  async count(ctx: UserContext, params: Record<string, unknown> = {}) {
+    const { db, table, options } = this.bound
+    const restriction = and(...([this.alive(table), this.applyPermissions(ctx, table)].filter(Boolean) as SQL[]))
+    return executeCount({ db }, table, params, { ...options, extraWhere: restriction })
+  }
+
+  async findOne(ctx: UserContext, id: string) {
+    const { db, table } = this.bound
+    const t = table as any
+    const where = and(...([eq(t.id, id), this.alive(t), this.applyPermissions(ctx, t)].filter(Boolean) as SQL[]))
+    const rows = await db.select().from(table).where(where).limit(1)
+    return rows[0] ?? null
+  }
+
+  async create(_ctx: UserContext, data: Record<string, unknown>) {
+    const { db, table } = this.bound
+    const rows = await db.insert(table).values(this.writable(data)).returning()
+    return rows[0] ?? null
+  }
+
+  async update(ctx: UserContext, id: string, data: Record<string, unknown>) {
+    const { db, table } = this.bound
+    const t = table as any
+    const where = and(...([eq(t.id, id), this.alive(t), this.applyPermissions(ctx, t)].filter(Boolean) as SQL[]))
+    const rows = await db.update(table).set({ ...this.writable(data), updatedAt: new Date() }).where(where).returning()
+    return rows[0] ?? null
+  }
+
+  /** Soft delete: the row keeps its place and stops being read. */
+  async remove(ctx: UserContext, id: string) {
+    const updated = await this.update(ctx, id, { deletedAt: new Date() } as Record<string, unknown>)
+    return { affected: updated ? 1 : 0 }
+  }
+
+  async removeMany(ctx: UserContext, ids: string[]) {
+    if (!ids.length) return 0
+    const { db, table } = this.bound
+    const t = table as any
+    const where = and(...([inArray(t.id, ids), this.alive(t), this.applyPermissions(ctx, t)].filter(Boolean) as SQL[]))
+    const rows = await db.update(table).set({ deletedAt: new Date(), updatedAt: new Date() }).where(where).returning()
+    return rows.length
+  }
+
+  /**
+   * The columns a caller may write, built FROM THE TABLE rather than from a denylist: a column
+   * added tomorrow is writable only if it is in the table, and a key the caller invented is
+   * dropped instead of reaching the database as an error nobody can read.
+   */
+  protected writable(data: Record<string, unknown>): Record<string, unknown> {
+    const table = this.bound.table as unknown as Record<string, unknown>
+    const reserved = new Set(['id', 'createdAt', 'updatedAt'])
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(data)) {
+      if (!reserved.has(key) && key in table) out[key] = data[key]
+    }
+    return out
+  }
 }
 ```
 
----
-
-## 5.2 Security Context & RLS (Row Level Security)
-
-`applyPermissions` implementation is the pillar of security. Instead of writing `if (user.role === 'admin')` in every controller, we define visibility rules once per entity.
-
-`UserContext` (defined in `types/index.d.ts`) contains:
-
-- `role`: App role (`admin`, `manager`, `user`).
-- `company`: Belonging tenant (e.g., `volcanicminds`).
-- `professionalId`: ID of linked professional profile.
-
-### Complex Example: `OrderService`
-
-Business Rules:
-
-1.  **Admin**: Sees everything.
-2.  **Manager**: Sees only orders of their company.
-3.  **User**: Sees only orders they worked on (verifies existence of an activity in work order).
+### A concrete service
 
 ```typescript
 // src/services/order.service.ts
-import { SelectQueryBuilder } from 'typeorm'
-import { BaseService } from './base.service.js'
-import { Order } from '../entities/order.e.js'
-import { UserContext } from '../../types/index.js'
-
-export class OrderService extends BaseService<Order> {
+class OrderService extends BaseService<'order'> {
   constructor() {
-    // Pass the entity type; the repository is resolved from req.db via .use()
-    super(Order)
+    super('order')
   }
 
-  protected applyPermissions(
-    qb: SelectQueryBuilder<Order>,
-    ctx: UserContext,
-    alias: string
-  ): SelectQueryBuilder<Order> {
-    // 1. ADMIN: Full Bypass
-    if (ctx.role === 'admin') {
-      return qb
-    }
-
-    // 2. MANAGER: Tenant Isolation
-    if (ctx.role === 'manager') {
-      if (!ctx.company) {
-        // Fail-safe: Manager without company sees nothing
-        qb.andWhere('1=0')
-        return qb
-      }
-      qb.andWhere(`${alias}.company = :company`, { company: ctx.company })
-      return qb
-    }
-
-    // 3. USER: Association Check (Complex Query)
-    if (ctx.role === 'user') {
-      if (!ctx.professionalId || !ctx.company) {
-        qb.andWhere('1=0')
-        return qb
-      }
-
-      // Check 1: Tenant
-      qb.andWhere(`${alias}.company = :company`, { company: ctx.company })
-
-      // Check 2: Assignment (EXISTS subquery is more performant than JOIN for filtering)
-      qb.andWhere(
-        (subQuery) => {
-          const sub = subQuery
-            .subQuery()
-            .select('1')
-            .from('work_order', 'wo')
-            .innerJoin('activity', 'a', 'a.workOrderId = wo.id')
-            .where(`wo.orderId = ${alias}.id`) // Correlation with outer query
-            .andWhere('a.professionalId = :pid')
-            .getQuery()
-          return `EXISTS ${sub}`
-        },
-        { pid: ctx.professionalId }
-      )
-
-      return qb
-    }
-
-    // Default Deny: Unknown role or public
-    qb.andWhere('1=0')
-    return qb
+  protected applyPermissions(ctx: UserContext, table: any) {
+    // A manager sees only their own company's orders. Returned as a condition, not applied by
+    // filtering the results afterwards: filtering after the page has been cut returns short
+    // pages and a wrong total.
+    return ctx.roles.includes('admin') ? undefined : eq(table.companyId, ctx.companyId)
   }
 }
 
 export const orderService = new OrderService()
 ```
 
----
+### What changed, and why it is not a rename
 
-## 5.3 Advanced QueryBuilder: Relations and Computed Fields
+| v4 | v5 |
+|---|---|
+| `service.use(req.db)` | `service.on(req.tenant ?? req.control)` |
+| a service without a manager fell back to `global.connection` | a service without a handle **throws** |
+| `applyPermissions` returned a `where` object merged by the query builder | it returns a `SQL` condition carried as `extraWhere`, AND-ed **last** |
+| the repository came from an `EntityManager` | the table is built **for the locator** the handle addresses |
+| `global.repository.X` — forbidden at runtime by a Proxy | does not exist; there is nothing to forbid |
 
-`addRelations` method serves to avoid N+1 problem during serialization and prepares ground for deep filters.
+The last row is the point. In v4 the forbidden path had to be *guarded*, because it was still
+reachable; the Proxy that threw was a fence around a hole. In v5 there is no ambient container to
+reach for, so the mistake is not available.
 
-### Example: `ActivityService` with Computed Fields
+## 5.2 Security Context & RLS (Row Level Security)
 
-An activity needs to report how many hours were worked (`doneHours`), which is the sum of records in `Timesheet` table.
+`applyPermissions` is the pillar of security: instead of writing `if (role === 'admin')` in every
+controller, visibility is defined once per table and enforced by the query layer.
+
+`UserContext` is **yours** (`types/index.d.ts`) and is derived from the token — never from
+anything the caller sends:
+
+- `userId`, `roles`: from `req.user` and `req.roles()`.
+- `container`: which plane this request is on, for logging and for rules that differ between them.
+- whatever else your domain needs (a company, a professional id), read from the row.
+
+### Complex example: `OrderService`
+
+Rules: an admin sees everything; a manager sees their company's orders; a user sees orders they
+worked on.
 
 ```typescript
-// src/services/activity.service.ts
+// src/services/order.service.ts
+import { and, eq, exists, sql } from 'drizzle-orm'
+import { BaseService } from './base.service.js'
+import type { UserContext } from '../../types/index.js'
 
-export class ActivityService extends BaseService<Activity> {
-  protected addRelations(qb: SelectQueryBuilder<Activity>, alias: string): SelectQueryBuilder<Activity> {
-    // 1. Standard Join
-    qb.leftJoinAndSelect(`${alias}.professional`, 'professional')
-      .leftJoinAndSelect(`${alias}.workOrder`, 'workOrder')
-      .leftJoinAndSelect('workOrder.order', 'order') // Nested Join
+export class OrderService extends BaseService<'order'> {
+  constructor() {
+    super('order')
+  }
 
-    // 2. Computed Field (Virtual Column)
-    // This adds a 'doneHours' column to raw result set.
-    // TypeORM will map it to 'doneHours' property of entity if configured correctly
-    // or we might need to do it manually in an @AfterLoad hook or transformation.
-    qb.addSelect((subQuery) => {
-      return subQuery
-        .select('COALESCE(SUM(t.logTime), 0)', 'doneHours')
-        .from('timesheet', 't')
-        .where(`t.activityId = ${alias}.id`)
-    }, 'Activity_doneHours') // Naming convention TypeORM: EntityName_PropName
+  protected applyPermissions(ctx: UserContext, table: any) {
+    // 1. ADMIN: no restriction. `undefined` means "add nothing", which is not the same as
+    //    "add a condition that is always true" — the query stays as short as it should be.
+    if (ctx.roles.includes('admin')) return undefined
 
-    return qb
+    // 2. MANAGER: their company only. A manager WITHOUT a company sees nothing, and that is
+    //    written explicitly: the dangerous default here is the one that returns everything.
+    if (ctx.roles.includes('manager')) {
+      if (!ctx.companyId) return sql`false`
+      return eq(table.companyId, ctx.companyId)
+    }
+
+    // 3. USER: their company, and only orders they worked on. EXISTS rather than a join: a join
+    //    used for filtering multiplies rows and then needs a DISTINCT to undo itself.
+    if (ctx.roles.includes('user')) {
+      if (!ctx.professionalId || !ctx.companyId) return sql`false`
+      return and(
+        eq(table.companyId, ctx.companyId),
+        sql`exists (
+          select 1 from work_order wo
+          join activity a on a.work_order_id = wo.id
+          where wo.order_id = ${table.id} and a.professional_id = ${ctx.professionalId}
+        )`
+      )
+    }
+
+    // Default deny. An unknown role is not a role with no restrictions.
+    return sql`false`
+  }
+}
+
+export const orderService = new OrderService()
+```
+
+**Why the condition is returned rather than applied.** It travels as `QueryOptions.extraWhere`
+and is AND-ed **after** everything the URL asked for, `_logic` included — so no expression a
+client can write reaches around it. The alternative, filtering the results after the query, cuts
+the page first and filters second: short pages and a wrong total.
+
+**Default deny is written, not assumed.** Every branch that cannot establish who the caller is
+returns a false condition. The failure mode of the opposite choice is not an error, it is a
+response containing rows the caller should never have seen, and nothing reports it.
+
+---
+
+## 5.3 Relations and computed fields
+
+There is no `addRelations` hook to override, because joins are not a property of a service. A
+query that needs one writes it, and a route that allows a caller to ask for one declares it in
+`allowedRelations`.
+
+```typescript
+export class ActivityService extends BaseService<'activity'> {
+  /** Activities with their professional, and the hours logged against each. */
+  async withHours(ctx: UserContext, params: Record<string, unknown> = {}) {
+    const { db, table, options } = this.bound
+    const { professional, timesheet } = tablesFor(this.handle!)
+
+    // The Magic Query still parses the caller's filters; the join and the computed column are
+    // this method's own business.
+    const parsed = parseQuery(table, params, { ...options, extraWhere: this.applyPermissions(ctx, table) })
+
+    return db
+      .select({
+        activity: table,
+        professional,
+        doneHours: sql<number>`coalesce((select sum(t.log_time) from timesheet t where t.activity_id = ${(table as any).id}), 0)`
+      })
+      .from(table)
+      .leftJoin(professional, eq((table as any).professionalId, professional.id))
+      .where(parsed.where)
+      .orderBy(...parsed.orderBy)
+      .limit(parsed.limit)
+      .offset(parsed.offset)
   }
 }
 ```
 
-### Managing Custom Filters (`applyCustomFilters`)
+Two things worth naming:
 
-If we want to implement a **Global Search** searching multiple fields simultaneously:
-
-```typescript
-protected applyCustomFilters(qb: SelectQueryBuilder<Order>, queryParams: any, alias: string): any {
-  if (queryParams.q) {
-    const term = `%${queryParams.q}%`
-
-    qb.andWhere(new Brackets(sqb => {
-      sqb.where(`${alias}.code ILIKE :term`, { term })
-         .orWhere(`${alias}.name ILIKE :term`, { term })
-         // Filter on relation joined in addRelations
-         .orWhere(`client.name ILIKE :term`, { term })
-    }))
-
-    // Remove 'q' from params to not confuse standard parser
-    delete queryParams.q
-  }
-  return queryParams
-}
-```
-
----
+- **The subquery is correlated and scalar**, so it costs one pass and returns one number per row.
+  A `leftJoin` onto `timesheet` plus a `GROUP BY` would multiply the rows first and then collapse
+  them, and every other column would have to be listed in the grouping.
+- **The N+1 problem is solved by asking for the join**, not by declaring `eager: true` on a
+  relation. Eager loading is a decision about one endpoint's cost written on the model, where it
+  becomes a decision about every endpoint at once — which is how a list endpoint quietly becomes
+  six joins.
 
 ## 5.4 Transaction Management (Complex Writes)
 
-`BaseService` covers reads and simple writes (single table) well. When an operation involves multiple entities (e.g., create Order + WorkOrders + Activities), we must manage transaction manually to ensure data integrity (ACID).
-
-**Pattern: Manual `QueryRunner`**
-
-Example from `src/services/fullOrder.service.ts`.
+`BaseService` covers reads and simple writes well. When an operation spans several tables —
+create an Order plus its WorkOrders plus their Activities — it has to be atomic, and the
+transaction is taken **from the container**, never from a global connection.
 
 ```typescript
-import { connection } from '@volcanicminds/backend/typeorm' // or global.connection
+import { access } from '@volcanicminds/backend/db'
 
 async createFull(ctx: UserContext, data: any) {
-  const { workOrders, activities, ...orderData } = data
+  const { workOrders, ...orderData } = data
+  const { transaction } = access(this.handle!, 'createFull')
+  const { order, workOrder } = tablesFor(this.handle!)
 
-  // 1. Initialize Transaction
-  const queryRunner = connection.createQueryRunner()
-  await queryRunner.connect()
-  await queryRunner.startTransaction()
+  // All of it or none of it. The handle's transaction is bound to THIS container, so there is
+  // no way to open one against a different one by accident — which is what taking it from
+  // `global.connection` allowed.
+  return transaction(async (tx) => {
+    const [saved] = await tx.db.insert(order).values(this.writable(orderData)).returning()
 
-  try {
-    // 2. Atomic operations using transaction manager
-    // IMPORTANT: use queryRunner.manager, NOT global.repository or entity.save()
-
-    // Step A: Save Order
-    const order = queryRunner.manager.create(Order, orderData)
-    const savedOrder = await queryRunner.manager.save(order)
-
-    // Step B: Save WorkOrders
     for (const wo of workOrders) {
-      wo.order = savedOrder.id
-      const workOrder = queryRunner.manager.create(WorkOrder, wo)
-      await queryRunner.manager.save(workOrder)
+      await tx.db.insert(workOrder).values({ ...wo, orderId: saved.id })
     }
 
-    // 3. Commit if everything ok
-    await queryRunner.commitTransaction()
-    return savedOrder
-
-  } catch (err) {
-    // 4. Rollback in case of error
-    await queryRunner.rollbackTransaction()
-    throw err
-  } finally {
-    // 5. Release connection to pool
-    await queryRunner.release()
-  }
+    return saved
+  })
 }
 ```
+
+**No connect/commit/rollback/release by hand.** In v4 the caller opened a `QueryRunner`, started a
+transaction, and was responsible for releasing it — and releasing it in the wrong place, in the
+wrong order, is exactly half of defect D-01: the release ran before the reset that was supposed to
+undo the session state, so the connection went back to the pool still pointing at a tenant's
+schema. One owner, one release, and no session state to undo.
+
+**A rollback that fails does not replace the error that caused it.** The first says what went
+wrong; the second only says the connection is worse off.
+
+**Engine note.** better-sqlite3 refuses an async callback outright (its driver is synchronous), so
+the adapter drives `begin`/`commit`/`rollback` by statement there, while libSQL needs the driver's
+own `transaction()` because every `execute` is otherwise its own implicit transaction. Both are
+behind the same `transaction(fn)`, and a caller never sees the difference — but it is why the
+adapter branches.
 
 ---
 
 ## 5.5 Globals vs Dependency Injection
 
-As noted in Part 1, the framework injects repositories and entities into `global scope`.
+### Data access
 
-### Data Access
+- **`req.tenant ?? req.control` (CANONICAL)**: the container this request works on. Bind a service
+  to it with `service.on(container)`. This is the only data-access path, single or multi tenant.
+- **`access(handle)`**: the way inside a handle — `db`, `dialect`, `locator`, `execute`,
+  `transaction` — for your own tables and the occasional hand-written query.
+- **`global.connection`, `global.entity`, `global.repository`**: **gone**. Not deprecated, not
+  guarded: absent. All three were ways to reach a container without being handed one, and that is
+  how a request read another tenant's schema (D-01, D-06). In v4 the forbidden one had to be
+  fenced off with a Proxy that threw; in v5 there is no hole to fence.
 
-- **`req.db` (CANONICAL)**: request-scoped `EntityManager`. Resolve repositories from it — `req.db.getRepository(Order)` — or use a service via `service.use(req.db)`. This is the ONLY supported data-access path (single & multi-tenant).
-- **`repository.[pluralName]`**: ⚠️ LEGACY/FORBIDDEN. Direct `global.repository.X` access throws `[Volcanic Architecture 2.0] FATAL ... FORBIDDEN` at runtime. Do not use.
-- **`entity.[ClassName]`**: use ONLY as a type/class reference (`import { Order } from ...`) or for static metadata — NOT for global Active-Record writes inside request handlers (use the context-bound repository instead).
+What remains global is what has no container to belong to: `log`, `config`, `roles`,
+`systemRoles`, `t`.
 
 ### Singleton Pattern
 
-Services themselves are exported as **Singletons**. Do not use `new OrderService()` in controllers, but import the instance.
+Services are exported as **singletons**, and `on()` returns a scoped clone rather than mutating
+the instance — so two concurrent requests on two different tenants cannot share a container by
+sharing a service.
 
 ```typescript
 // In service.ts
 export const orderService = new OrderService()
 
-// In controller.ts
+// In controller.ts — the clone is per call, the singleton is not per request
 import { orderService } from '../../services/order.service.js'
+await orderService.on(container(req)).findAll(userContext(req), req.data())
 ```
 
 ---
@@ -2811,13 +2382,26 @@ Test suite uses `mocha` as runner, `expect` for assertions, and a custom wrapper
 This file starts a server instance (often with in-memory DB or dedicated test DB) before running suite.
 
 ```typescript
-import { start as startServer } from '@volcanicminds/backend'
-import { userManager } from '@volcanicminds/backend/typeorm'
+import { preload, start as startServer } from '@volcanicminds/backend'
+import { start as startDataLayer } from '@volcanicminds/backend/db'
 
-// Mocha Global Hook
+let layer: any
+let server: any
+
+// Mocha Global Hook. Same order as index.ts, and for the same reason: a test that assembled
+// the application differently would be testing an application you do not ship.
 export const beforeAll = async () => {
-  // Starts server on test port (e.g. 2231)
-  await startServer({ userManager })
+  await preload()
+  layer = await startDataLayer()
+  await layer.migrations.apply({ locator: process.env.DB_SCHEMA || 'public' })
+  server = await startServer(layer)
+}
+
+export const afterAll = async () => {
+  await server?.close()
+  // Give the pools back explicitly. Mocha runs with --exit, but a suite that relies on that to
+  // close its connections is a suite hiding a leak in the application.
+  await layer?.shutdown()
 }
 ```
 
@@ -3049,18 +2633,19 @@ JWT_REFRESH_SECRET=CHANGE_THIS_TO_DIFFERENT_RANDOM_STRING
 JWT_REFRESH_EXPIRES_IN=30d
 
 # --- DATABASE (E.g. OVH Managed or AWS RDS) ---
-START_DB=true
-DB_HOST=pg-databases.ovh.net
-DB_PORT=20184
-DB_NAME=db_production
-DB_USERNAME=db_user
-DB_PASSWORD=secure_db_password
+# One URL, SSL included in it. There is no START_DB: the data layer is started by index.ts, and
+# the schema is applied by `npm run db:migrate` as a deploy step.
+DATABASE_URL=postgres://db_user:secure_db_password@pg-databases.ovh.net:20184/db_production?sslmode=require
+DB_SCHEMA=public
+DB_POOL_MAX=10
 
-# --- DB SSL ---
-# Required for secure cloud connections
-DB_SSL=true
-# INTERNAL container path (mounted via volume)
-DB_SSL_CA_PATH=/app/certs/ca.pem
+# Measured on THIS machine, not copied (npm run tune):
+BCRYPT_COST=12
+TENANT_CONTAINERS_MAX_OPEN=20
+
+# --- CORS ---
+# Required in production. A wildcard that arrived by omission refuses the boot.
+CORS_ORIGINS=https://app.example.com
 
 # --- LOGGING ---
 # In production 'info' reduces I/O. Use 'false' for colorize for parsers (Datadog/ELK)
@@ -3269,38 +2854,40 @@ Never commit sensitive data in `initialData.ts`. Use libraries like `faker` or a
 
 To maintain consistency between database (Postgres) and code (TypeScript), `volcanic-sample-backend` centralizes definitions.
 
-### File: `src/entities/all.enums.ts`
+### File: `src/schema/enums.ts`
 
-Instead of scattering magic strings ('active', 'closed') in code, exported TypeScript Enums are used.
-
-```typescript
-export enum OrderStateEnum {
-  ACTIVE = 'active',
-  CLOSED = 'closed',
-  LOST = 'lost'
-}
-
-export const VALID_COMPANIES = ['volcanicminds', 'acme']
-```
-
-**Usage in Entity:**
+A frozen list plus a string union — not a TypeScript `enum`. The list is what the column check and
+the JSON schema are built from, so the values live in one place and a new one cannot enter the type
+without appearing in the validation.
 
 ```typescript
-import { OrderStateEnum } from './all.enums.js'
-
-@Column({
-  type: 'enum',
-  enum: OrderStateEnum,
-  default: OrderStateEnum.ACTIVE
-})
-state: OrderStateEnum
+export const ORDER_STATES = ['active', 'closed', 'lost'] as const
+export type OrderState = (typeof ORDER_STATES)[number]
 ```
+
+**Usage in the table:**
+
+```typescript
+import { ORDER_STATES } from './enums.js'
+
+state: text('state', { enum: ORDER_STATES }).notNull().default('active')
+```
+
+Plus a `CHECK` in the same table definition, because a TypeScript union does not survive a `psql`
+session:
+
+```typescript
+check('order_state_check', sql`"state" in ('active', 'closed', 'lost')`)
+```
+
+A native Postgres `enum` type is deliberately not used: adding a value to one is a DDL migration
+that takes a lock, and a list that tracks the business changes more often than that is comfortable.
 
 **Usage in Service/Controller:**
 
 ```typescript
-if (order.state === OrderStateEnum.CLOSED) {
-  // ...
+if (order.state === 'closed') {
+  // The union makes the literal safe: a typo does not compile.
 }
 ```
 
@@ -3310,53 +2897,59 @@ if (order.state === OrderStateEnum.CLOSED) {
 
 Working with Volcanic Stack, you might encounter these specific errors. Here is how to solve them.
 
-### 1. "Relation not found" / "Missing FROM-clause entry"
+### 1. `400 QUERY_RELATION_NOT_ALLOWED`
 
-**Symptom:** Calling API with relational filter (e.g., `?client.name:eq=Acme`) receives 500 SQL error.
-**Cause:** Relation `client` was not loaded in Service.
-**Solution:** Add join in `addRelations` of Service.
-
-```typescript
-// src/services/order.service.ts
-protected addRelations(qb, alias) {
-    // Alias 'client' MUST match prefix used in filter
-    return qb.leftJoinAndSelect(`${alias}.client`, 'client')
-}
-```
-
-### 2. "Circular Dependency" at startup
-
-**Symptom:** Server crashes at startup or TypeORM complains an entity is `undefined`.
-**Cause:** Circular import between entity files (e.g., Order imports WorkOrder which imports Order).
-**Solution:**
-
-1.  Use `import type { ... }` for TypeScript types.
-2.  In TypeORM decorators, use **strings** instead of classes.
+**Symptom:** a relational filter (`?client.name:eq=Acme`) answers 400.
+**Cause:** the route does not allow joining `client`. This is the point — in v4 the same request
+produced a 500 from the database, or worse, was silently ignored.
+**Solution:** declare it, in the route's query options:
 
 ```typescript
-// ERROR: @OneToMany(() => WorkOrder, ...)
-// CORRECT: @OneToMany('WorkOrder', ...)
+executeFind({ db }, order, req.data(), { dialect, allowedRelations: ['client'] })
 ```
 
-### 3. Silent "Access Denied" (Empty List)
+### 2. `needs a data handle: pass req.tenant ?? req.control, never nothing`
 
-**Symptom:** User calls `GET /orders` and receives `[]` (empty list), but DB has data.
-**Cause:** RLS (`applyPermissions`) is filtering everything.
+**Symptom:** a service or manager throws this at the first call.
+**Cause:** it was used without a container — `service.findAll(...)` instead of
+`service.on(container).findAll(...)`, or a job that did not declare its plane.
+**Solution:** hand it one. Do **not** look for a global to use instead: there is none, and the
+absence is the feature. In v4 this call silently read whichever container the pool held (D-01,
+D-06), which is the whole reason the message exists rather than a fallback.
+
+### 3. Silent "Access Denied" (empty list)
+
+**Symptom:** `GET /orders` returns `[]` and the table has rows.
+**Cause:** `applyPermissions` is filtering everything, which is what it is supposed to do when it
+cannot establish who the caller is.
 **Debug:**
 
-1.  Enable `DB_LOGGING=true` in `.env`.
-2.  Check generated SQL query in console.
-3.  Verify `req.userContext` in controller: is role correct? Is professional ID associated?
+1.  `LOG_LEVEL=debug` and read the SQL.
+2.  Check the context: are the roles what you expect? Is the company id on the row?
+3.  Check **which container** the request resolved: `req.tenantInfo?.slug`. An empty list is also
+    what a correct query against the wrong tenant looks like.
 
-### 4. Date and Timezone Management
+### 4. `no such table` / `relation "…" does not exist`
 
-**Problem:** Saved dates seem wrong by 1 or 2 hours.
-**Rule:**
+**Symptom:** the first query against a container fails.
+**Cause:** the container was never migrated. There is no synchronise-at-startup in v5: the schema
+is committed SQL applied as a deploy step.
+**Solution:** `npm run db:migrate` for the control plane, `layer.migrateTenants({ snapshot })` for
+the fleet. A container behind its version answers **503 `SCHEMA_BEHIND`** for that tenant alone
+rather than serving a half-shaped schema.
 
-1.  DB (Postgres) must be in UTC.
-2.  Backend (Node) must work in UTC.
-3.  Frontend converts to Locale.
-4.  In `src/entities/*.ts`, use `timestamp` columns (without time zone) if handling everything in app UTC, or `timestamptz` if wanting Postgres to handle offset. Volcanic prefers standard ISO strings (`YYYY-MM-DDTHH:mm:ss.sssZ`).
+### 5. Dates and timezones
+
+**Rule**, and it is not a preference:
+
+1.  Postgres columns are `timestamptz`. Never a naive `timestamp` — an offset the database does not
+    know is an offset that gets guessed later.
+2.  On SQLite the same value is an integer of epoch **milliseconds**, always UTC. Same guarantee,
+    different storage.
+3.  Node works in UTC; the client converts for display.
+4.  A date filter with all digits means epoch milliseconds, not a year: `new Date('1500')` would
+    otherwise mean the year 1500, and a client sending a timestamp would get eight centuries of
+    nonsense back with no error.
 
 ---
 
@@ -3366,18 +2959,32 @@ Before deploying `volcanic-sample-backend`, verify:
 
 1.  [ ] **Env**: `NODE_ENV=production`.
 2.  [ ] **Logs**: `LOG_LEVEL=info` (not `trace` or `debug`).
-3.  [ ] **DB Sync**: `DB_SYNCHRONIZE=false` (fundamental not to lose data).
-4.  [ ] **Auth**: `JWT_SECRET` and `JWT_REFRESH_SECRET` are long, complex, and different from each other.
-5.  [ ] **MFA**: Policy set according to business requirements (`OPTIONAL` or `MANDATORY`).
-6.  [ ] **Admin**: Verify Admin user has strong password and active MFA.
+3.  [ ] **Schema**: `npm run db:migrate` ran as a **deploy step**. There is no `DB_SYNCHRONIZE` to
+        turn off any more — the instance refuses to boot when the control plane is behind.
+4.  [ ] **Auth**: `JWT_SECRET`, `JWT_REFRESH_SECRET` and `MFA_DB_SECRET` are long, complex and
+        different from each other. Startup refuses a weak one in production.
+5.  [ ] **CORS**: `CORS_ORIGINS` is set. A wildcard that arrived by omission refuses the boot, and
+        so does the wildcard-with-credentials pair.
+6.  [ ] **Work factor**: `BCRYPT_COST` measured on this machine (`npm run tune`), not inherited.
+7.  [ ] **Connections**: the pool arithmetic fits under `max_connections` with a reserve — the
+        framework checks it before handing out the first connection, and refuses to start if it
+        does not.
+8.  [ ] **MFA**: policy set according to business requirements (`OPTIONAL` or `MANDATORY`).
+9.  [ ] **Admin**: the founder has a strong password and active MFA.
+10. [ ] **Backups**: a `--snapshot` reference exists and you have restored from one at least once.
+        A fleet migration refuses to run without naming it, and a reference nobody has tested is
+        a reference.
 
 ---
 
 # Part 10: Manager Injection & the Core/Data-Layer Contract
 
 This is the **only seam** between the HTTP core and any persistence/feature backend. Master this and you can run
-the core with no database, with the bundled TypeORM data layer, with `@volcanicminds/tools`, or with your own
-hand-written backend — all through the same mechanism.
+the core with no database, with the bundled data layer (`@volcanicminds/backend/db`), with
+`@volcanicminds/tools`, or with your own hand-written backend — all through the same mechanism.
+
+The managers are **values the data layer returns**, not singletons a module imports. That is the
+difference that makes a replacement a parameter instead of a patch.
 
 ## 10.1 `start(decorators)` and the Null-Object default
 
@@ -3406,24 +3013,49 @@ await start() // 100% valid: the server boots. Public routes work. Any route tha
               // not at boot. Nothing crashes at startup.
 ```
 
-The six decorator keys (all optional): `userManager`, `tokenManager`, `dataBaseManager`, `mfaManager`,
-`transferManager`, `tenantManager`. Each maps 1:1 to an exported interface
-(`UserManagement`, `TokenManagement`, `DataBaseManagement`, `MfaManagement`, `TransferManagement`,
-`TenantManagement` — all re-exported from `@volcanicminds/backend`).
+The decorator keys (all optional): `userManager`, `tokenManager`, `trackingManager`, `mfaManager`,
+`transferManager`, `tenantManager`, `systemUserManager`, `impersonationManager`,
+`destructionManager`. Each maps 1:1 to an exported interface (`UserManagement`, `TokenManagement`,
+`TrackingManagement`, `MfaManagement`, `TransferManagement`, `TenantManagement`,
+`SystemUserManagement`, `ImpersonationManagement`, `DestructionManagement` — all re-exported from
+`@volcanicminds/backend`). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
+resolve a consumer entity by name through `global.entity`, and neither is a thing v5 does.
 
-## 10.2 The six managers (reference)
+Two more keys the data layer's `start()` returns and the server carries: `provider` (how a request
+borrows its container) and `migrations` (the schema version of a container). They are not managers
+and have no `isImplemented()`.
 
-| Manager | Interface | Typical source | Enables (native routes / features) | Key methods (non-exhaustive) |
+**One caution about the Null-Object defaults**, learned the hard way: they answer only the methods
+their contract declares. A Proxy that answered *every* property told Fastify it was a getter/setter
+when Fastify probed the decorator before registering it, and the manager was wired as something
+else entirely.
+
+## 10.2 The managers (reference)
+
+**Every method takes the container as its first argument.** That is the v5 signature change, and it
+is what makes it impossible to write a manager call that does not say which container it acts on —
+in v4 the argument did not exist and the answer came from a global.
+
+| Manager | Interface | Source | Enables (native routes / features) | Key methods (non-exhaustive) |
 | :--- | :--- | :--- | :--- | :--- |
-| `userManager` | `UserManagement` | `@volcanicminds/backend/typeorm` (`userManager`) — or your own | All of `/auth/*` and `/users/*`; user resolution in `onRequest` (`retrieveUserByExternalId`) | `retrieveUserByPassword`, `retrieveUserByExternalId`, `createUser`, `changePassword`, `forgotPassword`, `resetPassword`, `userConfirmation`, `isValidUser`, `blockUserById`, `saveMfaSecret`/`retrieveMfaSecret`/`enableMfa`/`disableMfa`, `forceDisableMfaForAdmin`, `findQuery`/`countQuery`, `isImplemented` |
-| `tokenManager` | `TokenManagement` | `@volcanicminds/backend/typeorm` (`tokenManager`) | `/token/*` (machine-to-machine API tokens); token-subject resolution in `onRequest` (`retrieveTokenByExternalId`) | `createToken`, `retrieveTokenByExternalId`, `isValidToken`, `blockTokenById`/`unblockTokenById`, `removeTokenById`, `findQuery`/`countQuery` |
-| `dataBaseManager` | `DataBaseManagement` | `@volcanicminds/backend/typeorm` (`dataBaseManager`) | `POST /tool/synchronize-schemas`; audit tracking writes (`addChange`); generic `retrieveBy` | `synchronizeSchemas`, `retrieveBy`, `addChange` |
+| `userManager` | `UserManagement` | `@volcanicminds/backend/db` — or your own | All of `/auth/*` and `/users/*`; user resolution in `onRequest` | `retrieveUserByPassword`, `retrieveUserByExternalId`, `createUser`, `changePassword`, `forgotPassword`, `resetPassword`, `userConfirmation`, `isValidUser`, `isPasswordToBeChanged`, `blockUserById`, `saveMfaSecret`/`retrieveMfaSecret`/`enableMfa`/`disableMfa`, `findQuery`/`countQuery`, `isImplemented` |
+| `tokenManager` | `TokenManagement` | `@volcanicminds/backend/db` | `/token/*` (machine-to-machine API tokens); token-subject resolution in `onRequest` | `createToken`, `retrieveTokenByExternalId`, `isValidToken`, `blockTokenById`/`unblockTokenById`, `removeTokenById`, `findQuery`/`countQuery` |
+| `trackingManager` | `TrackingManagement` | `@volcanicminds/backend/db` | The audit trail: one `change` table **inside each container** | `addChange`, `retrieveBy` |
 | `mfaManager` | `MfaManagement` | `@volcanicminds/tools` (mfa) wrapped in an adapter | TOTP setup/verify used by `/auth/mfa/*` | `generateSetup(appName, email)`, `verify(token, secret)` |
-| `transferManager` | `TransferManagement` | `@volcanicminds/tools` (transfer/TUS) | Mounts a TUS upload endpoint at `getPath()`; streamed uploads | `getPath`, `getServer`, `handle(req,res)`, `isValid`, `onUploadCreate/Finish/Terminate`, `isImplemented` |
-| `tenantManager` | `TenantManagement` | `@volcanicminds/backend/typeorm` (`TenantManager`) | Multi-tenant resolution + schema switch + `/tenants/*` CRUD | `resolveTenant`, `switchContext`, `createTenant`/`getTenant`/`listTenants`/`updateTenant`/`deleteTenant`/`restoreTenant`, `runInTenantContext`, `isImplemented` (see Part 3.11) |
+| `transferManager` | `TransferManagement` | `@volcanicminds/tools` (transfer/TUS) | Mounts a TUS upload endpoint at `getPath()` | `getPath`, `getServer`, `handle(req,res)`, `isValid`, `onUploadCreate/Finish/Terminate` |
+| `tenantManager` | `TenantManagement` | `@volcanicminds/backend/db` | Tenant resolution and `/tenants/*` | `getTenant`/`getTenantBySlug`/`listTenants`, `createTenant`, `updateTenant`, `suspendTenant`/`restoreTenant`, `softDeleteTenant`, `isImplemented` |
+| `systemUserManager` | `SystemUserManagement` | `@volcanicminds/backend/db` | `/system/auth/*` and `/system/users/*`: the platform's own identities | `retrieveSystemUserByEmail`/`ByExternalId`/`ById`, `createSystemUser`, `blockSystemUser`, `retrieveMfaSecret`, `recordMfaCounter`, `findQuery`/`countQuery` |
+| `impersonationManager` | `ImpersonationManagement` | `@volcanicminds/backend/db` | `/tenants/:id/impersonate`: a **persisted, revocable** session | `open`, `retrieveImpersonation`, `end` |
+| `destructionManager` | `DestructionManagement` | `@volcanicminds/backend/db` | The two-phase destruction of a container | `openRequest`, `findLiveRequest`, `consumeRequest` |
+
+**Gone:** `dataBaseManager`, with `synchronizeSchemas` (schemas are versioned migrations) and the
+generic `retrieveBy` over `global.entity` (there is no registry of consumer entities to resolve a
+name against). `tenantManager` lost `resolveTenant`, `switchContext` and `runInTenantContext`: the
+tenant comes from the token during resolution, and choosing a container is not a session change.
 
 > **Rule of thumb:** a native route only works if the manager it depends on is injected **and** its
-> `isImplemented()` is `true`. The TypeORM data layer's managers report `true`; the core defaults report `false`.
+> `isImplemented()` is `true`. The data layer's managers report `true`; the core defaults report
+> `false` and every method **rejects** with a message naming the two ways to fix it.
 
 ## 10.3 Wiring recipes
 
@@ -3433,55 +3065,69 @@ import { start as startServer } from '@volcanicminds/backend'
 await startServer()
 
 // (b) Core + database — users, login, persistence. (Scenarios B–F)
-import { start as startServer } from '@volcanicminds/backend'
-import { start as startDatabase, userManager, tokenManager } from '@volcanicminds/backend/typeorm'
-import { database } from './src/config/database.js'
-await startDatabase(database.default)
-await startServer({ userManager, tokenManager })
+import { preload, start as startServer } from '@volcanicminds/backend'
+import { start as startDataLayer } from '@volcanicminds/backend/db'
+
+await preload()                    // NOT optional: it loads config/general.ts into global.config
+const layer = await startDataLayer()
+await layer.migrations.apply({ locator: 'public' })
+await startServer(layer)           // every manager at once; they came from one place
 
 // (c) Core + database + tools (MFA, file upload). (Scenario G)
-import { mfaAdapter } from './src/services/mfa.adapter.js'        // wraps @volcanicminds/tools mfa
-import { transferManager } from './src/services/transfer.adapter.js' // wraps @volcanicminds/tools transfer
-await startServer({ userManager, tokenManager, mfaManager: mfaAdapter, transferManager })
+import { mfaAdapter } from './src/services/mfa.adapter.js'
+import { transferManager } from './src/services/transfer.adapter.js'
+await startServer({ ...layer, mfaManager: mfaAdapter, transferManager })
 
-// (d) Multi-tenant — add the tenantManager and flip the config (Scenario F / Part 3.11 / Part 12.6)
-import { TenantManager, DataSource } from '@volcanicminds/backend/typeorm'
-const ds = await startDatabase(database.default)
-await startServer({ userManager, tokenManager, tenantManager: new TenantManager(ds as DataSource) })
+// (d) Multi-tenant — declare the `tenants` block in config/general.ts. Nothing changes HERE:
+//     the managers are the same objects, the provider opens containers, and application code
+//     already works on `req.tenant ?? req.control`.
+await startServer(layer)
+
+// (e) Only some of them, deliberately: the Null-Object default fills every gap.
+await startServer({ userManager: layer.userManager })
 ```
 
 ## 10.4 Replacing or customizing the data layer
 
-Because the seam is "a plain object implementing an interface", you are **not** tied to TypeORM:
+Because the seam is "a plain object implementing an interface", you are **not** tied to what is
+behind `/db`:
 
-- **Write your own manager** (any storage — Prisma, Mongo, an HTTP service, in-memory). Implement the interface
-  methods you need and return `isImplemented() => true`. Minimal `userManager` skeleton:
+- **Write your own manager** (any storage — Prisma, an HTTP service, in-memory). Implement the
+  methods the routes you expose actually call, and return `isImplemented() => true`. Every method
+  takes the container first:
 
   ```typescript
-  import type { UserManagement } from '@volcanicminds/backend'
+  import type { UserManagement, DataHandle } from '@volcanicminds/backend'
 
   const users = new Map<string, any>() // demo store
   export const userManager: UserManagement = {
     isImplemented: () => true,
-    async retrieveUserByPassword(email, password) { /* verify, return user or null */ },
-    async retrieveUserByExternalId(externalId /*, db */) { return users.get(externalId) ?? null },
+    async retrieveUserByPassword(ctx: DataHandle, email, password) { /* verify, return user or null */ },
+    async retrieveUserByExternalId(ctx: DataHandle, externalId) { return users.get(externalId) ?? null },
     async isValidUser(user) { return !!user && !user.blocked },
-    async createUser(data) { /* persist, return user */ },
-    // …implement only what the routes you expose actually call; the rest can throw.
+    async createUser(ctx: DataHandle, data) { /* persist, return user */ }
+    // …implement only what the routes you enable call; the rest can throw.
   }
   await startServer({ userManager })
   ```
 
-  You only need to implement the methods exercised by the routes you enable (e.g. a login-only API needs
-  `retrieveUserByPassword`, `retrieveUserByExternalId`, `isValidUser`).
+  **Honour the container argument even if your storage ignores it.** A manager that takes it and
+  drops it is a manager that works until the day the deployment has tenants, and then quietly
+  serves one customer's rows to another. If your storage genuinely cannot isolate, say so by
+  refusing when `ctx` names a tenant — do not succeed.
 
-- **Add an alternative adapter under `lib/database/`** (framework-internal): the bundled implementation lives in
-  `lib/database/typeorm/**` and is exposed via the subpath `@volcanicminds/backend/typeorm`. A future adapter
-  (e.g. `lib/database/<other>/`) can ship its own subpath and export equivalent managers; the core never imports
-  any of them (CI-enforced), so adapters are swappable without touching the core.
+  Two properties the bundled managers hold that a replacement should too: a password comparison
+  that **costs the same whether or not the address exists** (otherwise timing answers the question
+  the uniform login messages refuse to answer), and identifiers minted **without asking the
+  database** for a free one.
 
-- **Mix-and-match**: e.g. real `userManager` from the data layer, but a custom `transferManager` pointing at S3,
-  and no `tokenManager` at all. The Null-Object default fills every gap.
+- **Add an alternative adapter under `lib/database/`** (framework-internal): the bundled
+  implementation is exposed via `@volcanicminds/backend/db`, and the core never imports any of it
+  (CI-enforced), so adapters are swappable without touching the core.
+
+- **Mix-and-match**: a real `userManager` from the data layer, a custom `transferManager` pointing
+  at S3, no `tokenManager` at all. The Null-Object default fills every gap and **rejects** rather
+  than quietly doing nothing.
 
 ---
 
@@ -3508,8 +3154,17 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Users | `POST /users/:id/mfa/reset` · `/password/reset`⁶ | `users` cap (admin-only)⁶ | **yes** | `userManager` |
 | Token | `GET /token` · `/count` · `/:id` | `tokens` cap | (read)³ | `tokenManager` |
 | Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/block/:id` · `/unblock/:id` | `tokens` cap⁵ | **yes** | `tokenManager` |
-| Tenants | `GET /tenants` · `POST /tenants` · `GET/PUT/DELETE /tenants/:id` · `POST /tenants/:id/restore` · `POST /tenants/impersonate` | `admin` | **yes** | `tenantManager` |
-| Tool | `POST /tool/synchronize-schemas` | `admin` | **yes** | `dataBaseManager` |
+| Tenants | `GET /tenants` · `GET /tenants/:id` | `tenants:read` cap | **yes** | `tenantManager` |
+| Tenants | `POST /tenants` · `PUT /tenants/:id` · `POST /tenants/:id/suspend` · `/restore` · `DELETE /tenants/:id` | `tenants` cap | **yes** | `tenantManager` |
+| Tenants | `POST /tenants/:id/export` | `tenants` cap | **yes** | `provider.exportContainer` |
+| Tenants | `POST /tenants/:id/destruction-request` · `DELETE /tenants/:id/data` | `tenants:destroy` cap⁷ | **yes** | `destructionManager` |
+| Tenants | `POST /tenants/:id/impersonate` · `POST /tenants/impersonate/end` | `tenants:impersonate` cap | **yes** | `impersonationManager` |
+| System | `POST /system/auth/login` · `/refresh-token` · `/logout` · `/mfa/*` | public / control token | varies | `systemUserManager` |
+| System | `GET /system/users` · `POST /system/users` · `PUT/DELETE /system/users/:id` · `/block` · `/unblock` | `system-users` cap | **yes** | `systemUserManager` |
+| Admin | `GET /admin/manifest` | `manifest` cap | **yes** | — (schema only) |
+
+`/tool/*` is **gone**, with `POST /tool/synchronize-schemas`: schemas are versioned migrations now,
+and a route that rewrites a production schema on request is not a feature.
 
 `X cap` = `admin` **or** any role that declares the `X` capability (route gated with `requireCapability: 'X'`). The
 framework reserves `users`, `tokens` and `manifest`; a consumer grants them to its own roles in `config/roles.ts`.
@@ -3518,7 +3173,7 @@ framework reserves `users`, `tokens` and `manifest`; a consumer grants them to i
 ² `/auth/mfa/verify` is reached with the **pre-auth MFA temp token** issued by login (`202`); see Part 6.2.
 ³ Token read routes declare roles but no `isAuthenticated` middleware — gate by roles; harden with the middleware if exposing publicly.
 ⁴ Admin-created users start **unconfirmed** by default (standard confirmation flow). Opt-in
-`options.allow_admin_create_confirmed_users: true` (`src/config/general.ts`, since 3.6.0) creates them already
+`options.allow_admin_create_confirmed_users: true` (`src/config/general.ts`) creates them already
 confirmed and login-ready, unless the payload explicitly sends `confirmed: false`. Self-registration is unaffected.
 ⁵ **Admin apex** (enforced in the controllers): only an `admin` may grant the `admin` role — to a user *or* a
 token — and only with `options.allow_multiple_admin: true` (`src/config/general.ts`, default `false`); a `users`/`tokens`
@@ -3530,6 +3185,25 @@ founder can only be reset by itself. `/password/reset` (admin resets another use
 **opt-in**: it returns `404` unless `options.allow_admin_change_password_users: true` (`src/config/general.ts`,
 default `false`). Unlike self-service `/auth/change-password` (requires the current password), this sets a new
 password with **no** old-password check.
+
+⁷ `tenants:destroy` is **not** part of `tenants`, and the operator must additionally be enrolled in
+MFA. Destruction is two-phase: a request that reports what would be lost and returns a one-time
+token good for ten minutes, then a delete that types the slug again, presents the token and an OTP,
+**exports first**, records the event, and only then drops.
+
+**Two things about `/auth` that changed and will surprise a v4 client** (see `docs/API_V5.md` §2.1):
+
+- Every login failure that happens **before** a verified password answers the same
+  **401 `AUTH_INVALID_CREDENTIALS`** — unknown address, wrong password, unconfirmed, blocked. v4
+  gave four distinct messages, and four distinct messages are a directory: fed a list of addresses
+  they say which ones have accounts here. The real cause goes to the log with an internal code.
+  Branch on `code`, and note the status changed from 403 to 401 — an HTTP layer that treats 401 as
+  "session expired, redirect to login" turns a wrong password into a redirect loop on the login
+  route itself.
+- `POST /auth/register` on an address that is **already registered** answers **200 with the body of
+  a successful registration**, and creates nothing. It is the only way not to reveal that the
+  account exists. A form that showed "that email is taken" has nothing to show; the confirmation
+  email is the channel that tells the real owner and does not answer to a stranger.
 
 ## 11.2 Auth modes (Bearer vs Cookie) and `embedded_auth`
 
@@ -3558,9 +3232,12 @@ A route's access is declared by its `roles` array in `routes.ts`:
 - Add `middlewares: ['global.isAuthenticated']` to require a valid subject regardless of role (returns `401` if
   anonymous). `global.isAdmin` requires the `admin` role (`403` otherwise).
 
-Inside handlers you read the identity via: `req.user` (human, from `userManager`), `req.token` (machine, from
-`tokenManager`), `req.roles()` (string[] of role codes), `req.hasRole(roles.admin)`, plus `req.tenant` and
-`req.db` (Part 12.6). See Part 6 for the full auth/JWT/MFA lifecycle.
+Inside handlers you read the identity via: `req.user` (a human, from `userManager`), `req.token` (a machine, from
+`tokenManager`), `req.systemUser` (a platform administrator, from `systemUserManager` — deliberately **not**
+`req.user`: they are not a tenant user), `req.roles()` (string[] of role codes) and `req.hasRole(roles.admin)`.
+
+The container is `req.tenant ?? req.control`, with `req.tenantInfo` carrying the tenant's registry row (Part 1.7).
+See Part 6 for the full auth/JWT/MFA lifecycle.
 
 ## 11.4 Admin manifest capability (admin console)
 
@@ -3639,7 +3316,7 @@ out-of-band. Full model: [docs/AUTHORIZATION_MODEL.md](docs/AUTHORIZATION_MODEL.
 
 # Part 12: Usage Scenarios & Recipes
 
-End-to-end recipes for a developer who only knows v3. Every scenario states the **packages**, **config**,
+End-to-end recipes. Every scenario states the **packages**, **config**,
 **managers**, and a **minimal `index.ts`**. All work in **single- or multi-tenant** mode — the tenant delta is
 isolated in Scenario F so it composes with A–E and G.
 
@@ -3659,29 +3336,37 @@ Your `src/api/hello/routes.ts` uses `roles: []`. No peer deps installed. `/healt
 ### B. Public API backed by a database (read-only or open writes)
 
 **Use when:** public data served from Postgres, no login.
-**Packages:** `+ @volcanicminds/backend/typeorm` and its peer deps. **Managers:** inject what you read/write
-(often just nothing for the auth routes — you call the data layer directly in your controllers via Magic Query).
+**Packages:** `+ @volcanicminds/backend/db` and the peer deps your engine needs. **Managers:** none
+are required — your controllers reach the container directly through Magic Query.
 
 ```typescript
-import { start as startServer } from '@volcanicminds/backend'
-import { start as startDatabase } from '@volcanicminds/backend/typeorm'
-import { database } from './src/config/database.js'
-await startDatabase(database.default)
-await startServer() // public routes; controllers use executeFindQuery(req.db.getRepository(X), …) — Part 3
+import { preload, start as startServer } from '@volcanicminds/backend'
+import { start as startDataLayer } from '@volcanicminds/backend/db'
+
+await preload()
+const layer = await startDataLayer()
+await layer.migrations.apply({ locator: 'public' })
+// `provider` is what lets a request be handed `req.control`, so pass the layer even with no
+// auth: without it there is no container on the request and every data call throws.
+await startServer(layer)
 ```
 
 ### C. Private API — Bearer, single-tenant (the common case)
 
 **Use when:** SPA/mobile/S2S with JWT in the `Authorization` header.
-**Packages:** `+ /typeorm`. **Managers:** `userManager` (+ `tokenManager` if you also issue API tokens).
-**Config/env:** `AUTH_MODE=BEARER` (default), strong `JWT_SECRET` (+ `JWT_REFRESH_SECRET`).
+**Packages:** `+ /db`. **Managers:** all of them, from the layer — `userManager` and `tokenManager`
+are the ones these routes need.
+**Config/env:** `AUTH_MODE=BEARER` (default), strong `JWT_SECRET` (+ `JWT_REFRESH_SECRET`), and
+`CORS_ORIGINS` before production.
 
 ```typescript
-import { start as startServer } from '@volcanicminds/backend'
-import { start as startDatabase, userManager, tokenManager } from '@volcanicminds/backend/typeorm'
-import { database } from './src/config/database.js'
-await startDatabase(database.default)
-await startServer({ userManager, tokenManager })
+import { preload, start as startServer } from '@volcanicminds/backend'
+import { start as startDataLayer } from '@volcanicminds/backend/db'
+
+await preload()
+const layer = await startDataLayer()
+await layer.migrations.apply({ locator: 'public' })
+await startServer(layer)
 ```
 
 Flow: `POST /auth/login` → `{ token, refreshToken }`; client sends `Authorization: Bearer <token>`; private
@@ -3703,25 +3388,34 @@ by rotating its `externalId` (Part 6.1).
 
 ### F. Multi-tenant (turns any of A–E/G tenant-aware)
 
-**Use when:** one deployment serves isolated tenants (Postgres schema-per-tenant).
-**Add:** `tenantManager` + `multi_tenant.enabled: true` in `src/config/general.ts` (choose `resolver`:
-`subdomain` | `header` | `query`, and `header_key`/`query_key`).
+**Use when:** one deployment serves isolated tenants — a schema, a database or a file each.
+**Add:** the `tenants` block in `src/config/general.ts`. **Declaring it is what enables tenancy**;
+there is no flag, and **nothing in the bootstrap changes**:
 
 ```typescript
-import { start as startServer } from '@volcanicminds/backend'
-import { start as startDatabase, userManager, tokenManager, TenantManager, DataSource } from '@volcanicminds/backend/typeorm'
-import { database } from './src/config/database.js'
-const ds = await startDatabase(database.default)
-await startServer({ userManager, tokenManager, tenantManager: new TenantManager(ds as DataSource) })
+// index.ts — identical to scenario C. The block in the config is the whole difference.
+await preload()
+const layer = await startDataLayer()
+await layer.migrations.apply({ locator: process.env.DB_SCHEMA || 'public' })
+await startServer(layer)
 ```
 
-What changes at runtime (see Part 3.11 for the security rules):
-- Each request resolves a tenant; a per-request `QueryRunner` is created, `SET search_path` switches the schema,
-  and `req.db` / `req.runner` are bound to it (released on response). **Single-tenant** instead binds `req.db` to
-  the global connection manager — same controller code, zero changes.
-- The JWT carries `tid`; the core rejects cross-tenant tokens (`403`). Public/login routes that must skip tenant
-  context set `config.tenantContext: false` on the route.
-- Manage tenants via `/tenants/*`; run background jobs safely with `tenantManager.runInTenantContext(id, cb)`.
+What changes at runtime (see Part 1.7 for the security rules):
+- Each request resolves a tenant and is handed `req.tenant`, plus `req.tenantInfo` (its registry
+  row). `const container = req.tenant ?? req.control` is the whole idiom, so **application code is
+  identical** between single and multi tenant.
+- The container is chosen by **qualifying the tables**, not by `SET search_path` on a pooled
+  connection: nothing is left on the session, so nothing has to be reset before the connection goes
+  back. That is defect D-01 designed out, not patched.
+- The tenant comes from the **token's `tid`**; the header or subdomain resolves one only for
+  requests carrying no token, and only the configured resolver is consulted. A disagreement answers
+  403 `TENANT_MISMATCH`.
+- A route that acts on the platform declares `scope: 'control'`. v4's `config.tenantContext: false`
+  is **refused at boot**, not translated — the router names the replacement and the process stops.
+- Manage tenants via `/tenants/*`, and bring the fleet forward with
+  `layer.migrateTenants({ snapshot })`, which refuses to run without a snapshot reference.
+- Background jobs **declare their plane** (`scope: 'control' | 'tenant' | 'every-tenant'`) and are
+  handed the matching handle. `runInTenantContext` does not exist: there is no session to switch.
 
 ### G. Adding `@volcanicminds/tools` (MFA, mailer, file upload)
 
