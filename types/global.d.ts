@@ -207,6 +207,14 @@ export interface ContainersConfig {
   poolMax?: number
   /** `container` + sqlite/libsql only: where the per-tenant files live. */
   directory?: string
+  /**
+   * Continuous replication of every container, through the port of T-7.3.
+   *
+   * `{ url: 's3://bucket/prefix' }` or any destination Litestream accepts. Declaring it and
+   * not having the binary is fatal: a container the deployment believes is being copied and
+   * is not is worse than one nobody promised to copy.
+   */
+  replica?: { url: string; binary?: string }
 }
 
 export interface TenantsConfig {

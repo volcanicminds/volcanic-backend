@@ -1274,6 +1274,29 @@ Reference sizing: **50 to 300 tenants per instance**. Above about a hundred, put
 transaction mode** in front of it. The framework holds no session state on a connection (T-3.1),
 so it is already compatible with that mode: nothing has to survive between transactions.
 
+### Continuous replication
+
+A file container can be replicated continuously, to S3 or anywhere else Litestream accepts:
+
+```ts
+tenants: { containers: { directory: './data/tenants', replica: { url: 's3://backups/tenants' } } }
+```
+
+The framework does not replicate anything itself: it supervises **Litestream**, which has been
+shipping WAL frames, tracking generations and getting restores right for years. Writing that
+again would mean getting it wrong on the day it matters. What the framework owns is the port,
+so a deployment that needs something else replaces an adapter and not a design.
+
+- replication starts when a container is created and stops before it is destroyed;
+- **a missing binary is fatal.** A container the deployment believes is being copied, and is
+  not, is worse than one nobody promised to copy;
+- a replicator that dies is reported as stopped, not as running;
+- a restore refuses to write over an existing container: that is not a restore, it is a
+  destruction with an extra step.
+
+Page-encrypted containers are out of scope: Litestream cannot do it, and a port that pretended
+otherwise would be a promise the adapter cannot keep.
+
 ## Exporting a container
 
 ```

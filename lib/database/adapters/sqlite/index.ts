@@ -6,6 +6,7 @@ import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestSco
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/sqlite.js'
 import { RequestLeases } from '../../leases.js'
 import { exportSqliteFile } from '../../containers/export.js'
+import { createLitestreamReplica, type ReplicaPort, type ReplicaTarget } from '../../containers/replica.js'
 
 //
 // SQLite and libSQL adapter (T-2.3).
@@ -46,6 +47,8 @@ export interface SqliteProviderOptions {
   maxOpenContainers?: number
   /** A container untouched for this long is closed, and its descriptors given back (T-7.2). */
   containerIdleMs?: number
+  /** Continuous replication of every container, through the port of T-7.3. */
+  replica?: ReplicaTarget
   busyTimeoutMs?: number
 }
 
@@ -82,6 +85,8 @@ export class SqliteProvider {
   private readonly usedAt = new Map<string, number>()
   private readonly containerIdleMs: number
   private sweeper: ReturnType<typeof setInterval> | null = null
+  /** Present only when the deployment configured one: replication is opt-in (T-7.3). */
+  readonly replica: ReplicaPort | null
 
   constructor(options: SqliteProviderOptions = {}) {
     this.driver = options.driver || 'better-sqlite3'
@@ -91,6 +96,7 @@ export class SqliteProvider {
     this.containerIdleMs = options.containerIdleMs ?? 300000
     this.controlFile = options.file || ':memory:'
     this.registry = registryTables()
+    this.replica = options.replica?.url ? createLitestreamReplica(options.replica) : null
   }
 
   private async openDatabase(file: string): Promise<any> {
@@ -311,6 +317,16 @@ export class SqliteProvider {
   /** Creates the container of a tenant being provisioned: on this engine, its file (T-6.1). */
   async createContainer(tenant: Tenant): Promise<void> {
     await this.forLocator(tenant.locator, tenant.id)
+    // A container that exists is a container that is replicated, from the moment it exists:
+    // starting the copy later leaves a window whose length nobody tracks (T-7.3).
+    await this.startReplica(tenant.locator)
+  }
+
+  /** Begins replicating one container, when the deployment asked for replication at all. */
+  async startReplica(locator: string): Promise<void> {
+    if (!this.replica || locator === ':memory:') return
+    const file = resolveContainerFile(this.directory, locator)
+    await this.replica.start(locator, file)
   }
 
   /**
@@ -318,6 +334,10 @@ export class SqliteProvider {
    * Not how a tenant's data is destroyed: that is T-6.3, with an export in front of it.
    */
   async dropContainer(locator: string): Promise<void> {
+    // The copy stops before the original goes, so the replicator does not spend its last
+    // moments shipping the disappearance of a file it is watching.
+    await this.replica?.stop(locator)
+
     const file = locator === ':memory:' ? locator : resolveContainerFile(this.directory, locator)
     const open = this.open.get(file)
     if (open) {
@@ -367,6 +387,7 @@ export class SqliteProvider {
   }
 
   async shutdown(): Promise<void> {
+    await this.replica?.shutdown()
     if (this.sweeper) clearInterval(this.sweeper)
     this.sweeper = null
     for (const handle of this.open.values()) await handle.close()
@@ -385,6 +406,7 @@ export function createSqliteProvider(options: GeneralConfig['options']): SqliteP
     file: control?.url,
     directory: tenants?.containers?.directory,
     maxOpenContainers: tenants?.containers?.maxOpen,
-    containerIdleMs: tenants?.containers?.idleTimeoutMs
+    containerIdleMs: tenants?.containers?.idleTimeoutMs,
+    replica: (tenants?.containers as { replica?: ReplicaTarget })?.replica
   })
 }
