@@ -8,6 +8,7 @@ import type {
 } from '../../../../types/global.js'
 import crypto from 'crypto'
 import { httpError } from '../../../util/httpError.js'
+import { envInt } from '../../../util/env.js'
 
 //
 // The tenant registry. Control scope: these routes act on the platform, never inside a
@@ -274,7 +275,10 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
 // What it cannot promise, and the README says so: **the data is still in your backups** until
 // those backups expire.
 // ---------------------------------------------------------------------------------------
-const DESTRUCTION_TTL_SECONDS = 600
+// Ten minutes by default, and read from the environment: documented since v5 and consulted by
+// nobody until T-9.4. Bounded on both sides — a window of one second makes the two-phase
+// destruction unusable, and one of a day makes the "one-time, short-lived" part a fiction.
+const DESTRUCTION_TTL_SECONDS = envInt('DESTRUCTION_TOKEN_TTL', 600, { min: 30, max: 3600 })
 
 const destructions = (req: FastifyRequest): any => req.server['destructionManager']
 

@@ -7,6 +7,7 @@ import { appTables, registryTables, type AppTables, type RegistryTables } from '
 import { RequestLeases } from '../../leases.js'
 import { exportSqliteFile } from '../../containers/export.js'
 import { createLitestreamReplica, type ReplicaPort, type ReplicaTarget } from '../../containers/replica.js'
+import { envInt, envString } from '../../env.js'
 
 //
 // SQLite and libSQL adapter (T-2.3).
@@ -475,8 +476,11 @@ export function createSqliteProvider(options: GeneralConfig['options']): SqliteP
   return new SqliteProvider({
     driver: (control?.engine === 'libsql' || tenants?.engine === 'libsql' ? 'libsql' : 'better-sqlite3') as SqliteDriver,
     file: control?.url,
-    directory: tenants?.containers?.directory,
-    maxOpenContainers: tenants?.containers?.maxOpen,
+    // Both fall back to the environment and not the other way round: a configured value is a
+    // decision, a variable is how a deployment tunes from outside the repository. Documented
+    // and unread until T-9.4.
+    directory: tenants?.containers?.directory ?? envString('TENANT_CONTAINERS_DIR', './data/tenants'),
+    maxOpenContainers: tenants?.containers?.maxOpen ?? envInt('TENANT_CONTAINERS_MAX_OPEN', 20, { min: 1, max: 10_000 }),
     containerIdleMs: tenants?.containers?.idleTimeoutMs,
     replica: (tenants?.containers as { replica?: ReplicaTarget })?.replica
   })

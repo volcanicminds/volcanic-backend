@@ -4,6 +4,7 @@ import type { UserManagement, DataHandle, VQuery } from '../../../types/global.j
 import { executeFind, executeCount } from '../query/index.js'
 import { encrypt, decrypt } from '../crypto.js'
 import { runtime, table, column } from './runtime.js'
+import { envInt } from '../env.js'
 
 //
 // The user manager (T-2.5), over Drizzle.
@@ -13,7 +14,20 @@ import { runtime, table, column } from './runtime.js'
 // bcrypt at cost 12, a comparison that costs the same whether or not the email exists, and a
 // reset token that carries its own expiry.
 //
-const BCRYPT_COST = 12
+//
+// The work factor, from the environment with a FLOOR.
+//
+// Twelve was measured once, on one machine, and hard-coded — so a deployment on slower
+// hardware pays whatever that costs and a deployment on faster hardware under-spends, and
+// neither can say so. T-9.4 measures the cost on the machine that will run it, which is only
+// worth doing if the answer can be applied.
+//
+// The floor is the point: a tunable work factor is also a way to weaken every password in the
+// database with one environment variable, and nothing downstream would report it. Twelve is
+// the minimum whatever anyone writes; the ceiling keeps a typo from making every login a
+// thirty-second wait, which is a denial of service typed by an operator.
+//
+const BCRYPT_COST = envInt('BCRYPT_COST', 12, { min: 12, max: 20 })
 
 // A real bcrypt hash at the same cost, compared against when the user does not exist, so the
 // response takes the same time either way. Without it, timing answers the question "is this

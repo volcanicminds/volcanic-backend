@@ -7,6 +7,7 @@ import { appTables, registryTables, type AppTables, type RegistryTables } from '
 import { RequestLeases } from '../../leases.js'
 import { exportPostgresSchema } from '../../containers/export.js'
 import { guardPool } from './guard.js'
+import { envInt, envString } from '../../env.js'
 
 //
 // Postgres adapter (T-2.2).
@@ -608,7 +609,11 @@ export function createPostgresProvider(options: GeneralConfig['options']): Postg
     schema: control?.schema,
     poolMax: control?.pool?.max,
     idleTimeoutMs: control?.pool?.idleTimeoutMs,
-    maxOpenContainers: containers?.maxOpen,
+    // The environment is the fallback, not the override: a deployment that declared the
+    // number in its configuration meant that number. The variable exists for the deployments
+    // that tune from outside the repository, and until T-9.4 it was documented and read by
+    // nobody (D-11 in another shape).
+    maxOpenContainers: containers?.maxOpen ?? envInt('TENANT_CONTAINERS_MAX_OPEN', 20, { min: 1, max: 10_000 }),
     // One database per tenant only where the configuration says so: `schema` stays the
     // default and the shape everything else in the framework was built around.
     strategy: tenants?.strategy === 'container' ? 'container' : 'schema',

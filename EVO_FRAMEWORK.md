@@ -205,6 +205,7 @@ deterministica.
 | ID | Difetto | Dove |
 |---|---|---|
 | **D-11** | `resolver` è configurabile, tipizzato e documentato, ma **nessuno lo legge**: la risoluzione è solo per header | `lib/config/general.ts:20` · `types/global.d.ts:133` |
+| **D-11b** | La stessa forma, ricomparsa in v5 e trovata da T-9.4: `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`, `TENANT_CONTAINERS_DIR` e `DESTRUCTION_TOKEN_TTL` documentate nella tabella dell'ambiente e lette da nessuno. Collegate in T-9.4 | `README.md` §Environment Variables · `docs/CONFIGURATION_V5.md` §4 |
 | **D-12** | L'operatore `:raw` interpola la stringa dell'utente dentro SQL. È dietro l'env `VOLCANIC_CUSTOM_QUERY_OPERATORS`, ma abilitato è **SQL injection**, e con `search_path` attivo consente di raggiungere altri schemi | `lib/database/typeorm/query/operators.ts:183` |
 | **D-13** | Il parser di `_logic` non ha limiti di lunghezza né di profondità; l'eccezione da ricorsione viene **catturata** e la query **degrada in silenzio** a un AND di tutte le condizioni, cambiando semantica senza dirlo | `lib/database/typeorm/query/parser.ts` · fallback in `query.ts:199-202` |
 | **D-14** | `scryptSync` con `N = 32768` è **sincrono e bloccante**: misurato **82 ms** per derivazione su questa macchina. Sta sul percorso di verifica MFA (una derivazione a `decrypt`), quindi blocca l'event loop a ogni login con MFA | `lib/database/typeorm/util/crypto.ts:33-40` · misura in appendice A.4 |

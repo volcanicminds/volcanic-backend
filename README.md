@@ -241,6 +241,7 @@ has an admin or `ADMIN_EMAIL` at boot.
 v4**, so read it as the 4.x reference until its rewrite lands (task T-9.6). For v5 the authority is this
 README plus the focused documents below; where they disagree with anything, the package source code wins.
 
+- **[Tuning](docs/TUNING.md)**: `npm run tune` measures the work factor, the key derivation, the connection budget and the page cost **on the machine that will run them**, and writes the answers down with their provenance.
 - **[Migrating from v4](docs/MIGRATION_V4_V5.md)**: every break, why it exists, and the new form beside the old one. Read §1 to §4 before touching a port, and keep §18 open while testing the login: the status code changed.
 - **[Magic Query](docs/MAGIC_QUERY_V5.md)**: the URL-to-SQL grammar, the operator catalogue, and the v4 → v5 correspondence table.
 - **[Schema](docs/SCHEMA_V5.md)**: the framework's own tables, what a consuming project must declare, and the one thing it must never redefine.
@@ -578,11 +579,19 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `DB_HOST` `DB_PORT` `DB_USERNAME` `DB_PASSWORD` `DB_NAME` | Discrete form of the above.          |    No    | `127.0.0.1` `5432` `vminds` ×3 |
 | `DB_POOL_MAX`                  | Control-plane pool size.                                                |    No    | `10`                |
 | `MFA_DB_SECRET`                | Key the MFA secrets are encrypted with. Falls back to `JWT_SECRET`.     |    No    |                     |
+| `BCRYPT_COST`                  | Password work factor. **Never below 12**, whatever is written; measure it with `npm run tune`. |    No    | `12`                |
 | `TENANT_CONTAINERS_MAX_OPEN`   | LRU bound on live tenant containers.                                    |    No    | `20`                |
 | `TENANT_CONTAINERS_DIR`        | Where per-tenant files live (file-per-container engines).               |    No    | `./data/tenants`    |
 | `VOLCANIC_MAX_PAGE_SIZE`       | Upper clamp on `_pageSize`.                                             |    No    | `100`               |
 | `DESTRUCTION_TOKEN_TTL`        | Seconds a container-destruction request stays valid.                    |    No    | `600`               |
 | `IMPERSONATION_TTL`            | Seconds an impersonation token lasts. Hard maximum 14400.               |    No    | `1800`              |
+
+Four of the variables above — `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`,
+`TENANT_CONTAINERS_DIR`, `DESTRUCTION_TOKEN_TTL` — were documented from the start of v5 and read
+by **nobody** until T-9.4 found it. That is defect D-11 in another shape, and the invariant it
+breaks is explicit: the declared default is what the code does, and no field is typed,
+documented and never read. They are wired now, each through one helper that falls back loudly
+rather than silently.
 
 **Removed in v5**, and not renamed: `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` (incompatible with a versioned schema),
 `VOLCANIC_CUSTOM_QUERY_OPERATORS` (the `:raw` operator is gone), `VOLCANIC_CASE_INSENSITIVE_DEFAULT` (case

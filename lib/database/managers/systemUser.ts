@@ -4,6 +4,7 @@ import type { SystemUserManagement, ControlHandle, VQuery } from '../../../types
 import { executeFind, executeCount } from '../query/index.js'
 import { encrypt, decrypt } from '../crypto.js'
 import { control, table, column } from './runtime.js'
+import { envInt } from '../env.js'
 
 //
 // Platform identities (T-4.1).
@@ -19,7 +20,20 @@ import { control, table, column } from './runtime.js'
 // `confirmation_token`. System users are provisioned, never self-registered, so there is no
 // public route to confirm and no state in which one is half created.
 //
-const BCRYPT_COST = 12
+//
+// The work factor, from the environment with a FLOOR.
+//
+// Twelve was measured once, on one machine, and hard-coded — so a deployment on slower
+// hardware pays whatever that costs and a deployment on faster hardware under-spends, and
+// neither can say so. T-9.4 measures the cost on the machine that will run it, which is only
+// worth doing if the answer can be applied.
+//
+// The floor is the point: a tunable work factor is also a way to weaken every password in the
+// database with one environment variable, and nothing downstream would report it. Twelve is
+// the minimum whatever anyone writes; the ceiling keeps a typo from making every login a
+// thirty-second wait, which is a denial of service typed by an operator.
+//
+const BCRYPT_COST = envInt('BCRYPT_COST', 12, { min: 12, max: 20 })
 
 // The same shape as the tenant manager's, and for the same reason: comparing against a real
 // hash when the address does not exist keeps the cost of the answer from revealing it.

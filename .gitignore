@@ -122,3 +122,7 @@ OUTPUT.md
 
 .mcp.json
 .claude/
+# Machine-specific measurements (docs/TUNING.md): commit one only when it came from a
+# machine that resembles production, and let its provenance say which.
+tuning.json
+.env.before-tune-*

@@ -2,6 +2,7 @@ import { and, or, not, asc, desc, isNull, sql, getTableColumns, type SQL, type C
 import { queryError } from './errors.js'
 import { operatorFor, type Dialect } from './operators.js'
 import { parseLogic, aliasesOf, DEFAULT_LOGIC_LIMITS, type LogicLimits, type LogicNode } from './logic.js'
+import { envInt } from '../env.js'
 
 export * from './errors.js'
 export { escapeLike, coerce, OPERATORS } from './operators.js'
@@ -73,7 +74,10 @@ export function parseQuery(table: Table, params: Record<string, unknown>, option
   // and therefore the name it filters on: `createdAt`, not `created_at`.
   const columns = getTableColumns(table) as unknown as Record<string, Column>
   const sensitive = new Set(options.sensitiveFields ?? DEFAULT_SENSITIVE_FIELDS)
-  const maxPageSize = options.maxPageSize ?? 100
+  // Documented since v5 and read by nobody until T-9.4, which is D-11 in another shape. The
+  // route's own option still wins: the variable is the deployment's ceiling, not a way to
+  // raise a limit a route deliberately lowered.
+  const maxPageSize = options.maxPageSize ?? envInt('VOLCANIC_MAX_PAGE_SIZE', 100, { min: 1, max: 10_000 })
   const limits = options.logicLimits ?? DEFAULT_LOGIC_LIMITS
 
   const column = (name: string): Column => {
