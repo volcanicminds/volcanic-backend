@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestScope } from '../../../../types/global.js'
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/sqlite.js'
 import { RequestLeases } from '../../leases.js'
+import { exportSqliteFile } from '../../containers/export.js'
 
 //
 // SQLite and libSQL adapter (T-2.3).
@@ -209,6 +210,22 @@ export class SqliteProvider {
     scope.released = true
     this.leases.release(scope)
     await this.evictContainers()
+  }
+
+  /**
+   * Takes a customer's data out: a checkpoint, then a copy of the file (T-6.2).
+   *
+   * The checkpoint is not a nicety. Without it the copy is the database as of the last one,
+   * and everything written since lives only in the `-wal` companion: the export opens
+   * cleanly and is quietly out of date.
+   */
+  async exportContainer(tenant: Tenant, request: { directory?: string; schemaVersion: string | null }) {
+    const file = tenant.locator === ':memory:' ? tenant.locator : resolveContainerFile(this.directory, tenant.locator)
+    const handle = await this.forLocator(tenant.locator, tenant.id)
+
+    return await exportSqliteFile(tenant, request, file, async () => {
+      await handle.execute(sql.raw('pragma wal_checkpoint(TRUNCATE)') as never)
+    })
   }
 
   /** Opens a tenant's container by id. The name the manager port uses (T-6.1). */

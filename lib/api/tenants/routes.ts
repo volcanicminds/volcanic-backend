@@ -104,6 +104,17 @@ export default {
     },
     {
       method: 'POST',
+      path: '/:id/export',
+      requireCapability: 'tenants:export',
+      handler: 'tenants.exportContainer',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Export a container',
+        description: 'Writes a dump of one customer container, stamped with the schema version it was at'
+      }
+    },
+    {
+      method: 'POST',
       path: '/:id/impersonate',
       requireCapability: 'tenants:impersonate',
       handler: 'tenants.impersonate',

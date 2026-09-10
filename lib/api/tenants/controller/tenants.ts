@@ -215,6 +215,43 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
   return reply.send({ id, registryRow: 'deleted', data: 'retained', hint: 'container data is destroyed separately' })
 }
 
+/**
+ * Takes a customer's data out (T-6.2, docs/API_V5.md §6).
+ *
+ * The version is read from the CONTAINER, not from the registry row, and read before the dump
+ * starts: the row says what the last migration run believed, the container says what it
+ * actually has, and an export is a file that will outlive both.
+ *
+ * The caller chooses nothing about where it lands. The directory is configuration and the file
+ * name is generated, because this route is reachable over HTTP and a destination taken from a
+ * request is a path traversal with extra steps.
+ */
+export async function exportContainer(req: FastifyRequest, reply: FastifyReply) {
+  if (unavailable(req, reply)) return
+
+  const { id } = req.parameters()
+  const tenant = await managerOf(req).getTenant(control(req), id)
+  if (!tenant) return reply.status(404).send()
+
+  const provider = (req.server as unknown as Record<string, any>)['provider']
+  const migrations = (req.server as unknown as Record<string, any>)['migrations']
+  if (!provider?.exportContainer) {
+    return reply.status(503).send(httpError(503, 'This data layer cannot export a container', 'EXPORT_NOT_AVAILABLE'))
+  }
+
+  const schemaVersion = migrations?.version
+    ? await migrations.version({ tenantId: tenant.id, locator: tenant.locator })
+    : (tenant.schemaVersion ?? null)
+
+  const result = await provider.exportContainer(tenant, {
+    directory: global.config?.options?.export_directory,
+    schemaVersion
+  })
+
+  if (log.i) log.info(`Tenant ${tenant.slug}: exported ${result.bytes} bytes at ${schemaVersion ?? 'no migration'}`)
+  return reply.send({ tenant: { id: tenant.id, slug: tenant.slug }, ...result })
+}
+
 // ---------------------------------------------------------------------------------------
 // Impersonation (T-4.2, docs/AUTHORIZATION_V5.md §6)
 //

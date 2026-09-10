@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestScope } from '../../../../types/global.js'
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/pg.js'
 import { RequestLeases } from '../../leases.js'
+import { exportPostgresSchema } from '../../containers/export.js'
 import { guardPool } from './guard.js'
 
 //
@@ -80,15 +81,18 @@ export class PostgresProvider {
   private readonly containers = new Map<string, AppTables>()
   private readonly maxOpenContainers: number
   private readonly leases = new RequestLeases()
+  private readonly url: string
 
   constructor(options: PostgresProviderOptions = {}) {
     this.controlSchema = options.schema || DEFAULT_SCHEMA
     this.maxOpenContainers = options.maxOpenContainers ?? 20
 
+    this.url = connectionStringFrom(options)
+
     const pool =
       options.pool ??
       new pg.Pool({
-        connectionString: connectionStringFrom(options),
+        connectionString: this.url,
         max: options.poolMax ?? 10,
         idleTimeoutMillis: options.idleTimeoutMs ?? 30000,
         // Pinned once, at connect time, identical on every connection: configuration, not
@@ -234,6 +238,17 @@ export class PostgresProvider {
   private async lookupTenant(tenantId: string): Promise<Tenant | null> {
     const rows = await this.db.select().from(this.registry.tenant).where(eq(this.registry.tenant.id, tenantId)).limit(1)
     return (rows[0] as unknown as Tenant) ?? null
+  }
+
+  /**
+   * Takes a customer's data out, through `pg_dump`, limited to their schema (T-6.2).
+   *
+   * The connection string is the provider's, not the caller's: an export route reachable over
+   * HTTP must not decide which database it reads from any more than it decides where it
+   * writes.
+   */
+  async exportContainer(tenant: Tenant, request: { directory?: string; schemaVersion: string | null }) {
+    return await exportPostgresSchema(tenant, { ...request, url: this.url })
   }
 
   /** Opens a tenant's container by id. The name the manager port uses (T-6.1). */

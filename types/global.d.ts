@@ -311,6 +311,8 @@ export interface GeneralConfig {
     reset_password_token_ttl?: number
     /** Seconds an impersonation session lasts (T-4.2). Default 1800, hard maximum 14400. */
     impersonation_ttl?: number
+    /** Where container exports are written (T-6.2). Configuration, never a request field. */
+    export_directory?: string
     // Where the platform's own data lives: the tenant registry, the system users, and
     // the application data itself when there are no tenants (docs/CONFIGURATION_V5.md §1).
     control?: ControlConfig

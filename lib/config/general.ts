@@ -19,6 +19,9 @@ export default {
     // non le ventiquattro ore della v4: la durata è la sola cosa che limita una sessione che
     // nessuno revoca a mano. Il massimo assoluto è quattro ore ed è applicato in codice.
     impersonation_ttl: Number(process.env.IMPERSONATION_TTL) || 1800,
+    // Dove finiscono gli export dei contenitori (T-6.2). È configurazione e non un campo
+    // della richiesta: una rotta raggiungibile via HTTP non sceglie dove si scrive su disco.
+    export_directory: process.env.EXPORT_DIRECTORY || './data/exports',
     // Dove vivono i dati della piattaforma: registro dei tenant, utenti di sistema e, quando
     // i tenant non ci sono, i dati dell'applicazione. Vedi docs/CONFIGURATION_V5.md §1.
     control: {

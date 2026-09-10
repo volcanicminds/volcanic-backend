@@ -1240,6 +1240,28 @@ container whose applied migration no longer matches the repository: the two disa
 what happened to that schema, and guessing which one is right is how a schema becomes
 unreadable. Add a new migration instead.
 
+## Exporting a container
+
+```
+POST /tenants/:id/export        capability `tenants:export`
+```
+
+Writes one customer's container to a file: `pg_dump --schema` on Postgres, a WAL checkpoint
+followed by a copy on SQLite and libSQL. The response says where it landed, how big it is, and
+**which schema version it was taken at**, read from the container itself rather than from the
+registry row.
+
+Three things it will not do:
+
+- **produce a partial export.** If `pg_dump` is missing, or too old for the server, or exits
+  non-zero, the operation fails and any half-written file is removed. An export that "mostly
+  worked" is worse than none: it is a backup somebody will trust;
+- **let the caller choose a path.** The directory is `options.export_directory`
+  (`EXPORT_DIRECTORY`, default `./data/exports`) and the file name is generated from the slug,
+  the version and the instant. A destination taken from a request is a path traversal with
+  extra steps;
+- **include anybody else.** A Postgres export is limited to that tenant's schema.
+
 ## Change tracking (audit trail)
 
 Declare which routes are tracked in `src/config/tracking.ts`. Every tracked write appends a row
