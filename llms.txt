@@ -1,6 +1,20 @@
 # Volcanic Stack: System Context for AI Agents (llms.txt)
-> **AI AGENT DIRECTIVE**: This document is the ultimate source of truth for the @volcanicminds/backend framework.
-> Read this entirely before proposing architecture changes, generating services, or debugging.
+> **⚠️ THIS DOCUMENT DESCRIBES v4, AND v5 HAS REPLACED THE DATA LAYER.** Read it as the 4.x
+> reference. Every data-access snippet below — `service.use(req.db)`, `global.repository`,
+> `executeFindQuery`, `@volcanicminds/backend/typeorm`, `switchContext`,
+> `runInTenantContext`, TypeORM entities, the `page`/`sort` query parameters — names an API
+> that no longer exists. Generating code from them produces a project that does not start.
+>
+> **For v5, read in this order**: `README.md` (rewritten), `docs/MIGRATION_V4_V5.md` (every
+> break, with the new form beside the old one), then the contracts —
+> `docs/CONFIGURATION_V5.md`, `docs/SCHEMA_V5.md`, `docs/MAGIC_QUERY_V5.md`,
+> `docs/MANAGERS_V5.md`, `docs/AUTHORIZATION_V5.md`, `docs/API_V5.md`. The rewrite of this
+> file is task T-9.6 in `EVO_FRAMEWORK.md`; until it lands, **the package source code wins
+> over anything written here.**
+>
+> **AI AGENT DIRECTIVE**: This document was the source of truth for the @volcanicminds/backend
+> framework on 4.x. Read this entirely before proposing architecture changes, generating
+> services, or debugging a 4.x project.
 >
 > **⚠️ DOC STATUS (updated 2026-06) — CANONICAL DATA-ACCESS PATTERN**:
 > The official, canonical pattern is the **context-aware Service Layer: `service.use(req.db)`** (required for strong

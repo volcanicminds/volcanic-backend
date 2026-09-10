@@ -1287,7 +1287,8 @@ la misura che l'appendice A dichiara inaffidabile nella riga sotto ai suoi stess
 T-9.5 è l'unica voce nuova, e nasce da una domanda a cui oggi non si sa rispondere: quali
 rifiuti del framework non ha mai visto nessuno scattare.
 
-I compiti sono indipendenti fra loro salvo T-9.2, che dipende da T-9.1.
+I compiti sono indipendenti fra loro salvo T-9.2, che dipende da T-9.1, e T-9.6, che dipende
+da T-9.3.
 
 ### T-9.1 · Migrazioni per dialetto
 
@@ -1436,6 +1437,30 @@ ha mai fatto scattare è un rifiuto di cui si conosce solo l'intenzione.
 **Criterio di chiusura.** `npm run check-all` fallisce se un codice d'errore del sorgente non ha
 un test che lo fa scattare, e la copertura sotto il pavimento fa fallire la CI. Nessuna delle
 due cose è mai stata vera prima.
+
+### T-9.6 · `llms.txt` è la v5
+
+| | |
+|---|---|
+| **Scopo** | il documento che si dichiara fonte di verità non insegna un'API che non esiste |
+| **File** | `llms.txt` |
+| **Dipende da** | T-9.3 |
+
+3731 righe che si presentano agli agenti come «the ultimate source of truth» e descrivono la v4
+riga per riga: `service.use(req.db)`, `global.repository`, `executeFindQuery`, le entità
+TypeORM, `switchContext`, i parametri `page` e `sort`. Un agente che genera codice da qui
+produce un progetto che non parte, e lo fa con sicurezza, perché il documento gli dice di
+fidarsi.
+
+Il cartello in cima è stato messo con T-9.3 e non è la chiusura: è il minimo per non lasciare
+una mina. La riscrittura viene dopo il README perché ne è la versione lunga, e riscriverli in
+ordine inverso significa scriverli due volte.
+
+**Criterio di chiusura.** Nessuno dei simboli rimossi in v5 compare più come istruzione, e le
+sezioni di data access nascono dal `volcanic-backend-sample` portato in T-8.4, che è codice che
+gira, non codice che sembra giusto.
+
+---
 
 ---
 

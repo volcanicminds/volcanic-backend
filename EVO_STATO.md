@@ -142,9 +142,10 @@ documenti esistono e in che ordine si leggono.
 |---|---|---|---|
 | T-9.1 | Migrazioni per dialetto (SQLite e libSQL) | `[ ]` | |
 | T-9.2 | libSQL aperto davvero in un test | `[ ]` | |
-| T-9.3 | Il README è la v5 | `[ ]` | |
+| T-9.3 | Il README è la v5 | `[x]` | riscritto. Spariti i due cartelli che rimandavano «a quando chiude la fase 7»: il documento non descrive più la v4, la descrive la v5. Riscritti il bootstrap (`preload` → `startDataLayer` → `startServer`, con il motivo per cui l'ordine non è opzionale), il contenitore di una richiesta (`req.control` e `req.tenant` al posto di `req.db`, e il perché non esiste un terzo caso), le tabelle del consumer costruite **per locator**, l'intero capitolo del data layer, la guida alla query string sulla grammatica v5, la multi-tenancy che parte dal token, la struttura di progetto senza `entities/` e con `migrations/`, la matrice delle funzionalità, la tabella delle variabili d'ambiente (aggiunte le dieci della v5, elencate le tre rimosse), la sezione dei test che dice quali suite **saltano** senza `DATABASE_URL`, e una voce di changelog `5.0.0-alpha` che elenca le rotture con la ragione di ognuna. Aggiunta la dichiarazione `scope: 'control'` sulle rotte, che v4 scriveva `tenantContext: false` e che oggi rifiuta l'avvio invece di essere tradotta. Trovato nel farlo: `llms.txt` si dichiara «ultimate source of truth» ed è tutto v4 — cartello messo in cima, riscrittura aperta come T-9.6 |
 | T-9.4 | Banco di taratura | `[ ]` | |
 | T-9.5 | Inventario dei rifiuti e soglia di copertura | `[ ]` | |
+| T-9.6 | `llms.txt` è la v5 | `[ ]` | cartello di avviso messo in cima con T-9.3; la riscrittura resta |
 
 ---
 
