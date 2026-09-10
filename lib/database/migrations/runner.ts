@@ -138,13 +138,43 @@ async function applyOne(target: MigrationTarget, set: string, file: MigrationFil
   })
 }
 
+/** Which dialect each plane's migrations are written for. Both default to Postgres. */
+export interface MigrationDialects {
+  control: 'pg' | 'sqlite'
+  tenant: 'pg' | 'sqlite'
+}
+
 export function createMigrationRunner(
   open: (container: ContainerRef) => Promise<MigrationTarget>,
-  sets: Record<string, MigrationSet>
+  sets: Record<string, MigrationSet>,
+  dialects: MigrationDialects = { control: 'pg', tenant: 'pg' }
 ): MigrationRunner {
+  /**
+   * Which set applies, and it depends on the dialect because the SQL differs by engine
+   * (T-9.1).
+   *
+   * The dialect comes from the configuration and not from an opened handle, on purpose:
+   * `expected()` answers without touching a database — that is what lets the boot check run
+   * before anything serves and the per-request check run without a query — so it cannot
+   * afford to open a container to find out which language its schema is written in. A
+   * deployment declares one engine for the control plane and one for its containers, and
+   * those two answers are all this needs.
+   *
+   * A missing set is fatal, never an empty one. "This container has nothing pending" and "no
+   * migrations exist for this engine" are different facts, and answering the second with the
+   * first reports success to a deployment whose tables were never created — which then fails
+   * on the first query, somewhere else, saying something unrelated.
+   */
   const setFor = (container: ContainerRef): MigrationSet => {
-    const set = sets[container.tenantId ? 'tenant' : 'control']
-    if (!set) throw new Error('No migration set is configured for this container')
+    const name = container.tenantId ? 'tenant' : 'control'
+    const dialect = container.tenantId ? dialects.tenant : dialects.control
+    const set = sets[`${name}:${dialect}`] ?? sets[name]
+    if (!set) {
+      throw new Error(
+        `No '${name}' migrations exist for dialect '${dialect}'. ` +
+          'Generate them (`npm run db:generate:sqlite`) rather than starting without a schema.'
+      )
+    }
     return set
   }
 

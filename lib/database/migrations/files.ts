@@ -27,7 +27,14 @@ export interface MigrationFile {
 }
 
 /** `drizzle-kit` separates statements with this marker. Without it, the file is one statement. */
-const BREAKPOINT = /^\s*--> statement-breakpoint\s*$/m
+//
+// drizzle-kit writes the marker on its own line for Postgres and **inline**, right after the
+// semicolon, for SQLite. Matching only the line form (which is what this did until T-9.1)
+// left every SQLite migration as one chunk containing a dozen statements, and better-sqlite3
+// refuses a string with more than one — so the failure was loud, but only for the engine
+// nothing had ever migrated.
+//
+const BREAKPOINT = /\s*-->\s*statement-breakpoint\s*/
 
 export function readMigrations(folder: string): MigrationFile[] {
   if (!fs.existsSync(folder)) return []

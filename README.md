@@ -1303,14 +1303,36 @@ The schema of every container is versioned. There is no synchronise-at-startup a
 both are gone in v5.
 
 ```sh
-npm run db:generate          # the control set: registry, platform identities, app tables
-npm run db:generate:tenant   # the tenant set: what lives inside a customer's container
+npm run db:generate                 # control, Postgres: registry, platform identities, app tables
+npm run db:generate:tenant          # tenant, Postgres: what lives inside a customer's container
+npm run db:generate:sqlite          # the same control set, in SQLite's language
+npm run db:generate:tenant:sqlite   # the same tenant set, in SQLite's language
 ```
 
-`drizzle-kit` emits **plain SQL** into `lib/database/migrations/<set>/`, and it is committed
-and reviewed like any other code: what runs against a customer's database is what a reviewer
-reads, in the language the database speaks. Your own entities' migrations go in
-`./migrations/<set>/` in your project; the framework applies both, its own folder first.
+`drizzle-kit` emits **plain SQL** into `lib/database/migrations/<set>/<dialect>/`, and it is
+committed and reviewed like any other code: what runs against a customer's database is what a
+reviewer reads, in the language the database speaks. Your own tables' migrations go in
+`./migrations/<set>/<dialect>/` in your project; the framework applies both, its own folder
+first.
+
+### Two dialects, because the SQL is genuinely different
+
+`pg` and `sqlite` (libSQL reads the `sqlite` set — it speaks the same language). A
+`timestamp with time zone` is an integer of epoch milliseconds there, a `boolean` is 0/1, an
+array is JSON text, and `USING btree` is nothing at all. Translating one into the other on the
+way to the database would put a statement **nobody has read** in front of a customer's data,
+which is the whole reason migrations are committed SQL rather than a description of a change.
+
+The two dialects of a set carry the **same migration names**, so a review pairs them up and
+`npm run check:migration-sets` fails when one gains a migration the other does not. That check
+is the point: a migration added to Postgres and forgotten on SQLite breaks nothing at all until
+someone deploys the serverless combination, and then it breaks on the first query against a
+table that was never created.
+
+A set that does not exist for the engine in use is **fatal**, never an empty set applied
+successfully. "This container has nothing pending" and "no migrations exist for this engine"
+are different facts, and answering the second with the first reports success to a deployment
+whose tables were never created.
 
 ### Two sets, because they have different lives
 

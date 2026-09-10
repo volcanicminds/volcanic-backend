@@ -113,26 +113,58 @@ async function activeTenants(
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+/** The dialects migrations are written for. Two, because the SQL genuinely differs. */
+export type MigrationDialect = 'pg' | 'sqlite'
+
+/** The folder name a dialect reads from. Postgres is `pg`; SQLite and libSQL share `sqlite`. */
+export function migrationDialect(engine?: string): MigrationDialect {
+  return engine === 'sqlite' || engine === 'libsql' ? 'sqlite' : 'pg'
+}
+
 /**
- * Where the migrations of each set are read from (T-5.1 point 5).
+ * Where the migrations of each set are read from (T-5.1 point 5, per dialect since T-9.1).
  *
  * The framework's folder first, then the consumer's: the framework owns the migrations of
  * its own tables and nothing else, and a consumer's entities are the consumer's to move. Two
  * folders rather than one because merging them would make it impossible to say, looking at a
  * failure, whose change broke the container.
+ *
+ * The dialect is part of the path and not a translation applied at run time. A
+ * `timestamp with time zone` is an integer of epoch milliseconds on SQLite, a `boolean` is
+ * 0/1, an array is JSON text, and `USING btree` is nothing at all: rewriting one into the
+ * other on the way to the database would put in front of a customer's data a statement
+ * nobody has read, which is the whole reason migrations are committed SQL.
+ *
+ * The keys are `<set>:<dialect>`, and a missing one is an error rather than an empty set.
+ * "Zero migrations applied" and "no migrations exist for this engine" are different facts,
+ * and before T-9.1 they had the same answer: success.
  */
 export function migrationSets(): Record<string, MigrationSet> {
-  const framework = (set: string) => path.join(__dirname, 'lib', 'database', 'migrations', set)
-  const consumer = (set: string) => path.join(process.cwd(), 'migrations', set)
-  return {
-    control: { name: 'control', folders: [framework('control'), consumer('control')] },
-    tenant: { name: 'tenant', folders: [framework('tenant'), consumer('tenant')] }
+  const framework = (set: string, dialect: string) =>
+    path.join(__dirname, 'lib', 'database', 'migrations', set, dialect)
+  const consumer = (set: string, dialect: string) => path.join(process.cwd(), 'migrations', set, dialect)
+
+  const sets: Record<string, MigrationSet> = {}
+  for (const set of ['control', 'tenant']) {
+    for (const dialect of ['pg', 'sqlite'] as const) {
+      sets[`${set}:${dialect}`] = { name: set, folders: [framework(set, dialect), consumer(set, dialect)] }
+    }
   }
+  return sets
 }
 
 function buildMigrationRunner(provider: unknown, options: DataLayerOptions) {
   const engine = options?.control?.engine ?? 'postgres'
   const controlSchema = options?.control?.schema || 'public'
+
+  // A deployment may hold the control plane on Postgres and give each customer a SQLite file
+  // (a supported combination), so the two planes are asked separately which language their
+  // schema is written in. `tenants.engine` defaults to the control engine, not to Postgres:
+  // a `tenants` block that names no engine means "the same one".
+  const dialects = {
+    control: migrationDialect(engine),
+    tenant: migrationDialect(options?.tenants?.engine ?? engine)
+  }
   const p = provider as {
     control(): unknown
     forLocator(locator: string, tenantId: string): unknown
@@ -142,14 +174,15 @@ function buildMigrationRunner(provider: unknown, options: DataLayerOptions) {
     const handle = container.tenantId
       ? await p.forLocator(container.locator, container.tenantId)
       : await p.control()
+    const sqlite = (container.tenantId ? dialects.tenant : dialects.control) === 'sqlite'
     return {
       handle,
       // SQLite is a file per container, so there is no schema to enter and nothing to
       // qualify: the locator is the file, and the handle already opened it.
-      locator: engine === 'sqlite' || engine === 'libsql' ? undefined : container.locator || controlSchema,
-      dialect: engine === 'sqlite' || engine === 'libsql' ? 'sqlite' : 'postgres'
+      locator: sqlite ? undefined : container.locator || controlSchema,
+      dialect: sqlite ? 'sqlite' : 'postgres'
     }
   }
 
-  return createMigrationRunner(open, migrationSets())
+  return createMigrationRunner(open, migrationSets(), dialects)
 }

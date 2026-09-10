@@ -25,6 +25,29 @@ import { createLitestreamReplica, type ReplicaPort, type ReplicaTarget } from '.
 //
 export type SqliteDriver = 'better-sqlite3' | 'libsql'
 
+/**
+ * One statement, whatever kind it is.
+ *
+ * better-sqlite3 splits statements in two and refuses the wrong call for each: `all()` throws
+ * "This statement does not return data" on DDL, an INSERT or a `begin`, and `run()` throws the
+ * mirror image on a SELECT. Every caller of `execute` would otherwise have to know which of
+ * the two its SQL is, which is exactly the knowledge a raw-SQL escape hatch exists to avoid —
+ * and getting it wrong is an exception, not a wrong answer, so it stayed invisible until
+ * something ran DDL through it (T-9.1).
+ *
+ * The distinction is a property of the prepared statement, not of the text, so it is not
+ * something to guess with a regular expression: the driver is asked, and its refusal is the
+ * answer.
+ */
+async function runOrAll(db: any, query: unknown): Promise<any> {
+  try {
+    return await db.all(query as never)
+  } catch (error) {
+    if (!/does not return data/i.test(String((error as Error)?.message ?? ''))) throw error
+    return await db.run(query as never)
+  }
+}
+
 export interface SqliteHandle {
   readonly kind: 'control' | 'tenant'
   readonly dialect: 'sqlite'
@@ -139,6 +162,16 @@ export class SqliteProvider {
     return { db: drizzle(sqlite), close: async () => sqlite.close() }
   }
 
+  /**
+   * What a transaction callback receives: the same `execute` a handle exposes, on the same
+   * connection. Drizzle's own transaction object is not usable here (it is built by the
+   * synchronous helper we cannot call), and a callback that had to switch API mid-flight
+   * between engines would be a contract with a footnote.
+   */
+  private transactional(db: any) {
+    return { execute: async (query: unknown) => await runOrAll(db, query), db }
+  }
+
   private buildHandle(kind: 'control' | 'tenant', db: any, close: () => Promise<void>, file: string, tenantId?: string): SqliteHandle {
     return {
       kind,
@@ -148,8 +181,37 @@ export class SqliteProvider {
       file,
       tables: appTables(),
       registry: kind === 'control' ? this.registry : undefined,
-      execute: async (query) => await db.all(query as never),
-      transaction: async (fn) => await db.transaction(fn as never),
+      execute: async (query) => await runOrAll(db, query),
+      //
+      // `db.transaction(fn)` on better-sqlite3 refuses an async callback — the driver is
+      // synchronous and rejects a returned promise outright — so the transaction is driven by
+      // statement. It is not a downgrade: `BEGIN` / `COMMIT` / `ROLLBACK` is what the driver's
+      // helper does, and an explicit version can await a caller who needs to.
+      //
+      // Found by T-9.1: every caller so far handed it a synchronous function or was on
+      // Postgres, so the migration runner — the one place that awaits inside a transaction —
+      // failed the first time SQLite was asked to have a schema.
+      //
+      // One connection per container, so there is no interleaving to protect against here;
+      // the caller's `await` cannot let another writer in.
+      //
+      transaction: async (fn) => {
+        await runOrAll(db, sql.raw('begin'))
+        try {
+          const result = await fn(this.transactional(db) as never)
+          await runOrAll(db, sql.raw('commit'))
+          return result
+        } catch (error) {
+          // A rollback that itself fails must not replace the error that caused it: the first
+          // one says what went wrong, the second only says the connection is worse off.
+          try {
+            await runOrAll(db, sql.raw('rollback'))
+          } catch {
+            /* the original error is the one worth reporting */
+          }
+          throw error
+        }
+      },
       close
     }
   }

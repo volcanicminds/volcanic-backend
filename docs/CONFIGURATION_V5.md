@@ -64,6 +64,11 @@ Checked at boot by the capability matrix (T-1.4). Anything else logs fatal and e
 | `postgres` | `strategy: 'container'`, `engine: 'sqlite' \| 'libsql'` | one file per tenant |
 | `sqlite` / `libsql` | absent, or `strategy: 'container'` | serverless processes: CLI, agents, desktop |
 
+Every combination above has a **migration set in its own dialect** (`migrations/<set>/pg` and
+`migrations/<set>/sqlite`, T-9.1). Until those existed, the two serverless rows were engines the
+framework could open and could not prepare: the adapter worked, the containers opened, and the
+only committed SQL said `timestamp with time zone`.
+
 | Combination | Refused because |
 |---|---|
 | any engine + `strategy: 'schema'` on SQLite or libSQL | schemas do not exist there, and faking them with table prefixes is the `row` strategy under another name, which decision 5 forbids |
