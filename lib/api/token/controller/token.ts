@@ -47,7 +47,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   }
 
   let token = await req.server['tokenManager'].createToken(dataContext(req), data)
-  if (!token || !token.getId() || !token.externalId) {
+  if (!token || !token.id || !token.externalId) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not registered' })
   }
 
@@ -61,7 +61,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not signed' })
   }
 
-  token = await req.server['tokenManager'].updateTokenById(dataContext(req), token.getId(), { token: bearerToken })
+  token = await req.server['tokenManager'].updateTokenById(dataContext(req), token.id, { token: bearerToken })
   return token
 }
 
@@ -87,7 +87,7 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const token = await req.server['tokenManager'].retrieveTokenById(dataContext(req), id)
-  if (!token || !token.getId()) {
+  if (!token || !token.id) {
     return reply.status(404).send()
   }
 
@@ -95,7 +95,7 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   if (assignsAdmin(req, data.roles)) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot assign the admin role to a token' })
   }
-  return req.server['tokenManager'].updateTokenById(dataContext(req), token.getId(), data)
+  return req.server['tokenManager'].updateTokenById(dataContext(req), token.id, data)
 }
 
 export async function block(req: FastifyRequest, _reply: FastifyReply) {
@@ -104,12 +104,12 @@ export async function block(req: FastifyRequest, _reply: FastifyReply) {
 
   await req.server['tokenManager'].blockTokenById(dataContext(req), userId, reason)
   const token = await req.server['tokenManager'].retrieveTokenById(dataContext(req), userId)
-  return { ok: !!token.getId() }
+  return { ok: !!token.id }
 }
 
 export async function unblock(req: FastifyRequest, _reply: FastifyReply) {
   const { id: userId } = req.parameters()
   await req.server['tokenManager'].unblockTokenById(dataContext(req), userId)
   const token = await req.server['tokenManager'].retrieveTokenById(dataContext(req), userId)
-  return { ok: !!token.getId() }
+  return { ok: !!token.id }
 }

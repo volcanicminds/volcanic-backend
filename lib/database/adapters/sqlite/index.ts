@@ -211,6 +211,38 @@ export class SqliteProvider {
     await this.evictContainers()
   }
 
+  /** Opens a tenant's container by id. The name the manager port uses (T-6.1). */
+  async openContainer(tenantId: string): Promise<TenantHandle> {
+    return await this.tenant(tenantId)
+  }
+
+  /** Creates the container of a tenant being provisioned: on this engine, its file (T-6.1). */
+  async createContainer(tenant: Tenant): Promise<void> {
+    await this.forLocator(tenant.locator, tenant.id)
+  }
+
+  /**
+   * Removes a container that was created moments ago and could not be finished (T-6.1).
+   * Not how a tenant's data is destroyed: that is T-6.3, with an export in front of it.
+   */
+  async dropContainer(locator: string): Promise<void> {
+    const file = locator === ':memory:' ? locator : resolveContainerFile(this.directory, locator)
+    const open = this.open.get(file)
+    if (open) {
+      await open.close()
+      this.open.delete(file)
+    }
+    if (file !== ':memory:') {
+      for (const suffix of ['', '-wal', '-shm']) {
+        try {
+          fs.unlinkSync(`${file}${suffix}`)
+        } catch {
+          // Absent is the desired state, and the WAL companions may simply not exist.
+        }
+      }
+    }
+  }
+
   /**
    * The same contract as the Postgres advisory lock, on a filesystem (T-5.3).
    *

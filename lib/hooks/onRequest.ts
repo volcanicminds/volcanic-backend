@@ -4,7 +4,6 @@ import { httpError } from '../util/httpError.js'
 import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } from '../../types/global.js'
 import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
 import { bearerTokenOf } from '../util/bearer.js'
-import { SYSTEM_PUBLIC } from '../loader/roles.js'
 
 const MFA_SETUP_WHITELIST = ['/auth/mfa/setup', '/auth/mfa/enable', '/auth/mfa/verify', '/auth/logout']
 
@@ -191,9 +190,11 @@ export default async (req, reply) => {
         const freshNormalizedRoles = normalizeRoles(req.user?.roles || req.token?.roles)
         req.roles = () => freshNormalizedRoles
       } catch (error) {
-        const isRoutePublic = (cfg.requiredRoles || []).some(
-          (role: Role) => role.code === roles.public.code || role.code === SYSTEM_PUBLIC
-        )
+        const isRoutePublic = (cfg.requiredRoles || []).some((role: Role) => role.code === roles.public.code)
+        // Said out loud even when it is tolerated. A public route treats a bad token as no
+        // token, which is right, but swallowing the reason turns "the subject could not be
+        // resolved" into an unexplained 401 from a middleware three layers down.
+        if (log.w) log.warn(`Authentication: ${(error as any)?.message} on ${req.method} ${req.url}`)
         if (!isRoutePublic) {
           return reply.status(401).send(httpError(401, (error as any)?.message || 'Invalid or expired token', 'UNAUTHORIZED'))
         }
@@ -221,10 +222,9 @@ function finishRoleGate(req, reply, cfg) {
   // Without this, a user whose roles don't include `public` (e.g. only a custom consumer
   // role) would get 403 on public routes such as /users/me or /auth/change-password.
   // A control route never carries `public`, so this branch simply never fires there.
-  // `system:public` is the control plane's own spelling of the same thing: a route that has
-  // to answer before anyone is authenticated (T-4.1). Two codes because there are two
-  // catalogues, and one list that reads both because the question is the same.
-  const isPublicRoute = requiredRoles.some((r) => r.code === roles.public.code || r.code === SYSTEM_PUBLIC)
+  // `public` is plane-neutral: it is not a tenant identity, it is the absence of one, so a
+  // control route uses the same code for "answer before anyone is authenticated".
+  const isPublicRoute = requiredRoles.some((r) => r.code === roles.public.code)
   const hasPermission = isPublicRoute || requiredRoles.some((r) => authorizedRoles.includes(r.code))
 
   if (!hasPermission) {

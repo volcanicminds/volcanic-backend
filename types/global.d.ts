@@ -8,7 +8,16 @@ import { VQuery, VFindResult, VHeaders } from './orm.js'
 export { MfaPolicy, VQuery, VFindResult, VHeaders }
 
 export interface AuthenticatedUser {
-  getId(): any
+  /**
+   * The row's own identifier (T-6.1).
+   *
+   * v4 exposed `getId()`, an ORM entity method that had leaked into the framework's public
+   * surface. v5 hands back plain rows, so the identifier is a field: the ORM is not part of
+   * the API, and a data row that answers method calls is the ORM pretending otherwise. The
+   * gap only showed end to end, where `req.user.getId()` was not a function and the failure
+   * surfaced three layers away as an unexplained 401.
+   */
+  id: string
   username: string
   email: string
   roles: Role[]
@@ -17,7 +26,8 @@ export interface AuthenticatedUser {
 }
 
 export interface AuthenticatedToken {
-  getId(): any
+  /** The row's own identifier. See `AuthenticatedUser.id`: v5 hands back rows, not entities. */
+  id: string
   name: string
   roles: Role[]
 }
@@ -154,6 +164,11 @@ export interface Route {
   method: string
   path: string
   handler: string
+  /**
+   * Which plane the route acts on: 'tenant' (the default) or 'control'.
+   * Also accepted inside `config`, and on the file-level config as the default for the file.
+   */
+  scope?: 'tenant' | 'control'
   // Role objects (from the global `roles` catalog) or bare string codes; string codes
   // are resolved and validated against the catalog at load (unknown code → fail-fast).
   roles: (Role | string)[]
@@ -428,6 +443,8 @@ export interface TrackChangesList {
 export interface UserManagement {
   isImplemented(): boolean
   isValidUser(data: any): boolean
+  /** Whether the password has aged past `PASSWORD_EXPIRATION_DAYS`. Reads the row, asks nothing. */
+  isPasswordToBeChanged(user: any): boolean
 
   createUser(ctx: DataHandle, data: any): Promise<any>
   updateUserById(ctx: DataHandle, id: string, data: any): Promise<any | null>

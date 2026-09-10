@@ -131,8 +131,8 @@ export async function track(req: FastifyRequest, reply: FastifyReply, payload: a
       entityName: entity,
       entityId: id,
       status,
-      userId: req.user?.getId() ?? null,
-      tokenId: req.token?.getId?.() ?? null,
+      userId: req.user?.id ?? null,
+      tokenId: req.token?.id ?? null,
       // Which impersonation session wrote this, when one did (T-4.2). Without it the trail
       // would say a tenant user made the change, which is true of the credential and false
       // of the person.

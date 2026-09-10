@@ -47,7 +47,7 @@ function notImplemented<T extends object>(manager: string, methods: readonly str
 }
 
 const USER_METHODS = [
-  'isValidUser', 'createUser', 'updateUserById', 'deleteUser', 'resetExternalId',
+  'isValidUser', 'isPasswordToBeChanged', 'createUser', 'updateUserById', 'deleteUser', 'resetExternalId',
   'retrieveUserById', 'retrieveUserByExternalId', 'retrieveUserByEmail', 'retrieveUserByUsername',
   'retrieveUserByResetPasswordToken', 'retrieveUserByConfirmationToken', 'retrieveUserByPassword',
   'changePassword', 'forgotPassword', 'resetPassword', 'userConfirmation',

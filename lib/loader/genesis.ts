@@ -97,7 +97,7 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
     }
 
     if (Object.keys(patch).length) {
-      await um.updateUserById(ctx, existing.getId(), patch)
+      await um.updateUserById(ctx, existing.id, patch)
       if (log?.i) log.info(`Startup: reconciled ${email} (${Object.keys(patch).join(', ')}).`)
     }
     return

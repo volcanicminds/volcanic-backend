@@ -33,7 +33,7 @@ export default {
     {
       method: 'POST',
       path: '/auth/login',
-      roles: ['system:public'],
+      roles: ['public'],
       handler: 'systemAuth.login',
       rateLimit: authRateLimit,
       config: {
@@ -45,14 +45,14 @@ export default {
     {
       method: 'POST',
       path: '/auth/logout',
-      roles: ['system:public'],
+      roles: ['public'],
       handler: 'systemAuth.logout',
       config: { title: 'Log out', description: 'Clears the cookie in COOKIE mode' }
     },
     {
       method: 'POST',
       path: '/auth/refresh-token',
-      roles: ['system:public'],
+      roles: ['public'],
       handler: 'systemAuth.renew',
       rateLimit: authRateLimit,
       config: { title: 'Renew a control token', description: 'Exchanges a valid control refresh token' }

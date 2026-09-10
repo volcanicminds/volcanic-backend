@@ -58,6 +58,16 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       return (rows[0] as Tenant) ?? null
     },
 
+    /**
+     * Writes the registry ROW, and nothing else (T-6.1).
+     *
+     * In T-2.5 this method also created the container, right after the insert. That order is
+     * exactly what the creation flow may not have: if the container cannot be built or
+     * migrated, a row already exists pointing at a container that does not work, and the
+     * next request resolves a tenant into nothing. Provisioning is orchestrated by the route
+     * (build, migrate, seed, and only then record), so the row is written last and means
+     * what it says.
+     */
     async createTenant(ctx: ControlHandle, data: any) {
       const { handle, tenant } = registry(ctx, 'createTenant')
 
@@ -72,13 +82,14 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
           // stored value and the used value are the same string, which v4 did not guarantee.
           locator: String(data.locator ?? data.slug),
           config: data.config ?? {},
+          // The version the container was actually brought to, recorded with the row that
+          // points at it (T-6.1).
+          schemaVersion: data.schemaVersion ?? null,
           status: 'active'
         })
         .returning()
 
-      const created = rows[0] as Tenant
-      if (provider.createContainer) await provider.createContainer(created)
-      return created
+      return rows[0] as Tenant
     },
 
     async updateTenant(ctx: ControlHandle, id: string, data: any) {

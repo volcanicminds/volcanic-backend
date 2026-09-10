@@ -9,7 +9,8 @@ export default {
     {
       method: 'GET',
       path: '/',
-      roles: [],
+      // A health check answers before anyone is authenticated, on either plane.
+      roles: ['public'],
       handler: 'health.check',
       middlewares: [],
       config: {

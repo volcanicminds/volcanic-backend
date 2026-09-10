@@ -48,6 +48,37 @@ export function createUserManager(): UserManagement {
       return !!data?.email && !!data?.password
     },
 
+    /**
+     * Whether the password has aged past `PASSWORD_EXPIRATION_DAYS`.
+     *
+     * Carried over from v4, where it was already correct, and missed by the port of T-2.5:
+     * the login route calls it and the v5 manager did not have it, so every tenant login
+     * answered 500. Found by the isolation bench (T-0.2), which is the only suite that logs
+     * a real user in through a real route.
+     *
+     * Synchronous, unlike everything else here, because it reads a field it was handed: it
+     * asks no database anything, and making it async would suggest otherwise.
+     */
+    isPasswordToBeChanged(user: any): boolean {
+      const declared = process.env.PASSWORD_EXPIRATION_DAYS
+      if (declared == null) return false
+
+      const days = Number(declared)
+      // A misconfigured expiry must not read as "never expires": that is the answer that
+      // silently turns the policy off.
+      if (!Number.isFinite(days) || days <= 0) {
+        throw new Error('PASSWORD_EXPIRATION_DAYS must be a positive number of days')
+      }
+
+      const changedAt = user?.passwordChangedAt
+      // No timestamp means the password predates the column: treat it as due rather than as
+      // fresh, so an upgrade does not grant an indefinite extension to every old password.
+      if (!changedAt) return true
+
+      const elapsedDays = (Date.now() - new Date(changedAt).getTime()) / (1000 * 3600 * 24)
+      return elapsedDays >= days
+    },
+
     async createUser(ctx: DataHandle, data: any) {
       const { handle, user } = users(ctx, 'createUser')
       const password = await bcrypt.hash(String(data.password), BCRYPT_COST)

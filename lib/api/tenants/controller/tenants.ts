@@ -50,7 +50,13 @@ export function sanitizeSchemaName(schema: string): string {
 
 export async function list(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
-  return reply.send(await managerOf(req).listTenants(control(req), req.data()))
+
+  // The records in the body and the pagination in the headers, like every other list route
+  // of the framework (`/users`, `/token`). This one sent the whole `{ headers, records }`
+  // object while its response schema declared an array, so the serializer refused it and the
+  // route answered 500 whatever the registry contained.
+  const { headers, records } = await managerOf(req).listTenants(control(req), req.data())
+  return reply.type('application/json').headers(headers as never).send(records)
 }
 
 export async function findOne(req: FastifyRequest, reply: FastifyReply) {
@@ -62,18 +68,109 @@ export async function findOne(req: FastifyRequest, reply: FastifyReply) {
   return reply.send(tenant)
 }
 
+/**
+ * The container name, derived when the caller did not send one.
+ *
+ * Prefixed because a container name is a schema name, and an unprefixed one collides with
+ * whatever else the database already calls `public`, `information_schema` or the name of a
+ * table. The slug is sanitised on the way in, so the derived value is a valid identifier by
+ * construction and never triggers the 400 below.
+ */
+export function locatorFor(slug: string): string {
+  return `tenant_${sanitizeSchemaName(String(slug))}`
+}
+
+/**
+ * Provisioning (T-6.1, docs/API_V5.md §6.1).
+ *
+ * The order is the task. v4 wrote the registry row first and then tried to build the
+ * container; if the build failed, a row was left pointing at a container that does not work,
+ * and the next request resolved a tenant into nothing. Here the row is written LAST, so it
+ * exists only for a tenant that is finished: container created, schema migrated, administrator
+ * seeded and able to log in.
+ *
+ * If anything fails before that, the container is dropped and no row is written. Dropping is
+ * safe precisely because we are before the row: what we remove is a schema created seconds
+ * ago that nothing points at and that has never held a customer's data.
+ */
 export async function create(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const data = req.data()
-  const locator = String(data.locator ?? '')
-  if (locator && sanitizeSchemaName(locator) !== locator) {
+  const declared = String(data.locator ?? '')
+
+  // Sanitised once, before it is stored, and a value that CHANGES under sanitisation is
+  // refused rather than adjusted: v4 saved the raw name and used the sanitised one, so a
+  // registry row could name a schema that does not exist (defect D-20).
+  if (declared && sanitizeSchemaName(declared) !== declared) {
     return reply
       .status(400)
       .send(httpError(400, 'The container name contains characters that are not allowed', 'TENANT_LOCATOR_INVALID'))
   }
 
-  return reply.code(201).send(await managerOf(req).createTenant(control(req), data))
+  const locator = declared || locatorFor(data.slug)
+  const admin = data.admin ?? {}
+
+  const existing = await managerOf(req).getTenantBySlug(control(req), String(data.slug))
+  if (existing) {
+    return reply.status(409).send(httpError(409, 'A tenant with that slug already exists', 'TENANT_EXISTS'))
+  }
+
+  const provider = (req.server as unknown as Record<string, DataProvider & Record<string, any>>)['provider']
+  const migrations = (req.server as unknown as Record<string, any>)['migrations']
+  if (!provider?.createContainer || !migrations?.apply) {
+    return reply.status(503).send(httpError(503, 'The data layer cannot provision containers', 'TENANCY_NOT_AVAILABLE'))
+  }
+
+  // The tenant has no identity yet: the registry assigns it when the row is written, which
+  // is last. Until then the container is addressed by its locator, which is the only thing
+  // that has to be true for the schema to be built and migrated.
+  const slug = String(data.slug)
+  const draft = { id: locator, locator, slug }
+  let built = false
+
+  try {
+    await provider.createContainer({ ...data, ...draft } as never)
+    built = true
+
+    // The schema comes from the migrations, never from entity metadata: a container built by
+    // synchronising a schema has no version, and a container with no version cannot be
+    // migrated later (T-5.1). A truthy `tenantId` is what selects the tenant set.
+    const schemaVersion = await migrations.apply({ tenantId: draft.id, locator })
+
+    const container = await provider.forLocator(locator, draft.id)
+    const users = req.server['userManager'] as UserManagement
+    await users.createUser(container as never, {
+      email: admin.email,
+      username: admin.email,
+      password: admin.password,
+      roles: [global.roles?.admin?.code || 'admin'],
+      // TRUE by default on this route, and that is defect D-08: v4 seeded the administrator
+      // unconfirmed, login refused unconfirmed users, and no API could confirm one. A tenant
+      // whose administrator cannot log in is not provisioned, it is broken.
+      confirmed: admin.adminConfirmed !== false,
+      // The sovereign of ITS container, written into the row (T-4.3). Each tenant has its
+      // own founder and inherits nobody else's.
+      isFounder: true
+    })
+
+    const created = await managerOf(req).createTenant(control(req), { ...data, locator, schemaVersion })
+
+    if (log.i) log.info(`Tenant ${created.slug} provisioned in ${locator} at ${schemaVersion}`)
+    return reply.code(201).send(created)
+  } catch (error) {
+    if (built) {
+      try {
+        await provider.dropContainer(locator)
+      } catch (cleanup) {
+        // Said out loud: a container left behind by a failed provisioning is an orphan
+        // nothing points at, and the operator has to know it is there.
+        if (log.e) log.error(`Tenant ${slug}: could not remove the container ${locator} after a failed creation: ${(cleanup as Error)?.message}`)
+      }
+    }
+    if (log.e) log.error(`Tenant ${slug}: provisioning failed, no registry row was written: ${(error as Error)?.message}`)
+    throw error
+  }
 }
 
 export async function update(req: FastifyRequest, reply: FastifyReply) {
@@ -159,6 +256,10 @@ export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const { id } = req.parameters()
+  // `userId` accepts the row's id OR its email address. An operator impersonating "the
+  // administrator of globex" has the address; the id of a row inside a customer's container
+  // is not something they can look up, and asking them to would mean reading that container
+  // first, which is the thing impersonation exists to make accountable.
   const { userId, reason } = req.data()
 
   // The reason is what makes the record worth keeping, so it is required and it is checked
@@ -183,7 +284,9 @@ export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
 
   const container = await provider.tenant(tenant.id, req.dataScope)
   const users = req.server['userManager'] as UserManagement
-  const target = await users.retrieveUserById(container, String(userId))
+  const target =
+    (await users.retrieveUserById(container, String(userId))) ??
+    (await users.retrieveUserByEmail(container, String(userId)))
   if (!target) return reply.status(404).send()
 
   const ttl = impersonationTtl()

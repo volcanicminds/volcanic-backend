@@ -104,9 +104,14 @@ function resolveRequiredRoles(
       continue
     }
 
+    // `public` is not a tenant identity, it is the absence of one, so it belongs to neither
+    // catalogue and is allowed in both. A control plane needs it for the routes that have to
+    // answer before anyone is authenticated: its own login, and a health check.
+    const isPublic = code === roles.public?.code
+
     // docs/AUTHORIZATION_V5.md §2.1, the two refusals TypeScript cannot make: a route that
     // mixes the scopes is a hole, and it must be impossible to ship rather than logged.
-    if (isControl && !isSystemRoleCode(code)) {
+    if (isControl && !isSystemRoleCode(code) && !isPublic) {
       roleErrors.push(`${where} → control route lists the tenant role '${code}'. Control routes take '${SYSTEM_PREFIX}' roles only`)
       continue
     }
@@ -116,7 +121,7 @@ function resolveRequiredRoles(
     }
 
     if (typeof ref === 'string') {
-      const resolved = catalogue[ref]
+      const resolved = isPublic ? roles.public : catalogue[ref]
       if (resolved) declared.push(resolved)
       else roleErrors.push(`${where} → unknown role '${ref}' (not declared in ${catalogueName})`)
     } else {
@@ -148,7 +153,8 @@ function resolveRequiredRoles(
       out.push(r)
     }
   }
-  // A control route is never open to `public`: the platform has no anonymous surface.
+  // A control route that declares NOTHING is superuser-only: the platform has no anonymous
+  // surface to default to. Being public there is opted into, never inherited.
   if (out.length === 0 && !capability && !isControl) out.push(roles.public)
   if (superuser && !out.some((r) => r.code === superuser.code)) out.push(superuser)
   return out
@@ -180,7 +186,15 @@ export function processRoute(
 
   // Which plane the route acts on. Read before the roles are resolved, because it decides
   // WHICH CATALOGUE they are resolved against (T-4.1).
-  const scope: 'tenant' | 'control' = (config?.scope || defaultConfig.scope || 'tenant') as 'tenant' | 'control'
+  //
+  // On the ROUTE first, which is where docs/AUTHORIZATION_V5.md §2 puts it, then in `config`,
+  // then the file default. Reading only `config` made the documented spelling a no-op, and a
+  // route that declared `scope: 'control'` ran in the tenant scope: a field that is
+  // documented, typed and never read is defect D-11, and it had grown back.
+  const scope: 'tenant' | 'control' = ((route as { scope?: string }).scope ||
+    config?.scope ||
+    defaultConfig.scope ||
+    'tenant') as 'tenant' | 'control'
 
   const requiredRoles = resolveRequiredRoles(
     rs,

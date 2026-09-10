@@ -31,6 +31,8 @@ export interface PostgresHandle {
   /** The dialect the Magic Query builds for: a handle knows its engine, callers do not ask. */
   readonly dialect: 'postgres'
   readonly tenantId?: string
+  /** The schema this handle addresses, when it addresses one. Raw SQL is run inside it. */
+  readonly locator?: string
   /** Drizzle bound to the pool. Shared: it holds no per-container state. */
   readonly db: NodePgDatabase
   /** The application tables, already qualified for this container. */
@@ -102,20 +104,60 @@ export class PostgresProvider {
 
     this.db = drizzle(this.pool)
     this.registry = registryTables(this.controlSchema)
-    this.controlHandle = this.buildHandle('control', appTables(this.controlSchema), undefined)
+    this.controlHandle = this.buildHandle('control', appTables(this.controlSchema), undefined, this.controlSchema)
   }
 
-  private buildHandle(kind: 'control' | 'tenant', tables: AppTables, tenantId?: string): PostgresHandle {
+  private buildHandle(kind: 'control' | 'tenant', tables: AppTables, tenantId?: string, locator?: string): PostgresHandle {
     const db = this.db
+
+    //
+    // RAW SQL on a tenant handle runs inside the container, and this is the reason it needs
+    // saying (T-6.1, found by the bench of T-0.2).
+    //
+    // Choosing a container is choosing table objects, and that works because drizzle prints
+    // the schema into the SQL it builds. Raw SQL has no table objects: `execute('select ...
+    // from widget')` is a string, so it resolved against the connection's pinned
+    // `search_path` and read the CONTROL plane, silently, from a handle whose whole meaning
+    // is "inside this customer's data". An implicit context is exactly what this rewrite
+    // exists to remove, and it had grown back in the one place qualification cannot reach.
+    //
+    // So a raw statement on a tenant handle is wrapped in a transaction with `SET LOCAL`,
+    // which is the use of `search_path` T-3.1 sanctions: undone by the commit, never left on
+    // a pooled connection. Statements built from the qualified tables are unaffected, because
+    // they already name their schema.
+    //
+    const enter = async (tx: any) => {
+      if (locator) await tx.execute(sql.raw(`set local search_path to ${escapeIdentifier(locator)}`))
+    }
+
+    const execute: PostgresHandle['execute'] =
+      kind === 'tenant' && locator
+        ? (query) =>
+            db.transaction(async (tx) => {
+              await enter(tx)
+              return (await tx.execute(query as never)) as unknown as pg.QueryResult
+            }) as Promise<pg.QueryResult>
+        : (query) => db.execute(query as never) as unknown as Promise<pg.QueryResult>
+
+    const transaction: PostgresHandle['transaction'] =
+      kind === 'tenant' && locator
+        ? (fn) =>
+            db.transaction(async (tx) => {
+              await enter(tx)
+              return await fn(tx as never)
+            }) as never
+        : (fn) => db.transaction(fn as never) as never
+
     return {
       kind,
       dialect: 'postgres',
       tenantId,
+      locator,
       db,
       tables,
       registry: kind === 'control' ? this.registry : undefined,
-      execute: (query) => db.execute(query as never) as unknown as Promise<pg.QueryResult>,
-      transaction: (fn) => db.transaction(fn as never) as never
+      execute,
+      transaction
     }
   }
 
@@ -156,7 +198,7 @@ export class PostgresProvider {
     this.containers.set(locator, tables)
     this.evictContainers()
 
-    return this.buildHandle('tenant', tables, tenantId)
+    return this.buildHandle('tenant', tables, tenantId, locator)
   }
 
   /** Trims the cache to its bound, never dropping a container a live request is holding. */
@@ -192,6 +234,29 @@ export class PostgresProvider {
   private async lookupTenant(tenantId: string): Promise<Tenant | null> {
     const rows = await this.db.select().from(this.registry.tenant).where(eq(this.registry.tenant.id, tenantId)).limit(1)
     return (rows[0] as unknown as Tenant) ?? null
+  }
+
+  /** Opens a tenant's container by id. The name the manager port uses (T-6.1). */
+  async openContainer(tenantId: string): Promise<TenantHandle> {
+    return await this.tenant(tenantId)
+  }
+
+  /** Creates the container of a tenant that is being provisioned (T-6.1). */
+  async createContainer(tenant: Tenant): Promise<void> {
+    await this.createSchema(tenant.locator)
+  }
+
+  /**
+   * Removes a container that was created moments ago and could not be finished (T-6.1).
+   *
+   * NOT how a tenant's data is destroyed: that is T-6.3, two phases, an export first and a
+   * second factor. This undoes a provisioning that failed before the registry row was
+   * written, so what it drops is a schema that has never held a customer's data and that
+   * nothing points at.
+   */
+  async dropContainer(locator: string): Promise<void> {
+    await this.dropSchema(locator)
+    this.containers.delete(locator)
   }
 
   /**

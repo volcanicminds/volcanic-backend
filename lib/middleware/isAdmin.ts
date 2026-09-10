@@ -2,9 +2,18 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { httpError } from '../util/httpError.js'
 
+//
+// The apex of whichever plane the request is on (T-4.1).
+//
+// `admin` inside a tenant, `system:admin` on the platform. Asking only for the tenant `admin`
+// would mean a control route guarded by this middleware is unreachable by the only identity
+// that is allowed to act on the platform.
+//
 export function preHandler(req: FastifyRequest, res: FastifyReply, done: any) {
   try {
-    if (req.user && req.user.getId() && req.hasRole(roles.admin)) {
+    const isTenantAdmin = !!req.user?.id && req.hasRole(roles.admin)
+    const isPlatformAdmin = !!req.systemUser?.id && req.roles().includes('system:admin')
+    if (isTenantAdmin || isPlatformAdmin) {
       return done()
     }
 

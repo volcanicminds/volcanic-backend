@@ -163,7 +163,7 @@ const SELF_EDITABLE_FIELDS = ['username', 'firstName', 'lastName']
 
 export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply) {
   const user: AuthenticatedUser | undefined = req.user
-  const id = user?.getId()
+  const id = user?.id
   if (!id) {
     return reply.status(403).send('Cannot update current user')
   }
@@ -178,7 +178,7 @@ export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply
 
 export async function isAdmin(req: FastifyRequest, reply: FastifyReply) {
   const user: AuthenticatedUser | undefined = req.user
-  return reply.send({ isAdmin: user?.getId() && req.hasRole(roles.admin) })
+  return reply.send({ isAdmin: user?.id && req.hasRole(roles.admin) })
 }
 
 export async function block(req: FastifyRequest, reply: FastifyReply) {
@@ -205,8 +205,8 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   }
 
   let user = await req.server['userManager'].blockUserById(dataContext(req), userId, reason)
-  user = await req.server['userManager'].resetExternalId(dataContext(req), user.getId())
-  return { ok: !!user.getId() }
+  user = await req.server['userManager'].resetExternalId(dataContext(req), user.id)
+  return { ok: !!user.id }
 }
 
 export async function unblock(req: FastifyRequest, reply: FastifyReply) {
@@ -223,7 +223,7 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const user = await req.server['userManager'].unblockUserById(dataContext(req), userId)
-  return { ok: !!user.getId() }
+  return { ok: !!user.id }
 }
 
 export async function resetMfaByAdmin(req: FastifyRequest, reply: FastifyReply) {

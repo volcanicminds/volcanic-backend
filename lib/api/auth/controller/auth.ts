@@ -110,7 +110,7 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
-  user = await req.server['userManager'].disableUserById(dataContext(req), user.getId())
+  user = await req.server['userManager'].disableUserById(dataContext(req), user.id)
   isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
@@ -333,7 +333,7 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   }
 
   if (config.options.reset_external_id_on_login) {
-    user = await req.server['userManager'].resetExternalId(dataContext(req), user.getId())
+    user = await req.server['userManager'].resetExternalId(dataContext(req), user.id)
   }
 
   // https://www.iana.org/assignments/jwt/jwt.xhtml
@@ -463,7 +463,7 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User not linked' })
   }
 
-  const user = await req.server['userManager'].resetExternalId(dataContext(req), req.user.getId())
+  const user = await req.server['userManager'].resetExternalId(dataContext(req), req.user.id)
   isValid = await req.server['userManager'].isValidUser(user)
   return { ok: isValid }
 }
@@ -498,12 +498,12 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     }
 
     // 2. Save using userManager (typeorm)
-    await req.server['userManager'].saveMfaSecret(dataContext(req), user.getId(), secret)
-    await req.server['userManager'].enableMfa(dataContext(req), user.getId())
+    await req.server['userManager'].saveMfaSecret(dataContext(req), user.id, secret)
+    await req.server['userManager'].enableMfa(dataContext(req), user.id)
 
     // Record the consumed time-step so the same code cannot be replayed on the first /mfa/verify.
     if (counter !== null) {
-      await req.server['userManager'].updateUserById(dataContext(req), user.getId(), { mfaLastUsedCounter: counter })
+      await req.server['userManager'].updateUserById(dataContext(req), user.id, { mfaLastUsedCounter: counter })
     }
 
     // IMPORTANT: Return full tokens upon enablement if user was in pending state
@@ -545,7 +545,7 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Invalid token' })
   }
 
-  if (decoded.role !== 'pre-auth-mfa' && (!req.user || !req.user.getId())) {
+  if (decoded.role !== 'pre-auth-mfa' && (!req.user || !req.user.id)) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid token scope' })
   }
 
@@ -557,7 +557,7 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   const user = await req.server['userManager'].retrieveUserByExternalId(dataContext(req), subjectId)
   if (!user) return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'User not found' })
 
-  const secret = await req.server['userManager'].retrieveMfaSecret(dataContext(req), user.getId())
+  const secret = await req.server['userManager'].retrieveMfaSecret(dataContext(req), user.id)
   if (!secret) return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA not configured for user' })
 
   // 2. Verify via mfaManager
@@ -570,11 +570,11 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA token already used' })
   }
   if (counter !== null) {
-    await req.server['userManager'].updateUserById(dataContext(req), user.getId(), { mfaLastUsedCounter: counter })
+    await req.server['userManager'].updateUserById(dataContext(req), user.id, { mfaLastUsedCounter: counter })
   }
 
   if (config.options.reset_external_id_on_login) {
-    await req.server['userManager'].resetExternalId(dataContext(req), user.getId())
+    await req.server['userManager'].resetExternalId(dataContext(req), user.id)
   }
 
   const finalToken = await reply.jwtSign({ sub: user.externalId, tid: req.tenantInfo?.id })
@@ -603,7 +603,7 @@ export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
   }
 
   try {
-    await req.server['userManager'].disableMfa(dataContext(req), user.getId())
+    await req.server['userManager'].disableMfa(dataContext(req), user.id)
     return { ok: true }
   } catch (error: any) {
     req.log.error({ err: error }, 'MFA Disable failed')

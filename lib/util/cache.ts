@@ -240,7 +240,7 @@ export function containerOf(req: any): string {
 
 /** Isolates cached data by authenticated subject and role set, inside one container. */
 function subjectScope(req: any): string {
-  const subject = req.user?.externalId ?? req.token?.getId?.() ?? 'anon'
+  const subject = req.user?.externalId ?? req.token?.id ?? 'anon'
   const rolesList = typeof req.roles === 'function' ? req.roles() : []
   const rolesKey = [...(rolesList || [])].sort().join(',')
   return `${subject}|${rolesKey}`
