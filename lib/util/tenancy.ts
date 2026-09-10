@@ -8,6 +8,7 @@
 // deployment and present, with a strategy, when tenants exist. There is no `enabled` flag:
 // declaring the block IS enabling it, so the two cannot contradict each other.
 //
+import type { FastifyRequest } from 'fastify'
 import type { DataHandle, TenantsConfig } from '../../types/global.js'
 
 export function tenantsConfig(): TenantsConfig | null {
@@ -45,9 +46,18 @@ export class NoDataContextError extends Error {
  * that lost its context read whatever the pool handed over (D-06). Reaching the throw below
  * means the resolution of T-3.2 was bypassed, so it is a bug in the framework and it is
  * reported as one rather than served.
+ *
+ * Exported from `@volcanicminds/backend` (T-10.1). It was internal until then, so every
+ * consuming project had to write the choice again by hand, and the shortest way to write it
+ * is `req.tenant ?? req.control`: the fallback this function exists to refuse. A rule that
+ * only the framework can obey is a rule the applications on top of it will break.
  */
-export function dataContext(req: any): DataHandle {
-  const declaresControl = req?.routeOptions?.config?.tenantContext === false
+export function dataContext(req: FastifyRequest): DataHandle {
+  // The router stores the scope as a boolean on the route config, under the v4 spelling it
+  // refuses at the surface (lib/loader/router.ts:263). `FastifyContextConfig` is not
+  // augmented with it, hence the cast rather than a lie in `types/global.d.ts`.
+  const config = req?.routeOptions?.config as { tenantContext?: boolean } | undefined
+  const declaresControl = config?.tenantContext === false
 
   if (declaresControl || !isTenancyEnabled()) {
     if (!req?.control) {

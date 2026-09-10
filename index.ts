@@ -42,7 +42,11 @@ import { assertCorsOptions } from './lib/util/cors.js'
 import { configureCache, cache } from './lib/util/cache.js'
 
 import type { TransferManagement } from './types/global.js'
-import general from './lib/config/general.js'
+// `lib/config/general.js` is deliberately NOT imported here (T-10.4). It is the framework's
+// layer of defaults and `loaderConfig.load()` merges it with the project's; reading it directly
+// skips that merge. A static import is also hoisted above `dotenv.config()`, so the
+// `process.env` reads inside it ran before `.env` was loaded.
+import { MfaPolicy } from './lib/config/constants.js'
 import {
   defaultUserManager,
   defaultTokenManager,
@@ -170,8 +174,10 @@ const start = async (decorators = {}) => {
   global.tracking = tracking
   global.trackingConfig = trackingConfig
 
-  // const opts = yn(process.env.LOG_FASTIFY, false) ? { logger: { development: logger } } : { logger: true }
-  const server: FastifyInstance = fastify()
+  // Fastify's own request logger, off unless asked for (T-10.10). `LOG_FASTIFY` was in the
+  // README's environment table while the only line reading it was commented out, so setting
+  // it did nothing: a documented variable read by nobody, which is D-11 again.
+  const server: FastifyInstance = fastify({ logger: yn(process.env.LOG_FASTIFY, false) })
   global.server = server
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230' } = process.env
@@ -421,14 +427,19 @@ const start = async (decorators = {}) => {
     })
     .then((address) => {
       if (log.i) {
-        const elapsed = (new Date().getTime() - begin) / 100
+        // Milliseconds to seconds. It was divided by 100, so a boot of 1.5s printed "15s".
+        const elapsed = (new Date().getTime() - begin) / 1000
         log.info(`All stuff loaded 🟢 in ${elapsed}s`)
       }
 
-      if (log.w && general.options.mfa_policy !== 'OPTIONAL') {
-        log.warn(`Security MFA 🔑 enforced to ${general.options.mfa_policy}`)
+      // The policy the auth controllers ENFORCE, read from where they read it (T-10.4). This
+      // used to read the framework's own defaults file, so a project that set
+      // `mfa_policy: 'MANDATORY'` in its config was told at boot that MFA was optional.
+      const { mfa_policy = MfaPolicy.OPTIONAL } = global.config?.options || {}
+      if (log.w && mfa_policy !== MfaPolicy.OPTIONAL) {
+        log.warn(`Security MFA 🔑 enforced to ${mfa_policy}`)
       } else if (log.i) {
-        log.info(`Security MFA 🔑 set to ${general.options.mfa_policy}`)
+        log.info(`Security MFA 🔑 set to ${mfa_policy}`)
       }
 
       if (log.i) {
@@ -481,6 +492,16 @@ export type {
 export { MfaPolicy } from './lib/config/constants.js'
 
 export { yn, preload, start, TranslatedError }
+
+// The choice of container, as a function a consuming project can call (T-10.1).
+//
+// Until it was exported, the only way for an application to name the handle of a request was
+// to write the choice again by hand, and the shortest way to write it is
+// `req.tenant ?? req.control`: invariant 3 inverted, because with tenancy on a request that
+// lost its context then reads the control plane instead of failing. `NoDataContextError`
+// travels with it, because a consumer that catches it is catching a framework bug and not a
+// bad request.
+export { dataContext, NoDataContextError } from './lib/util/tenancy.js'
 export { generateManifest, buildManifest } from './lib/manifest/generator.js'
 export { invalidateCache, cache } from './lib/util/cache.js'
 export type { RouteCache, NormalizedRouteCache } from './types/global.js'

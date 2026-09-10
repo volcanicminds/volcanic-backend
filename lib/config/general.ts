@@ -13,8 +13,10 @@ export default {
     // How long a /auth/forgot-password reset token stays usable, in seconds.
     // Checked against `user.resetPasswordTokenAt` by /auth/reset-password.
     reset_password_token_ttl: Number(process.env.RESET_PASSWORD_TOKEN_TTL) || 3600,
-    mfa_admin_forced_reset_email: null,
-    mfa_admin_forced_reset_until: null,
+    // The emergency MFA reset of the admin is NOT configured here (T-10.6). It is a break-glass
+    // action bounded to ten minutes, so it lives in the environment of one deploy
+    // (`MFA_ADMIN_FORCED_RESET_EMAIL`, `MFA_ADMIN_FORCED_RESET_UNTIL`, read in `index.ts`) and
+    // never in a committed file. The two keys that stood here were read by nobody.
     // Quanto dura una sessione di impersonificazione, in secondi (T-4.2). Trenta minuti,
     // non le ventiquattro ore della v4: la durata è la sola cosa che limita una sessione che
     // nessuno revoca a mano. Il massimo assoluto è quattro ore ed è applicato in codice.

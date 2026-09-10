@@ -311,10 +311,10 @@ export interface GeneralConfig {
     reset_external_id_on_login: boolean
     scheduler: boolean
     embedded_auth: boolean
-    // MFA Configs
+    // MFA Configs. The emergency reset of the admin's MFA is environment-only
+    // (`MFA_ADMIN_FORCED_RESET_EMAIL`/`_UNTIL`): the two keys typed here until T-10.6 were
+    // read by nobody, so setting them compiled and did nothing.
     mfa_policy?: MfaPolicy | string
-    mfa_admin_forced_reset_email?: string
-    mfa_admin_forced_reset_until?: string
     // Lifetime of a /auth/forgot-password reset token, in seconds (default 3600).
     reset_password_token_ttl?: number
     /** Seconds an impersonation session lasts (T-4.2). Default 1800, hard maximum 14400. */
@@ -333,7 +333,7 @@ export interface GeneralConfig {
     }
     // In-memory per-route response cache (opt-in per route via `cache`).
     cache?: {
-      enabled?: boolean // master switch (default true)
+      enabled?: boolean // master switch, opt-in: off unless exactly `true` (lib/util/cache.ts)
       ttl?: number // default TTL in seconds for routes without an explicit ttl
       maxEntries?: number // LRU cap (slots) before least-recently-used eviction
     }

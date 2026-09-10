@@ -33,9 +33,24 @@ to its client — `export type ControlDb = ControlHandle & NodePgDatabase` — a
 `asClient(handle)` for the rare place that writes a query by hand instead of going through a
 manager. Everything else takes a handle and passes it on, which is all a controller needs.
 
-Inside the framework the handle of a request is read with one helper, so the choice is made in
-one place: `dataContext(req)` returns `req.tenant ?? req.control`, that is the tenant container
-when tenancy is on and the control plane when it is not.
+The handle of a request is read with one helper, so the choice is made in one place, and the
+helper is **exported** (`import { dataContext } from '@volcanicminds/backend'`): an application
+built on the framework makes the choice with the same function the framework uses.
+
+`dataContext(req)` is **not** `req.tenant ?? req.control`. It answers exactly three cases and
+none of them is a fallback (invariant 3, `lib/util/tenancy.ts`):
+
+| The request | What it gets |
+|---|---|
+| declares `scope: 'control'` | the control plane, because it asked for it |
+| runs where no `tenants` block is declared | the control plane, because that is where the application data lives |
+| is a tenant route with a resolved container | the container |
+
+A tenant route that reaches its handler **without** a resolved container gets a
+`NoDataContextError`, never the control plane. Writing `req.tenant ?? req.control` by hand
+inverts that last row: it hands a request that lost its context whatever the control plane
+holds, which is defect D-06 under another spelling. `NoDataContextError` is exported as well,
+because catching it means catching a bug in the resolution and not a bad request.
 
 The brands are phantom types: they cost nothing at runtime and make
 `tenantManager.createTenant(tenantHandle, …)` a **compile error**. That is invariant 6, and it is
@@ -320,7 +335,7 @@ export interface CapabilityMatrix {
 
 | v4 | v5 |
 |---|---|
-| `userManager.retrieveUserByEmail(email)` | `userManager.retrieveUserByEmail(dataContext(req), email)`, or `req.tenant ?? req.control` written out |
+| `userManager.retrieveUserByEmail(email)` | `userManager.retrieveUserByEmail(dataContext(req), email)`, importing `dataContext` from `@volcanicminds/backend`. Not `req.tenant ?? req.control`: see §1 |
 | `req.db` / `req.runner` | `req.tenant` / `req.control` |
 | `dataBaseManager` | `trackingManager` |
 | `dataBaseManager.synchronizeSchemas()` | removed: use migrations |

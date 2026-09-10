@@ -91,20 +91,45 @@ their defaults.
 
 ## 4. Environment variables
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `DATABASE_URL` | — | control plane connection; wins over the discrete variables |
-| `DB_HOST` `DB_PORT` `DB_USERNAME` `DB_PASSWORD` `DB_NAME` | `127.0.0.1` `5432` `vminds` `vminds` `vminds` | discrete form |
-| `DB_POOL_MAX` | `10` | control plane pool size |
-| `TENANT_CONTAINERS_MAX_OPEN` | `20` | LRU limit |
-| `TENANT_CONTAINERS_DIR` | `./data/tenants` | where per-tenant files live |
-| `VOLCANIC_MAX_PAGE_SIZE` | `100` | Magic Query page-size clamp |
-| `CORS_ORIGINS` | — | **required in production**: comma-separated allowlist |
-| `HIDE_ERROR_DETAILS` | `true` in production | honoured by every error path, `onError` included |
-| `JWT_SECRET` `JWT_REFRESH_SECRET` `MFA_DB_SECRET` | — | minimum 32 characters; a weak or missing secret refuses the boot |
-| `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then |
-| `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid |
-| `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 |
+The variables that shape the data layer. The rest of the environment (JWT, logging, Swagger,
+MFA) is in the README table. The last column says where each value lands, because a variable
+can do three different things: fill a configuration key, act as the fallback of one, or be read
+where it is used without passing through the configuration at all.
+
+| Variable | Default | Meaning | Lands in |
+|---|---|---|---|
+| `CONTROL_ENGINE` | `postgres` | engine of the control plane | `control.engine` |
+| `DATABASE_URL` | — | control plane connection; wins over the discrete variables | `control.url` |
+| `DB_HOST` `DB_PORT` `DB_USERNAME` `DB_PASSWORD` `DB_NAME` | `127.0.0.1` `5432` `vminds` `vminds` `vminds` | discrete form, Postgres only | no key: read by the Postgres adapter, and only when `control.url` is empty |
+| `DB_SCHEMA` | `public` | Postgres schema of the control plane | `control.schema` |
+| `DB_POOL_MAX` | `10` | control plane pool size | `control.pool.max` |
+| `DB_POOL_IDLE_MS` | `30000` | how long an idle control plane connection is kept | `control.pool.idleTimeoutMs` |
+| `TENANT_CONTAINERS_MAX_OPEN` | `20` | LRU limit of live containers | fallback of `tenants.containers.maxOpen` |
+| `TENANT_CONTAINERS_DIR` | `./data/tenants` | where per-tenant files live | fallback of `tenants.containers.directory` |
+| `EXPORT_DIRECTORY` | `./data/exports` | where container exports are written | `export_directory` |
+| `VOLCANIC_MAX_PAGE_SIZE` | `100` | Magic Query page-size clamp | no key: read by the query layer |
+| `CORS_ORIGINS` | — | **required in production**: comma-separated allowlist | `origin` of the `cors` entry in `config/plugins.ts` |
+| `HIDE_ERROR_DETAILS` | `true` in production | honoured by every error path, `onError` included | no key |
+| `JWT_SECRET` `JWT_REFRESH_SECRET` `MFA_DB_SECRET` | — | minimum 32 characters; a weak or missing secret refuses the boot | no key |
+| `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
+| `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
+| `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |
+
+**Fallback, not override.** For the two `TENANT_CONTAINERS_*` variables the configuration wins
+and the environment is read only when the configuration is silent. That is why the loader does
+**not** fill `containers.maxOpen` and `containers.directory` with defaults: until T-10.9 it did,
+the configuration was never silent, and the two variables were ignored on every boot that
+declared tenants.
+
+**Two families for one connection.** `DATABASE_URL` and the five discrete `DB_*` variables both
+describe the control plane connection, and only the first passes through the configuration.
+Collapsing them into one would break every deployment that uses the discrete form, so both stay
+and the rule is the one above: `control.url`, filled from `DATABASE_URL`, wins; the discrete
+variables are read only when it is empty.
+
+**Not in the environment.** `tenants.engine` has no variable: unlike `control.engine`, it can
+only be chosen in `config/general.ts`. Whether it should have one is an open decision, not an
+oversight to fill silently.
 
 **Removed in v5**: `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` (incompatible with versioned migrations),
 `VOLCANIC_CUSTOM_QUERY_OPERATORS` (the `:raw` operator is gone),

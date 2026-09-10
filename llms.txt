@@ -25,7 +25,7 @@
 > **Core Paradigms (MANDATORY)**:
 > 1. **Framework**: Node.js (v24+ required), Fastify v5, pure ESM (`NodeNext`).
 > 2. **Architecture**: Thin Controllers, Fat Services. Controllers only map HTTP to Services. Services handle business logic and never know about HTTP.
-> 3. **Data Layer**: `@volcanicminds/backend/db`, Drizzle underneath and that is an implementation detail. Reach data through a Service Layer bound to the request's **container** (`service.on(req.tenant ?? req.control)`). There is no global connection to fall back on, and a call with no handle **throws** rather than guessing. Use Magic Query (`req.data()`) for filtering.
+> 3. **Data Layer**: `@volcanicminds/backend/db`, Drizzle underneath and that is an implementation detail. Reach data through a Service Layer bound to the request's **container** (`service.on(dataContext(req))`, importing `dataContext` from `@volcanicminds/backend`). There is no global connection to fall back on, and a call with no handle **throws** rather than guessing. Use Magic Query (`req.data()`) for filtering.
 > 4. **Security**: row-level security goes in `applyPermissions` and travels as `QueryOptions.extraWhere`, which is AND-ed **after** everything the URL asked for — `_logic` included — so no filter a caller writes reaches around it. Do not bypass it.
 > 5. **Failures are visible**: v5 has no silent fallbacks. A query with no container throws; an audit write that fails fails the request; a filter the engine cannot honour answers 400. Never "recover" by widening a scope.
 > 6. **TypeScript**: strict typing required. Use the provided types (`FastifyRequest`, `FastifyReply`, `ControlHandle`, `TenantHandle`, `DataHandle`).
@@ -92,7 +92,9 @@ container and never reaches for one.
 | `req.tenant` | this request's tenant container. Absent on a single-tenant deployment |
 | `req.tenantInfo` | the registry row of that tenant. A record, never a connection |
 
-`const container = req.tenant ?? req.control` is the whole idiom, and there is no third answer.
+`const container = dataContext(req)` is the whole idiom, and there is no third answer. Do not
+write it out as `req.tenant ?? req.control`: that form hands a tenant route that lost its
+container the control plane, instead of the error the framework raises.
 In v4 this was `req.db`, an `EntityManager` a service could do without: a call with no context
 fell back to `global.connection`, which meant reading whichever container the pool happened to
 hold. That is defect D-01, and it was not theoretical — a tenant's `search_path` survived in the
@@ -295,7 +297,7 @@ The framework is an **opinionated** system composed of three modular packages wo
 
 Every line of code in the project must adhere to these principles:
 
-- **Thin Controllers ("Adapters"):** Controllers contain no business logic. Their only job is to normalize input (`req.data()`), resolve the container (`req.tenant ?? req.control`) and the caller's context, call a Service, and return the response.
+- **Thin Controllers ("Adapters"):** Controllers contain no business logic. Their only job is to normalize input (`req.data()`), resolve the container (`dataContext(req)`) and the caller's context, call a Service, and return the response.
 - **Fat Services ("Business Logic"):** All logic, transactions, and data security controls reside here. Services do not know about `req` or `res` — they are **bound to a container** (`service.on(handle)`) and refuse to work without one.
 - **Secure by Default:** Data access is never direct. It always passes through methods taking a context, and the security filter travels as `extraWhere`, AND-ed after everything the URL asked for.
 - **No silent recovery:** a missing container, a failed audit write, an operator the engine cannot honour — each one is an error. Widening a scope to make a call succeed is the class of defect v5 was rewritten to remove.
@@ -533,7 +535,7 @@ the operator, so one URL cannot mean two things on two servers).
 ## 1.7 Single vs Multi-Tenant Architecture
 
 Both are supported, and the difference a consumer sees is **one field**: `req.tenant` is present
-or it is not. `const container = req.tenant ?? req.control` is the whole idiom, so the same
+or it is not. `const container = dataContext(req)` is the whole idiom, so the same
 service code serves both.
 
 - **Single tenant** (default): no `tenants` block. The application's data lives in the control
@@ -950,8 +952,7 @@ export async function find(req: FastifyRequest, reply: FastifyReply) {
   // The container this request works on. No fallback: a route that arrives here without one has
   // lost its context, and reading "whichever container the pool last touched" is the defect v5
   // exists to remove.
-  const container = req.tenant ?? req.control
-  if (!container) throw new Error('no container on this request')
+  const container = dataContext(req)
 
   const { db, dialect } = access(container)
   const { product } = tablesFor(container)
@@ -1121,7 +1122,7 @@ const { where, orderBy, limit, offset } = parseQuery(product, req.query, { diale
 ## 3.10 Multi-tenancy in one paragraph
 
 There is nothing to switch. `switchContext` and `runInTenantContext` do not exist, because
-choosing a container is not a session change: application code is handed `req.tenant ?? req.control`,
+choosing a container is not a session change: application code asks `dataContext(req)`,
 and a background job **declares its plane** and receives the matching handle (Part 7.3). What made
 the v4 helpers necessary — a global connection whose `search_path` had to be moved and moved back
 — is the defect that was designed out.
@@ -1303,14 +1304,12 @@ Two things every data-touching controller resolves, and neither is ambient.
 
 ```typescript
 // src/utils/context.ts — yours, not the framework's
-import type { DataHandle, FastifyRequest } from '@volcanicminds/backend'
+import type { FastifyRequest } from '@volcanicminds/backend'
 
-/** The container this request works on. There is no third answer, and no fallback. */
-export function container(req: FastifyRequest): DataHandle {
-  const handle = (req.tenant ?? req.control) as DataHandle | undefined
-  if (!handle) throw new Error(`No container on ${req.method} ${req.url}`)
-  return handle
-}
+// The container is NOT one of the two. `dataContext` is exported by the framework, and
+// writing your own `req.tenant ?? req.control` in its place is the one thing to avoid: it
+// gives a tenant route that lost its container the control plane instead of an error.
+export { dataContext as container } from '@volcanicminds/backend'
 
 /** What the application knows about the caller. Derived from the TOKEN, never from a header. */
 export function userContext(req: FastifyRequest) {
@@ -1531,7 +1530,7 @@ export abstract class BaseService<K extends keyof AppTables> {
 
   protected get bound() {
     if (!this.handle) {
-      throw new Error(`[${this.constructor.name}] used without a container. Call service.on(req.tenant ?? req.control).`)
+      throw new Error(`[${this.constructor.name}] used without a container. Call service.on(dataContext(req)).`)
     }
     const { db, dialect } = access(this.handle, this.constructor.name)
     return {
@@ -1643,7 +1642,7 @@ export const orderService = new OrderService()
 
 | v4 | v5 |
 |---|---|
-| `service.use(req.db)` | `service.on(req.tenant ?? req.control)` |
+| `service.use(req.db)` | `service.on(dataContext(req))` |
 | a service without a manager fell back to `global.connection` | a service without a handle **throws** |
 | `applyPermissions` returned a `where` object merged by the query builder | it returns a `SQL` condition carried as `extraWhere`, AND-ed **last** |
 | the repository came from an `EntityManager` | the table is built **for the locator** the handle addresses |
@@ -1819,8 +1818,10 @@ adapter branches.
 
 ### Data access
 
-- **`req.tenant ?? req.control` (CANONICAL)**: the container this request works on. Bind a service
-  to it with `service.on(container)`. This is the only data-access path, single or multi tenant.
+- **`dataContext(req)` (CANONICAL)**: the container this request works on, imported from
+  `@volcanicminds/backend`. Bind a service to it with `service.on(container)`. This is the only
+  data-access path, single or multi tenant. Not `req.tenant ?? req.control`: that expression
+  substitutes the control plane where `dataContext` raises `NoDataContextError`.
 - **`access(handle)`**: the way inside a handle — `db`, `dialect`, `locator`, `execute`,
   `transaction` — for your own tables and the occasional hand-written query.
 - **`global.connection`, `global.entity`, `global.repository`**: **gone**. Not deprecated, not
@@ -2908,7 +2909,7 @@ produced a 500 from the database, or worse, was silently ignored.
 executeFind({ db }, order, req.data(), { dialect, allowedRelations: ['client'] })
 ```
 
-### 2. `needs a data handle: pass req.tenant ?? req.control, never nothing`
+### 2. `needs a data handle: pass dataContext(req), never nothing`
 
 **Symptom:** a service or manager throws this at the first call.
 **Cause:** it was used without a container — `service.findAll(...)` instead of
@@ -3080,7 +3081,7 @@ await startServer({ ...layer, mfaManager: mfaAdapter, transferManager })
 
 // (d) Multi-tenant — declare the `tenants` block in config/general.ts. Nothing changes HERE:
 //     the managers are the same objects, the provider opens containers, and application code
-//     already works on `req.tenant ?? req.control`.
+//     already works on `dataContext(req)`.
 await startServer(layer)
 
 // (e) Only some of them, deliberately: the Null-Object default fills every gap.
@@ -3236,7 +3237,7 @@ Inside handlers you read the identity via: `req.user` (a human, from `userManage
 `tokenManager`), `req.systemUser` (a platform administrator, from `systemUserManager` — deliberately **not**
 `req.user`: they are not a tenant user), `req.roles()` (string[] of role codes) and `req.hasRole(roles.admin)`.
 
-The container is `req.tenant ?? req.control`, with `req.tenantInfo` carrying the tenant's registry row (Part 1.7).
+The container is `dataContext(req)`, with `req.tenantInfo` carrying the tenant's registry row (Part 1.7).
 See Part 6 for the full auth/JWT/MFA lifecycle.
 
 ## 11.4 Admin manifest capability (admin console)
@@ -3402,7 +3403,7 @@ await startServer(layer)
 
 What changes at runtime (see Part 1.7 for the security rules):
 - Each request resolves a tenant and is handed `req.tenant`, plus `req.tenantInfo` (its registry
-  row). `const container = req.tenant ?? req.control` is the whole idiom, so **application code is
+  row). `const container = dataContext(req)` is the whole idiom, so **application code is
   identical** between single and multi tenant.
 - The container is chosen by **qualifying the tables**, not by `SET search_path` on a pooled
   connection: nothing is left on the session, so nothing has to be reset before the connection goes

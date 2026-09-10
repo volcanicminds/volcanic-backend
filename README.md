@@ -549,20 +549,20 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `HOST`                         | The host address for the server to listen on. Use `0.0.0.0` for Docker. |    No    | `0.0.0.0`           |
 | `PORT`                         | The port for the server to listen on.                                   |    No    | `2230`              |
 | `JWT_SECRET`                   | Secret key for signing JWTs.                                            | **Yes**  |                     |
-| `JWT_EXPIRES_IN`               | Expiration time for JWTs (e.g., `5d`, `12h`).                           |    No    | `5d`                |
+| `JWT_EXPIRES_IN`               | Expiration time for JWTs (e.g., `5d`, `12h`).                           |    No    | `15d`               |
 | `JWT_REFRESH`                  | Enable refresh tokens.                                                  |    No    | `true`              |
 | `JWT_REFRESH_SECRET`           | Secret key for signing refresh tokens.                                  | **Yes**¹ |                     |
 | `JWT_REFRESH_EXPIRES_IN`       | Expiration time for refresh tokens.                                     |    No    | `180d`              |
-| `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`). |    No    | `info`              |
+| `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`). Unset or unknown falls back to `debug`. |    No    | `debug`             |
 | `LOG_COLORIZE`                 | Enable colorized log output.                                            |    No    | `true`              |
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
 | `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format.                                  |    No    | `true`              |
 | `LOG_FASTIFY`                  | Enable Fastify's built-in logger.                                       |    No    | `false`             |
-| `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `true`              |
+| `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `false`             |
 | `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
-| `SWAGGER_TITLE`                | The title of the API documentation.                                     |    No    | `API Documentation` |
+| `SWAGGER_TITLE`                | The title of the API documentation.                                     |    No    | `Volcanic API Documentation` |
 | `SWAGGER_DESCRIPTION`          | The description for the API documentation.                              |    No    |                     |
-| `SWAGGER_VERSION`              | The version of the API.                                                 |    No    | `0.1.0`             |
+| `SWAGGER_VERSION`              | The version of the API.                                                 |    No    | `0.0.1`             |
 | `SWAGGER_PREFIX_URL`           | The path where Swagger UI is available.                                 |    No    | `/api-docs`         |
 | `MFA_POLICY`                   | MFA Security Policy (`OPTIONAL`, `MANDATORY`, `ONE_WAY`)                |    No    | `OPTIONAL`          |
 | `AUTH_CODE_SIZE`               | Length of the generated authorization codes (nanoid).                   |    No    | `10`                |
@@ -575,9 +575,12 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `ADMIN_PASSWORD`               | Password for the founder created from `ADMIN_EMAIL`; if unset, a strong one is generated and printed to stdout. | No |    |
 | `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response. Honoured by every error path, the `onError` hook included. |    No    | `true` (prod)       |
 | `CORS_ORIGINS`                 | Comma-separated allowlist of origins allowed to call the API. Credentials are granted only against a real allowlist. | **Yes**⁴ |          |
-| `DATABASE_URL`                 | Control-plane connection. Wins over the discrete `DB_*` variables.      |    No    |                     |
+| `CONTROL_ENGINE`               | Engine of the control plane (`postgres`, `sqlite`, `libsql`, `pglite`). Feeds `control.engine`. |    No    | `postgres`          |
+| `DATABASE_URL`                 | Control-plane connection. Wins over the discrete `DB_*` variables. Feeds `control.url`. |    No    |                     |
 | `DB_HOST` `DB_PORT` `DB_USERNAME` `DB_PASSWORD` `DB_NAME` | Discrete form of the above.          |    No    | `127.0.0.1` `5432` `vminds` ×3 |
-| `DB_POOL_MAX`                  | Control-plane pool size.                                                |    No    | `10`                |
+| `DB_POOL_MAX`                  | Control-plane pool size. Feeds `control.pool.max`.                      |    No    | `10`                |
+| `DB_POOL_IDLE_MS`              | Milliseconds an idle control-plane connection is kept. Feeds `control.pool.idleTimeoutMs`. |    No    | `30000`             |
+| `DB_SCHEMA`                    | Postgres schema of the control plane. Feeds `control.schema`.           |    No    | `public`            |
 | `MFA_DB_SECRET`                | Key the MFA secrets are encrypted with. Falls back to `JWT_SECRET`.     |    No    |                     |
 | `BCRYPT_COST`                  | Password work factor. **Never below 12**, whatever is written; measure it with `npm run tune`. |    No    | `12`                |
 | `TENANT_CONTAINERS_MAX_OPEN`   | LRU bound on live tenant containers.                                    |    No    | `20`                |
@@ -585,6 +588,10 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `VOLCANIC_MAX_PAGE_SIZE`       | Upper clamp on `_pageSize`.                                             |    No    | `100`               |
 | `DESTRUCTION_TOKEN_TTL`        | Seconds a container-destruction request stays valid.                    |    No    | `600`               |
 | `IMPERSONATION_TTL`            | Seconds an impersonation token lasts. Hard maximum 14400.               |    No    | `1800`              |
+| `RESET_PASSWORD_TOKEN_TTL`     | Seconds a `/auth/forgot-password` token stays usable.                   |    No    | `3600`              |
+| `PASSWORD_EXPIRATION_DAYS`     | Days after which a password must be changed. Unset means never. A value that is not a positive number makes every login fail rather than read as "never". |    No    |                     |
+| `MANIFEST_DUMP`                | Path: writes the admin manifest there at boot (a CI snapshot, no live backend needed). |    No    |                     |
+| `MANIFEST_DUMP_EXIT`           | With `MANIFEST_DUMP`, exit after writing instead of listening.          |    No    | `false`             |
 
 Four of the variables above — `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`,
 `TENANT_CONTAINERS_DIR`, `DESTRUCTION_TOKEN_TTL` — were documented from the start of v5 and read
@@ -798,9 +805,17 @@ They are **two different types**, so passing a tenant handle where the control p
 compile. Application code wants one line:
 
 ```typescript
-const container = req.tenant ?? req.control   // the tenant when there is one, the control plane otherwise
+import { dataContext } from '@volcanicminds/backend'
+
+const container = dataContext(req)   // the tenant container, or the control plane where that is the answer
 const { headers, records } = await myService.on(container).findAll(...)
 ```
+
+`dataContext` is the framework's own choice, exported so an application makes it the same way. Do **not**
+write it out as `req.tenant ?? req.control`: that expression looks equivalent and is not. It gives a tenant
+route that lost its container the control plane instead of an error, which is the defect below with a newer
+spelling. `dataContext` gives the control plane to a route that declared `scope: 'control'` and to every
+route of a deployment with no `tenants` block, and throws `NoDataContextError` in the one case that remains.
 
 **And there is no third answer.** In v4 this was `req.db`, an `EntityManager` that code could do without: a
 call with no context fell back to `global.connection`, which meant reading whichever container the pool
@@ -1002,16 +1017,16 @@ its grammar is in [docs/MAGIC_QUERY_V5.md](docs/MAGIC_QUERY_V5.md).
 
 ```typescript
 // src/api/products/controller/product.ts
-import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
+import { FastifyReply, FastifyRequest, dataContext } from '@volcanicminds/backend'
 import { access, executeFind } from '@volcanicminds/backend/db'
 import { tablesFor } from '../../../schema/index.js'
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
   // The container this request works on. There is no fallback: a route that arrives here
   // without one has lost its context, and reading "whichever container the pool last
-  // touched" is the defect v5 exists to remove.
-  const container = req.tenant ?? req.control
-  if (!container) throw new Error('no container on this request')
+  // touched" is the defect v5 exists to remove. `dataContext` throws in that case, which is
+  // why it is a call and not `req.tenant ?? req.control` written out.
+  const container = dataContext(req)
 
   const { db, dialect } = access(container)
 

@@ -5,7 +5,7 @@
 //
 import { expect } from 'expect'
 import { deepMerge } from '../../lib/util/merge.js'
-import { normalizeOptions } from '../../lib/loader/general.js'
+import { normalizeOptions, load } from '../../lib/loader/general.js'
 
 describe('lib/util/merge · deepMerge', () => {
   it('keeps the siblings a consumer did not mention (D-21)', () => {
@@ -61,8 +61,12 @@ describe('lib/loader/general · normalizeOptions', () => {
 
     expect(options.tenants.resolver).toBe('header')
     expect(options.tenants.headerKey).toBe('x-tenant-id')
-    expect(options.tenants.containers.maxOpen).toBe(20)
+    expect(options.tenants.containers.poolMax).toBe(2)
     expect(options.tenants.migrations.checkOnResolve).toBe(true)
+    // Not filled on purpose (T-10.9): these two have an environment variable, and a value
+    // written here would be "configured" for everyone, so the variable would never be read.
+    expect(options.tenants.containers.maxOpen).toBeUndefined()
+    expect(options.tenants.containers.directory).toBeUndefined()
   })
 
   it('does not overwrite what the consumer declared', () => {
@@ -73,5 +77,36 @@ describe('lib/loader/general · normalizeOptions', () => {
     expect(options.tenants.resolver).toBe('subdomain')
     expect(options.tenants.containers.maxOpen).toBe(4)
     expect(options.tenants.containers.poolMax).toBe(2) // il default sopravvive accanto
+  })
+})
+
+//
+// T-10.8 and T-10.6: the defaults are one file, and what that file says is what `load()` returns.
+// Until T-10.8 the loader had its own shorter copy as the merge base, and it had already drifted:
+// the keys asserted below are exactly the ones that copy did not have.
+//
+describe('lib/loader/general · load', () => {
+  before(() => {
+    ;(global as any).log = (global as any).log || {}
+  })
+
+  it('returns the framework defaults whole, not a second list that forgot half of them', async () => {
+    const { options }: any = await load()
+
+    expect(options.mfa_policy).toBeDefined()
+    expect(options.reset_password_token_ttl).toBeGreaterThan(0)
+    expect(options.impersonation_ttl).toBeGreaterThan(0)
+    expect(typeof options.export_directory).toBe('string')
+    expect(options.control.engine).toBeDefined()
+    expect(options.control.schema).toBeDefined()
+    expect(options.control.pool.max).toBeGreaterThan(0)
+    expect(options.tenants).toBeNull()
+  })
+
+  it('has no key for the emergency MFA reset, which is environment-only (T-10.6)', async () => {
+    const { options }: any = await load()
+
+    expect('mfa_admin_forced_reset_email' in options).toBe(false)
+    expect('mfa_admin_forced_reset_until' in options).toBe(false)
   })
 })

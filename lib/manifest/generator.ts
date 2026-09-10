@@ -9,7 +9,7 @@
  * by BE-7 tests.
  */
 import type { ConfiguredRoute, ResourceHints } from '../../types/global.js'
-import { tenantsConfig } from '../util/tenancy.js'
+import { tenantsConfig, isTenancyEnabled } from '../util/tenancy.js'
 
 // ── Output types (mirror the v2 JSON Schema; the engine owns the canonical TS type) ──
 type CapabilityKind = 'list' | 'read' | 'create' | 'update' | 'delete' | 'action'
@@ -338,13 +338,28 @@ export function generateManifest(server: any, options: BuildOptions = {}): Manif
   const routes: ConfiguredRoute[] = ((global as any).routes as ConfiguredRoute[]) || []
   const schemas: Record<string, any> = typeof server?.getSchemas === 'function' ? server.getSchemas() : {}
   const authMode: 'cookie' | 'bearer' = process.env.AUTH_MODE === 'COOKIE' ? 'cookie' : 'bearer'
-  const tenants = tenantsConfig()
-  const tenancy: Manifest['tenancy'] = tenants
-    ? { mode: 'multi', switchable: true, header: tenants.headerKey || 'x-tenant-id', listEndpoint: '/tenants' }
-    : { mode: 'single' }
   return buildManifest({
     routes,
     schemas,
-    options: { authMode, tenancy, generatedAt: new Date().toISOString(), ...options }
+    options: { authMode, tenancy: tenancyOf(), generatedAt: new Date().toISOString(), ...options }
   })
+}
+
+/**
+ * What the manifest says about tenancy, asked the way the rest of the framework asks (T-10.5).
+ *
+ * `multi` comes from `isTenancyEnabled()`, i.e. from a declared STRATEGY, and not from the mere
+ * presence of the block. A `tenants` block with no strategy boots as single tenant
+ * (`resolveTenancy` falls back to 'none') while the manifest used to announce `multi`: a
+ * console then drew a tenant switcher and sent a header a single-tenant backend never reads.
+ *
+ * The switcher is offered only when the tenant travels in a HEADER. Under the `subdomain`
+ * resolver the host is the tenant and `declaredTenant` never reads the header, so a switcher
+ * would change a value with no effect.
+ */
+export function tenancyOf(): Manifest['tenancy'] {
+  const tenants = tenantsConfig()
+  if (!tenants || !isTenancyEnabled()) return { mode: 'single' }
+  if ((tenants.resolver ?? 'header') === 'subdomain') return { mode: 'multi', switchable: false, listEndpoint: '/tenants' }
+  return { mode: 'multi', switchable: true, header: tenants.headerKey || 'x-tenant-id', listEndpoint: '/tenants' }
 }

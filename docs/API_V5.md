@@ -192,7 +192,15 @@ Failure modes and their codes: `DESTRUCTION_TOKEN_INVALID`, `DESTRUCTION_TOKEN_E
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | GET | `/health` | public | never touches a tenant container |
-| GET | `/admin/manifest` | capability `manifest` | describes only what the caller's roles can reach |
+| GET | `/admin/manifest` | capability `manifest` | the **whole** manifest, every capability with the roles it declares. Not filtered per caller |
+
+The manifest is the same for every caller (`lib/api/admin/controller/manifest.ts`): the console
+hides what the caller's roles cannot reach, and every route still enforces its own gate. Until
+T-10.7 this table said the opposite. What that means in practice: whoever holds the `manifest`
+capability can read the full list of routes and role codes of the deployment, so grant it to the
+roles that operate the console and to nobody else. Filtering on the server is possible but not
+free, because a manifest pulled into a repository at build time would then depend on who pulled
+it.
 
 ---
 

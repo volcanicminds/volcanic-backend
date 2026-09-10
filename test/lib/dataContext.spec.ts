@@ -222,4 +222,25 @@ describe('util/tenancy · which handle a call gets (T-3.3)', () => {
     withTenancy(false)
     expect(() => dataContext(req({}))).toThrow(NoDataContextError)
   })
+
+  //
+  // T-10.1: the rule above is only worth having if the applications on top of the framework
+  // can obey it. Until this export existed they could not, because `dataContext` was
+  // internal: a consuming project wrote the choice again by hand, and the shortest
+  // hand-written form is `req.tenant ?? req.control`, which is the one case the function
+  // refuses. The assertion is on the PUBLIC entry on purpose, because what a consumer
+  // imports is what has to hold.
+  //
+  it('is exported from the package entry, and the export obeys invariant 3', async () => {
+    const publicApi: any = await import('../../index.js')
+    expect(typeof publicApi.dataContext).toBe('function')
+    expect(typeof publicApi.NoDataContextError).toBe('function')
+
+    // The same three cases as above, through the door a consumer actually opens.
+    withTenancy(true)
+    expect(publicApi.dataContext(req({ control: CONTROL, tenant: TENANT }))).toBe(TENANT)
+    expect(() => publicApi.dataContext(req({ control: CONTROL }))).toThrow(publicApi.NoDataContextError)
+    withTenancy(false)
+    expect(publicApi.dataContext(req({ control: CONTROL }))).toBe(CONTROL)
+  })
 })

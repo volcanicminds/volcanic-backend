@@ -12,7 +12,7 @@
 // be exercised directly on the shapes the router produces.
 //
 import { expect } from 'expect'
-import { buildManifest } from '../../lib/manifest/generator.js'
+import { buildManifest, tenancyOf } from '../../lib/manifest/generator.js'
 
 ;(global as any).log = {}
 
@@ -212,6 +212,43 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
     expect(build().tenancy.mode).toBe('single')
     const multi = build(CRUD, { tenancy: { mode: 'multi', header: 'x-tenant-id', switchable: true } })
     expect(multi.tenancy).toEqual({ mode: 'multi', header: 'x-tenant-id', switchable: true })
+  })
+
+  //
+  // T-10.5: what the LIVE manifest says about tenancy is asked the way the router, the hooks
+  // and the data layer ask it. Before, a `tenants` block with no strategy booted single
+  // tenant and was announced as multi, so a console drew a switcher for a header nobody read.
+  //
+  describe('tenancy of the live manifest (T-10.5)', () => {
+    const withTenants = (tenants: any) => {
+      ;(global as any).config = { options: { tenants } }
+    }
+    afterEach(() => {
+      ;(global as any).config = undefined
+    })
+
+    it('is single when no tenants block is declared', () => {
+      withTenants(null)
+      expect(tenancyOf()).toEqual({ mode: 'single' })
+    })
+
+    it('is single when the block is declared without a strategy, because that is how it boots', () => {
+      withTenants({ resolver: 'header', headerKey: 'x-tenant-id' })
+      expect(tenancyOf()).toEqual({ mode: 'single' })
+    })
+
+    it('offers a switcher on the header the backend actually reads', () => {
+      withTenants({ strategy: 'schema', resolver: 'header', headerKey: 'x-org' })
+      expect(tenancyOf()).toEqual({ mode: 'multi', switchable: true, header: 'x-org', listEndpoint: '/tenants' })
+    })
+
+    it('offers no switcher and no header when the host is the tenant', () => {
+      withTenants({ strategy: 'schema', resolver: 'subdomain' })
+      const tenancy = tenancyOf()
+      expect(tenancy.mode).toBe('multi')
+      expect(tenancy.switchable).toBe(false)
+      expect(tenancy.header).toBeUndefined()
+    })
   })
 
   it('stamps when it was generated, so a stale manifest is visible', () => {

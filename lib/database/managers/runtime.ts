@@ -24,7 +24,10 @@ export interface RuntimeHandle {
 export function runtime(ctx: unknown, what = 'this operation'): RuntimeHandle {
   const handle = ctx as RuntimeHandle
   if (!handle?.db || !handle?.tables) {
-    throw new Error(`${what} needs a data handle: pass req.tenant ?? req.control, never nothing`)
+    // It suggests `dataContext(req)` and not `req.tenant ?? req.control`, which is what this
+    // message said until T-10.2: the second form answers a request that lost its container
+    // with the control plane, so a message written to fix one defect was teaching another.
+    throw new Error(`${what} needs a data handle: pass dataContext(req), never nothing`)
   }
   return handle
 }

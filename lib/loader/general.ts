@@ -15,11 +15,15 @@ const TENANTS_DEFAULTS = {
   resolver: 'header',
   headerKey: 'x-tenant-id',
   subdomainLevel: 1,
+  // `maxOpen` and `directory` are deliberately absent (T-10.9). Each has an environment
+  // variable, `TENANT_CONTAINERS_MAX_OPEN` and `TENANT_CONTAINERS_DIR`, and the adapters read
+  // `configured ?? environment ?? default`. Filling them here made "configured" true for
+  // everyone, so the `??` never reached the environment: the variables T-9.4 wired back in
+  // were unread again on every normal boot. Their defaults (20, './data/tenants') live once,
+  // next to the environment read, in `lib/database/adapters/*/index.ts`.
   containers: {
-    maxOpen: 20,
     idleTimeoutMs: 300000,
-    poolMax: 2,
-    directory: './data/tenants'
+    poolMax: 2
   },
   migrations: {
     checkOnResolve: true,
@@ -35,32 +39,21 @@ export function normalizeOptions<T extends Record<string, any>>(options: T): T {
 }
 
 export async function load() {
-  const generalConfig: GeneralConfig = {
-    name: 'general',
-    options: {
-      allow_multiple_admin: false,
-      allow_admin_change_password_users: false,
-      reset_external_id_on_login: false,
-      scheduler: false,
-      embedded_auth: true,
-      mfa_admin_forced_reset_email: undefined,
-      mfa_admin_forced_reset_until: undefined,
-      control: {
-        engine: 'postgres'
-      },
-      tenants: null,
-      manifest: {
-        enabled: false
-      },
-      cache: {
-        enabled: false
-      }
-    }
-  }
+  // The framework's defaults are ONE file, `lib/config/general.ts`, found by the first pattern
+  // below and merged before the project's own. Until T-10.8 a second, shorter list lived here
+  // as the merge base, and the two had already drifted apart: this one had no `mfa_policy`, no
+  // TTLs, no `export_directory`, no `control` beyond the engine. A default written twice is a
+  // default that will disagree with itself, so the base is now empty and the framework file is
+  // required to be found.
+  let options: Record<string, unknown> = {}
+  let frameworkDefaults = false
 
-  const patterns = normalizePatterns(['..', 'config', 'general.{ts,js}'], ['src', 'config', 'general.{ts,js}'])
+  const [frameworkPattern, projectPattern] = normalizePatterns(
+    ['..', 'config', 'general.{ts,js}'],
+    ['src', 'config', 'general.{ts,js}']
+  )
 
-  for (const pattern of patterns) {
+  for (const pattern of [frameworkPattern, projectPattern]) {
     if (log.t) log.trace('Looking for ' + pattern)
     const files = globSync(pattern, { windowsPathsNoEscape: true })
 
@@ -68,17 +61,27 @@ export async function load() {
       const module = await import(f)
       const config: GeneralConfig = module.default || module
 
-      if (config.name === generalConfig.name) {
+      if (config.name === 'general') {
         // Deep merge, not a spread: a spread is one level deep, so declaring a single key
         // inside a nested block erased its siblings — writing `tenants: { strategy }` would
         // drop `resolver` and `headerKey` and leave the framework running on undefined
         // values it documents as defaults. That was defect D-21. See lib/util/merge.ts.
-        generalConfig.options = deepMerge(generalConfig.options, config.options)
+        options = deepMerge(options, config.options)
+        if (pattern === frameworkPattern) frameworkDefaults = true
       }
     }
   }
 
-  generalConfig.options = normalizeOptions(generalConfig.options)
+  if (!frameworkDefaults) {
+    // Not a warning: without this file every default is `undefined`, and the framework would
+    // run on values it documents as something else.
+    throw new Error(`General configuration: the framework defaults were not found at ${frameworkPattern}`)
+  }
+
+  const generalConfig: GeneralConfig = {
+    name: 'general',
+    options: normalizeOptions(options) as GeneralConfig['options']
+  }
 
   if (log.d) log.debug('General configuration loaded')
   return generalConfig
