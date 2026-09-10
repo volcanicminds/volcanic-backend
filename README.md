@@ -502,6 +502,11 @@ DATABASE_URL=postgres://volcanic:volcanic@127.0.0.1:55432/volcanic npm test
 DATABASE_URL=postgres://volcanic:volcanic@127.0.0.1:55432/volcanic npm run test:e2e:mt:pg
 ```
 
+The libSQL suite runs offline against a local file. Its **remote** half — a Turso database —
+skips unless `LIBSQL_TEST_URL` (and `LIBSQL_TEST_TOKEN`) are set, and says so when it does: a
+suite reporting green for something it never reached is worse than one that is honestly
+incomplete.
+
 ### The isolation bench
 
 `test/e2e-mt-pg` is not a normal suite. It was written **before** any v5 code, against a real Postgres with a

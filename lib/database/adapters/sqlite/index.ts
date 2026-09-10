@@ -164,12 +164,50 @@ export class SqliteProvider {
 
   /**
    * What a transaction callback receives: the same `execute` a handle exposes, on the same
-   * connection. Drizzle's own transaction object is not usable here (it is built by the
-   * synchronous helper we cannot call), and a callback that had to switch API mid-flight
-   * between engines would be a contract with a footnote.
+   * connection. A callback that had to switch API mid-flight between drivers would be a
+   * contract with a footnote.
    */
   private transactional(db: any) {
     return { execute: async (query: unknown) => await runOrAll(db, query), db }
+  }
+
+  /**
+   * One transaction, all of it or none of it — and the two drivers need opposite treatment to
+   * mean the same thing. Both halves were found by T-9.1 and T-9.2, because the migration
+   * runner is the only caller that awaits inside a transaction and nothing had ever asked
+   * these engines for a schema.
+   *
+   * **better-sqlite3** refuses an async callback outright: the driver is synchronous and
+   * rejects a returned promise, so `db.transaction(fn)` cannot be used at all. Statements it
+   * is — `begin`, the body, `commit` — which is what the driver's own helper does anyway, with
+   * the difference that this one can await. There is one connection per container, so the
+   * caller's `await` cannot let another writer in.
+   *
+   * **libSQL** is the mirror image: every `execute` is its own implicit transaction, so a
+   * standalone `begin` is gone by the next call and the `commit` finds nothing to commit. Here
+   * the driver's own `transaction()` is the only thing that holds, and it accepts an async
+   * callback because the client is asynchronous throughout.
+   */
+  private async inTransaction<T>(db: any, fn: (tx: any) => Promise<T>): Promise<T> {
+    if (this.driver === 'libsql') {
+      return await db.transaction(async (tx: any) => await fn(this.transactional(tx)))
+    }
+
+    await runOrAll(db, sql.raw('begin'))
+    try {
+      const result = await fn(this.transactional(db))
+      await runOrAll(db, sql.raw('commit'))
+      return result
+    } catch (error) {
+      // A rollback that itself fails must not replace the error that caused it: the first one
+      // says what went wrong, the second only says the connection is worse off.
+      try {
+        await runOrAll(db, sql.raw('rollback'))
+      } catch {
+        /* the original error is the one worth reporting */
+      }
+      throw error
+    }
   }
 
   private buildHandle(kind: 'control' | 'tenant', db: any, close: () => Promise<void>, file: string, tenantId?: string): SqliteHandle {
@@ -182,36 +220,7 @@ export class SqliteProvider {
       tables: appTables(),
       registry: kind === 'control' ? this.registry : undefined,
       execute: async (query) => await runOrAll(db, query),
-      //
-      // `db.transaction(fn)` on better-sqlite3 refuses an async callback — the driver is
-      // synchronous and rejects a returned promise outright — so the transaction is driven by
-      // statement. It is not a downgrade: `BEGIN` / `COMMIT` / `ROLLBACK` is what the driver's
-      // helper does, and an explicit version can await a caller who needs to.
-      //
-      // Found by T-9.1: every caller so far handed it a synchronous function or was on
-      // Postgres, so the migration runner — the one place that awaits inside a transaction —
-      // failed the first time SQLite was asked to have a schema.
-      //
-      // One connection per container, so there is no interleaving to protect against here;
-      // the caller's `await` cannot let another writer in.
-      //
-      transaction: async (fn) => {
-        await runOrAll(db, sql.raw('begin'))
-        try {
-          const result = await fn(this.transactional(db) as never)
-          await runOrAll(db, sql.raw('commit'))
-          return result
-        } catch (error) {
-          // A rollback that itself fails must not replace the error that caused it: the first
-          // one says what went wrong, the second only says the connection is worse off.
-          try {
-            await runOrAll(db, sql.raw('rollback'))
-          } catch {
-            /* the original error is the one worth reporting */
-          }
-          throw error
-        }
-      },
+      transaction: async (fn) => await this.inTransaction(db, fn),
       close
     }
   }
