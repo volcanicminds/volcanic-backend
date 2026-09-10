@@ -44,6 +44,8 @@ export interface SqliteProviderOptions {
   /** Where per-tenant files live. Every container path must resolve inside it. */
   directory?: string
   maxOpenContainers?: number
+  /** A container untouched for this long is closed, and its descriptors given back (T-7.2). */
+  containerIdleMs?: number
   busyTimeoutMs?: number
 }
 
@@ -76,12 +78,17 @@ export class SqliteProvider {
   /** Open containers, most recently used last. Each one holds a real file handle. */
   private readonly open = new Map<string, SqliteHandle>()
   private readonly leases = new RequestLeases()
+  /** When each container was last used, for the idle close of T-7.2. */
+  private readonly usedAt = new Map<string, number>()
+  private readonly containerIdleMs: number
+  private sweeper: ReturnType<typeof setInterval> | null = null
 
   constructor(options: SqliteProviderOptions = {}) {
     this.driver = options.driver || 'better-sqlite3'
     this.directory = options.directory || DEFAULT_DIR
     this.busyTimeoutMs = options.busyTimeoutMs ?? 5000
     this.maxOpenContainers = options.maxOpenContainers ?? 20
+    this.containerIdleMs = options.containerIdleMs ?? 300000
     this.controlFile = options.file || ':memory:'
     this.registry = registryTables()
   }
@@ -172,14 +179,56 @@ export class SqliteProvider {
     if (existing) {
       this.open.delete(file) // reinsert: most recently used goes last
       this.open.set(file, existing)
+      this.usedAt.set(file, Date.now())
       return existing
     }
 
     const { db, close } = await this.openDatabase(file)
     const handle = this.buildHandle('tenant', db, close, file, tenantId)
     this.open.set(file, handle)
+    this.usedAt.set(file, Date.now())
     await this.evictContainers()
+    this.startSweeper()
     return handle
+  }
+
+  /**
+   * Closes what nobody has touched for a while (T-7.2).
+   *
+   * The bound of `evictContainers` only fires when a new container arrives, so on a
+   * deployment that goes quiet after a busy hour every descriptor it opened stays open until
+   * the process ends. On this engine an open container is a file handle and a WAL, and a
+   * thousand tenants is a thousand of each: the limit that matters is the process file table,
+   * and nothing was giving anything back to it.
+   */
+  private startSweeper(): void {
+    if (this.sweeper || this.containerIdleMs <= 0) return
+    this.sweeper = setInterval(() => void this.closeIdleContainers(), Math.max(30000, Math.floor(this.containerIdleMs / 4)))
+    // Never keep the process alive just to close idle files.
+    this.sweeper.unref?.()
+  }
+
+  /**
+   * The sweep itself, separate from the timer that calls it.
+   *
+   * Separate so it can be asked for directly: a test of "an idle container is closed" that
+   * has to wait for a thirty-second interval is a test nobody runs, and a test that only
+   * checks the timer was scheduled proves the schedule and not the closing.
+   */
+  async closeIdleContainers(now = Date.now()): Promise<string[]> {
+    const cutoff = now - this.containerIdleMs
+    const closed: string[] = []
+    if (this.containerIdleMs <= 0) return closed
+
+    for (const [file, handle] of [...this.open.entries()]) {
+      if ((this.usedAt.get(file) ?? 0) >= cutoff || this.leases.inUse(file)) continue
+      this.open.delete(file)
+      this.usedAt.delete(file)
+      await handle.close()
+      closed.push(file)
+    }
+    if (closed.length && log?.d) log.debug(`SQLite: closed ${closed.length} idle container(s)`)
+    return closed
   }
 
   /**
@@ -195,6 +244,7 @@ export class SqliteProvider {
       if (this.leases.inUse(key)) continue
       const oldest = this.open.get(key)!
       this.open.delete(key)
+      this.usedAt.delete(key)
       await oldest.close()
     }
   }
@@ -317,8 +367,11 @@ export class SqliteProvider {
   }
 
   async shutdown(): Promise<void> {
+    if (this.sweeper) clearInterval(this.sweeper)
+    this.sweeper = null
     for (const handle of this.open.values()) await handle.close()
     this.open.clear()
+    this.usedAt.clear()
     if (this.controlHandle) await this.controlHandle.close()
     this.controlHandle = null
   }
@@ -331,6 +384,7 @@ export function createSqliteProvider(options: GeneralConfig['options']): SqliteP
     driver: (control?.engine === 'libsql' || tenants?.engine === 'libsql' ? 'libsql' : 'better-sqlite3') as SqliteDriver,
     file: control?.url,
     directory: tenants?.containers?.directory,
-    maxOpenContainers: tenants?.containers?.maxOpen
+    maxOpenContainers: tenants?.containers?.maxOpen,
+    containerIdleMs: tenants?.containers?.idleTimeoutMs
   })
 }

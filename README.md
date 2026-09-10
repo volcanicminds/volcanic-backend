@@ -1263,6 +1263,13 @@ the ORM (`EVO_FRAMEWORK.md` appendix A.3): at `max_connections = 100`, 150 conta
 holding one connection fail with *sorry, too many clients already*. Discovering that at the
 two-hundredth tenant means discovering it in production.
 
+On **SQLite and libSQL** a container is a file, and the same two limits apply for the same
+reason with a different resource: the bound is on open descriptors, and a container nobody has
+touched for `idleTimeoutMs` is closed. Creation policy, permissions, names and confinement are
+the ones of the file engine (a file per container, `0600`, always resolved inside the
+configured directory). The Magic Query operators that Postgres has and SQLite does not answer
+**400** rather than degrading quietly: `docs/MAGIC_QUERY_V5.md` lists which.
+
 Reference sizing: **50 to 300 tenants per instance**. Above about a hundred, put **PgBouncer in
 transaction mode** in front of it. The framework holds no session state on a connection (T-3.1),
 so it is already compatible with that mode: nothing has to survive between transactions.

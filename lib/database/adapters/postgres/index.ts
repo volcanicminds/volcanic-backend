@@ -369,14 +369,27 @@ export class PostgresProvider {
   /** Closes what nobody has touched for a while: an idle pool is connections held for nothing. */
   private startSweeper(): void {
     if (this.sweeper || this.containerIdleMs <= 0) return
-    this.sweeper = setInterval(() => {
-      const cutoff = Date.now() - this.containerIdleMs
-      for (const [locator, entry] of [...this.openContainers.entries()]) {
-        if (entry.usedAt < cutoff && !this.leases.inUse(locator)) void this.closeContainer_(locator)
-      }
-    }, Math.max(30000, Math.floor(this.containerIdleMs / 4)))
+    this.sweeper = setInterval(() => void this.closeIdleContainers(), Math.max(30000, Math.floor(this.containerIdleMs / 4)))
     // Never keep the process alive just to close idle pools.
     this.sweeper.unref?.()
+  }
+
+  /**
+   * The sweep itself, separate from the timer that calls it, so it can be asked for directly.
+   * A test of "an idle container is closed" that waits for a thirty-second interval is a test
+   * nobody runs, and one that checks the timer was scheduled proves the schedule.
+   */
+  async closeIdleContainers(now = Date.now()): Promise<string[]> {
+    const closed: string[] = []
+    if (this.containerIdleMs <= 0) return closed
+
+    const cutoff = now - this.containerIdleMs
+    for (const [locator, entry] of [...this.openContainers.entries()]) {
+      if (entry.usedAt >= cutoff || this.leases.inUse(locator)) continue
+      await this.closeContainer_(locator)
+      closed.push(locator)
+    }
+    return closed
   }
 
   /** Trims the cache to its bound, never dropping a container a live request is holding. */

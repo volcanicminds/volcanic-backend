@@ -151,6 +151,30 @@ suite('containers · one database per tenant (T-7.1)', function () {
     expect([...(provider as any).openContainers.keys()]).not.toContain('test_ctr_a')
   })
 
+  it('closes a container nobody has touched, without waiting for a new one', async () => {
+    const idle = new PostgresProvider({
+      url: DB_URL,
+      schema: 'public',
+      strategy: 'container',
+      maxOpenContainers: 10,
+      containerPoolMax: 1,
+      containerIdleMs: 60_000
+    })
+    try {
+      await idle.forLocator('test_ctr_a', 'id-a')
+      await idle.forLocator('test_ctr_b', 'id-b')
+      expect((idle as any).openContainers.size).toBe(2)
+
+      // An idle pool is connections held for nothing, and connections are the resource the
+      // whole bound exists to protect.
+      const closed = await idle.closeIdleContainers(Date.now() + 120_000)
+      expect(closed.sort()).toEqual(['test_ctr_a', 'test_ctr_b'])
+      expect((idle as any).openContainers.size).toBe(0)
+    } finally {
+      await idle.shutdown()
+    }
+  })
+
   it('never closes a container a request is holding', async () => {
     const held = { requestId: 'r1' }
     await provider.forLocator('test_ctr_a', 'id-a', held)

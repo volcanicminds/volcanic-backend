@@ -10,6 +10,10 @@ import { expect } from 'expect'
 import { sql } from 'drizzle-orm'
 import { SqliteProvider, resolveContainerFile } from '../../lib/database/adapters/sqlite/index.js'
 
+// `log?.d` still throws when `log` is undeclared: optional chaining guards a property, not an
+// identifier. Declared here so this suite stands alone.
+;(global as any).log = {}
+
 describe('database/adapters/sqlite · container paths', () => {
   const root = '/srv/volcanic/tenants'
 
@@ -75,6 +79,44 @@ describe('database/adapters/sqlite · files', function () {
     expect(reopened).not.toBe(acme)
     // The data is in the file, so reopening finds it: eviction closes a handle, not a container.
     expect(await reopened.execute(sql`select count(*) as n from widget`)).toEqual([{ n: 0 }])
+  })
+
+  // T-7.2: the bound only fires when a new container arrives, so a deployment that goes
+  // quiet after a busy hour keeps every descriptor it opened until the process ends.
+  it('closes a container nobody has touched, without waiting for a new one', async () => {
+    const idle = new SqliteProvider({ directory: dir, maxOpenContainers: 10, containerIdleMs: 60_000 })
+    try {
+      await idle.forLocator('quiet.db', 'q')
+      await idle.forLocator('busy.db', 'b')
+      expect((idle as any).open.size).toBe(2)
+
+      // The timer is asked for its decision directly rather than waited on: a test that
+      // sleeps for the sweep interval is a test nobody runs.
+      await idle.forLocator('busy.db', 'b')
+      const closed = await idle.closeIdleContainers(Date.now() + 120_000)
+
+      // On this engine an open container is a file handle and a WAL, and the limit that
+      // matters is the process file table.
+      expect(closed.length).toBe(2)
+      expect((idle as any).open.size).toBe(0)
+    } finally {
+      await idle.shutdown()
+    }
+  })
+
+  it('never closes a container a request is holding', async () => {
+    const held = { requestId: 'r1' }
+    const bounded = new SqliteProvider({ directory: dir, maxOpenContainers: 1, containerIdleMs: 0 })
+    try {
+      await bounded.forLocator('held.db', 'h', held)
+      await bounded.forLocator('other.db', 'o')
+      // Exceeding a bound costs a descriptor; closing a file under a running query costs the
+      // request, and on this engine it costs it loudly.
+      expect([...(bounded as any).open.keys()].some((k: string) => k.endsWith('held.db'))).toBe(true)
+      await bounded.releaseRequestScope(held as never)
+    } finally {
+      await bounded.shutdown()
+    }
   })
 
   it('applies the pragmas that make a file survive a crash', async () => {
