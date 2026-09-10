@@ -106,7 +106,7 @@ suite('migrations · applying a set (T-5.1)', function () {
   const runnerOn = () =>
     createMigrationRunner(async (container) => {
       const handle: any = container.tenantId
-        ? provider.forLocator(container.locator, container.tenantId)
+        ? await provider.forLocator(container.locator, container.tenantId)
         : provider.control()
       return { handle, locator: container.locator, dialect: 'postgres' as const }
     }, SET())
@@ -215,7 +215,7 @@ suite('migrations · applying a set (T-5.1)', function () {
 
     const runner = createMigrationRunner(
       async (container) => ({
-        handle: provider.forLocator(container.locator, container.tenantId as string),
+        handle: await provider.forLocator(container.locator, container.tenantId as string),
         locator: container.locator,
         dialect: 'postgres' as const
       }),

@@ -23,10 +23,9 @@ qualunque codice v5. Le quattro proprietà che dovevano fallire sulla v4 (1, 2, 
 sulla v5. Da qui in avanti è un cancello, non un promemoria: se torna rosso, qualcosa che
 funzionava si è rotto.
 
-**Prossimo passo**: **fase 6 chiusa**. Resta la fase 7 (contenitore per tenant: Postgres con
-LRU, file, replica dietro una porta) e la fase 8 (igiene del core, difetti minori, guida di
-migrazione, allineamento dei nostri repo). Il banco nero resta verde a ogni passo: da qui in
-avanti è un cancello di regressione. Il banco nero ora si ferma su una tabella che non
+**Prossimo passo**: T-7.2, contenitore su file (SQLite e libSQL), poi T-7.3, replica continua
+dietro una porta con Litestream. Poi la fase 8. Il banco nero resta verde a ogni passo: da qui
+in avanti è un cancello di regressione. Il banco nero ora si ferma su una tabella che non
 esiste: `system_user`. **Non è un difetto, è l'ordine del piano**: le migrazioni sono la fase
 5, e finché non esistono nessuna tabella del framework viene creata. Da qui in avanti il banco
 resta rosso su questo, non su un buco del modello.
@@ -106,7 +105,7 @@ documenti esistono e in che ordine si leggono.
 
 | | Compito | Stato | Evidenza |
 |---|---|---|---|
-| T-7.1 | Contenitore su Postgres e cache LRU | `[ ]` | |
+| T-7.1 | Contenitore su Postgres e cache LRU | `[x]` | D-10 chiuso. `PostgresProvider` conosce due strategie: `schema` (com'era: un contenitore è un insieme di oggetti-tabella sul pool condiviso, quindi «aperto» non significa niente) e `container`, un database per tenant con **pool proprio**, aperto su richiesta, in LRU con limite esplicito (`maxOpen`, default 20) e chiuso per inattività. Sotto `container` le tabelle sono **non qualificate**, perché lì il contenitore è il database a cui la connessione è attaccata: qualificare nominerebbe uno schema che non esiste. **Rifiuto all'avvio** se l'aritmetica non torna: `maxOpen` per il pool di ciascuno, più il pool di controllo, deve stare sotto `max_connections` lasciando una riserva per tutto il resto che parla con quel server (slot superuser, replica, il `psql` dell'operatore). Un framework che pianifica di usare tutte le connessioni pianifica di essere il motivo per cui nessuno può entrare a sistemare. `forLocator` è diventata async ovunque: un solo punto d'ingresso che a volte apre un pool è meglio di due che differiscono per strategia. `databaseUrl` costruita con il parser URL e non a colpi di stringa, perché una password con uno slash non è un motivo per connettersi altrove. PgBouncer in transaction mode documentato come configurazione consigliata sopra i cento tenant, ed è già compatibile perché T-3.1 non lascia stato di sessione. 9 test in `test/db/containers.spec.ts` contro Postgres reale, fra cui il rifiuto con l'aritmetica scritta nel messaggio e il fatto che un contenitore in uso non viene mai chiuso. 308 verdi, banco nero 8 su 8 |
 | T-7.2 | Contenitore su file, SQLite e libSQL | `[ ]` | |
 | T-7.3 | Replica continua dietro una porta | `[ ]` | |
 

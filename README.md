@@ -1240,6 +1240,33 @@ container whose applied migration no longer matches the repository: the two disa
 what happened to that schema, and guessing which one is right is how a schema becomes
 unreadable. Add a new migration instead.
 
+## One container per tenant
+
+`tenants.strategy` decides what a container is:
+
+| Strategy | A container is | Isolation | Cost |
+|---|---|---|---|
+| `schema` (default) | a schema of one database | the framework qualifies every table | one shared pool |
+| `container` | a **database of its own** | the connection is attached to it | a pool per live container |
+
+Under `container` the connections are opened **on demand** and kept in an LRU with an explicit
+bound (`tenants.containers.maxOpen`, default 20), well below what the server allows. A container
+nobody has touched for `idleTimeoutMs` is closed. Twenty live containers serving three hundred
+tenants is the shape; one pool per tenant is the shape that stops working on the day there are
+enough tenants to matter.
+
+**The framework refuses to start when that arithmetic does not fit.** `maxOpen` times the pool
+of each container, plus the control pool, has to leave room under the server's
+`max_connections` for everything else that talks to it: superuser slots, replication, the
+monitoring agent, the operator's own `psql`. The measured constraint is the connection and not
+the ORM (`EVO_FRAMEWORK.md` appendix A.3): at `max_connections = 100`, 150 containers each
+holding one connection fail with *sorry, too many clients already*. Discovering that at the
+two-hundredth tenant means discovering it in production.
+
+Reference sizing: **50 to 300 tenants per instance**. Above about a hundred, put **PgBouncer in
+transaction mode** in front of it. The framework holds no session state on a connection (T-3.1),
+so it is already compatible with that mode: nothing has to survive between transactions.
+
 ## Exporting a container
 
 ```

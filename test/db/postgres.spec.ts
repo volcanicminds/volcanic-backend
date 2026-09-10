@@ -55,8 +55,8 @@ suite('database/adapters/postgres · against a real database', function () {
   })
 
   it('builds tables that carry their own schema into the SQL', async () => {
-    const acme: any = provider.forLocator(ACME, 'acme-id')
-    const globex: any = provider.forLocator(GLOBEX, 'globex-id')
+    const acme: any = await provider.forLocator(ACME, 'acme-id')
+    const globex: any = await provider.forLocator(GLOBEX, 'globex-id')
 
     const query = acme.db.select().from(acme.tables.user).toSQL()
     expect(query.sql).toContain(`"${ACME}"."user"`)
@@ -67,7 +67,7 @@ suite('database/adapters/postgres · against a real database', function () {
 
   it('does not leave the connection pointing at a container', async () => {
     // The pool has ONE connection, so a leak would be deterministic rather than occasional.
-    const acme: any = provider.forLocator(ACME, 'acme-id')
+    const acme: any = await provider.forLocator(ACME, 'acme-id')
     const inside = await acme.execute(sql.raw(`select tag from ${ACME}.widget limit 1`))
     expect(inside.rows[0].tag).toBe('ACME')
 
@@ -93,7 +93,7 @@ suite('database/adapters/postgres · against a real database', function () {
 
   it('keeps the registry on the control handle only', async () => {
     const control: any = provider.control()
-    const tenant: any = provider.forLocator(ACME, 'acme-id')
+    const tenant: any = await provider.forLocator(ACME, 'acme-id')
     expect(control.registry).toBeDefined()
     expect(tenant.registry).toBeUndefined()
   })

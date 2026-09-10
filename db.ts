@@ -56,6 +56,11 @@ export async function start(options?: DataLayerOptions) {
   const engine = resolved?.control?.engine ?? 'postgres'
   const provider = engine === 'sqlite' || engine === 'libsql' ? createSqliteProvider(resolved) : createPostgresProvider(resolved)
 
+  // The measured constraint of appendix A.3 is the connection, so it is checked before the
+  // first one is handed out and not at the two-hundredth tenant (T-7.1).
+  const sizing = provider as { assertConnectionBudget?: () => Promise<void> }
+  if (sizing.assertConnectionBudget) await sizing.assertConnectionBudget()
+
   const managers = buildManagers(provider as never)
   const migrations = buildMigrationRunner(provider, resolved)
 

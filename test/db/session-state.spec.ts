@@ -91,8 +91,8 @@ describe('database · session state (T-3.1)', () => {
     it('reads a container without writing anything to the connection', async () => {
       const pool = new RecordingPool()
       const provider = providerOn(pool)
-      const acme: any = provider.forLocator('tenant_acme', 'acme-id', scopeOf('r1'))
-      const globex: any = provider.forLocator('tenant_globex', 'globex-id', scopeOf('r2'))
+      const acme: any = await provider.forLocator('tenant_acme', 'acme-id', scopeOf('r1'))
+      const globex: any = await provider.forLocator('tenant_globex', 'globex-id', scopeOf('r2'))
 
       await acme.db.select().from(acme.tables.user)
       await globex.db.select().from(globex.tables.user)
@@ -110,7 +110,7 @@ describe('database · session state (T-3.1)', () => {
     it('refuses raw SQL that would poison the pooled connection', async () => {
       const pool = new RecordingPool()
       const provider = providerOn(pool)
-      const acme: any = provider.forLocator('tenant_acme', 'acme-id', scopeOf('r1'))
+      const acme: any = await provider.forLocator('tenant_acme', 'acme-id', scopeOf('r1'))
 
       const err = await refused(() => acme.execute(sql.raw('set search_path to tenant_globex')))
       expect(err.code).toBe('DB_SESSION_STATE_FORBIDDEN')
@@ -166,16 +166,18 @@ describe('database · session state (T-3.1)', () => {
       const held = scopeOf('r1')
       const passing: any = scopeOf('r2')
 
-      const acme: any = provider.forLocator('tenant_acme', 'acme-id', held)
-      const globex: any = provider.forLocator('tenant_globex', 'globex-id', passing)
+      const acme: any = await provider.forLocator('tenant_acme', 'acme-id', held)
+      const globex: any = await provider.forLocator('tenant_globex', 'globex-id', passing)
       // Over the bound with both in use: nothing is dropped. Staying over a cache bound is
       // the cheap failure; closing a container under a running request is not.
-      expect(provider.forLocator('tenant_globex', 'globex-id', passing).tables.user).toBe(globex.tables.user)
+      expect((await provider.forLocator('tenant_globex', 'globex-id', passing)).tables.user).toBe(globex.tables.user)
 
       // r2 ends. Now the bound can be honoured, and it is honoured on the free one.
       await provider.releaseRequestScope(passing)
-      expect(provider.forLocator('tenant_acme', 'acme-id', held).tables.user).toBe(acme.tables.user)
-      expect(provider.forLocator('tenant_globex', 'globex-id', scopeOf('r3')).tables.user).not.toBe(globex.tables.user)
+      expect((await provider.forLocator('tenant_acme', 'acme-id', held)).tables.user).toBe(acme.tables.user)
+      expect((await provider.forLocator('tenant_globex', 'globex-id', scopeOf('r3'))).tables.user).not.toBe(
+        globex.tables.user
+      )
     })
 
     it('gives a scope back once, whatever calls it', async () => {
@@ -183,7 +185,7 @@ describe('database · session state (T-3.1)', () => {
       const provider = providerOn(pool)
       const scope: any = scopeOf('r1')
 
-      provider.forLocator('tenant_acme', 'acme-id', scope)
+      await provider.forLocator('tenant_acme', 'acme-id', scope)
       await provider.releaseRequestScope(scope)
       expect(scope.released).toBe(true)
       // The abort listener and the response hook both call it: the second is a no-op.
@@ -191,12 +193,12 @@ describe('database · session state (T-3.1)', () => {
       expect(scope.released).toBe(true)
     })
 
-    it('refuses a container name it has not validated, before it becomes a cache key', () => {
+    it('refuses a container name it has not validated, before it becomes a cache key', async () => {
       const pool = new RecordingPool()
       const provider = providerOn(pool)
-      expect(() => provider.forLocator('public"; drop schema public cascade --', 'x')).toThrow()
-      expect(() => provider.forLocator('tenant-acme', 'x')).toThrow()
-      expect(() => provider.forLocator('tenant_acme', 'x')).not.toThrow()
+      await expect(provider.forLocator('public"; drop schema public cascade --', 'x')).rejects.toThrow()
+      await expect(provider.forLocator('tenant-acme', 'x')).rejects.toThrow()
+      await expect(provider.forLocator('tenant_acme', 'x')).resolves.toBeTruthy()
     })
   })
 

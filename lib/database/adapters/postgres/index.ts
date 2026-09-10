@@ -51,6 +51,12 @@ export interface PostgresProviderOptions {
   idleTimeoutMs?: number
   /** LRU bound on live containers. Only meaningful for the `container` strategy (T-7.1). */
   maxOpenContainers?: number
+  /** `schema` (containers are schemas of one database) or `container` (one database each). */
+  strategy?: 'schema' | 'container'
+  /** Pool size of ONE container's database, under the `container` strategy. */
+  containerPoolMax?: number
+  /** A container idle for this long is closed and its connections given back. */
+  containerIdleMs?: number
   /**
    * A pool to use instead of opening one. The seam exists so the session-state rule of
    * T-3.1 can be proved against a double, without a database: a test hands in a recording
@@ -82,10 +88,32 @@ export class PostgresProvider {
   private readonly maxOpenContainers: number
   private readonly leases = new RequestLeases()
   private readonly url: string
+  readonly strategy: 'schema' | 'container'
+  private readonly containerPoolMax: number
+  private readonly containerIdleMs: number
+
+  //
+  // Live container databases, most recently used last (T-7.1).
+  //
+  // Only the `container` strategy has these, and only they cost anything: under `schema` a
+  // container is a set of table objects on the shared pool, so "open" means nothing. Here an
+  // open container is a POOL, which is at least one connection held on the server, and the
+  // measured constraint of appendix A.3 is the connection and not the ORM: at
+  // `max_connections = 100`, 150 containers each holding one fail with "too many clients".
+  //
+  // So they are opened on demand, bounded by an LRU well below what the server allows, and
+  // closed when idle. Twenty live containers serving three hundred tenants is the shape; one
+  // pool per tenant is the shape that stops working on the day the sales team succeeds.
+  //
+  private readonly openContainers = new Map<string, { pool: pg.Pool; db: NodePgDatabase; tables: AppTables; usedAt: number }>()
+  private sweeper: ReturnType<typeof setInterval> | null = null
 
   constructor(options: PostgresProviderOptions = {}) {
     this.controlSchema = options.schema || DEFAULT_SCHEMA
     this.maxOpenContainers = options.maxOpenContainers ?? 20
+    this.strategy = options.strategy || 'schema'
+    this.containerPoolMax = options.containerPoolMax ?? 2
+    this.containerIdleMs = options.containerIdleMs ?? 300000
 
     this.url = connectionStringFrom(options)
 
@@ -165,6 +193,57 @@ export class PostgresProvider {
     }
   }
 
+  /**
+   * Refuses to start when the configured pools cannot fit in the server (T-7.1, point 3).
+   *
+   * The arithmetic is the measured constraint of appendix A.3: what runs out first is
+   * connections, not memory and not ORM objects. `maxOpen` live containers times the pool of
+   * each, plus the control pool, has to fit under `max_connections` with room for everything
+   * else that talks to this server. Discovering that at the two-hundredth tenant means
+   * discovering it in production, so it is checked once, at boot, and it is fatal.
+   *
+   * The reserve is not a safety blanket: `max_connections` includes superuser slots,
+   * replication, the monitoring agent and the operator's own psql. A framework that plans to
+   * use all of it plans to be the reason nobody can log in to fix it.
+   */
+  async assertConnectionBudget(onFatal?: (message: string) => void): Promise<void> {
+    if (this.strategy !== 'container') return
+
+    const fail =
+      onFatal ||
+      ((message: string) => {
+        if (log?.f) log.fatal(message)
+        process.exit(1)
+      })
+
+    let available: number
+    try {
+      const result: any = await this.db.execute(sql.raw('show max_connections'))
+      available = Number(result.rows?.[0]?.max_connections ?? 0)
+    } catch (e) {
+      return fail(`Startup: cannot read max_connections to size the container pools: ${(e as Error)?.message}`)
+    }
+    if (!Number.isFinite(available) || available <= 0) return
+
+    const RESERVE = 20
+    const controlPool = Number((this.pool as unknown as { options?: { max?: number } }).options?.max ?? 10)
+    const wanted = this.maxOpenContainers * this.containerPoolMax + controlPool
+    if (wanted + RESERVE > available) {
+      return fail(
+        `Startup: the container pools do not fit. ${this.maxOpenContainers} live containers x ${this.containerPoolMax} ` +
+          `connections plus the control pool is ${wanted}, the server allows ${available}, and ${RESERVE} are left for ` +
+          'everything else that talks to it. Lower tenants.containers.maxOpen or poolMax, or raise max_connections.'
+      )
+    }
+
+    if (this.maxOpenContainers > 100 && log?.w) {
+      log.warn(
+        `Postgres: ${this.maxOpenContainers} live containers is past where PgBouncer in transaction mode is the ` +
+          'recommended configuration. The framework holds no session state, so it is already compatible.'
+      )
+    }
+  }
+
   /** The control plane: the registry, the system users, and the application data when there are no tenants. */
   control(): ControlHandle {
     return this.controlHandle as unknown as ControlHandle
@@ -180,16 +259,25 @@ export class PostgresProvider {
     if (!row) throw new Error(`Tenant '${tenantId}' is not in the registry`)
     if (row.status !== 'active') throw new Error(`Tenant '${row.slug}' is ${row.status}`)
 
-    return this.forLocator(row.locator, row.id, scope) as unknown as TenantHandle
+    return (await this.forLocator(row.locator, row.id, scope)) as unknown as TenantHandle
   }
 
-  /** Builds (or reuses) the handle for a container, without going through the registry. */
-  forLocator(locator: string, tenantId: string, scope?: DataRequestScope): PostgresHandle {
-    // Validated BEFORE it is used as a cache key: the name reaches `pgSchema()`, which
-    // prints it into every statement built from these tables. A locator that has not been
-    // through here has no business being remembered either (T-3.1, "attenzione").
+  /**
+   * Builds (or reuses) the handle for a container, without going through the registry.
+   *
+   * Async because under the `container` strategy it may have to open a pool, and one entry
+   * point that sometimes opens a connection is better than two that differ by strategy: the
+   * caller asks for a container, and where that container lives is the adapter's business.
+   */
+  async forLocator(locator: string, tenantId: string, scope?: DataRequestScope): Promise<PostgresHandle> {
+    // Validated BEFORE it is used as a cache key or a database name: it reaches `pgSchema()`,
+    // which prints it into every statement built from these tables, and `CREATE DATABASE`,
+    // which cannot parameterise it. A locator that has not been through here has no business
+    // being remembered either (T-3.1, "attenzione").
     assertLocator(locator)
     this.leases.take(scope, locator)
+
+    if (this.strategy === 'container') return await this.openContainer_(locator, tenantId)
 
     let tables = this.containers.get(locator)
     if (tables) {
@@ -203,6 +291,92 @@ export class PostgresProvider {
     this.evictContainers()
 
     return this.buildHandle('tenant', tables, tenantId, locator)
+  }
+
+  /**
+   * One database per tenant: its own pool, opened on demand and closed when idle (T-7.1).
+   *
+   * The tables are UNQUALIFIED here, deliberately. Under `schema` the container is a schema
+   * name printed into the SQL; under `container` the container is the database the connection
+   * is attached to, so qualifying would name a schema that does not exist. That is also why
+   * this handle carries no locator: there is no `SET LOCAL search_path` to do, because raw SQL
+   * is already inside the right database.
+   */
+  private async openContainer_(locator: string, tenantId: string): Promise<PostgresHandle> {
+    const live = this.openContainers.get(locator)
+    if (live) {
+      live.usedAt = Date.now()
+      this.openContainers.delete(locator)
+      this.openContainers.set(locator, live)
+      return this.buildContainerHandle(live.db, live.tables, tenantId)
+    }
+
+    const pool = guardPool(
+      new pg.Pool({
+        connectionString: databaseUrl(this.url, locator),
+        max: this.containerPoolMax,
+        idleTimeoutMillis: 10000
+      })
+    )
+
+    const entry = { pool, db: drizzle(pool), tables: appTables('public'), usedAt: Date.now() }
+    this.openContainers.set(locator, entry)
+    await this.closeSurplusContainers()
+    this.startSweeper()
+
+    return this.buildContainerHandle(entry.db, entry.tables, tenantId)
+  }
+
+  private buildContainerHandle(db: NodePgDatabase, tables: AppTables, tenantId: string): PostgresHandle {
+    return {
+      kind: 'tenant',
+      dialect: 'postgres',
+      tenantId,
+      db,
+      tables,
+      registry: undefined,
+      execute: (query) => db.execute(query as never) as unknown as Promise<pg.QueryResult>,
+      transaction: (fn) => db.transaction(fn as never) as never
+    }
+  }
+
+  /**
+   * Closes the containers past the bound, oldest first, never one a request is holding.
+   *
+   * Closing means giving connections back to the server, which is the resource the whole
+   * bound exists to protect. A container in use stays open even over the bound: exceeding a
+   * cache limit costs memory, closing a pool under a running query costs the request.
+   */
+  private async closeSurplusContainers(): Promise<void> {
+    for (const locator of [...this.openContainers.keys()]) {
+      if (this.openContainers.size <= this.maxOpenContainers) break
+      if (this.leases.inUse(locator)) continue
+      await this.closeContainer_(locator)
+    }
+  }
+
+  private async closeContainer_(locator: string): Promise<void> {
+    const entry = this.openContainers.get(locator)
+    if (!entry) return
+    this.openContainers.delete(locator)
+    try {
+      await entry.pool.end()
+    } catch (e) {
+      if (log?.w) log.warn(`Postgres: could not close the container ${locator}: ${(e as Error)?.message}`)
+    }
+  }
+
+  /** Closes what nobody has touched for a while: an idle pool is connections held for nothing. */
+  private startSweeper(): void {
+    if (this.sweeper || this.containerIdleMs <= 0) return
+    this.sweeper = setInterval(() => {
+      const cutoff = Date.now() - this.containerIdleMs
+      for (const [locator, entry] of [...this.openContainers.entries()]) {
+        if (entry.usedAt < cutoff && !this.leases.inUse(locator)) void this.closeContainer_(locator)
+      }
+    }, Math.max(30000, Math.floor(this.containerIdleMs / 4)))
+    // Never keep the process alive just to close idle pools.
+    this.sweeper.unref?.()
   }
 
   /** Trims the cache to its bound, never dropping a container a live request is holding. */
@@ -260,7 +434,7 @@ export class PostgresProvider {
    */
   async inspectContainer(tenant: Tenant) {
     assertLocator(tenant.locator)
-    const handle: any = this.forLocator(tenant.locator, tenant.id)
+    const handle: any = await this.forLocator(tenant.locator, tenant.id)
 
     const tables: any = await handle.execute(
       sql.raw(
@@ -357,6 +531,9 @@ export class PostgresProvider {
   }
 
   async shutdown(): Promise<void> {
+    if (this.sweeper) clearInterval(this.sweeper)
+    this.sweeper = null
+    for (const locator of [...this.openContainers.keys()]) await this.closeContainer_(locator)
     await this.pool.end()
   }
 }
@@ -376,6 +553,19 @@ export function advisoryKey(locator: string): string {
   }
   // Postgres advisory keys are signed 64-bit; the modulus above keeps it in range.
   return hash.toString()
+}
+
+/**
+ * The same server, a different database.
+ *
+ * Under the `container` strategy a tenant's data is a database of its own, so the connection
+ * string is the control one with the database swapped. Built with the URL parser rather than
+ * by string surgery: a password with a `/` in it is not a reason to connect somewhere else.
+ */
+export function databaseUrl(controlUrl: string, database: string): string {
+  const url = new URL(controlUrl)
+  url.pathname = `/${database}`
+  return url.toString()
 }
 
 /** Postgres identifiers cannot be parameterized: they are validated, then quoted. */
@@ -398,12 +588,18 @@ export function assertLocator(name: string): string {
 
 export function createPostgresProvider(options: GeneralConfig['options']): PostgresProvider {
   const control = options?.control
-  const containers = options?.tenants?.containers
+  const tenants = options?.tenants
+  const containers = tenants?.containers
   return new PostgresProvider({
     url: control?.url,
     schema: control?.schema,
     poolMax: control?.pool?.max,
     idleTimeoutMs: control?.pool?.idleTimeoutMs,
-    maxOpenContainers: containers?.maxOpen
+    maxOpenContainers: containers?.maxOpen,
+    // One database per tenant only where the configuration says so: `schema` stays the
+    // default and the shape everything else in the framework was built around.
+    strategy: tenants?.strategy === 'container' ? 'container' : 'schema',
+    containerPoolMax: containers?.poolMax,
+    containerIdleMs: containers?.idleTimeoutMs
   })
 }

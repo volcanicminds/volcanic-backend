@@ -116,7 +116,7 @@ suite('export · a Postgres container (T-6.2)', function () {
     await provider.dropSchema(ACME.locator)
     await provider.createSchema(ACME.locator)
 
-    const handle: any = provider.forLocator(ACME.locator, ACME.id)
+    const handle: any = await provider.forLocator(ACME.locator, ACME.id)
     await handle.execute('create table widget (id text primary key, tag text)')
     await handle.execute("insert into widget (id, tag) values ('w1', 'ACME PRIVATE ROW')")
 
