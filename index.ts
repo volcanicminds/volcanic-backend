@@ -50,7 +50,8 @@ import {
   defaultTransferManager,
   defaultTenantManager,
   defaultSystemUserManager,
-  defaultImpersonationManager
+  defaultImpersonationManager,
+  defaultDestructionManager
 } from './lib/defaults/managers.js'
 
 global.log = logger
@@ -283,6 +284,7 @@ const start = async (decorators = {}) => {
     tenantManager: defaultTenantManager,
     systemUserManager: defaultSystemUserManager,
     impersonationManager: defaultImpersonationManager,
+    destructionManager: defaultDestructionManager,
     ...decorators
   }
 

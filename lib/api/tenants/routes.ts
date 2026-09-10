@@ -104,6 +104,28 @@ export default {
     },
     {
       method: 'POST',
+      path: '/:id/destruction-request',
+      requireCapability: 'tenants:destroy',
+      handler: 'tenants.destructionRequest',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Ask to destroy a container (phase 1)',
+        description: 'Reports exactly what would be destroyed and returns a one-time token, shown once'
+      }
+    },
+    {
+      method: 'DELETE',
+      path: '/:id/data',
+      requireCapability: 'tenants:destroy',
+      handler: 'tenants.destroyData',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Destroy a container (phase 2)',
+        description: 'Body: token, slug typed again, and the operator second factor. Exports first, always'
+      }
+    },
+    {
+      method: 'POST',
       path: '/:id/export',
       requireCapability: 'tenants:export',
       handler: 'tenants.exportContainer',

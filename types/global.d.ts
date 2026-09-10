@@ -551,6 +551,36 @@ export interface Impersonation {
   revokedAt?: Date | string | null
 }
 
+/**
+ * The first phase of destroying a customer's data (T-6.3): a permission with a fuse.
+ *
+ * One tenant, one operator, ten minutes, one use. The token is never stored, only its hash:
+ * the single copy went out in the response to phase 1.
+ */
+export interface DestructionRequest {
+  id: string
+  tenantId: string
+  systemUserId: string
+  tokenHash: string
+  preview: Record<string, unknown>
+  createdAt: Date | string
+  expiresAt: Date | string
+  consumedAt?: Date | string | null
+  exportRef?: string | null
+}
+
+export interface DestructionManagement {
+  isImplemented(): boolean
+  openRequest(
+    ctx: ControlHandle,
+    data: { tenantId: string; systemUserId: string; token: string; preview: Record<string, unknown>; expiresAt: Date | string }
+  ): Promise<DestructionRequest>
+  /** Null for unknown, expired and already spent alike: none of the three is actionable. */
+  findLiveRequest(ctx: ControlHandle, tenantId: string, token: string): Promise<DestructionRequest | null>
+  /** Spends it, and records the export that had to succeed first. Called before the drop. */
+  consumeRequest(ctx: ControlHandle, id: string, exportRef: string): Promise<DestructionRequest | null>
+}
+
 export interface ImpersonationManagement {
   isImplemented(): boolean
   /** Written BEFORE any token is issued: the record is the permission, not the receipt. */
@@ -623,6 +653,13 @@ export interface SystemUserManagement {
   retrieveSystemUserByPassword(ctx: ControlHandle, email: string, password: string): Promise<any | null>
   blockSystemUserById(ctx: ControlHandle, id: string, reason: string): Promise<any>
   unblockSystemUserById(ctx: ControlHandle, id: string): Promise<any>
+
+  // The second factor of tenant destruction (T-6.3). See docs/SCHEMA_V5.md §3.2.
+  saveMfaSecret(ctx: ControlHandle, userId: string, secret: string): Promise<boolean>
+  retrieveMfaSecret(ctx: ControlHandle, userId: string): Promise<string | null>
+  enableMfa(ctx: ControlHandle, userId: string): Promise<boolean>
+  disableMfa(ctx: ControlHandle, userId: string): Promise<boolean>
+  recordMfaCounter(ctx: ControlHandle, userId: string, counter: number): Promise<boolean>
   countQuery(ctx: ControlHandle, data: VQuery): Promise<number>
   findQuery(ctx: ControlHandle, data: VQuery): Promise<VFindResult<any>>
 }

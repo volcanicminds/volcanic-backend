@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt'
 import { eq, and, isNull, sql } from 'drizzle-orm'
 import type { SystemUserManagement, ControlHandle, VQuery } from '../../../types/global.js'
 import { executeFind, executeCount } from '../query/index.js'
+import { encrypt, decrypt } from '../crypto.js'
 import { control, table, column } from './runtime.js'
 
 //
@@ -118,6 +119,51 @@ export function createSystemUserManager(): SystemUserManagement {
         .update(user)
         .set({ blocked: false, blockedReason: null, blockedAt: null, updatedAt: new Date() })
         .where(eq(column(user, 'id'), id as never))
+      return true
+    },
+
+    // --- MFA ---------------------------------------------------------------------------
+    //
+    // Deferred in T-4.1 and landed here, because T-6.3 is what actually needs it: destroying
+    // a customer's data asks for a second factor, and a factor that does not exist cannot be
+    // asked for. Same shape as the tenant users': the secret is encrypted at rest with a key
+    // derived per record (T-2.6), and only the id addresses a user, never an email.
+    async saveMfaSecret(ctx: ControlHandle, userId: string, secret: string) {
+      const { handle, user } = users(ctx, 'saveMfaSecret')
+      await handle.db
+        .update(user)
+        .set({ mfaSecret: await encrypt(secret), mfaType: 'totp', updatedAt: new Date() })
+        .where(eq(column(user, 'id'), userId as never))
+      return true
+    },
+
+    async retrieveMfaSecret(ctx: ControlHandle, userId: string) {
+      const found = await byColumn(ctx, 'retrieveMfaSecret', 'id', userId)
+      return found?.mfaSecret ? await decrypt(found.mfaSecret) : null
+    },
+
+    async enableMfa(ctx: ControlHandle, userId: string) {
+      const { handle, user } = users(ctx, 'enableMfa')
+      await handle.db.update(user).set({ mfaEnabled: true, updatedAt: new Date() }).where(eq(column(user, 'id'), userId as never))
+      return true
+    },
+
+    async disableMfa(ctx: ControlHandle, userId: string) {
+      const { handle, user } = users(ctx, 'disableMfa')
+      await handle.db
+        .update(user)
+        .set({ mfaEnabled: false, mfaSecret: null, mfaRecoveryCodes: null, mfaLastUsedCounter: null, updatedAt: new Date() })
+        .where(eq(column(user, 'id'), userId as never))
+      return true
+    },
+
+    /** The replay guard: a TOTP step is accepted once, and never again. */
+    async recordMfaCounter(ctx: ControlHandle, userId: string, counter: number) {
+      const { handle, user } = users(ctx, 'recordMfaCounter')
+      await handle.db
+        .update(user)
+        .set({ mfaLastUsedCounter: counter, updatedAt: new Date() })
+        .where(eq(column(user, 'id'), userId as never))
       return true
     },
 

@@ -251,6 +251,45 @@ export class PostgresProvider {
     return await exportPostgresSchema(tenant, { ...request, url: this.url })
   }
 
+  /**
+   * What is in a container, for the preview of phase 1 (T-6.3).
+   *
+   * Exact row counts, not estimates from the planner statistics: an operator is about to type
+   * a slug by hand to destroy this, and "about 40,000 rows" is not a number to make that
+   * decision on. It costs a sequential scan per table, and this runs once per destruction.
+   */
+  async inspectContainer(tenant: Tenant) {
+    assertLocator(tenant.locator)
+    const handle: any = this.forLocator(tenant.locator, tenant.id)
+
+    const tables: any = await handle.execute(
+      sql.raw(
+        `select table_name from information_schema.tables ` +
+          `where table_schema = '${tenant.locator}' and table_type = 'BASE TABLE' order by table_name`
+      )
+    )
+
+    const rowCounts: Record<string, number> = {}
+    for (const row of tables.rows ?? []) {
+      const counted: any = await handle.execute(sql.raw(`select count(*)::int as n from ${escapeIdentifier(row.table_name)}`))
+      rowCounts[row.table_name] = Number(counted.rows?.[0]?.n ?? 0)
+    }
+
+    const size: any = await this.db.execute(
+      sql.raw(
+        `select coalesce(sum(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))), 0)::bigint as bytes ` +
+          `from pg_tables where schemaname = '${tenant.locator}'`
+      )
+    )
+
+    return {
+      locator: tenant.locator,
+      sizeBytes: Number(size.rows?.[0]?.bytes ?? 0),
+      rowCounts,
+      schemaVersion: tenant.schemaVersion ?? null
+    }
+  }
+
   /** Opens a tenant's container by id. The name the manager port uses (T-6.1). */
   async openContainer(tenantId: string): Promise<TenantHandle> {
     return await this.tenant(tenantId)

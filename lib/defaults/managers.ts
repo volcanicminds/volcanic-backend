@@ -6,7 +6,8 @@ import {
   TransferManagement,
   TenantManagement,
   SystemUserManagement,
-  ImpersonationManagement
+  ImpersonationManagement,
+  DestructionManagement
 } from '../../types/global.js'
 
 //
@@ -73,10 +74,13 @@ const TENANT_METHODS = [
 const SYSTEM_USER_METHODS = [
   'createSystemUser', 'updateSystemUserById', 'deleteSystemUser', 'retrieveSystemUserById',
   'retrieveSystemUserByEmail', 'retrieveSystemUserByExternalId', 'retrieveSystemUserByPassword',
-  'blockSystemUserById', 'unblockSystemUserById', 'countQuery', 'findQuery'
+  'blockSystemUserById', 'unblockSystemUserById', 'countQuery', 'findQuery',
+  'saveMfaSecret', 'retrieveMfaSecret', 'enableMfa', 'disableMfa', 'recordMfaCounter'
 ] as const
 
 const IMPERSONATION_METHODS = ['openImpersonation', 'getImpersonation', 'revokeImpersonation', 'findQuery'] as const
+
+const DESTRUCTION_METHODS = ['openRequest', 'findLiveRequest', 'consumeRequest'] as const
 
 const MFA_METHODS = ['generateSetup', 'verify'] as const
 
@@ -92,6 +96,10 @@ export const defaultSystemUserManager = notImplemented<SystemUserManagement>('sy
 export const defaultImpersonationManager = notImplemented<ImpersonationManagement>(
   'impersonationManager',
   IMPERSONATION_METHODS
+)
+export const defaultDestructionManager = notImplemented<DestructionManagement>(
+  'destructionManager',
+  DESTRUCTION_METHODS
 )
 export const defaultMfaManager = notImplemented<MfaManagement>('mfaManager', MFA_METHODS)
 export const defaultTransferManager = notImplemented<TransferManagement>('transferManager', TRANSFER_METHODS)

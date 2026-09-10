@@ -5,6 +5,7 @@ import { createTrackingManager } from './tracking.js'
 import { createTenantManager, type TenantProvider } from './tenant.js'
 import { createSystemUserManager } from './systemUser.js'
 import { createImpersonationManager } from './impersonation.js'
+import { createDestructionManager } from './destruction.js'
 
 export {
   createUserManager,
@@ -12,7 +13,8 @@ export {
   createTrackingManager,
   createTenantManager,
   createSystemUserManager,
-  createImpersonationManager
+  createImpersonationManager,
+  createDestructionManager
 }
 export { runtime, control } from './runtime.js'
 
@@ -31,6 +33,8 @@ export function buildManagers(provider: TenantProvider & { control(): ControlHan
     systemUserManager: createSystemUserManager(),
     // The trail of a system user entering a customer's data, written in the control plane
     // before the token that allows it exists (T-4.2).
-    impersonationManager: createImpersonationManager()
+    impersonationManager: createImpersonationManager(),
+    // The permission-with-a-fuse that phase 1 of a destruction writes (T-6.3).
+    destructionManager: createDestructionManager()
   }
 }

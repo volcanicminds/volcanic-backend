@@ -58,6 +58,33 @@ export default {
       config: { title: 'Renew a control token', description: 'Exchanges a valid control refresh token' }
     },
     {
+      method: 'POST',
+      path: '/auth/mfa/setup',
+      roles: [],
+      handler: 'systemAuth.mfaSetup',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Start MFA enrolment',
+        description: 'Returns the secret and its QR code. Enrolment is required to destroy a container'
+      }
+    },
+    {
+      method: 'POST',
+      path: '/auth/mfa/enable',
+      roles: [],
+      handler: 'systemAuth.mfaEnable',
+      middlewares: ['global.isAuthenticated'],
+      config: { title: 'Finish MFA enrolment', description: 'Body: the code from the authenticator' }
+    },
+    {
+      method: 'POST',
+      path: '/auth/mfa/verify',
+      roles: ['public'],
+      handler: 'systemAuth.mfaVerify',
+      rateLimit: authRateLimit,
+      config: { title: 'Exchange a pre-auth token for a session', description: 'Body: tempToken and the code' }
+    },
+    {
       method: 'GET',
       path: '/users',
       requireCapability: 'system-users',

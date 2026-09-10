@@ -228,6 +228,31 @@ export class SqliteProvider {
     })
   }
 
+  /** What is in a container, for the preview of phase 1 (T-6.3). Exact counts, not estimates. */
+  async inspectContainer(tenant: Tenant) {
+    const file = tenant.locator === ':memory:' ? tenant.locator : resolveContainerFile(this.directory, tenant.locator)
+    const handle: any = await this.forLocator(tenant.locator, tenant.id)
+
+    const tables: any = await handle.execute(
+      sql.raw("select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by name")
+    )
+
+    const rowCounts: Record<string, number> = {}
+    for (const row of tables ?? []) {
+      const counted: any = await handle.execute(sql.raw(`select count(*) as n from "${String(row.name).replace(/"/g, '')}"`))
+      rowCounts[row.name] = Number(counted?.[0]?.n ?? 0)
+    }
+
+    let sizeBytes = 0
+    try {
+      sizeBytes = file === ':memory:' ? 0 : fs.statSync(file).size
+    } catch {
+      // A container with no file yet has no size, which is a number and not a failure.
+    }
+
+    return { locator: tenant.locator, sizeBytes, rowCounts, schemaVersion: tenant.schemaVersion ?? null }
+  }
+
   /** Opens a tenant's container by id. The name the manager port uses (T-6.1). */
   async openContainer(tenantId: string): Promise<TenantHandle> {
     return await this.tenant(tenantId)

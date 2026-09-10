@@ -5,7 +5,18 @@ import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } 
 import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
 import { bearerTokenOf } from '../util/bearer.js'
 
-const MFA_SETUP_WHITELIST = ['/auth/mfa/setup', '/auth/mfa/enable', '/auth/mfa/verify', '/auth/logout']
+// The only routes a pre-auth token opens. It names a subject and buys nothing else, so the
+// list is the enrolment and verification pair on each plane, plus the way out.
+const MFA_SETUP_WHITELIST = [
+  '/auth/mfa/setup',
+  '/auth/mfa/enable',
+  '/auth/mfa/verify',
+  '/auth/logout',
+  '/system/auth/mfa/setup',
+  '/system/auth/mfa/enable',
+  '/system/auth/mfa/verify',
+  '/system/auth/logout'
+]
 
 const normalizeRoles = (rolesArray: any[] | undefined): string[] => {
   if (!rolesArray || rolesArray.length === 0) {

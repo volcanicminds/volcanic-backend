@@ -6,6 +6,7 @@ import type {
   TenantManagement,
   UserManagement
 } from '../../../../types/global.js'
+import crypto from 'crypto'
 import { httpError } from '../../../util/httpError.js'
 
 //
@@ -250,6 +251,192 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
 
   if (log.i) log.info(`Tenant ${tenant.slug}: exported ${result.bytes} bytes at ${schemaVersion ?? 'no migration'}`)
   return reply.send({ tenant: { id: tenant.id, slug: tenant.slug }, ...result })
+}
+
+// ---------------------------------------------------------------------------------------
+// Destruction, in two phases (T-6.3, docs/API_V5.md §6.2)
+//
+// This is the one operation the framework cannot undo, so it is the one place where every
+// step is a deliberate obstacle rather than a convenience:
+//
+//   - phase 1 REPORTS what will be destroyed, exactly: the container, its size, the rows per
+//     table. An operator who is about to lose a customer's data should see it counted;
+//   - the token it returns is shown once and stored only as a hash, lasts ten minutes and is
+//     good for a single use;
+//   - phase 2 takes the token, the slug TYPED AGAIN, and a second factor, all three IN THE
+//     BODY. A token in the URL lands in proxy access logs, browser history and tracing
+//     systems, which is a copy of the permission nobody meant to make;
+//   - the export runs FIRST and must produce a real file. No export, no destruction;
+//   - the event is written BEFORE the data goes, because afterwards there may be nothing left
+//     to write with;
+//   - calling it twice is not an error. The second answer is `alreadyDestroyed`.
+//
+// What it cannot promise, and the README says so: **the data is still in your backups** until
+// those backups expire.
+// ---------------------------------------------------------------------------------------
+const DESTRUCTION_TTL_SECONDS = 600
+
+const destructions = (req: FastifyRequest): any => req.server['destructionManager']
+
+export async function destructionRequest(req: FastifyRequest, reply: FastifyReply) {
+  if (unavailable(req, reply)) return
+
+  const dm = destructions(req)
+  const provider = (req.server as unknown as Record<string, any>)['provider']
+  if (!dm?.isImplemented?.() || !provider?.inspectContainer) {
+    return reply.status(503).send(httpError(503, 'Destruction is not available in this build', 'DESTRUCTION_NOT_AVAILABLE'))
+  }
+
+  const actor = req.systemUser
+  if (!actor) {
+    return reply.status(403).send(httpError(403, 'Destroying data requires a platform identity', 'SCOPE_MISMATCH'))
+  }
+
+  const { id } = req.parameters()
+  const tenant = await managerOf(req).getTenant(control(req), id)
+  if (!tenant) return reply.status(404).send()
+
+  const preview = await provider.inspectContainer(tenant)
+  // Shown once. What the row keeps is its hash, so a leaked control plane leaks nothing that
+  // can destroy anything.
+  const token = crypto.randomBytes(32).toString('base64url')
+  const expiresAt = new Date(Date.now() + DESTRUCTION_TTL_SECONDS * 1000)
+
+  const record = await dm.openRequest(control(req), {
+    tenantId: tenant.id,
+    systemUserId: actor.id,
+    token,
+    preview,
+    expiresAt
+  })
+
+  if (log.w) log.warn(`Destruction requested for ${tenant.slug} by ${actor.email}: ${JSON.stringify(preview.rowCounts)}`)
+
+  return reply.send({
+    requestId: record.id,
+    token,
+    expiresAt,
+    preview: { ...preview, lastExportAt: null },
+    warning: 'Destroying a container does not remove it from backups taken before now.'
+  })
+}
+
+export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
+  if (unavailable(req, reply)) return
+
+  const dm = destructions(req)
+  const provider = (req.server as unknown as Record<string, any>)['provider']
+  if (!dm?.isImplemented?.() || !provider?.dropContainer || !provider?.exportContainer) {
+    return reply.status(503).send(httpError(503, 'Destruction is not available in this build', 'DESTRUCTION_NOT_AVAILABLE'))
+  }
+
+  const actor = req.systemUser
+  if (!actor) {
+    return reply.status(403).send(httpError(403, 'Destroying data requires a platform identity', 'SCOPE_MISMATCH'))
+  }
+
+  const { id } = req.parameters()
+  const { token, slug, otp } = req.data()
+
+  const tenant = await managerOf(req).getTenant(control(req), id)
+  // Idempotent: a tenant whose registry row is gone has already been through this, and the
+  // second caller is told so instead of being handed an error to interpret.
+  if (!tenant) return reply.send({ id, alreadyDestroyed: true })
+
+  if (!token || !slug || !otp) {
+    return reply.status(400).send(httpError(400, 'token, slug and otp are all required, in the body', 'DESTRUCTION_TOKEN_INVALID'))
+  }
+
+  const request = await dm.findLiveRequest(control(req), tenant.id, String(token))
+  if (!request) {
+    return reply.status(403).send(httpError(403, 'That destruction token is not usable', 'DESTRUCTION_TOKEN_INVALID'))
+  }
+  if (request.systemUserId !== actor.id) {
+    // The permission belongs to the operator who asked for it. Handing the token to someone
+    // else is how a two-person control becomes one person with two windows open.
+    return reply.status(403).send(httpError(403, 'That destruction token belongs to another operator', 'DESTRUCTION_TOKEN_INVALID'))
+  }
+  if (String(slug) !== tenant.slug) {
+    return reply.status(400).send(httpError(400, 'The slug does not match the tenant', 'DESTRUCTION_SLUG_MISMATCH'))
+  }
+
+  const factor = await verifySecondFactor(req, actor, String(otp))
+  if (!factor.ok) return reply.status(403).send(httpError(403, factor.message, 'DESTRUCTION_OTP_INVALID'))
+
+  // The export happens first, and a failure stops everything. Decision 2 of
+  // EVO_PUNTI_APERTI: no export, no destruction.
+  let exported: any
+  try {
+    const migrations = (req.server as unknown as Record<string, any>)['migrations']
+    const schemaVersion = migrations?.version
+      ? await migrations.version({ tenantId: tenant.id, locator: tenant.locator })
+      : (tenant.schemaVersion ?? null)
+
+    exported = await provider.exportContainer(tenant, {
+      directory: global.config?.options?.export_directory,
+      schemaVersion
+    })
+  } catch (error) {
+    if (log.e) log.error(`Destruction of ${tenant.slug} stopped: the export failed: ${(error as Error)?.message}`)
+    return reply
+      .status(409)
+      .send(httpError(409, `The export had to succeed first, and it did not: ${(error as Error)?.message}`, 'DESTRUCTION_EXPORT_FAILED'))
+  }
+
+  if (!exported?.path || !exported?.bytes) {
+    return reply.status(409).send(httpError(409, 'The export produced no file', 'DESTRUCTION_EXPORT_FAILED'))
+  }
+
+  // Written BEFORE the data goes: afterwards there may be nothing left to write with.
+  await dm.consumeRequest(control(req), request.id, exported.path)
+  if (log.w) {
+    log.warn(`Destroying ${tenant.slug} (${tenant.locator}) for ${actor.email}, exported to ${exported.path}`)
+  }
+
+  await provider.dropContainer(tenant.locator)
+  await managerOf(req).softDeleteTenant(control(req), tenant.id)
+
+  return reply.send({
+    id: tenant.id,
+    slug: tenant.slug,
+    destroyed: true,
+    exportRef: exported.path,
+    warning: 'The data remains in any backup taken before now, until that backup expires.'
+  })
+}
+
+/**
+ * The operator's second factor.
+ *
+ * TOTP only, and this is a deliberate narrowing of docs/API_V5.md §6.2, which also allowed a
+ * one-time code emailed to an operator without MFA. The framework has no email pipeline of its
+ * own, and inventing one on the path of its only irreversible operation would mean the second
+ * factor is as strong as an SMTP configuration nobody reviewed. An operator who may destroy a
+ * customer's data enrols in MFA first; the refusal says exactly that.
+ */
+async function verifySecondFactor(req: FastifyRequest, actor: any, otp: string): Promise<{ ok: boolean; message: string }> {
+  const mfa = req.server['mfaManager'] as any
+  const systemUsers = req.server['systemUserManager'] as any
+
+  if (!actor.mfaEnabled) {
+    return {
+      ok: false,
+      message: 'Destroying a container needs a second factor: enrol this operator in MFA (POST /system/auth/mfa/setup) first'
+    }
+  }
+  if (!mfa?.verify) return { ok: false, message: 'No MFA manager is available to verify the second factor' }
+
+  const secret = await systemUsers.retrieveMfaSecret(req.control, actor.id)
+  if (!secret) return { ok: false, message: 'This operator has MFA enabled but no secret on file' }
+
+  const counter = await mfa.verify(otp, secret)
+  if (counter == null) return { ok: false, message: 'The code is not valid' }
+  // The step is spent: the same code cannot destroy a second container.
+  if (actor.mfaLastUsedCounter != null && Number(counter) <= Number(actor.mfaLastUsedCounter)) {
+    return { ok: false, message: 'That code has already been used' }
+  }
+  await systemUsers.recordMfaCounter(req.control, actor.id, Number(counter))
+  return { ok: true, message: '' }
 }
 
 // ---------------------------------------------------------------------------------------

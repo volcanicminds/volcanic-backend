@@ -1262,6 +1262,56 @@ Three things it will not do:
   extra steps;
 - **include anybody else.** A Postgres export is limited to that tenant's schema.
 
+## Destroying a container
+
+The only operation the framework cannot undo, and the only one where every step is a
+deliberate obstacle.
+
+```
+POST   /tenants/:id/destruction-request     capability `tenants:destroy`   phase 1
+DELETE /tenants/:id/data                    capability `tenants:destroy`   phase 2
+```
+
+**Phase 1** reports exactly what would be lost: the container, its size, the row count of every
+table. It returns a one-time token, **shown once**, good for ten minutes and for a single use.
+Only its SHA-256 is stored, so a control plane that leaks its own tables leaks nothing that can
+destroy anything.
+
+**Phase 2** takes three things, all **in the body and never in the URL**, because a token in a
+path lands in proxy access logs, browser history and tracing systems:
+
+```jsonc
+{
+  "token": "...",      // from phase 1, unspent and unexpired, belonging to this operator
+  "slug": "acme",      // the tenant's slug, typed again by hand
+  "otp": "123456"      // the operator's TOTP code
+}
+```
+
+Then, in this order: the second factor is verified and its step spent, **the container is
+exported** and the file must be real, the event is recorded with the export reference, and only
+then is the data dropped. If the export fails there is no destruction. Calling it again on a
+tenant that is already gone answers 200 with `alreadyDestroyed: true`.
+
+`tenants:destroy` is deliberately not part of `tenants`: creating a tenant and destroying its
+data are not the same job.
+
+### The second factor
+
+The operator must be enrolled in MFA (`POST /system/auth/mfa/setup`, then `/enable`). An
+operator without it is refused, with the route to call in the message.
+
+This is stricter than `docs/API_V5.md` §6.2, which also allowed a one-time code emailed to an
+operator without MFA. The framework has no email pipeline of its own, and inventing one on the
+path of its only irreversible operation would make the second factor exactly as strong as an
+SMTP configuration nobody reviewed.
+
+### What it cannot promise
+
+**The data is still in your backups.** Destroying a container removes it from the database; every
+backup taken before that moment still contains it, until that backup expires. The response says
+so, and so does this paragraph, because it is the one part of "destroyed" that is not true.
+
 ## Change tracking (audit trail)
 
 Declare which routes are tracked in `src/config/tracking.ts`. Every tracked write appends a row

@@ -248,7 +248,21 @@ control-scope route uses the same `public` code for "answer before anyone is aut
 A control route that declares nothing is superuser-only: being public is opted into, never
 inherited.
 
-## 16. Routes that no longer exist
+## 16. Destroying a tenant
+
+In v4 `DELETE /tenants/:id` was a soft delete of the registry row and the data stayed where it
+was (defect D-09). In v5 that route still only removes the row, and **says so in its response**;
+destroying the data is a separate, two-phase operation:
+
+| | |
+|---|---|
+| `POST /tenants/:id/destruction-request` | reports what would be lost, returns a one-time token shown once, good for ten minutes |
+| `DELETE /tenants/:id/data` | body: `token`, `slug` typed again, `otp`. Exports first, records the event, then drops |
+
+The operator needs `tenants:destroy` (not part of `tenants`) and must be enrolled in MFA. The
+data remains in any backup taken before the destruction, and the response says so.
+
+## 17. Routes that no longer exist
 
 | Route | Why |
 |---|---|

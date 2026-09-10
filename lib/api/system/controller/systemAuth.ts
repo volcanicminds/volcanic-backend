@@ -55,13 +55,11 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(httpError(403, 'Wrong credentials'))
   }
 
-  // Fail-closed. The columns for a second factor exist and the flow that verifies one does
-  // not, so a system user with MFA enabled is refused rather than let through on the first
-  // factor alone. Skipping a declared factor silently is the shape of defect this rewrite
-  // exists to remove; the flow arrives with T-6.3, which is what actually needs it.
+  // The second factor, when this operator has one (T-6.3). The first factor alone buys a
+  // five-minute pre-auth token and nothing else: it names the subject and opens no route.
   if (user.mfaEnabled) {
-    if (log.e) log.error(`System login: ${user.email} has MFA enabled, and the control MFA flow is not implemented yet`)
-    return reply.status(503).send(httpError(503, 'Multi-factor authentication is not available for platform identities yet', 'MFA_NOT_AVAILABLE'))
+    const tempToken = await reply.jwtSign({ sub: user.externalId, scp: 'control', role: 'pre-auth-mfa' }, { expiresIn: '5m' })
+    return reply.status(202).send({ mfaRequired: true, tempToken })
   }
 
   const token = await reply.jwtSign({ sub: user.externalId, scp: 'control' })
@@ -133,4 +131,76 @@ export async function renew(req: FastifyRequest, reply: FastifyReply) {
   }
 
   return { token: await reply.jwtSign({ sub: user.externalId, scp: 'control' }) }
+}
+
+//
+// MFA for platform identities (T-6.3, deferred here by T-4.1).
+//
+// It exists because destroying a customer's data asks for a second factor, and a factor that
+// does not exist cannot be asked for. The shape is the tenant one: a secret shown once at
+// setup, confirmed with a code before it is trusted, and a step counter that makes a code
+// good exactly once.
+//
+export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
+  if (unavailable(req, reply)) return
+  const actor = req.systemUser
+  if (!actor) return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
+
+  const appName = process.env.MFA_APP_NAME || 'VolcanicApp'
+  return await req.server['mfaManager'].generateSetup(appName, actor.email)
+}
+
+export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
+  if (unavailable(req, reply)) return
+  const actor = req.systemUser
+  const { secret, token } = req.data()
+  if (!actor) return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
+  if (!secret || !token) return reply.status(400).send(httpError(400, 'secret and token are both required'))
+
+  // Confirmed before it is trusted: enabling MFA on a secret the operator never proved they
+  // hold would lock them out of the account and out of the destruction path with it.
+  const counter = await req.server['mfaManager'].verify(String(token), String(secret))
+  if (counter == null) return reply.status(400).send(httpError(400, 'The code is not valid'))
+
+  await manager(req).saveMfaSecret(control(req), actor.id, String(secret))
+  await manager(req).enableMfa(control(req), actor.id)
+  await manager(req).recordMfaCounter(control(req), actor.id, Number(counter))
+
+  if (log.i) log.info(`System MFA enabled for ${actor.email}`)
+  return { ok: true }
+}
+
+export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
+  if (unavailable(req, reply)) return
+
+  const { tempToken, token } = req.data()
+  if (!tempToken || !token) return reply.status(400).send(httpError(400, 'tempToken and token are both required'))
+
+  let claims: any
+  try {
+    claims = req.server.jwt.verify(String(tempToken))
+  } catch {
+    return reply.status(401).send(httpError(401, 'Invalid or expired token', 'UNAUTHORIZED'))
+  }
+  // Only a pre-auth token buys a session here, and only a control one: this route must not
+  // become a way to upgrade any token that happens to verify.
+  if (claims?.role !== 'pre-auth-mfa' || claims?.scp !== 'control') {
+    return reply.status(403).send(httpError(403, 'Invalid token scope', 'SCOPE_MISMATCH'))
+  }
+
+  const user = await manager(req).retrieveSystemUserByExternalId(control(req), claims.sub)
+  if (!user || user.blocked) return reply.status(403).send(httpError(403, 'Wrong credentials'))
+
+  const secret = await manager(req).retrieveMfaSecret(control(req), user.id)
+  if (!secret) return reply.status(403).send(httpError(403, 'Wrong credentials'))
+
+  const counter = await req.server['mfaManager'].verify(String(token), secret)
+  if (counter == null) return reply.status(403).send(httpError(403, 'The code is not valid'))
+  if (user.mfaLastUsedCounter != null && Number(counter) <= Number(user.mfaLastUsedCounter)) {
+    // A replayed step is a stolen code being used a second time.
+    return reply.status(403).send(httpError(403, 'That code has already been used'))
+  }
+  await manager(req).recordMfaCounter(control(req), user.id, Number(counter))
+
+  return { ...present(user), token: await reply.jwtSign({ sub: user.externalId, scp: 'control' }) }
 }
