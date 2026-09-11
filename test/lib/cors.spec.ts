@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 //
 // T-8.1 / defect D-16: the wildcard is a decision, never a default nobody read.
 //

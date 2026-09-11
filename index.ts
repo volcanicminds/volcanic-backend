@@ -61,6 +61,16 @@ import {
 
 global.log = logger
 
+// The logger was built while the imports above were evaluated, which is BEFORE `dotenv.config()`
+// ran: ESM hoists every import above the body of the module. A `LOG_LEVEL` or `NODE_ENV` that
+// lives in `.env` was therefore invisible to it, and production defaulted to `debug`. Now that
+// the file is loaded, the level is asked again. After `global.log`, because the logger's
+// level-change listener writes through it.
+if (logger.level !== logger.getLogLevel()) {
+  logger.level = logger.getLogLevel()
+  logger.updateLevel()
+}
+
 async function addFastifyRouting(server: FastifyInstance) {
   log.trace('Add server routes')
 

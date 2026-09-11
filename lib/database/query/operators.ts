@@ -187,7 +187,16 @@ for (const kind of ['contains', 'starts', 'ends', 'like'] as PatternKind[]) {
 export function operatorFor(name: string, dialect: Dialect): Operator {
   const operator = OPERATORS[name]
   if (!operator) {
-    throw queryError('QUERY_UNKNOWN_OPERATOR', `'${name}' is not an operator (operator names are lowercase)`)
+    // Names are matched exactly, case included. The message used to say "lowercase", which the
+    // catalogue contradicts (`arrayContains`, `jsonHasKey`): the rule is exactness, and the
+    // helpful answer to a wrongly cased name is the name it was meant to be (T-10.33).
+    const meant = Object.keys(OPERATORS).find((known) => known.toLowerCase() === name.toLowerCase())
+    throw queryError(
+      'QUERY_UNKNOWN_OPERATOR',
+      meant
+        ? `'${name}' is not an operator: names are matched exactly, did you mean '${meant}'?`
+        : `'${name}' is not an operator (names are matched exactly, case included)`
+    )
   }
   if (!operator.engines.includes(dialect)) {
     throw queryError(

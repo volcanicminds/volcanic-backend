@@ -159,7 +159,10 @@ export async function getCurrentUser(req: FastifyRequest, reply: FastifyReply) {
 // Fields a user is allowed to change on themselves. Everything else (roles,
 // blocked, confirmed, password, externalId, mfa*, ...) is off-limits: spreading the
 // raw body here would let a normal user mass-assign roles:['admin'] and escalate.
-const SELF_EDITABLE_FIELDS = ['username', 'firstName', 'lastName']
+// `firstName`/`lastName` left the list with T-10.22: the v5 `user` table has no such columns
+// (names are the project's own table, see docs/SCHEMA_V5.md §6), so accepting them answered
+// 200 and stored nothing.
+const SELF_EDITABLE_FIELDS = ['username']
 
 export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply) {
   const user: AuthenticatedUser | undefined = req.user

@@ -8,9 +8,7 @@ export const currentUserBodySchema = {
   // these same fields as the real security boundary (defense in depth).
   additionalProperties: false,
   properties: {
-    username: { type: 'string' },
-    firstName: { type: 'string' },
-    lastName: { type: 'string' }
+    username: { type: 'string' }
   }
 }
 
@@ -28,8 +26,6 @@ export const userBodySchema = {
     username: { type: 'string' },
     email: { type: 'string' },
     password: { type: 'string' },
-    firstName: { type: 'string' },
-    lastName: { type: 'string' },
     blocked: { type: 'boolean' },
     blockedReason: { type: 'string' },
     blockedAt: { type: 'string' },

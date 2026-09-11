@@ -36,6 +36,15 @@ changing it was a breaking change for every consumer. PGlite stays for developme
 tests, never for isolation tests: it has no pool, so it cannot show the class of defects the
 rewrite exists to remove.
 
+**The framework's `user` has no name any more.** v4 projects added `firstName` and `lastName` by
+subclassing the `User` entity; v5 forbids redefining a framework table (docs/SCHEMA_V5.md §6),
+so names live in a table of the project's own, keyed by `user.id` (the sample's `user_profile`
+is the pattern). Until T-10.22 the framework's JSON schemas still accepted the two fields and
+`PUT /users/me` still listed them as self-editable: the request answered 200 and stored nothing.
+They are gone from `userBodySchema`, `currentUserBodySchema` and the self-edit whitelist, and the
+console titles a user by `email`. A client that still sends them sees them stripped, as before,
+because Fastify removes properties a schema does not declare.
+
 ## 2. Configuration
 
 ```js

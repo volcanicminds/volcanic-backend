@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'

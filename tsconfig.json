@@ -17,7 +17,8 @@
     "noImplicitAny": false,
     "strictPropertyInitialization": false,
     "useUnknownInCatchVariables": false,
-    "noUnusedLocals": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "paths": {
       "@types": ["./types"]
     }

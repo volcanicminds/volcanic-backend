@@ -150,3 +150,18 @@ codice.
 | T2 | in CI il banco nero gira con `DB_POOL_MAX=1`; lo scenario a 4 connessioni esiste ma **non** è il cancello | con più connessioni il fallimento è probabilistico, e un cancello instabile insegna a ignorare il rosso |
 | T3 | via le variabili `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP`, `VOLCANIC_CUSTOM_QUERY_OPERATORS`, `VOLCANIC_CASE_INSENSITIVE_DEFAULT` | rispettivamente: incompatibile con le migrazioni, abilita `:raw`, rende ambiguo il significato di un URL |
 | T4 | `CORS_ORIGINS` obbligatoria in produzione, e la coppia `*` + credenziali rifiuta l'avvio | D-16 |
+
+## Appendice: decisioni della fase 10 (11 settembre 2026)
+
+Prese durante `EVO_FASE_10.md`. Le prime due su indicazione esplicita, le altre come default
+dichiarati e reversibili.
+
+| | Decisione | Criterio |
+|---|---|---|
+| F1 | `LOG_LEVEL` non impostato vale `info` in produzione e `debug` altrove | un livello che nessuno ha scelto non deve scrivere ogni soggetto risolto nei log di produzione |
+| F2 | di default la sessione del browser sta in un cookie httpOnly, mai in `localStorage` (T-10.37) | un token leggibile da qualunque script della pagina è un token che una XSS porta via |
+| F3 | il reset MFA forzato dell'admin si configura **solo** dall'ambiente | è un'azione di emergenza con una finestra di dieci minuti: un valore con scadenza non va in un file committato |
+| F4 | il manifest resta **uguale per tutti** i chiamanti; la documentazione ora lo dice | filtrarlo per ruolo renderebbe il manifest pinnato dell'admin dipendente da chi lo scarica; resta aperto se il costo vale la riduzione di superficie |
+| F5 | le chiavi di configurazione storiche restano in snake_case (`mfa_policy`, `allow_multiple_admin`, `export_directory`, …); i blocchi introdotti in v5 sono camelCase (`control`, `tenants`, `manifest`, `cache`); **nessuna rinomina in 5.0** | rinominare una chiave esistente rompe in silenzio ogni consumer che la imposta (la chiave vecchia diventa ignorata, non un errore); la regola per le chiavi nuove è camelCase, e la convivenza è scritta qui invece di essere scoperta |
+| F6 | `tenants.engine` resta senza variabile d'ambiente | `CONTROL_ENGINE` esiste perché il control plane cambia fra ambienti; il motore dei tenant è una scelta di architettura, non di deployment. Da rivedere se un progetto reale lo chiede |
+| F7 | `noImplicitAny` resta spento: attivarlo produce 167 errori nel codice e 166 nei test (misurati l'11 settembre 2026) | si affronta per file quando il file si tocca, come i warning `no-explicit-any` |

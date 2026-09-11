@@ -220,7 +220,8 @@ has an admin or `ADMIN_EMAIL` at boot.
   extra properties and the controller spread the whole body into the update, so a normal user could send
   `roles: ['admin']` (or `blocked`, `confirmed`, `password`, `externalId`, `mfa*`) and **escalate to admin** /
   overwrite their credential. The schema is now `additionalProperties: false` and the controller whitelists only
-  self-editable fields (`username`, `firstName`, `lastName`). (OWASP API3:2023.)
+  self-editable fields (`username` only in v5: the `user` table has no name columns, and names belong to a
+  table of the project's own). (OWASP API3:2023.)
 - **`/auth/refresh-token` robustness**: when refresh tokens are disabled (`JWT_REFRESH=false`) the endpoint now
   returns a clean `404` (`code: NOT_FOUND`) instead of throwing an unhandled `500`; it also validates that both
   `token` and `refreshToken` are present (`400`).
@@ -553,7 +554,7 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `JWT_REFRESH`                  | Enable refresh tokens.                                                  |    No    | `true`              |
 | `JWT_REFRESH_SECRET`           | Secret key for signing refresh tokens.                                  | **Yes**¹ |                     |
 | `JWT_REFRESH_EXPIRES_IN`       | Expiration time for refresh tokens.                                     |    No    | `180d`              |
-| `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`). Unset or unknown falls back to `debug`. |    No    | `debug`             |
+| `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent`). Unset or unknown falls back to the default, which follows `NODE_ENV`. |    No    | `info` in production, `debug` otherwise |
 | `LOG_COLORIZE`                 | Enable colorized log output.                                            |    No    | `true`              |
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
 | `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format.                                  |    No    | `true`              |
@@ -1019,7 +1020,7 @@ its grammar is in [docs/MAGIC_QUERY_V5.md](docs/MAGIC_QUERY_V5.md).
 // src/api/products/controller/product.ts
 import { FastifyReply, FastifyRequest, dataContext } from '@volcanicminds/backend'
 import { access, executeFind } from '@volcanicminds/backend/db'
-import { tablesFor } from '../../../schema/index.js'
+import { tablesFor } from '../../../tables/index.js'
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
   // The container this request works on. There is no fallback: a route that arrives here
@@ -1191,7 +1192,7 @@ The framework declares its tables and knows nothing about yours. You declare the
 and you build them **for the container the request is on**:
 
 ```ts
-// src/schema/pg.ts
+// src/tables/pg.ts
 import { pgSchema, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 import { uuidv7 } from '@volcanicminds/backend/db'
 
@@ -1212,7 +1213,7 @@ export function appTables(schemaName: string) {
 ```
 
 ```ts
-// src/schema/index.ts — one cache, keyed by locator
+// src/tables/index.ts — one cache, keyed by locator
 const cache = new Map<string, ReturnType<typeof appTables>>()
 
 export function tablesFor(handle: DataHandle) {

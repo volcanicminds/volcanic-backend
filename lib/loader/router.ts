@@ -5,6 +5,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import { normalizePatterns } from '../util/path.js'
 import { normalizeRouteCache, buildCacheHooks, cacheEnabled } from '../util/cache.js'
 import { isSystemRoleCode, SYSTEM_CAPABILITIES, SYSTEM_PREFIX } from './roles.js'
+import { isTenancyEnabled } from '../util/tenancy.js'
 import { globSync } from 'glob'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -157,6 +158,27 @@ function resolveRequiredRoles(
   // surface to default to. Being public there is opted into, never inherited.
   if (out.length === 0 && !capability && !isControl) out.push(roles.public)
   if (superuser && !out.some((r) => r.code === superuser.code)) out.push(superuser)
+
+  // One identity space (T-10.22). Without tenants there is no platform: the hook
+  // authenticates the application's own users on control-scope routes too
+  // (lib/hooks/onRequest.ts, `controlIdentity`), and no system user is ever created. The
+  // catalogue above still resolved this route against the SYSTEM roles, so its gate asked for
+  // a role nobody could hold, and `/admin/manifest` answered 403 to the founder himself: the
+  // endpoint existed and was unreachable by anyone. Here the gate is widened to the plane that
+  // actually has users, the same way the identity already was: the application's superuser,
+  // and the application roles that declare the same capability. With tenants declared nothing
+  // changes, because there the two planes are real and must not see each other.
+  if (isControl && !isTenancyEnabled()) {
+    const samePlane = [
+      roles.admin,
+      ...(capability
+        ? Object.values(roles).filter((r) => Array.isArray(r?.capabilities) && r.capabilities.includes(capability))
+        : [])
+    ]
+    for (const r of samePlane) {
+      if (r?.code && !out.some((o) => o.code === r.code)) out.push(r)
+    }
+  }
   return out
 }
 

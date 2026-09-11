@@ -771,7 +771,7 @@ container. Building them per locator is what makes tenancy work without touching
 on a pooled connection.
 
 ```typescript
-// src/schema/pg.ts
+// src/tables/pg.ts
 import { pgSchema, pgTable, text, timestamp, index, check } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { uuidv7 } from '@volcanicminds/backend/db'
@@ -826,7 +826,7 @@ export type AppTables = ReturnType<typeof appTables>
 ## 2.2 Resolving tables for the request's container
 
 ```typescript
-// src/schema/index.ts
+// src/tables/index.ts
 import type { DataHandle } from '@volcanicminds/backend'
 import { access } from '@volcanicminds/backend/db'
 import { appTables, type AppTables } from './pg.js'
@@ -946,7 +946,7 @@ in expand/contract releases.
 // src/api/products/controller/product.ts
 import { FastifyReply, FastifyRequest } from '@volcanicminds/backend'
 import { access, executeFind } from '@volcanicminds/backend/db'
-import { tablesFor } from '../../../schema/index.js'
+import { tablesFor } from '../../../tables/index.js'
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
   // The container this request works on. No fallback: a route that arrives here without one has
@@ -1510,7 +1510,7 @@ Taken from `volcanic-backend-sample`, where it runs against a real Postgres.
 import { and, eq, inArray, isNull, type SQL, type Table } from 'drizzle-orm'
 import type { DataHandle } from '@volcanicminds/backend'
 import { access, executeCount, executeFind, type QueryOptions } from '@volcanicminds/backend/db'
-import { tablesFor, type AppTables } from '../schema/index.js'
+import { tablesFor, type AppTables } from '../tables/index.js'
 import type { UserContext } from '../../types/index.js'
 
 export abstract class BaseService<K extends keyof AppTables> {
@@ -2855,7 +2855,7 @@ Never commit sensitive data in `initialData.ts`. Use libraries like `faker` or a
 
 To maintain consistency between database (Postgres) and code (TypeScript), `volcanic-sample-backend` centralizes definitions.
 
-### File: `src/schema/enums.ts`
+### File: `src/tables/enums.ts`
 
 A frozen list plus a string union — not a TypeScript `enum`. The list is what the column check and
 the JSON schema are built from, so the values live in one place and a new one cannot enter the type

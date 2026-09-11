@@ -79,17 +79,53 @@ describe('loader/router — processRoute', () => {
   })
 
   it('gives a control route the system superuser, and never public', () => {
-    const r: any = run({ method: 'GET', path: '/', handler: 'x.y', config: { scope: 'control' } })
-    expect(codes(r)).toEqual(['system:admin'])
+    // A property of a deployment WITH tenants: there the two planes are real (T-4.1).
+    ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }
+    try {
+      const r: any = run({ method: 'GET', path: '/', handler: 'x.y', config: { scope: 'control' } })
+      expect(codes(r)).toEqual(['system:admin'])
 
-    const byCapability: any = run({
-      method: 'GET',
-      path: '/c',
-      handler: 'x.y',
-      requireCapability: 'tenants:read',
-      config: { scope: 'control' }
-    })
-    expect(codes(byCapability).sort()).toEqual(['system:admin', 'system:operator'])
+      const byCapability: any = run({
+        method: 'GET',
+        path: '/c',
+        handler: 'x.y',
+        requireCapability: 'tenants:read',
+        config: { scope: 'control' }
+      })
+      expect(codes(byCapability).sort()).toEqual(['system:admin', 'system:operator'])
+    } finally {
+      ;(global as any).config = undefined
+    }
+  })
+
+  //
+  // T-10.22: without tenants there is one identity space, and the control-scope routes that
+  // exist there (`/admin/manifest`, a project's own) must be reachable by the users that
+  // exist. Before, the gate held only system roles, which a single-tenant deployment never
+  // creates, and `/admin/manifest` answered 403 to the founder: mounted and unreachable.
+  //
+  it('opens a control route to the application superuser when there are no tenants', () => {
+    ;(global as any).config = { options: { tenants: null } }
+    try {
+      const r: any = run({ method: 'GET', path: '/', handler: 'x.y', config: { scope: 'control' } })
+      expect(codes(r)).toContain('admin')
+      expect(codes(r)).not.toContain('public')
+
+      // The application roles that declare the capability pass too, and the others do not.
+      ;(global as any).roles.ops.capabilities = ['users', 'manifest']
+      const byCapability: any = run({
+        method: 'GET',
+        path: '/m',
+        handler: 'x.y',
+        requireCapability: 'manifest',
+        config: { scope: 'control' }
+      })
+      expect(codes(byCapability)).toEqual(expect.arrayContaining(['admin', 'ops']))
+      expect(codes(byCapability)).not.toContain('backoffice')
+    } finally {
+      ;(global as any).roles.ops.capabilities = ['users']
+      ;(global as any).config = undefined
+    }
   })
 
   it('keeps the tenant context by default, and for scope: tenant', () => {

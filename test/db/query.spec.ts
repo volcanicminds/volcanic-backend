@@ -10,7 +10,7 @@
 //
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
-import { sql, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { expect } from 'expect'
 import { getTableConfig, SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
 import { PgDialect } from 'drizzle-orm/pg-core'
@@ -184,8 +184,11 @@ describe('database/query · refusals', () => {
   it('refuses an unknown field, an unknown operator and a wrongly cased one', () => {
     expect(codeOf(() => parseQuery(lite.user, { 'nope:eq': 'x' }, options))).toBe('QUERY_UNKNOWN_FIELD')
     expect(codeOf(() => parseQuery(lite.user, { 'email:nope': 'x' }, options))).toBe('QUERY_UNKNOWN_OPERATOR')
-    // Operator names are lowercase and matched exactly: v4 accepted :ISEMPTY.
+    // Operator names are matched exactly, case included: v4 accepted :ISEMPTY.
     expect(codeOf(() => parseQuery(lite.user, { 'email:CONTAINS': 'x' }, options))).toBe('QUERY_UNKNOWN_OPERATOR')
+    // And the refusal names the operator that was meant (T-10.33).
+    expect(() => parseQuery(lite.user, { 'email:CONTAINS': 'x' }, options)).toThrow(/did you mean 'contains'/)
+    expect(() => parseQuery(lite.user, { 'roles:arraycontains': 'x' }, options)).toThrow(/did you mean 'arrayContains'/)
   })
 
   it('refuses an empty value and a repeated condition', () => {

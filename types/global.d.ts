@@ -390,6 +390,16 @@ export interface JobSchedule {
 
 export interface ConfiguredRoute {
   enable: boolean
+  /**
+   * `false` when the route declared `scope: 'control'`, `true` otherwise. Derived by the router,
+   * never authored (T-10.34).
+   *
+   * The name is the v4 spelling that the router REFUSES in an author's config
+   * (lib/loader/router.ts), and it is kept here on purpose: this is the resolved boolean the
+   * hooks, the cache and `dataContext` read from `routeOptions.config`, not the field a route
+   * writes. Renaming it touches 46 places for no change in behaviour; confusing the two is the
+   * only risk, and this comment is where that confusion ends.
+   */
   tenantContext: boolean
   tracking?: { strict?: boolean }
   method: any

@@ -7,7 +7,9 @@ export default {
     version: false,
     manifest: {
       group: 'system',
-      resource: { name: 'user', titleField: ['firstName', 'lastName'], subtitleField: 'email' }
+      // `email`, not first and last name: the v5 `user` table has no name columns (T-10.22), and a
+      // title built from absent fields drew every user in the console as a blank row.
+      resource: { name: 'user', titleField: 'email', subtitleField: 'username' }
     }
   },
   routes: [

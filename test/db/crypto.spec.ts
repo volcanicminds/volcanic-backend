@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 //
 // T-2.6. The cryptography is unchanged from v4 and the tests say so: what changed is that the
 // derivation no longer blocks the event loop (D-14, measured at 82 ms per call).

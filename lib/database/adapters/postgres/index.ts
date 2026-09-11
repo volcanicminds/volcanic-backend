@@ -7,7 +7,7 @@ import { appTables, registryTables, type AppTables, type RegistryTables } from '
 import { RequestLeases } from '../../leases.js'
 import { exportPostgresSchema } from '../../containers/export.js'
 import { guardPool } from './guard.js'
-import { envInt, envString } from '../../env.js'
+import { envInt } from '../../env.js'
 
 //
 // Postgres adapter (T-2.2).

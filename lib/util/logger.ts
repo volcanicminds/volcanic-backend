@@ -14,13 +14,26 @@
 import pino from 'pino'
 import yn from './yn.js'
 
-const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace']
+// `silent` is pino's own level for "nothing". It was missing, so `LOG_LEVEL=silent` (which the
+// framework's own e2e script sets) was an unknown value and fell back to the default.
+const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']
 
-const { LOG_LEVEL, LOG_COLORIZE, LOG_TIMESTAMP, LOG_TIMESTAMP_READABLE } = process.env
+const { LOG_COLORIZE, LOG_TIMESTAMP, LOG_TIMESTAMP_READABLE } = process.env
 
+/**
+ * The level to log at: `LOG_LEVEL` when it names one, otherwise a default that depends on where
+ * the process runs. `debug` on a developer's machine, `info` in production: a production default
+ * of `debug` writes every query and every resolved subject into logs that outlive the request,
+ * and nobody chose it, because nobody set anything.
+ *
+ * Read at call time and not at import: `index.ts` loads `.env` after its imports have run, so a
+ * value captured here at import would ignore a `LOG_LEVEL` or `NODE_ENV` that lives in `.env`.
+ * `index.ts` calls this again once the file is loaded.
+ */
 function getLogLevel(): string {
-  const lvl = LOG_LEVEL?.toLowerCase()
-  return LOG_LEVEL && logLevels.includes(lvl!) ? lvl! : 'debug'
+  const declared = process.env.LOG_LEVEL?.toLowerCase()
+  if (declared && logLevels.includes(declared)) return declared
+  return process.env.NODE_ENV === 'production' ? 'info' : 'debug'
 }
 
 const logColorize = yn(LOG_COLORIZE, true)

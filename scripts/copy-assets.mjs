@@ -10,8 +10,9 @@ const assets = [
   // Core declaration files (`.d.ts`) are NOT emitted by `tsc` into `dist/`, but
   // `dist/index.d.ts` re-exports types from `./types/global.js` (which imports
   // `./orm.js`). Without these under `dist/types/`, consumers get unresolved
-  // types (attw "Internal resolution error"). The data layer types live in
-  // `types/database/typeorm/global.ts` (a real `.ts`, emitted by tsc) → no copy.
+  // types (attw "Internal resolution error"). The data layer's own types are declared in
+  // `.ts` files under `lib/database/` (`ports.ts` and the adapters), which tsc emits, so they
+  // need no copy. (Until T-10.36 this said `types/database/typeorm/global.ts`, a v4 path.)
   ['types/global.d.ts', 'dist/types/global.d.ts'],
   ['types/orm.d.ts', 'dist/types/orm.d.ts'],
   // The migration SQL (T-5.1). `tsc` emits no `.sql`, and the runner resolves the folders

@@ -33,9 +33,9 @@ rilievo e non da un lavoro cronometrato.
 |---|---|---|
 | ~~A. Il contesto dati~~ | **chiuso l'11 settembre 2026**, T-10.1, T-10.2, T-10.3 | fatto |
 | ~~B. Configurazione che mente~~ | **chiuso l'11 settembre 2026**, T-10.4 → T-10.10 | fatto |
-| C. Allineamento di `volcanic-admin` alla v5 | l'admin contro un backend v5 reale | 2 giornate, più il progetto di T-10.16 |
-| D. Sample committabile | il commit del porting, oggi rimandato per scelta | 1 giornata |
-| E. Igiene del framework | niente, si può fare in qualunque momento | mezza giornata |
+| C. Allineamento di `volcanic-admin` alla v5 | l'admin contro un backend v5 reale, e la sessione in cookie httpOnly di default | 3-4 giornate, più il progetto di T-10.16 e la decisione di T-10.37 |
+| D. Sample committabile | **chiuso l'11 settembre 2026** tranne il commit (T-10.28, su richiesta) | fatto |
+| ~~E. Igiene del framework~~ | **chiuso l'11 settembre 2026** | fatto |
 
 ---
 
@@ -198,6 +198,13 @@ la forma di difetto che le fasi precedenti hanno inseguito con il nome D-11.
   **Non fatto, e scritto in §4**: l'unificazione delle due famiglie (`DATABASE_URL` contro
   `DB_*`), perché romperebbe chi usa la forma discreta; e una variabile per `tenants.engine`,
   che resta una decisione.
+  **Seguito, deciso l'11 settembre 2026**: `LOG_LEVEL` non impostato vale `info` in produzione e
+  `debug` altrove (`lib/util/logger.ts`, `getLogLevel`), e un valore esplicito vince sempre. Il
+  livello è riletto in `index.ts` dopo `dotenv.config()`, perché il logger nasce durante gli
+  import e prima non vedeva un `NODE_ENV` scritto in `.env`: verificato con un processo che ha
+  `NODE_ENV=production` solo in `.env`, che ora parte a `info` e prima partiva a `debug`.
+  Accettato anche `silent`, che lo script `test:e2e:mt:pg` imposta e che veniva ignorato.
+  Test in `test/lib/logger.spec.ts`.
 
 - [x] **T-10.10** `LOG_FASTIFY` esiste solo dentro una riga commentata.
   **Dove**: `index.ts:173`.
@@ -296,6 +303,57 @@ che segue è tutto il resto, che non è stato toccato dallo stesso commit.
   **Chiuso quando**: nessun file di `docs/**` nomina `runInTenantContext`, e la versione minima
   del backend è quella vera.
 
+Le tre voci che seguono sono state aggiunte l'11 settembre 2026, su decisione: **di default la
+sessione del browser sta in un cookie httpOnly, mai in `localStorage`**, e l'access token torna
+breve. Vanno fatte in quest'ordine, perché ciascuna regge la successiva.
+
+- [ ] **T-10.37** Il default di autenticazione è il cookie httpOnly, non `localStorage`.
+  **Oggi, nel codice**: il default del backend è `BEARER` (`lib/util/bearer.ts:21`,
+  `lib/manifest/generator.ts:340`, `README.md` tabella dell'ambiente); l'admin prende la modalità
+  dal manifest (`src/VolcanicAdmin.tsx:196`), quindi senza `AUTH_MODE=COOKIE` esplicito lavora
+  in bearer e tiene token e refresh token in `localStorage` (`src/engine/auth/tokenStore.ts:12-17`),
+  leggibili da qualunque script della pagina. La documentazione dell'admin dice il contrario:
+  `docs/CONSUMING.md:434` indica `'cookie'` come default, e il sample non imposta `AUTH_MODE`.
+  **Il nodo da sciogliere prima di cambiare il default**: `bearerTokenOf` legge **una sola**
+  fonte per configurazione (`lib/util/bearer.ts:16-33`). In `COOKIE` l'header `Authorization`
+  non viene letto affatto, quindi i token di integrazione (`/token`, «Integration token
+  functions») e qualunque client che non sia un browser smettono di funzionare. Girare il default
+  così com'è romperebbe ogni integrazione di ogni progetto che non imposta `AUTH_MODE`.
+  **Assunzione di lavoro, da confermare**: due canali con un ruolo ciascuno e non a caso, cioè il
+  cookie per le sessioni utente e l'header solo per i token di integrazione; la regola di
+  `bearer.ts` («una fonte per configurazione») diventa «una fonte per tipo di credenziale».
+  **Vincolo di deployment da scrivere**: il cookie è `sameSite: 'strict'`
+  (`lib/api/auth/controller/auth.ts:405`), quindi admin e API devono stare sullo stesso sito
+  (stesso dominio registrabile, per esempio `admin.x.com` e `api.x.com`). Su domini diversi
+  servono `sameSite: 'none'`, `secure` e una protezione CSRF esplicita.
+  **Chiuso quando**: un backend senza `AUTH_MODE` imposta la sessione in un cookie httpOnly,
+  l'admin non scrive nulla in `localStorage`, un token di integrazione funziona ancora
+  dall'header, e `docs/MIGRATION_V4_V5.md` spiega il cambio. Con il cookie come default, T-10.12
+  resta vera solo per chi sceglie esplicitamente bearer.
+
+- [ ] **T-10.38** In modalità cookie la sessione ha due durate che non si parlano.
+  **Dove**: il cookie ha `maxAge: 86400` scritto a mano (`lib/api/auth/controller/auth.ts:407`,
+  uguale in `lib/api/system/controller/systemAuth.ts:71-77`), mentre il JWT che contiene scade
+  dopo `JWT_EXPIRES_IN`, oggi 15 giorni. Il browser butta il cookie dopo un giorno, ma chi ne
+  copia il valore lo può rigiocare per quindici.
+  **Chiuso quando**: la durata del cookie e quella del JWT derivano da un'unica impostazione, e
+  un test lo verifica.
+
+- [ ] **T-10.39** Rinnovo automatico, poi access token breve.
+  **Dove**: il rinnovo vuole `{ token, refreshToken }` nel corpo
+  (`lib/api/auth/controller/auth.ts:440-456`), ma in modalità cookie il login restituisce
+  `token: null` e `refreshToken: null` (`:410-418`): oggi in cookie non esiste rinnovo, e la
+  sessione finisce quando scade il cookie. Lato admin il refresh token viene salvato e mai usato,
+  e il primo 401 fa logout (`src/engine/providers/auth.ts:26`, `:142-145`).
+  **Cosa**: un refresh token anche lui in cookie httpOnly, limitato al percorso di rinnovo; l'admin
+  che su un 401 tenta il rinnovo una volta prima di rimandare al login; **solo dopo**
+  `JWT_EXPIRES_IN` da `15d` a `1h`. Il rischio attuale è contenuto, perché ogni richiesta rilegge
+  utente e ruoli dal database (`lib/hooks/onRequest.ts:176-203`) e il blocco di un utente vale
+  subito, ma un token rubato resta buono quindici giorni e la sola revoca possibile è quella di
+  tutte le sessioni dell'utente (`/auth/invalidate-tokens`).
+  **Chiuso quando**: una sessione dell'admin sopravvive alla scadenza dell'access token senza
+  login, il default è `1h`, e `docs/MIGRATION_V4_V5.md` lo annota come cambio di comportamento.
+
 ---
 
 ## D. Sample committabile
@@ -303,7 +361,7 @@ che segue è tutto il resto, che non è stato toccato dallo stesso commit.
 Oggi il porting è lavoro verificato e non committato, per scelta. Prima di committarlo vanno
 chiuse queste voci, perché due di esse rendono il sample non funzionante su un database pulito.
 
-- [ ] **T-10.19** Le migrazioni del progetto non vengono mai applicate.
+- [x] **T-10.19** Le migrazioni del progetto non vengono mai applicate.
   **Dove**: `db.ts::migrationSets()` legge la cartella del consumer a
   `<cwd>/migrations/<set>/<dialect>`; `drizzle.config.ts:16-17` genera in
   `./migrations/control` e `./migrations/tenant`, senza dialetto, e gli script
@@ -319,60 +377,113 @@ chiuse queste voci, perché due di esse rendono il sample non funzionante su un 
   applica le migrazioni. `psql \dt public.*` elenca otto tabelle, tutte del framework
   (`change`, `destruction_request`, `impersonation`, `migration`, `system_user`, `tenant`,
   `token`, `user`). `partner` e `user_profile` non esistono, e nessun comando ha segnalato niente.
+  **Evidenza**: SQL e `meta/` spostati in `migrations/control/pg` e `migrations/tenant/pg`;
+  `drizzle.config.ts:15-25` genera lì, con il perché. Su database svuotato `npm run db:migrate`
+  riporta `control plane at version 0000_marvelous_ezekiel`, e `information_schema` elenca
+  `partner` e `user_profile` accanto alle tabelle del framework; la tabella `migration` registra sia
+  `0000_initial_control` sia `0000_marvelous_ezekiel`. `npm run db:generate` e
+  `db:generate:tenant` rispondono «No schema changes», quindi il journal spostato è coerente.
 
-- [ ] **T-10.20** Lo schema del control plane si legge dalla configurazione, non dall'ambiente.
+- [x] **T-10.20** Lo schema del control plane si legge dalla configurazione, non dall'ambiente.
   **Dove**: `index.ts:30` e `scripts/migrate.ts:18` leggono `process.env.DB_SCHEMA || 'public'`;
   lo script omologo del framework legge `config.options.control.schema`
   (`scripts/migrate-control.ts:25`).
   **Chiuso quando**: entrambi i punti passano dalla configurazione già caricata.
+  **Evidenza**: `index.ts:30-31`, `scripts/migrate.ts` e `test/common/bootstrap.ts:24` leggono
+  `global.config.options.control.schema`; lo script di migrazione ora passa da `preload()` invece di
+  importare direttamente `src/config/general.ts`, che da solo è il livello del progetto senza i
+  default del framework.
 
-- [ ] **T-10.21** `enable: true` nel config generale non lo legge nessuno.
+- [x] **T-10.21** `enable: true` nel config generale non lo legge nessuno.
   **Dove**: `src/config/general.ts:19`; il loader controlla solo `config.name` e fonde
   `options` (`lib/loader/general.ts:71-77`).
   **Chiuso quando**: la chiave è rimossa.
+  **Evidenza**: tolta da `src/config/general.ts`.
 
-- [ ] **T-10.22** Il sample non è consumabile da `volcanic-admin`.
+- [x] **T-10.22** Il sample non è consumabile da `volcanic-admin`.
   **Dove**: nessun `manifest: { enabled: true }` in `src/config/general.ts`, e nessuna
   `routes.ts` dichiara `config.manifest` (né `group`, né `resource`, né `globalSearch`, che il
   generatore leggerebbe a `lib/manifest/generator.ts:252-255`).
   **Chiuso quando**: `GET /admin/manifest` sul sample restituisce almeno la risorsa `partner`
   con etichette e campi, e l'admin la elenca.
+  **Evidenza**: `manifest: { enabled: true }` nel config e hint `group`, `titleField`,
+  `subtitleField`, `globalSearch` in `src/api/partners/routes.ts`. **Ha trovato un difetto del
+  framework**: senza tenant `/admin/manifest` rispondeva 403 anche al fondatore, perché le rotte di
+  controllo risolvevano i ruoli solo contro il catalogo di sistema, e in single tenant utenti di
+  sistema non esistono (`/system/*` non è nemmeno montato). Endpoint montato e irraggiungibile da
+  chiunque. Corretto in `lib/loader/router.ts` (`resolveRequiredRoles`): senza tenant il cancello di
+  una rotta di controllo include il superuser applicativo e i ruoli applicativi che dichiarano la
+  stessa capability; con i tenant non cambia nulla. Test in `test/lib/router.spec.ts`, e il test
+  multi-tenant esistente ora dichiara i tenant invece di presumerli. **Secondo residuo trovato**:
+  l'utente del framework aveva `titleField: ['firstName', 'lastName']` e gli schemi JSON accettavano
+  quei due campi, ma la tabella `user` v5 non ha colonne di nome: tolti da `lib/schemas/user.ts`, dalla
+  whitelist di `PUT /users/me` e dall'hint (ora `email`), annotato in `docs/MIGRATION_V4_V5.md` §1.
+  Verificato con `curl`: login del fondatore, `GET /admin/manifest` restituisce `tenancy: single` e
+  la risorsa `partner` con gruppo, titolo e ricerca.
 
-- [ ] **T-10.23** `profile.service.ts` è documentato e non cablato.
+- [x] **T-10.23** `profile.service.ts` è documentato e non cablato.
   **Dove**: descritto in `README.md:63` e `CLAUDE.md:49`, la tabella `user_profile` esiste
   (`src/schema/pg.ts:71-79`), ma nessun controller importa `readProfile` o `writeProfile`.
   **Chiuso quando**: esiste una rotta che lo usa, oppure il servizio è rimosso e la
   documentazione con lui.
+  **Evidenza**: `src/api/profile/` con `GET` e `PUT /profile`, schemi in `src/schemas/profile.ts`
+  (`additionalProperties: false`, quindi un `userId` nel corpo viene tolto e vale quello del token).
+  Provato con `curl`: default, scrittura, rilettura, 401 anonimo, 400 su lingua fuori enum.
 
-- [ ] **T-10.24** I middleware del sample sono morti e hanno i nomi incrociati.
+- [-] **T-10.24** I middleware del sample sono morti e hanno i nomi incrociati.
   **Dove**: nessuna rotta li referenzia (`middlewares: []` in ogni `src/api/*/routes.ts`);
   `src/middleware/postAuth.ts:3` esporta `preSerialization` e `src/middleware/preAuth.ts:3`
   esporta `preHandler`. `postAuth.ts:3` ha anche due parametri non usati senza prefisso `_`.
   **Chiuso quando**: o una rotta li usa, e allora i nomi combaciano con il file, o spariscono.
+  **Non applicabile, rilievo sbagliato (11 settembre 2026)**: il nome del file dice *quando* gira
+  il middleware, l'export dice *quale hook* di Fastify diventa, e il router li raggruppa per nome
+  di export (`lib/loader/router.ts:57-66`), quindi `postAuth.ts` che esporta `preSerialization` è
+  voluto. E non sono morti: le rotte `/auth` del framework dichiarano `global.preAuth` e
+  `global.postAuth` (`lib/api/auth/routes.ts:26`, `:42`, `:136`), e il loader cerca prima in
+  `src/middleware/` del progetto, quindi quelli del sample sostituiscono quelli del framework a
+  ogni login. Resta vero solo il punto dei due parametri non usati, chiuso in T-10.30 per il
+  framework e in D per il sample.
 
-- [ ] **T-10.25** Costanti e helper mai usati.
+- [x] **T-10.25** Costanti e helper mai usati.
   **Dove**: `src/config/auth.ts:1-2` (`MINUTES_BETWEEN_FORGOT_PASSWORD_REQUESTS`,
   `MINUTES_BETWEEN_EXPIRED_PASSWORD_REQUESTS`), `src/config/constants.ts:1`
   (`PUSH_TEMPORAL_LIMIT_DAYS`), `src/utils/common.ts:1` (`capitalizeFirstLetter`), e in test
   `login`, `logout`, `del`, `get_with_headers`, `toQueryString` di `test/common/api.ts` più
   `COMPANY2_SUPERUSER_EMAIL` e `COMPANY2_SUPERUSER_PASSWORD` di `test/common/bootstrap.ts`.
   **Chiuso quando**: rimosse, o usate.
+  **Evidenza**: cancellati `src/config/auth.ts`, `src/config/constants.ts`, `src/utils/common.ts`
+  (il framework carica solo `general`, `plugins`, `roles`, `tracking` da `src/config/`). Gli helper
+  HTTP di `test/common/api.ts` invece sono diventati **vivi**: `test/e2e/demo.ts` ora prova sul server
+  vero profilo, partner via Magic Query con `v-total`, manifest e 401 dopo il logout, al posto di un
+  test che verificava la lunghezza di un array letterale. Le credenziali del bootstrap vengono da
+  `ADMIN_EMAIL`/`ADMIN_PASSWORD`: quelle scritte a mano divergevano da `.env`, quindi `login()` non
+  poteva funzionare. Tolti anche `uploadData()` vuota e il `log.level = 'trace'` forzato. Suite
+  del sample: 7 passanti, 4 dei quali e2e reali.
 
-- [ ] **T-10.26** `src/schema/` e `src/schemas/` differiscono per una lettera e sono due cose diverse.
+- [x] **T-10.26** `src/schema/` e `src/schemas/` differiscono per una lettera e sono due cose diverse.
   **Dove**: `src/schema/` contiene le tabelle Drizzle, `src/schemas/` gli schemi JSON di
   Fastify.
   **Chiuso quando**: uno dei due è rinominato in modo che il nome dica cosa contiene, e la
   scelta è riportata in `CLAUDE.md` perché è il sample a fissare la convenzione per i progetti
   che lo copiano.
+  **Evidenza**: `src/schema/` rinominata `src/tables/`; aggiornati import, `drizzle.config.ts`,
+  `README.md` e `CLAUDE.md` del sample, dove la convenzione è scritta, e gli esempi di `README.md` e
+  `llms.txt` del framework, che insegnavano lo stesso nome ai consumer.
 
-- [ ] **T-10.27** `better-sqlite3` è in `dependencies` mentre la configurazione dichiara Postgres
+- [x] **T-10.27** `better-sqlite3` è in `dependencies` mentre la configurazione dichiara Postgres
   e solo Postgres (`src/config/general.ts:11-15`).
   **Chiuso quando**: la dipendenza è spostata dove serve davvero, o il commento spiega perché
   resta.
+  **Evidenza**: `better-sqlite3` e `@types/better-sqlite3` tolti; l'adapter SQLite del framework li
+  importa solo dinamicamente (`lib/database/adapters/sqlite/index.ts:146`). Dopo `npm uninstall`
+  serve `node scripts/link-peers.mjs`, perché npm non rilancia il `postinstall` e restano due copie
+  di `drizzle-orm` (errore di tipi, non di runtime): è il meccanismo che c'era già.
 
-- [ ] **T-10.28** Committare il porting.
+- [~] **T-10.28** Committare il porting.
   **Dipende da**: T-10.3, T-10.19, T-10.20.
   **Chiuso quando**: `git status` del sample è pulito e il commit cita le voci chiuse.
+  **Pronto, non eseguito**: il commit si fa su richiesta esplicita. Tutto il lavoro del sample è nel
+  working tree, verificato (type-check, lint senza errori, 7 test verdi contro Postgres reale).
 
 ---
 
@@ -380,7 +491,7 @@ chiuse queste voci, perché due di esse rendono il sample non funzionante su un 
 
 Nessuna di queste rompe niente. Sono residui, e vanno chiuse insieme in un commit solo.
 
-- [ ] **T-10.29** `lib/util/regexp.ts`: `username`, `emailAlt`, `zipCode`, `taxCodePersona`,
+- [x] **T-10.29** `lib/util/regexp.ts`: `username`, `emailAlt`, `zipCode`, `taxCodePersona`,
   `taxCodeCompany`, `iban`, `mobilePhone`, `landLinePhone`, `tollFreePhone` non sono usate da
   nessuno e non sono raggiungibili da un consumer, perché la mappa `exports` di `package.json`
   espone solo `.` e `./db`. Sono anche regole di dominio italiano dentro un framework generico.
@@ -388,45 +499,67 @@ Nessuna di queste rompe niente. Sono residui, e vanno chiuse insieme in un commi
   `lib/api/system/controller/systemAuth.ts:4`, `systemUser.ts:4`).
   **Chiuso quando**: il file contiene solo ciò che serve, o le altre sono esportate e
   documentate come superficie pubblica.
+  **Evidenza**: `lib/util/regexp.ts` contiene solo `email`, `MAX_EMAIL_LENGTH`, `isEmail` e
+  `password`, con un commento che dice perché le altre sono uscite. Nessun test le usava.
 
-- [ ] **T-10.30** Simboli e parametri non usati.
+- [x] **T-10.30** Simboli e parametri non usati.
   **Dove**: `lib/database/adapters/postgres/index.ts:10` importa `envString` e non lo usa;
   `lib/middleware/postAuth.ts:3` ha `req` e `res` non usati senza prefisso `_`;
   `test/db/query.spec.ts:13` importa `sql` e non lo usa; `test/db/crypto.spec.ts:1` e
   `test/lib/cors.spec.ts:1` hanno direttive `eslint-disable` che non disabilitano niente.
   **Chiuso quando**: `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` è vuoto e
   `npm run lint` non riporta warning diversi da `no-explicit-any`.
+  **Evidenza**: `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` restituisce 0 errori;
+  `npx eslint .` riporta 65 avvisi, **tutti** `no-explicit-any`, zero di altro tipo. Tolta anche
+  una direttiva inutile che il rilievo non aveva visto, `lib/database/containers/replica.ts:1`.
+  `lib/middleware/postAuth.ts` ora ha un commento che spiega perché esporta `preSerialization`.
 
-- [ ] **T-10.31** Allineare la severità dei tipi a quella dell'admin.
+- [x] **T-10.31** Allineare la severità dei tipi a quella dell'admin.
   **Dove**: `tsconfig.json` del framework e del sample hanno `strict: true` ma
   `noImplicitAny: false` e `noUnusedLocals: false`; `volcanic-admin` ha
   `noUnusedLocals: true` e `noUnusedParameters: true`.
   **Perché ora**: dopo T-10.30 il costo è tre righe in tutto, misurato eseguendo il compilatore
   con quelle opzioni.
   **Chiuso quando**: le opzioni sono attive e `npm run check-all` è verde.
+  **Evidenza, in parte**: `noUnusedLocals` e `noUnusedParameters` attivi in `tsconfig.json`
+  (ereditati da `tsconfig.test.json`), `npm run type-check` verde. **`noImplicitAny` resta spento**:
+  attivarlo dà 167 errori nel codice e 166 nei test, misurati con `tsc --noImplicitAny`. Decisione
+  F7 in `EVO_PUNTI_APERTI.md`: si affronta per file.
 
-- [ ] **T-10.32** Il pacchetto pubblica i sorgenti TypeScript di `lib/`.
+- [-] **T-10.32** Il pacchetto pubblica i sorgenti TypeScript di `lib/`.
   **Dove**: `package.json` `files: ["dist", "lib", "bin"]`, mentre `exports` rende `lib`
   non importabile e `scripts/copy-assets.mjs` copia dentro `dist/` tutto ciò che serve a
   runtime (locales, `.d.ts`, SQL delle migrazioni).
   **Chiuso quando**: `npm pack --dry-run` non contiene `lib/**/*.ts`, e un consumer installato
   dal tarball supera `npm run check-all`.
+  **Non applicabile, rilievo sbagliato**: `lib/` è pubblicato perché ci puntano i source map.
+  `dist/lib/util/tenancy.d.ts.map` e `dist/lib/util/tenancy.js.map` hanno
+  `"sources": ["../../../lib/util/tenancy.ts"]`: senza i sorgenti nel pacchetto, il «vai alla
+  definizione» dell'IDE di un consumer atterra sul `.d.ts` e gli stack trace perdono il TypeScript.
+  I 122 file di `lib/` sono il prezzo di quella navigazione, non peso morto.
 
-- [ ] **T-10.33** Il messaggio di rifiuto degli operatori è falso.
+- [x] **T-10.33** Il messaggio di rifiuto degli operatori è falso.
   **Dove**: `lib/database/query/operators.ts:190` dice «operator names are lowercase», mentre il
   catalogo contiene `arrayContains`, `arrayContainedBy`, `arrayOverlaps`, `jsonHasKey`,
   `jsonHasAllKeys`, `jsonHasAnyKey` (`:161-166`).
   **Chiuso quando**: il messaggio descrive la regola vera, o suggerisce gli operatori vicini.
+  **Evidenza**: `lib/database/query/operators.ts:187-197` dice che i nomi sono confrontati
+  esattamente e, se esiste un operatore che differisce solo per le maiuscole, lo propone
+  (`did you mean 'arrayContains'?`). Due asserzioni nuove in `test/db/query.spec.ts:189-191`.
 
-- [ ] **T-10.34** Il nome interno è la grafia che il router rifiuta.
+- [x] **T-10.34** Il nome interno è la grafia che il router rifiuta.
   **Dove**: `lib/loader/router.ts:248-253` rifiuta `tenantContext` come «grafia v4», poi lo
   salva con quel nome (`:263`, `:323`, `types/global.d.ts:393`) e `dataContext` lo rilegge
   (`lib/util/tenancy.ts:50`).
   **Chiuso quando**: il campo interno si chiama come la grafia pubblica, oppure un commento in
   `types/global.d.ts:393` dice che il nome è deliberato e che non è la stessa cosa del campo
   d'autore.
+  **Evidenza**: scelta la seconda strada, il commento. `tenantContext` compare 46 volte in 19
+  file, 13 dei quali test, e rinominarlo non cambierebbe alcun comportamento. Il commento a
+  `types/global.d.ts:393-403` dice che è il booleano risolto dal router, mai scritto da un autore,
+  e perché porta il nome che il router rifiuta.
 
-- [ ] **T-10.35** Decidere la convenzione delle chiavi di configurazione.
+- [x] **T-10.35** Decidere la convenzione delle chiavi di configurazione.
   **Dove**: dentro lo stesso oggetto `options` convivono snake_case storico
   (`allow_multiple_admin`, `mfa_policy`, `export_directory`, `reset_password_token_ttl`) e
   camelCase dei blocchi nuovi (`control.pool.idleTimeoutMs`, `tenants.containers.maxOpen`,
@@ -434,10 +567,13 @@ Nessuna di queste rompe niente. Sono residui, e vanno chiuse insieme in un commi
   **Nota**: rinominare le chiavi storiche è una rottura per ogni consumer, quindi la voce è una
   **decisione**, non una modifica automatica. Se si sceglie di non toccarle, va scritto dove.
   **Chiuso quando**: la scelta è in `EVO_PUNTI_APERTI.md` con la motivazione.
+  **Evidenza**: decisione F5 in `EVO_PUNTI_APERTI.md`: nessuna rinomina in 5.0, chiavi nuove in
+  camelCase, convivenza dichiarata.
 
-- [ ] **T-10.36** `scripts/copy-assets.mjs` cita ancora `types/database/typeorm/global.ts` in un
+- [x] **T-10.36** `scripts/copy-assets.mjs` cita ancora `types/database/typeorm/global.ts` in un
   commento, percorso che non esiste più.
   **Chiuso quando**: il commento descrive i file che copia davvero.
+  **Evidenza**: `scripts/copy-assets.mjs` descrive dove stanno davvero i tipi del data layer.
 
 ---
 
