@@ -4,7 +4,7 @@ import type { ControlHandle, DataProvider, Tenant, TenantManagement } from '../.
 import { isTenancyEnabled, tenantsConfig } from '../util/tenancy.js'
 import { declaredTenant } from '../util/tenantResolution.js'
 import { migrationChecks } from './schemaVersion.js'
-import { bearerTokenOf } from '../util/bearer.js'
+import { credentialOf, REFRESH_TYP } from '../util/credential.js'
 import { httpError } from '../util/httpError.js'
 
 //
@@ -210,11 +210,14 @@ const CONTROL_TOKEN = Symbol('control-token')
  * instead would give a garbage token a different meaning from no token at all.
  */
 function claimedTenant(req: FastifyRequest): string | typeof CONTROL_TOKEN | undefined {
-  const raw = bearerTokenOf(req)
+  const raw = credentialOf(req, 'tenant')?.token
   if (!raw) return undefined
 
   try {
-    const data = req.server.jwt.verify(raw) as { tid?: string; scp?: string }
+    const data = req.server.jwt.verify(raw) as { tid?: string; scp?: string; typ?: string }
+    // A refresh token proves nothing about the request it arrived with: it is read by the
+    // renewal route, from its own cookie or from the body, and never from here.
+    if (data?.typ === REFRESH_TYP) return undefined
     if (data?.scp === 'control') return CONTROL_TOKEN
     return typeof data?.tid === 'string' && data.tid ? data.tid : undefined
   } catch {

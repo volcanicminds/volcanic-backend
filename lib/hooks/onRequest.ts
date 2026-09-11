@@ -3,7 +3,7 @@ import { getParams, getData, getQueryData, getBodyData } from '../util/common.js
 import { httpError } from '../util/httpError.js'
 import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } from '../../types/global.js'
 import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
-import { bearerTokenOf } from '../util/bearer.js'
+import { credentialOf, isCookieMode, REFRESH_TYP } from '../util/credential.js'
 
 // The only routes a pre-auth token opens. It names a subject and buys nothing else, so the
 // list is the enrolment and verification pair on each plane, plus the way out.
@@ -17,6 +17,9 @@ const MFA_SETUP_WHITELIST = [
   '/system/auth/mfa/verify',
   '/system/auth/logout'
 ]
+
+/** A refusal the catch below answers as 401, or tolerates on a public route. */
+const refusal = (message: string, authCode: string) => Object.assign(new Error(message), { authCode })
 
 const normalizeRoles = (rolesArray: any[] | undefined): string[] => {
   if (!rolesArray || rolesArray.length === 0) {
@@ -77,14 +80,31 @@ export default async (req, reply) => {
     // system user or to nobody.
     const controlIdentity = cfg.tenantContext === false && isTenancyEnabled()
 
-    // Same reader as the tenant resolution that already ran (lib/util/bearer.ts): this hook
-    // identifies the subject, that one decided the container, and both must be looking at
-    // the same credential.
-    const bearerToken = bearerTokenOf(req)
+    // Same reader as the tenant resolution that already ran (lib/util/credential.ts): this
+    // hook identifies the subject, that one decided the container, and both must be looking
+    // at the same credential. The plane picks the cookie: an operator's browser may hold a
+    // control session and an impersonated tenant session at once.
+    const credential = credentialOf(req, controlIdentity ? 'control' : 'tenant')
 
-    if (bearerToken) {
+    if (credential) {
       try {
-        const tokenData = reply.server.jwt.verify(bearerToken)
+        const tokenData = reply.server.jwt.verify(credential.token)
+
+        // A refresh token never authenticates a request. It is signed with the access secret
+        // whenever `JWT_REFRESH_SECRET` is unset, so the signature alone cannot tell them apart.
+        if (tokenData.typ === REFRESH_TYP) {
+          throw refusal('A refresh token does not authenticate a request', 'UNAUTHORIZED')
+        }
+
+        // T-10.37, one kind of credential per channel. In cookie mode the header belongs to the
+        // integration tokens: a session token there is either a leftover of a bearer client or
+        // a token taken out of its cookie, and neither is a reason to accept it. The claims
+        // below are the ones an integration token never carries; one without them is still
+        // looked up in the token registry only, further down.
+        const integrationOnly = credential.channel === 'header' && isCookieMode()
+        if (integrationOnly && (controlIdentity || tokenData.scp || tokenData.imp || tokenData.role)) {
+          throw refusal('Sessions travel in the cookie: the Authorization header accepts integration tokens only', 'CREDENTIAL_CHANNEL')
+        }
 
         // No tenant check here. In v4 this was the anti-spoofing gate and it never fired:
         // it ran AFTER the tenant hook had already chosen the container from the header,
@@ -174,7 +194,7 @@ export default async (req, reply) => {
         let user: null | AuthenticatedUser = null
         let token: null | AuthenticatedToken = null
 
-        if (req.server['userManager']?.isImplemented()) {
+        if (!integrationOnly && req.server['userManager']?.isImplemented()) {
           user = await req.server['userManager'].retrieveUserByExternalId(dataContext(req), subjectId)
           if (user) {
             const isValid = await req.server['userManager'].isValidUser(user)
@@ -185,7 +205,9 @@ export default async (req, reply) => {
           }
         }
 
-        if (!user && req.server['tokenManager']?.isImplemented()) {
+        // Integration tokens come from the header and from nowhere else: the session cookie is
+        // written by the login, which never writes one.
+        if (!user && credential.channel === 'header' && req.server['tokenManager']?.isImplemented()) {
           token = await req.server['tokenManager'].retrieveTokenByExternalId(dataContext(req), subjectId)
           if (token) {
             const isValid = await req.server['tokenManager'].isValidToken(token)
@@ -197,6 +219,9 @@ export default async (req, reply) => {
         }
 
         if (!req.user && !req.token) {
+          if (integrationOnly) {
+            throw refusal('Sessions travel in the cookie: the Authorization header accepts integration tokens only', 'CREDENTIAL_CHANNEL')
+          }
           return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
         }
 
@@ -209,7 +234,9 @@ export default async (req, reply) => {
         // resolved" into an unexplained 401 from a middleware three layers down.
         if (log.w) log.warn(`Authentication: ${(error as any)?.message} on ${req.method} ${req.url}`)
         if (!isRoutePublic) {
-          return reply.status(401).send(httpError(401, (error as any)?.message || 'Invalid or expired token', 'UNAUTHORIZED'))
+          return reply
+            .status(401)
+            .send(httpError(401, (error as any)?.message || 'Invalid or expired token', (error as any)?.authCode || 'UNAUTHORIZED'))
         }
       }
     }

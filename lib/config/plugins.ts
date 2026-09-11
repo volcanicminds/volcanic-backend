@@ -1,4 +1,5 @@
 import { corsOriginFromEnv, corsCredentialsFor } from '../util/cors.js'
+import { isCookieMode } from '../util/credential.js'
 
 // The allowlist is a deployment decision, not a source-code one: it changes between the
 // developer's laptop, the staging host and production, and a value compiled into the
@@ -83,7 +84,9 @@ export default [
   },
   {
     name: 'cookie',
-    enable: process.env.AUTH_MODE === 'COOKIE',
+    // Required by the default mode (T-10.37). A project that disables it while in cookie
+    // mode is refused at boot, not at its first login.
+    enable: isCookieMode(),
     options: {
       secret: process.env.COOKIE_SECRET,
       parseOptions: {}

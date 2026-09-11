@@ -9,6 +9,7 @@ import type {
 import crypto from 'crypto'
 import { httpError } from '../../../util/httpError.js'
 import { envInt } from '../../../util/env.js'
+import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
 
 //
 // The tenant registry. Control scope: these routes act on the platform, never inside a
@@ -537,8 +538,20 @@ export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
   // against, so the session dies with the record and not with the signature.
   const token = await reply.jwtSign({ sub: target.externalId, tid: tenant.id, imp: record.id }, { expiresIn: ttl })
 
+  // In cookie mode the session goes where every tenant session goes, the tenant cookie, and
+  // the body carries `null`: an impersonation is the most valuable token this API mints, and
+  // a copy readable by the page is exactly what the cookie exists to prevent. The operator's
+  // own session is in the control cookie and survives, so the session that can end this one
+  // is never the one it replaced. A tenant refresh cookie left in this browser is dropped: an
+  // impersonation is not renewable, and nothing left behind may make it look as if it were.
+  const cookie = isCookieMode()
+  if (cookie) {
+    setAccessCookie(reply, 'tenant', token)
+    clearRefreshCookie(reply, 'tenant')
+  }
+
   return reply.send({
-    token,
+    token: cookie ? null : token,
     impersonationId: record.id,
     expiresAt: record.expiresAt,
     tenant: { id: tenant.id, slug: tenant.slug },
@@ -565,5 +578,19 @@ export async function endImpersonation(req: FastifyRequest, reply: FastifyReply)
   if (!revoked) return reply.status(404).send()
 
   if (log.i) log.info(`Impersonation ${impersonationId} revoked by ${req.systemUser?.email ?? 'unknown'}`)
+
+  // The record is what kills the session; the cookie goes too, but only when it holds THIS
+  // impersonation, so ending one never drops a tenant session opened after it.
+  const held = accessCookieOf(req, 'tenant')
+  if (held) {
+    let claims: { imp?: string } | null = null
+    try {
+      claims = req.server.jwt.verify(held, { ignoreExpiration: true }) as { imp?: string }
+    } catch {
+      claims = null
+    }
+    if (claims?.imp === String(impersonationId)) clearAccessCookie(reply, 'tenant')
+  }
+
   return reply.send({ id: impersonationId, revoked: true })
 }

@@ -6,6 +6,16 @@ import { httpError } from '../../../util/httpError.js'
 import { dataContext, isTenancyEnabled } from '../../../util/tenancy.js'
 import { uuidv7 } from '../../../util/uuid.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../../config/constants.js'
+import {
+  clearSessionCookies,
+  isCookieMode,
+  issuePreAuth,
+  issueSession,
+  refreshCookieOf,
+  REFRESH_TYP,
+  sessionTokenOf,
+  setAccessCookie
+} from '../../../util/credential.js'
 
 // Upper bound for the password accepted at login: a cheap guard against oversized
 // payloads. Complexity is enforced only when a password is set, not at login.
@@ -373,10 +383,8 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   const isMandatory = mfa_policy === MfaPolicy.MANDATORY
 
   if (isMfaEnabled || isMandatory) {
-    const tempToken = await reply.jwtSign(
-      { sub: user.externalId, role: 'pre-auth-mfa', tid: req.tenantInfo?.id },
-      { expiresIn: '5m' }
-    )
+    // In cookie mode the pre-auth token goes in the cookie and `tempToken` is null.
+    const tempToken = await issuePreAuth(reply, 'tenant', { sub: user.externalId, tid: req.tenantInfo?.id })
     // Use 202 Accepted to bypass 200 OK strict schema filtering
     return reply.status(202).send({
       mfaRequired: isMfaEnabled, // If enabled, verify. If not enabled but mandatory, setup.
@@ -390,39 +398,13 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   }
 
   // https://www.iana.org/assignments/jwt/jwt.xhtml
-  const token = await reply.jwtSign({ sub: user.externalId, tid: req.tenantInfo?.id })
-  const refreshToken = reply.server.jwt['refreshToken']
-    ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId, tid: req.tenantInfo?.id })
-    : undefined
+  // In cookie mode both come back null: the session is in the cookies.
+  const { token, refreshToken } = await issueSession(reply, 'tenant', { sub: user.externalId, tid: req.tenantInfo?.id })
 
-  const AUTH_MODE = process.env.AUTH_MODE || 'BEARER'
-
-  if (AUTH_MODE === 'COOKIE') {
-    reply.setCookie('auth_token', token, {
-      path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      signed: true,
-      maxAge: 86400
-    })
-
-    return {
-      ...user,
-      roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
-      token: null, // Token hidden in cookie
-      refreshToken: null,
-      securityPolicy: {
-        mfaPolicy: mfa_policy
-      }
-    }
-  }
-
-  // Standard 200 OK (BEARER MODE)
   return {
     ...user,
     roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
-    token: token,
+    token,
     refreshToken,
     securityPolicy: {
       mfaPolicy: mfa_policy
@@ -431,15 +413,11 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function logout(_req: FastifyRequest, reply: FastifyReply) {
-  if (process.env.AUTH_MODE === 'COOKIE') {
-    reply.clearCookie('auth_token', { path: '/' })
-  }
+  clearSessionCookies(reply, 'tenant')
   return { ok: true }
 }
 
 export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
-  const { token, refreshToken } = req.data()
-
   if (!req.server['userManager'].isImplemented()) {
     throw new Error('Not implemented')
   }
@@ -450,6 +428,9 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(404).send(httpError(404, 'Refresh tokens are disabled', 'NOT_FOUND'))
   }
 
+  if (isCookieMode()) return renewFromCookie(req, reply)
+
+  const { token, refreshToken } = req.data()
   if (!token || !refreshToken) {
     return reply
       .status(400)
@@ -459,15 +440,22 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
   // Verify the signature of the (possibly expired) access token: `ignoreExpiration`
   // lets a stale token through — which is the whole point of refresh — but a forged
   // or tampered token is now rejected (previously `decode` skipped signature checks).
-  let tokenData: { sub: number; iat?: number; tid?: string }
+  let tokenData: { sub: number; iat?: number; tid?: string; typ?: string; imp?: string }
   try {
     tokenData = (await reply.server.jwt.verify(token, { ignoreExpiration: true })) as {
       sub: number
       iat?: number
       tid?: string
+      typ?: string
+      imp?: string
     }
   } catch {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid token' })
+  }
+  // An impersonated session ends with its record and is never renewed into an ordinary one;
+  // and a refresh token in the place of the access token is the pair collapsing into one.
+  if (tokenData.typ === REFRESH_TYP || tokenData.imp) {
+    return reply.status(403).send(httpError(403, 'Invalid token'))
   }
 
   // Defect D-19. This is the one route where the token arrives in the BODY, so the tenant
@@ -487,7 +475,18 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Token too old' })
   }
 
-  const refreshTokenData = await reply.server.jwt['refreshToken'].verify(refreshToken)
+  // Verified inside a try: an expired or forged refresh token is a refusal, not a 500.
+  let refreshTokenData: { sub?: number; tid?: string; typ?: string }
+  try {
+    refreshTokenData = await reply.server.jwt['refreshToken'].verify(refreshToken)
+  } catch {
+    return reply.status(403).send(httpError(403, 'Invalid refresh token'))
+  }
+  // Without the claim an access token verifies as a refresh token whenever the two secrets
+  // are the same, and a short access token could then renew itself forever.
+  if (refreshTokenData?.typ !== REFRESH_TYP) {
+    return reply.status(403).send(httpError(403, 'Invalid refresh token'))
+  }
   if (tokenData?.sub && tokenData?.sub !== refreshTokenData?.sub) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Mismatched tokens' })
   }
@@ -508,6 +507,49 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
   return {
     token: newToken
   }
+}
+
+/**
+ * Renewal in cookie mode (T-10.39): the refresh token is the whole credential.
+ *
+ * The bearer renewal asks for the expired access token too, and binds the pair on subject and
+ * tenant. Here the access cookie is gone by the time it is needed, because it lives exactly as
+ * long as its token (T-10.38), so the bindings are checked on the refresh token itself: it
+ * carries the subject and the tenant it was issued for, and it arrives from a signed httpOnly
+ * cookie that only this server writes, restricted to this route.
+ */
+async function renewFromCookie(req: FastifyRequest, reply: FastifyReply) {
+  const refreshToken = refreshCookieOf(req, 'tenant')
+  if (!refreshToken) {
+    return reply.status(401).send(httpError(401, 'No refresh cookie on this request', 'REFRESH_REQUIRED'))
+  }
+
+  let data: { sub?: string; tid?: string; typ?: string }
+  try {
+    data = await reply.server.jwt['refreshToken'].verify(refreshToken)
+  } catch {
+    clearSessionCookies(reply, 'tenant')
+    return reply.status(401).send(httpError(401, 'The session has expired', 'REFRESH_REQUIRED'))
+  }
+  if (data?.typ !== REFRESH_TYP || !data.sub) {
+    clearSessionCookies(reply, 'tenant')
+    return reply.status(403).send(httpError(403, 'Invalid refresh token'))
+  }
+  // D-19 again, on the only token there is: renewal must not become the door through which a
+  // session of one tenant is exchanged for a session in another.
+  if (isTenancyEnabled() && data.tid !== req.tenantInfo?.id) {
+    return reply.status(403).send(httpError(403, 'The token does not belong to this tenant', 'TENANT_MISMATCH'))
+  }
+
+  const user = await req.server['userManager'].retrieveUserByExternalId(dataContext(req), data.sub)
+  const isValid = user ? await req.server['userManager'].isValidUser(user) : false
+  if (!isValid || user.blocked) {
+    clearSessionCookies(reply, 'tenant')
+    return reply.status(403).send(httpError(403, 'Wrong refresh token'))
+  }
+
+  setAccessCookie(reply, 'tenant', await reply.jwtSign({ sub: user.externalId, tid: req.tenantInfo?.id }))
+  return { token: null }
 }
 
 export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply) {
@@ -563,10 +605,10 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     // BUT usually user is already logged in via temp token or full token.
     // If user is setting up from "Forced Setup", they need tokens now.
 
-    const finalToken = await reply.jwtSign({ sub: user.externalId, tid: req.tenantInfo?.id })
-    const refreshToken = reply.server.jwt['refreshToken']
-      ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId, tid: req.tenantInfo?.id })
-      : undefined
+    const { token: finalToken, refreshToken } = await issueSession(reply, 'tenant', {
+      sub: user.externalId,
+      tid: req.tenantInfo?.id
+    })
 
     return {
       ...user,
@@ -585,12 +627,13 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
-  const authHeader = req.headers.authorization
+  // In cookie mode the pre-auth token is in the access cookie, and reading the header by hand
+  // here made MFA unusable in that mode.
+  const tokenStr = sessionTokenOf(req, 'tenant')
   const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
 
-  if (!authHeader) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Missing authorization' })
+  if (!tokenStr) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Missing authorization' })
 
-  const tokenStr = authHeader.split(' ')[1]
   let decoded: any
   try {
     decoded = req.server.jwt.verify(tokenStr)
@@ -630,10 +673,10 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
     await req.server['userManager'].resetExternalId(dataContext(req), user.id)
   }
 
-  const finalToken = await reply.jwtSign({ sub: user.externalId, tid: req.tenantInfo?.id })
-  const refreshToken = reply.server.jwt['refreshToken']
-    ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId, tid: req.tenantInfo?.id })
-    : undefined
+  const { token: finalToken, refreshToken } = await issueSession(reply, 'tenant', {
+    sub: user.externalId,
+    tid: req.tenantInfo?.id
+  })
 
   return {
     ...user,

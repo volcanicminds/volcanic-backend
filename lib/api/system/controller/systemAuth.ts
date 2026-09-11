@@ -2,6 +2,16 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import type { ControlHandle, SystemUserManagement } from '../../../../types/global.js'
 import { httpError } from '../../../util/httpError.js'
 import * as regExp from '../../../util/regexp.js'
+import {
+  clearSessionCookies,
+  isCookieMode,
+  issuePreAuth,
+  issueSession,
+  refreshCookieOf,
+  REFRESH_TYP,
+  sessionTokenOf,
+  setAccessCookie
+} from '../../../util/credential.js'
 
 //
 // Authentication of the control scope (T-4.1, docs/API_V5.md §5).
@@ -58,53 +68,42 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   // The second factor, when this operator has one (T-6.3). The first factor alone buys a
   // five-minute pre-auth token and nothing else: it names the subject and opens no route.
   if (user.mfaEnabled) {
-    const tempToken = await reply.jwtSign({ sub: user.externalId, scp: 'control', role: 'pre-auth-mfa' }, { expiresIn: '5m' })
+    // In cookie mode the pre-auth token goes in the control cookie and `tempToken` is null.
+    const tempToken = await issuePreAuth(reply, 'control', { sub: user.externalId, scp: 'control' })
     return reply.status(202).send({ mfaRequired: true, tempToken })
   }
 
-  const token = await reply.jwtSign({ sub: user.externalId, scp: 'control' })
-  const refreshToken = reply.server.jwt['refreshToken']
-    ? await reply.server.jwt['refreshToken'].sign({ sub: user.externalId, scp: 'control' })
-    : undefined
-
-  if ((process.env.AUTH_MODE || 'BEARER') === 'COOKIE') {
-    reply.setCookie('auth_token', token, {
-      path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      signed: true,
-      maxAge: 86400
-    })
-    return { ...present(user), token: null, refreshToken }
-  }
-
+  // The control plane has its own cookies: v4 wrote the platform session into `auth_token`,
+  // the tenant one, and returned the refresh token in the body even in cookie mode.
+  const { token, refreshToken } = await issueSession(reply, 'control', { sub: user.externalId, scp: 'control' })
   return { ...present(user), token, refreshToken }
 }
 
 export async function logout(_req: FastifyRequest, reply: FastifyReply) {
-  if ((process.env.AUTH_MODE || 'BEARER') === 'COOKIE') {
-    reply.clearCookie('auth_token', { path: '/' })
-  }
+  clearSessionCookies(reply, 'control')
   return { ok: true }
 }
 
 export async function renew(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
-  const { token, refreshToken } = req.data()
-
   if (!reply.server.jwt['refreshToken']) {
     return reply.status(404).send(httpError(404, 'Refresh tokens are disabled', 'NOT_FOUND'))
   }
+  if (isCookieMode()) return renewFromCookie(req, reply)
+
+  const { token, refreshToken } = req.data()
   if (!token || !refreshToken) {
     return reply.status(400).send(httpError(400, 'Missing token or refreshToken'))
   }
 
-  let tokenData: { sub: string; iat?: number; scp?: string }
+  let tokenData: { sub: string; iat?: number; scp?: string; typ?: string }
   try {
     tokenData = (await reply.server.jwt.verify(token, { ignoreExpiration: true })) as never
   } catch {
+    return reply.status(403).send(httpError(403, 'Invalid token'))
+  }
+  if (tokenData.typ === REFRESH_TYP) {
     return reply.status(403).send(httpError(403, 'Invalid token'))
   }
 
@@ -112,7 +111,16 @@ export async function renew(req: FastifyRequest, reply: FastifyReply) {
   // tenant (defect D-19): renewal is the one route where the token arrives in the body, so
   // nothing upstream has checked it. Without this it would be the single door through which
   // a tenant token is exchanged for a platform one.
-  const refreshData = (await reply.server.jwt['refreshToken'].verify(refreshToken)) as { sub?: string; scp?: string }
+  let refreshData: { sub?: string; scp?: string; typ?: string }
+  try {
+    refreshData = (await reply.server.jwt['refreshToken'].verify(refreshToken)) as never
+  } catch {
+    return reply.status(403).send(httpError(403, 'Invalid refresh token'))
+  }
+  // The pair must not collapse into one token: see `issueSession` in lib/util/credential.ts.
+  if (refreshData?.typ !== REFRESH_TYP) {
+    return reply.status(403).send(httpError(403, 'Invalid refresh token'))
+  }
   if (tokenData.scp !== 'control' || refreshData?.scp !== 'control') {
     return reply.status(403).send(httpError(403, 'A tenant token cannot act on the platform', 'SCOPE_MISMATCH'))
   }
@@ -131,6 +139,40 @@ export async function renew(req: FastifyRequest, reply: FastifyReply) {
   }
 
   return { token: await reply.jwtSign({ sub: user.externalId, scp: 'control' }) }
+}
+
+/** Cookie-mode renewal of the control plane, the twin of the tenant one in auth.ts. */
+async function renewFromCookie(req: FastifyRequest, reply: FastifyReply) {
+  const refreshToken = refreshCookieOf(req, 'control')
+  if (!refreshToken) {
+    return reply.status(401).send(httpError(401, 'No refresh cookie on this request', 'REFRESH_REQUIRED'))
+  }
+
+  let data: { sub?: string; scp?: string; typ?: string }
+  try {
+    data = (await reply.server.jwt['refreshToken'].verify(refreshToken)) as never
+  } catch {
+    clearSessionCookies(reply, 'control')
+    return reply.status(401).send(httpError(401, 'The session has expired', 'REFRESH_REQUIRED'))
+  }
+  if (data?.typ !== REFRESH_TYP || !data.sub) {
+    clearSessionCookies(reply, 'control')
+    return reply.status(403).send(httpError(403, 'Invalid refresh token'))
+  }
+  // The scope, as in the bearer renewal: the one door where a tenant session could otherwise
+  // be exchanged for a platform one.
+  if (data.scp !== 'control') {
+    return reply.status(403).send(httpError(403, 'A tenant token cannot act on the platform', 'SCOPE_MISMATCH'))
+  }
+
+  const user = await manager(req).retrieveSystemUserByExternalId(control(req), data.sub)
+  if (!user || user.blocked) {
+    clearSessionCookies(reply, 'control')
+    return reply.status(403).send(httpError(403, 'Wrong refresh token'))
+  }
+
+  setAccessCookie(reply, 'control', await reply.jwtSign({ sub: user.externalId, scp: 'control' }))
+  return { token: null }
 }
 
 //
@@ -173,7 +215,10 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
 export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
-  const { tempToken, token } = req.data()
+  // The pre-auth token comes in the body in bearer mode and in the control cookie in cookie
+  // mode, where the body carries none (`login` answered `tempToken: null`).
+  const { tempToken: bodyTempToken, token } = req.data()
+  const tempToken = isCookieMode() ? sessionTokenOf(req, 'control') : bodyTempToken
   if (!tempToken || !token) return reply.status(400).send(httpError(400, 'tempToken and token are both required'))
 
   let claims: any
@@ -202,5 +247,8 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   }
   await manager(req).recordMfaCounter(control(req), user.id, Number(counter))
 
-  return { ...present(user), token: await reply.jwtSign({ sub: user.externalId, scp: 'control' }) }
+  // The whole session, as `login` issues it: v4 returned the access token alone, so an
+  // operator with MFA could never renew, and in cookie mode got a token in the body.
+  const session = await issueSession(reply, 'control', { sub: user.externalId, scp: 'control' })
+  return { ...present(user), ...session }
 }

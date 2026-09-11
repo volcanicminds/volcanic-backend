@@ -47,6 +47,7 @@ import type { TransferManagement } from './types/global.js'
 // skips that merge. A static import is also hoisted above `dotenv.config()`, so the
 // `process.env` reads inside it ran before `.env` was loaded.
 import { MfaPolicy } from './lib/config/constants.js'
+import { isCookieMode } from './lib/util/credential.js'
 import {
   defaultUserManager,
   defaultTokenManager,
@@ -200,12 +201,20 @@ const start = async (decorators = {}) => {
   } = process.env
 
   const loadRefreshJWT = yn(JWT_REFRESH, true)
+  // Read before anything is registered: a value that is not a mode stops the boot here, not
+  // at the first request (lib/util/credential.ts).
+  const cookieMode = isCookieMode()
   const plugins = await loaderPlugins.load()
 
   if (plugins?.rawBody) await server.register(rawBody, plugins.rawBody || {})
+  if (cookieMode && !plugins?.cookie) {
+    // Cookie mode is the default (T-10.37), so this is what a project meets when its own
+    // config/plugins.ts disables the plugin: every login would fail on `reply.setCookie`.
+    throw new Error('AUTH_MODE=COOKIE, the default, needs the `cookie` plugin: enable it in config/plugins.ts or set AUTH_MODE=BEARER')
+  }
   if (plugins?.cookie) {
-    // Signed cookies (e.g. the auth_token in COOKIE mode) require a strong secret.
-    if (process.env.AUTH_MODE === 'COOKIE') {
+    // Signed cookies (the sessions in COOKIE mode) require a strong secret.
+    if (cookieMode) {
       assertSecretStrength('COOKIE_SECRET', process.env.COOKIE_SECRET, {
         prod: process.env.NODE_ENV === 'production'
       })

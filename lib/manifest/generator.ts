@@ -10,6 +10,7 @@
  */
 import type { ConfiguredRoute, ResourceHints } from '../../types/global.js'
 import { tenantsConfig, isTenancyEnabled } from '../util/tenancy.js'
+import { isCookieMode } from '../util/credential.js'
 
 // ── Output types (mirror the v2 JSON Schema; the engine owns the canonical TS type) ──
 type CapabilityKind = 'list' | 'read' | 'create' | 'update' | 'delete' | 'action'
@@ -261,7 +262,9 @@ export function buildManifest(input: {
     generatedAt: options.generatedAt || '1970-01-01T00:00:00.000Z',
     i18n: options.i18n || { defaultLocale: 'en', locales: ['en'] },
     auth: {
-      mode: options.authMode || 'bearer',
+      // The framework default since T-10.37: a manifest built without saying otherwise
+      // describes a deployment that keeps the session in a cookie.
+      mode: options.authMode || 'cookie',
       endpoints: options.authEndpoints || { login: '/auth/login', refresh: '/auth/refresh-token', logout: '/auth/logout' }
     },
     tenancy: options.tenancy || { mode: 'single' },
@@ -337,7 +340,7 @@ function collectFields(
 export function generateManifest(server: any, options: BuildOptions = {}): Manifest {
   const routes: ConfiguredRoute[] = ((global as any).routes as ConfiguredRoute[]) || []
   const schemas: Record<string, any> = typeof server?.getSchemas === 'function' ? server.getSchemas() : {}
-  const authMode: 'cookie' | 'bearer' = process.env.AUTH_MODE === 'COOKIE' ? 'cookie' : 'bearer'
+  const authMode: 'cookie' | 'bearer' = isCookieMode() ? 'cookie' : 'bearer'
   return buildManifest({
     routes,
     schemas,

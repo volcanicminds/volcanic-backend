@@ -29,6 +29,7 @@ const TOKEN_SUBJECT = { id: 't1', externalId: 't-ext-1', roles: ['admin'] }
 
 let savedRoles: any
 let savedConfig: any
+let savedMode: string | undefined
 
 /**
  * A server with the hook under test and one route per shape it has to refuse.
@@ -91,11 +92,17 @@ describe('hooks/onRequest · the refusals, each one provoked (T-9.5)', () => {
     savedRoles = (global as any).roles
     savedConfig = (global as any).config
     ;(global as any).roles = { public: { code: 'public', name: 'Public' }, admin: { code: 'admin', name: 'Admin' } }
+    // The refusals below are those of a session presented in the header, which since T-10.37
+    // is the bearer mode only. The channel rules of the default mode are authChannels.spec.ts.
+    savedMode = process.env.AUTH_MODE
+    process.env.AUTH_MODE = 'BEARER'
   })
 
   after(() => {
     ;(global as any).roles = savedRoles
     ;(global as any).config = savedConfig
+    if (savedMode === undefined) delete process.env.AUTH_MODE
+    else process.env.AUTH_MODE = savedMode
   })
 
   it('answers 401 UNAUTHORIZED to an anonymous request for a protected route', async () => {
