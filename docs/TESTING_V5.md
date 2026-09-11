@@ -20,6 +20,12 @@
 Every suite runs in **its own mocha process**: they own singletons (`global.config`,
 `global.server`, the shared PGlite instance) and cannot share one.
 
+`test:lib` runs with `AUTH_MODE=BEARER` set by the script, not by the specs: most of them present
+a session in the `Authorization` header, which cookie mode (the default) refuses, and one of them
+imports `index.ts`, whose `dotenv.config()` loads the developer's `.env` into the process. A mode
+left to the environment would make the result depend on whose machine it ran on. The cookie mode
+is covered by `test/lib/authChannels.spec.ts`, which sets it for itself and restores it after.
+
 **PGlite keeps its place** for logic, speed and unit work. It is disqualified for one thing
 only: isolation. `PGlitePool.connect()` always returns the same object, so there is no pool, and
 without a pool the whole D-01 class of defects is unobservable. That is why the suite below
@@ -57,6 +63,7 @@ against any `DATABASE_URL`, including a database an operator already has.
 | `LOG_LEVEL` | `silent` | |
 | `JWT_SECRET`, `JWT_REFRESH_SECRET`, `MFA_DB_SECRET` | test values, at least 32 characters | the secret guard refuses to boot otherwise |
 | `AUTH_RATELIMIT_MAX` | `100000` | the rate limit is tested by its own suite |
+| `AUTH_MODE` | `BEARER` | the harness authenticates with a header; cookie mode, the default, would refuse a session there and require `COOKIE_SECRET` |
 
 A second scenario runs with `DB_POOL_MAX=4` and concurrent requests. It is valuable and it is
 **not** the CI gate: with more than one connection the failure is probabilistic, and a flaky gate

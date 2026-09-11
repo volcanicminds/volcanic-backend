@@ -4,7 +4,7 @@
 > break landed, and not reconstructed at the end (task T-8.3); it was then read through in
 > full, once, with the API stable. Everything below is true of the code on `develop`.
 >
-> Twenty-three sections, in the order a port meets them: the data layer and the configuration
+> Twenty-four sections, in the order a port meets them: the data layer and the configuration
 > first, because nothing else compiles until they are right; then what changed inside a
 > request; then the routes, the answers and the two core defaults. If you are porting a
 > project, read §1 to §4 before touching anything, and keep §18 open while you test the
@@ -13,6 +13,10 @@
 > The last three sections (§21 to §23) were written **by** a port rather than for one:
 > `volcanic-backend-sample` was carried to v5 and every place the guide fell short became a
 > row here.
+>
+> §24 came later, with the decision to keep the browser session out of the page (phase 10):
+> it is the break an upgrade meets first, because an instance without `COOKIE_SECRET` no
+> longer starts.
 
 v5 is breaking on purpose. There is no compatibility branch, no deprecated alias and no
 automatic translation of a v4 configuration: invariant 9 of `EVO_FRAMEWORK.md` says the
@@ -198,6 +202,11 @@ The issued token is a **tenant** token carrying `imp`: inside the container the 
 ordinary user with that user's roles. Every request checks the record, not the signature, so
 revoking takes effect immediately rather than when the JWT expires. Tracked writes record the
 session in `change.impersonation_id`.
+
+In cookie mode, the default (§24), the token is not in the body: it is written into the tenant
+cookie, while the operator's own session stays in the control cookie, so opening an
+impersonation never costs the session that can end it. Ending it clears the tenant cookie when
+that cookie holds the session being ended.
 
 ## 12. The sovereign founder
 
@@ -418,3 +427,58 @@ table object built by one is a foreign object to the other. The symptom is a typ
 two identical-looking paths, or a runtime that disagrees silently. Collapse the duplicates onto
 the checkout's copies — `volcanic-backend-sample/scripts/link-peers.mjs` does it on
 `postinstall` and is a development convenience production never sees.
+
+## 24. The session in a cookie, by default (T-10.37, T-10.38, T-10.39)
+
+| | v4 | v5 |
+|---|---|---|
+| `AUTH_MODE` unset | `BEARER` | **`COOKIE`** |
+| `AUTH_MODE=cookie`, `AUTH_MODE=Cookie`, a typo | read as `BEARER`, in silence | the case is ignored; anything that is not `COOKIE` or `BEARER` **refuses the boot** |
+| cookie mode and the `Authorization` header | the header was not read at all | read, for **integration tokens only**; a session token there is `401 CREDENTIAL_CHANNEL` |
+| cookie mode and renewal | none: login answered `refreshToken: null` and the session ended with the cookie | a refresh cookie limited to the renewal route; `POST /auth/refresh-token` with an empty body |
+| cookie lifetime | `maxAge: 86400` written by hand, next to a 15-day JWT | `Max-Age` read from the token's own `exp` |
+| `JWT_EXPIRES_IN` default | `15d` | **`1h`** |
+| platform session in cookie mode | written into `auth_token`, the tenant cookie, with the refresh token in the body | its own pair, `control_token` and `control_refresh_token` |
+| MFA in cookie mode | `tempToken` in the body, verification read the header by hand: MFA users could not log in | the pre-auth token in the cookie, `tempToken: null` |
+| impersonation in cookie mode | the token in the body | the tenant cookie, `token: null`; ending it clears that cookie |
+| refresh token claims | the same as the access token's | `typ: 'refresh'`; each token is refused in the other's place |
+
+**Why.** A token in `localStorage` is readable by every script of the page, so an XSS takes the session
+with it; an httpOnly cookie is not readable at all. v4 had the cookie mode but made it exclusive, so
+switching it on broke every integration, and it had no renewal, so a short token meant a short
+session. v5 gives each channel one kind of credential: the cookie carries the browser's session, the
+header carries the integration tokens, which are issued to programs.
+
+**What a deployment has to do.**
+
+- Set `COOKIE_SECRET` (32 characters at least, as the other secrets). Without it, and without
+  `AUTH_MODE`, the instance **refuses to start**: that is the first thing an upgrade meets.
+- Or set `AUTH_MODE=BEARER` explicitly, which keeps the v4 behaviour of the header and the body. That
+  is the choice for mobile apps and any client that cannot hold a cookie; a deployment that serves such
+  a client and a browser picks bearer, or gives the client a cookie jar.
+- A project whose `config/plugins.ts` disables the `cookie` plugin is refused at boot in cookie mode.
+- The admin and the API on the same site (`SameSite=Strict`): the same registrable domain, and
+  `CORS_ORIGINS` listing the admin's origin so that credentials are granted. Cross-site deployments are
+  not supported by the cookie mode.
+- Behind a proxy that publishes the API under a path and strips it (`/api/*` → `/*`), set
+  `COOKIE_PATH_PREFIX=/api`: the refresh cookie is limited to the renewal route **as the browser sees
+  it**, and without the prefix the browser never sends it back.
+
+**What a client has to change.**
+
+- A browser client in cookie mode sends `credentials: 'include'` and stores nothing: `token`,
+  `refreshToken` and `tempToken` come back `null`. On a `401` it calls the renewal once and repeats the
+  request; `401 REFRESH_REQUIRED` from the renewal means the session is over.
+- A bearer client renews with `{ token, refreshToken }` as before. With `JWT_EXPIRES_IN` at `1h` instead
+  of `15d`, a client that never renewed now meets a `401` within the hour: renewing is no longer
+  optional, and a deployment that wants the old lifetime sets `JWT_EXPIRES_IN=15d` explicitly.
+- **Refresh tokens issued by v4 no longer renew**: they lack `typ: 'refresh'`. Users log in once after
+  the upgrade.
+- An expired or forged refresh token is `403`, not `500`.
+
+**Behaviour of the renewal in cookie mode.** The refresh token is the whole credential: the access
+cookie is gone by the time it is needed, because it lives exactly as long as its token. Subject,
+tenant (`TENANT_MISMATCH` otherwise) and account state are checked on the refresh token itself. The
+bearer renewal additionally refuses an access token issued more than thirty days before; the cookie
+renewal has no such idle bound, and the session lasts at most `JWT_REFRESH_EXPIRES_IN` from the login.
+`/auth/invalidate-tokens` ends every session of the user in both modes.

@@ -192,9 +192,12 @@ const start = async (decorators = {}) => {
   global.server = server
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230' } = process.env
+  // One hour, not fifteen days (T-10.39): the browser session renews itself from the refresh
+  // token, so the access token only has to outlive a request, and a stolen one is worth an hour.
+  // Lowered only once renewal existed in both modes, or the default would have been a logout.
   const {
     JWT_SECRET = '',
-    JWT_EXPIRES_IN = '15d',
+    JWT_EXPIRES_IN = '1h',
     JWT_REFRESH = 'true',
     JWT_REFRESH_SECRET = '',
     JWT_REFRESH_EXPIRES_IN = '180d'

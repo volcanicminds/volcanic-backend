@@ -42,8 +42,10 @@ export const authLoginResponseSchema = {
     username: { type: 'string' },
     email: { type: 'string' },
     roles: { type: 'array', items: { type: 'string' } },
-    token: { type: 'string' },
-    refreshToken: { type: 'string' },
+    // `null` in cookie mode, where the session is in the cookies (T-10.37). Without `nullable`
+    // the serializer would turn it into an empty string, which says something else.
+    token: { type: 'string', nullable: true },
+    refreshToken: { type: 'string', nullable: true },
     mfaEnabled: { type: 'boolean' },
     securityPolicy: {
       type: 'object',
@@ -62,7 +64,7 @@ export const authMfaChallengeSchema = {
   properties: {
     mfaRequired: { type: 'boolean' },
     mfaSetupRequired: { type: 'boolean' },
-    tempToken: { type: 'string' }
+    tempToken: { type: 'string', nullable: true }
   }
 }
 
@@ -81,7 +83,7 @@ export const authRefreshTokenResponseSchema = {
   type: 'object',
   nullable: true,
   properties: {
-    token: { type: 'string' }
+    token: { type: 'string', nullable: true }
   }
 }
 

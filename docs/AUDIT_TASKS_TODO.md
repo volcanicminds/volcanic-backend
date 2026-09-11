@@ -137,9 +137,12 @@
 
 ## 🟢 LOW
 
-- [ ] **S15 — Cookie `maxAge` (1d) ≠ `JWT_EXPIRES_IN` (15d) + access token too long-lived** · `BE`
+- [x] **S15 — Cookie `maxAge` (1d) ≠ `JWT_EXPIRES_IN` (15d) + access token too long-lived** · `BE`
   - File: `lib/api/auth/controller/auth.ts:296` vs `index.ts:189`
   - Align the expirations; reduce the access token (e.g. 15m) relying on the refresh.
+  - **Done in phase 10 (T-10.38, T-10.39):** the cookie's `Max-Age` is read from the token's `exp`
+    (`lib/util/credential.ts`), renewal works in cookie mode, and `JWT_EXPIRES_IN` defaults to `1h`.
+    Tested by `test/lib/authChannels.spec.ts`.
 
 - [ ] **S16 — Missing explicit `bodyLimit`/`limits` for multipart (payload DoS)** · `BE`
   - File: `index.ts` (server/multipart registration)

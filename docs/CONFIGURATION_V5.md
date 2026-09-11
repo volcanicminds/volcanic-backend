@@ -111,6 +111,10 @@ where it is used without passing through the configuration at all.
 | `CORS_ORIGINS` | — | **required in production**: comma-separated allowlist | `origin` of the `cors` entry in `config/plugins.ts` |
 | `HIDE_ERROR_DETAILS` | `true` in production | honoured by every error path, `onError` included | no key |
 | `JWT_SECRET` `JWT_REFRESH_SECRET` `MFA_DB_SECRET` | — | minimum 32 characters; a weak or missing secret refuses the boot | no key |
+| `AUTH_MODE` | `COOKIE` | where the session travels: `COOKIE` (httpOnly cookies; the header for integration tokens only) or `BEARER`. Any other value refuses the boot | no key |
+| `COOKIE_SECRET` | — | signs the session cookies; **required in cookie mode**, so required by default, with the same strength rule as the other secrets | `secret` of the `cookie` entry in `config/plugins.ts` |
+| `COOKIE_PATH_PREFIX` | — | the path a prefix-stripping proxy publishes the API under; the refresh cookie's `Path` starts with it | no key |
+| `JWT_EXPIRES_IN` | `1h` | lifetime of the access token, and of its cookie in cookie mode | no key |
 | `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
 | `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |

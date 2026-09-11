@@ -33,7 +33,7 @@ rilievo e non da un lavoro cronometrato.
 |---|---|---|
 | ~~A. Il contesto dati~~ | **chiuso l'11 settembre 2026**, T-10.1, T-10.2, T-10.3 | fatto |
 | ~~B. Configurazione che mente~~ | **chiuso l'11 settembre 2026**, T-10.4 → T-10.10 | fatto |
-| C. Allineamento di `volcanic-admin` alla v5 | l'admin contro un backend v5 reale, e la sessione in cookie httpOnly di default | 3-4 giornate, più il progetto di T-10.16 e la decisione di T-10.37 |
+| C. Allineamento di `volcanic-admin` alla v5 | l'admin contro un backend v5 reale; la sessione in cookie httpOnly di default è **chiusa l'11 settembre 2026** (T-10.37 → T-10.39) | 3 giornate, più il progetto di T-10.16 |
 | D. Sample committabile | **chiuso l'11 settembre 2026** tranne il commit (T-10.28, su richiesta) | fatto |
 | ~~E. Igiene del framework~~ | **chiuso l'11 settembre 2026** | fatto |
 
@@ -307,7 +307,7 @@ Le tre voci che seguono sono state aggiunte l'11 settembre 2026, su decisione: *
 sessione del browser sta in un cookie httpOnly, mai in `localStorage`**, e l'access token torna
 breve. Vanno fatte in quest'ordine, perché ciascuna regge la successiva.
 
-- [ ] **T-10.37** Il default di autenticazione è il cookie httpOnly, non `localStorage`.
+- [x] **T-10.37** Il default di autenticazione è il cookie httpOnly, non `localStorage`.
   **Oggi, nel codice**: il default del backend è `BEARER` (`lib/util/bearer.ts:21`,
   `lib/manifest/generator.ts:340`, `README.md` tabella dell'ambiente); l'admin prende la modalità
   dal manifest (`src/VolcanicAdmin.tsx:196`), quindi senza `AUTH_MODE=COOKIE` esplicito lavora
@@ -330,16 +330,37 @@ breve. Vanno fatte in quest'ordine, perché ciascuna regge la successiva.
   l'admin non scrive nulla in `localStorage`, un token di integrazione funziona ancora
   dall'header, e `docs/MIGRATION_V4_V5.md` spiega il cambio. Con il cookie come default, T-10.12
   resta vera solo per chi sceglie esplicitamente bearer.
+  **Evidenza**: assunzione confermata nella forma dei due canali. `authMode()` vale `COOKIE` senza
+  variabile e rifiuta ogni valore che non sia uno dei due modi (`lib/util/credential.ts:54-60`,
+  chiamata al boot in `index.ts`); in modalità cookie l'header accetta solo token di integrazione e
+  un token di sessione lì è `401 CREDENTIAL_CHANNEL` (`lib/hooks/onRequest.ts:104-108`). Ogni piano
+  ha la sua coppia di cookie (`auth_token`/`refresh_token`, `control_token`/`control_refresh_token`),
+  perché l'operatore che impersona tiene la sessione di controllo che può chiudere l'impersonificazione:
+  il token di impersonificazione va nel cookie del tenant (`lib/api/tenants/controller/tenants.ts:549`)
+  e la chiusura lo toglie solo se contiene quella sessione (`:592`). Anche il token pre-MFA passa dal
+  cookie (`issuePreAuth`, `lib/util/credential.ts:218`): prima la verifica MFA leggeva l'header a mano
+  e in modalità cookie un utente con MFA non entrava. Un progetto che disabilita il plugin cookie in
+  modalità cookie è rifiutato al boot (`index.ts:213`). Lato admin nulla finisce in `localStorage` in
+  modalità cookie, e gli avanzi di una configurazione bearer vengono rimossi
+  (`src/engine/providers/auth.ts:27`, `:30` in `volcanic-admin`). Test: 26 casi in
+  `test/lib/authChannels.spec.ts`, fra cui «still accepts an integration token from the header» e
+  «refuses a session token taken out of its cookie»; `docs/MIGRATION_V4_V5.md` §24. `test:lib` e
+  `test:e2e:mt:pg` fissano `AUTH_MODE=BEARER` nello script (`docs/TESTING_V5.md` §1 spiega perché).
 
-- [ ] **T-10.38** In modalità cookie la sessione ha due durate che non si parlano.
+- [x] **T-10.38** In modalità cookie la sessione ha due durate che non si parlano.
   **Dove**: il cookie ha `maxAge: 86400` scritto a mano (`lib/api/auth/controller/auth.ts:407`,
   uguale in `lib/api/system/controller/systemAuth.ts:71-77`), mentre il JWT che contiene scade
   dopo `JWT_EXPIRES_IN`, oggi 15 giorni. Il browser butta il cookie dopo un giorno, ma chi ne
   copia il valore lo può rigiocare per quindici.
   **Chiuso quando**: la durata del cookie e quella del JWT derivano da un'unica impostazione, e
   un test lo verifica.
+  **Evidenza**: il `Max-Age` di ogni cookie di sessione è letto dall'`exp` del token che contiene
+  (`secondsLeft`, `lib/util/credential.ts:142-146`), quindi l'unica impostazione è quella che firma il
+  token, per l'access, per il refresh, per il pre-MFA (300 s) e per l'impersonificazione (il suo TTL).
+  Test: «reads Max-Age from the token it carries, for the access and the refresh cookie»
+  (`test/lib/authChannels.spec.ts:388`), che confronta `exp - iat` con il `Max-Age` ricevuto.
 
-- [ ] **T-10.39** Rinnovo automatico, poi access token breve.
+- [x] **T-10.39** Rinnovo automatico, poi access token breve.
   **Dove**: il rinnovo vuole `{ token, refreshToken }` nel corpo
   (`lib/api/auth/controller/auth.ts:440-456`), ma in modalità cookie il login restituisce
   `token: null` e `refreshToken: null` (`:410-418`): oggi in cookie non esiste rinnovo, e la
@@ -353,6 +374,19 @@ breve. Vanno fatte in quest'ordine, perché ciascuna regge la successiva.
   tutte le sessioni dell'utente (`/auth/invalidate-tokens`).
   **Chiuso quando**: una sessione dell'admin sopravvive alla scadenza dell'access token senza
   login, il default è `1h`, e `docs/MIGRATION_V4_V5.md` lo annota come cambio di comportamento.
+  **Evidenza**: il refresh token porta `typ: 'refresh'` ed è rifiutato come access token, e un access
+  token è rifiutato come refresh (`lib/util/credential.ts:193`, `lib/hooks/onRequest.ts:95`,
+  `lib/api/auth/controller/auth.ts:487`): senza il claim, con `JWT_REFRESH_SECRET` non impostato, un
+  access token breve poteva rinnovare se stesso all'infinito. In modalità cookie il rinnovo legge solo
+  il cookie di refresh, limitato alla rotta di rinnovo (`renewFromCookie`, `auth.ts:521`,
+  `systemAuth.ts:145`); `COOKIE_PATH_PREFIX` per chi pubblica l'API sotto un prefisso tolto dal
+  proxy. Lato admin un `401` tenta un solo rinnovo condiviso fra le richieste concorrenti e ripete la
+  richiesta (`src/engine/auth/client.ts:162-170`, `src/engine/providers/data.ts:68`). Verifica end to
+  end dell'11 settembre 2026: script usa e getta che guidava client e data provider dell'admin contro
+  un server reale con access token da 2 s, in cookie e in bearer; dopo la scadenza cinque richieste
+  parallele riuscite con un solo rinnovo, e senza refresh token il `401` arriva a Refine (14 PASS su
+  14). Default `JWT_EXPIRES_IN = '1h'` a `index.ts:200`, abbassato dopo il rinnovo;
+  `docs/MIGRATION_V4_V5.md` §24. I refresh token emessi prima non rinnovano più (manca il claim).
 
 ---
 

@@ -193,11 +193,12 @@ your own table objects must be built for.
 
 ### 6.1.1 Dual Mode Configuration
 
-The system supports two mutually exclusive authentication modes, configurable via the `AUTH_MODE` environment variable.
+`AUTH_MODE` decides where a **session** travels; integration tokens (`/token`) always travel in the `Authorization` header.
 
-1.  **Bearer Token Mode** (`AUTH_MODE=BEARER`): Standard behavior. Token is returned in login body and must be sent in `Authorization: Bearer <token>` header. Ideal for Mobile Apps and S2S.
-2.  **Cookie Mode** (`AUTH_MODE=COOKIE`): Browser-secure behavior. Token is set in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie. Login body does not contain the token. Client does not need to manage the token manually. Requires `COOKIE_SECRET` in `.env`.
-    - **Logout**: In Cookie mode, the `/auth/logout` route clears the `auth_token` cookie.
+1.  **Cookie Mode** (`AUTH_MODE=COOKIE`), **the default**: login sets two `HttpOnly`, `SameSite=Strict`, signed cookies (`Secure` in production), the access token (`Path=/`) and the refresh token (limited to the renewal route); the body carries `token: null`, `refreshToken: null`. `Max-Age` is read from each token's `exp`. Renewal: `POST /auth/refresh-token` with an empty body, answered with a new access cookie or `401 REFRESH_REQUIRED`. The platform plane has its own pair (`control_token`, `control_refresh_token`). The MFA pre-auth token and the impersonation token travel in the cookie too. The header accepts integration tokens only: a session token there is `401 CREDENTIAL_CHANNEL`. Requires `COOKIE_SECRET`; admin and API on the same site. `COOKIE_PATH_PREFIX` when a proxy strips a path prefix.
+2.  **Bearer Token Mode** (`AUTH_MODE=BEARER`): tokens in the login body, `Authorization: Bearer <token>` on every request, renewal with `{ token, refreshToken }`. For mobile apps and clients without a cookie jar.
+    - **Logout**: in cookie mode, `/auth/logout` clears both cookies of the tenant plane, `/system/auth/logout` those of the platform.
+    - Refresh tokens carry `typ: 'refresh'`; each token is refused in the other's place. The access token lasts `1h` by default (`JWT_EXPIRES_IN`).
 
     - **6.2 Multi-Factor Authentication (MFA)**
       - Policy and "Gatekeeper" Flow (Pre-Auth Token)
@@ -483,7 +484,7 @@ An example `.env` for production.
 | `HOST`                         | The host address for the server. Use `0.0.0.0` for Docker.              |    No    | `0.0.0.0`           |
 | `PORT`                         | The port for the server to listen on.                                   |    No    | `2230`              |
 | `JWT_SECRET`                   | Secret key for signing JWTs.                                            | **Yes**  |                     |
-| `JWT_EXPIRES_IN`               | Expiration time for JWTs (e.g., `5d`, `12h`).                           |    No    | `5d`                |
+| `JWT_EXPIRES_IN`               | Lifetime of the access token (e.g. `1h`, `15m`), and of its cookie.    |    No    | `1h`                |
 | `JWT_REFRESH`                  | Enable refresh tokens.                                                  |    No    | `true`              |
 | `JWT_REFRESH_SECRET`           | Secret key for signing refresh tokens.                                  | **Yes**¹ |                     |
 | `JWT_REFRESH_EXPIRES_IN`       | Expiration time for refresh tokens.                                     |    No    | `180d`              |
@@ -3213,11 +3214,13 @@ Authentication is handled by the core's `onRequest` hook and controlled by two s
 - **`embedded_auth`** (`src/config/general.ts` → `options.embedded_auth`, default `true`). If set to **`false`**,
   the core performs **no** token parsing or RBAC at all — every route is effectively public. Use this for a pure
   public API or when you front the service with an external gateway that handles auth. (Scenario A.)
-- **`AUTH_MODE`** env (default `BEARER`):
-  - **`BEARER`** — token read from `Authorization: Bearer <jwt>`. Ideal for SPAs storing tokens, mobile, and S2S.
-  - **`COOKIE`** — token read from a **signed, HttpOnly** `auth_token` cookie. Requires `COOKIE_SECRET` (asserted
-    strong at boot). Login does not return the token in the body; `/auth/logout` clears the cookie. Ideal for
-    browsers (mitigates XSS token theft).
+- **`AUTH_MODE`** env (default `COOKIE`; any other value than `COOKIE`/`BEARER` refuses the boot):
+  - **`COOKIE`** — the session is read from a **signed, HttpOnly** cookie of the route's plane (`auth_token` on
+    tenant routes, `control_token` on platform routes). Requires `COOKIE_SECRET` (asserted strong at boot). The
+    `Authorization` header is still read, for integration tokens only. Ideal for browsers (mitigates XSS token
+    theft).
+  - **`BEARER`** — every credential read from `Authorization: Bearer <jwt>`. For mobile and clients without
+    cookies.
 
 In multi-tenant mode the hook additionally enforces that the JWT's `tid` matches the resolved tenant (`403`
 `TENANT_MISMATCH`/`TENANT_NOT_FOUND`) unless the route opts out with `config.tenantContext: false`.
@@ -3357,8 +3360,8 @@ await startServer(layer)
 **Use when:** SPA/mobile/S2S with JWT in the `Authorization` header.
 **Packages:** `+ /db`. **Managers:** all of them, from the layer — `userManager` and `tokenManager`
 are the ones these routes need.
-**Config/env:** `AUTH_MODE=BEARER` (default), strong `JWT_SECRET` (+ `JWT_REFRESH_SECRET`), and
-`CORS_ORIGINS` before production.
+**Config/env:** `AUTH_MODE=BEARER` (explicit: the default is `COOKIE`), strong `JWT_SECRET` (+
+`JWT_REFRESH_SECRET`), and `CORS_ORIGINS` before production.
 
 ```typescript
 import { preload, start as startServer } from '@volcanicminds/backend'
@@ -3375,9 +3378,11 @@ routes (`roles: [roles.admin]`, …) are enforced by the core. Refresh via `POST
 
 ### D. Private API — Cookie mode (browser-first)
 
-**Same as C** but set **`AUTH_MODE=COOKIE`** and provide a strong **`COOKIE_SECRET`**, and enable the cookie
-plugin in `src/config/plugins.ts`. Login sets an HttpOnly `auth_token` cookie (no token in the body); the browser
-sends it automatically; `/auth/logout` clears it. Everything else (managers, routes, RBAC) is identical to C.
+**Same as C** without `AUTH_MODE` (cookie mode is the default) and with a strong **`COOKIE_SECRET`**; the
+cookie plugin is enabled by the framework's defaults, and a `src/config/plugins.ts` that disables it is refused at
+boot. Login sets the HttpOnly `auth_token` and `refresh_token` cookies (no token in the body); the browser sends
+them automatically; on a `401` the client calls `POST /auth/refresh-token` once; `/auth/logout` clears both.
+Everything else (managers, routes, RBAC) is identical to C.
 
 ### E. Machine-to-machine — API tokens
 

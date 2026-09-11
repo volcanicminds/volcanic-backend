@@ -32,9 +32,9 @@ removed with no replacement.
 |---|---|---|---|
 | POST | `/auth/register` | public | creates `confirmed: false`, always. Rate limited |
 | POST | `/auth/unregister` | authenticated | |
-| POST | `/auth/login` | public | rate limited. Returns a tenant token |
+| POST | `/auth/login` | public | rate limited. Returns a tenant token: in cookie mode, the default, it is written into `auth_token` and `refresh_token` and the body carries `token: null`, `refreshToken: null` (MIGRATION §24) |
 | POST | `/auth/logout` | authenticated | |
-| POST | `/auth/refresh-token` | public (valid refresh token) | **verifies `tid`** against the resolved tenant (defect D-19) |
+| POST | `/auth/refresh-token` | public (valid refresh token) | **verifies `tid`** against the resolved tenant (defect D-19). Cookie mode: empty body, reads the `refresh_token` cookie, answers a new `auth_token` cookie or `401 REFRESH_REQUIRED`. Bearer mode: `{ token, refreshToken }`. A token without `typ: 'refresh'` is refused in both |
 | POST | `/auth/invalidate-tokens` | authenticated | rotates `external_id` |
 | POST | `/auth/validate-password` | public | |
 | POST | `/auth/change-password` | authenticated | |
@@ -117,7 +117,7 @@ Platform administrators authenticate on their own routes and receive a token car
 |---|---|---|---|
 | POST | `/system/auth/login` | public | rate limited, same uniform messages as §2.1 |
 | POST | `/system/auth/logout` | authenticated (control) | |
-| POST | `/system/auth/refresh-token` | valid control refresh token | |
+| POST | `/system/auth/refresh-token` | valid control refresh token | as `/auth/refresh-token`, with the `control_refresh_token` cookie and `SCOPE_MISMATCH` instead of `TENANT_MISMATCH` |
 | POST | `/system/auth/mfa/verify` | authenticated (control) | |
 | GET | `/system/users` | capability `system-users` | |
 | POST | `/system/users` | capability `system-users` | |

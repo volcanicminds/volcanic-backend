@@ -64,9 +64,9 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 
 | Feature | In `@volcanicminds/backend` | Via `@volcanicminds/tools` | Active on startup | Description |
 |---|:---:|:---:|:---:|---|
-| **JWT auth (Bearer)** | ✅ | — | ✅ | `@fastify/jwt`. Login/logout, `isAuthenticated`. Signing secret required (`assertSecretStrength`) |
-| **Refresh token** | ✅ | — | ✅ | Separate `refreshToken` JWT namespace. Disable with `JWT_REFRESH=false` |
-| **Cookie auth mode** | ✅ | — | — | `@fastify/cookie`. HttpOnly/Secure/SameSite signed cookie; needs `COOKIE_SECRET`. Enabled by `AUTH_MODE=COOKIE` |
+| **JWT auth** | ✅ | — | ✅ | `@fastify/jwt`. Login/logout, `isAuthenticated`. Signing secret required (`assertSecretStrength`). Access token of `1h` by default |
+| **Refresh token** | ✅ | — | ✅ | Separate `refreshToken` JWT namespace, `typ: 'refresh'` claim. In cookie mode an httpOnly cookie limited to the renewal route. Disable with `JWT_REFRESH=false` |
+| **Cookie auth mode** | ✅ | — | ✅ | `@fastify/cookie`, **the default** (`AUTH_MODE=COOKIE`). HttpOnly/SameSite=Strict signed cookies, one pair per plane; needs `COOKIE_SECRET`. The `Authorization` header keeps working for integration tokens |
 | **Token revocation** | ✅ | — | ✅ | `externalId` pattern in the JWT: regenerating it invalidates all tokens (global logout / password change) |
 | **CORS** | ✅ | — | ✅ | `@fastify/cors`. Allowlist from `CORS_ORIGINS`, credentials only against a real allowlist, `v-*` pagination headers exposed |
 | **Helmet** | ✅ | — | ✅ | `@fastify/helmet`. Security HTTP headers |
@@ -102,8 +102,9 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 - **Node.js ≥ 24**, **pure ESM** (`NodeNext`); CommonJS/`require` is not supported. REST-only (no GraphQL).
 - `helmet` security headers are enabled by default.
 - Startup **fails fast**, and the list of things it refuses is deliberate. A missing or weak signing secret
-  (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `COOKIE_SECRET` in cookie mode): minimum 32 characters, fatal in
-  production and a warning otherwise. A CORS wildcard with credentials, or a wildcard that arrived by omission
+  (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `COOKIE_SECRET` in cookie mode, which is the default): minimum 32
+  characters, fatal in production and a warning otherwise. An `AUTH_MODE` that is not `COOKIE` or `BEARER`,
+  and cookie mode with the `cookie` plugin disabled. A CORS wildcard with credentials, or a wildcard that arrived by omission
   in production. An engine and tenancy strategy the framework cannot isolate. A control plane behind its own
   schema version. Each of these was, in some deployment, a silent misbehaviour before it was a refusal.
 
@@ -139,6 +140,9 @@ old one, is in [docs/MIGRATION_V4_V5.md](docs/MIGRATION_V4_V5.md).
 - **Uniform authentication answers.** Four distinct login refusals become one `401 AUTH_INVALID_CREDENTIALS`;
   registration on an address already registered answers like a successful one. Those messages were a
   directory of which addresses have accounts here.
+- **The session in a cookie, by default.** `AUTH_MODE` defaults to `COOKIE` and requires `COOKIE_SECRET`;
+  the header keeps working for integration tokens, the session renews from an httpOnly refresh cookie, and
+  the access token lasts `1h` instead of `15d`. Refresh tokens issued by v4 no longer renew.
 - **Defaults that changed on purpose.** CORS reads an allowlist and refuses the insecure pair at boot;
   `HIDE_ERROR_DETAILS` is honoured by every error path; a failed audit write fails the request;
   `req.data()` merges the query string and the body instead of discarding one.
@@ -434,11 +438,13 @@ HOST=0.0.0.0
 PORT=2230
 
 JWT_SECRET=yourSecret
-JWT_EXPIRES_IN=5d
+JWT_EXPIRES_IN=1h
 
 JWT_REFRESH=true
 JWT_REFRESH_SECRET=yourRefreshSecret
 JWT_REFRESH_EXPIRES_IN=180d
+
+COOKIE_SECRET=yourCookieSecret
 
 # LOG_LEVEL: trace, debug, info, warn, error, fatal
 LOG_LEVEL=info
@@ -550,7 +556,7 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `HOST`                         | The host address for the server to listen on. Use `0.0.0.0` for Docker. |    No    | `0.0.0.0`           |
 | `PORT`                         | The port for the server to listen on.                                   |    No    | `2230`              |
 | `JWT_SECRET`                   | Secret key for signing JWTs.                                            | **Yes**  |                     |
-| `JWT_EXPIRES_IN`               | Expiration time for JWTs (e.g., `5d`, `12h`).                           |    No    | `15d`               |
+| `JWT_EXPIRES_IN`               | Lifetime of the access token (e.g. `1h`, `15m`). In cookie mode it is also the cookie's `Max-Age`. |    No    | `1h`                |
 | `JWT_REFRESH`                  | Enable refresh tokens.                                                  |    No    | `true`              |
 | `JWT_REFRESH_SECRET`           | Secret key for signing refresh tokens.                                  | **Yes**¹ |                     |
 | `JWT_REFRESH_EXPIRES_IN`       | Expiration time for refresh tokens.                                     |    No    | `180d`              |
@@ -570,8 +576,9 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `MFA_APP_NAME`                 | Name of the application displayed in Authenticator apps.                |    No    | `VolcanicApp`       |
 | `MFA_ADMIN_FORCED_RESET_EMAIL` | Admin email for emergency MFA reset                                     |    No    |                     |
 | `MFA_ADMIN_FORCED_RESET_UNTIL` | ISO Date string until which the reset is active                         |    No    |                     |
-| `AUTH_MODE`                    | Authentication mode: `BEARER` (default) or `COOKIE`                     |    No    | `BEARER`            |
-| `COOKIE_SECRET`                | Secret for signing cookies (Required if `AUTH_MODE=COOKIE`)             | **Yes**² |                     |
+| `AUTH_MODE`                    | Where the session travels: `COOKIE` (httpOnly cookies, the header for integration tokens only) or `BEARER` (everything in the header and the body). Any other value refuses the boot. |    No    | `COOKIE`            |
+| `COOKIE_SECRET`                | Secret for signing the session cookies.                                 | **Yes**² |                     |
+| `COOKIE_PATH_PREFIX`           | The path under which a proxy publishes the API when it strips it before forwarding (e.g. `/api`). The refresh cookie is limited to the renewal route as the browser sees it. |    No    |                     |
 | `ADMIN_EMAIL`                  | Seeds the first identity at boot, and is read at no other time (see below). | **Yes**³ |          |
 | `ADMIN_PASSWORD`               | Password for the founder created from `ADMIN_EMAIL`; if unset, a strong one is generated and printed to stdout. | No |    |
 | `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response. Honoured by every error path, the `onError` hook included. |    No    | `true` (prod)       |
@@ -605,7 +612,7 @@ rather than silently.
 `VOLCANIC_CUSTOM_QUERY_OPERATORS` (the `:raw` operator is gone), `VOLCANIC_CASE_INSENSITIVE_DEFAULT` (case
 sensitivity is a property of the operator now, so the same URL cannot mean two things on two servers).
 
-² Required if `AUTH_MODE` is `COOKIE`.
+² Required in cookie mode, which is the default: unset `AUTH_MODE` and no `COOKIE_SECRET` refuses the boot.
 
 ³ Read **only at boot**, to seed the first identity: the application's sovereign founder on a single-tenant
 instance, the first platform administrator where a `tenants` block is declared. If one already exists it may be
@@ -683,49 +690,62 @@ const logTimestamp = yn(LOG_TIMESTAMP, true)
 const logTimestampReadable = yn(LOG_TIMESTAMP_READABLE, true)
 ```
 
-## Bearer token
+## Tokens and secrets
 
 ```ruby
 JWT_SECRET=yourSecret
-JWT_EXPIRES_IN=5d
+JWT_EXPIRES_IN=1h
 
 JWT_REFRESH=true
 JWT_REFRESH_SECRET=yourRefreshSecret
 JWT_REFRESH_EXPIRES_IN=180d
 
-# Auth Mode: BEARER (default) or COOKIE
-AUTH_MODE=BEARER
+# Where the session travels: COOKIE (default) or BEARER
+AUTH_MODE=COOKIE
 COOKIE_SECRET=super_secret_cookie_key_change_me
 ```
 
-## Authentication Modes: Bearer vs Cookie
+## Authentication modes: cookie and bearer
 
-The framework supports two mutually exclusive authentication modes, controlled by `AUTH_MODE` in `.env`.
+`AUTH_MODE` decides where a **session** travels. Integration tokens (`/token`) always travel in the
+`Authorization` header, in both modes.
 
-### 1. Bearer Token Mode (`AUTH_MODE=BEARER`) - Default
+### 1. Cookie mode (`AUTH_MODE=COOKIE`), the default
 
-- **Standard API behavior**.
-- Login returns `{ token: "...", user: ... }` in the JSON body.
-- Client must send `Authorization: Bearer <token>` header for requests.
-- **Best for:** Mobile Apps, Server-to-Server.
+- Login sets two `HttpOnly`, `SameSite=Strict`, signed cookies (`Secure` in production): the access token,
+  `Path=/`, and the refresh token, limited to the renewal route. The body answers `token: null` and
+  `refreshToken: null`: no script of the page can read the session, so an XSS cannot carry it away.
+- Each cookie lives exactly as long as the token inside it: `Max-Age` is read from the token's `exp`, so
+  `JWT_EXPIRES_IN` and `JWT_REFRESH_EXPIRES_IN` are the only settings.
+- Renewal reads the refresh cookie alone: `POST /auth/refresh-token` with an empty body answers a new access
+  cookie. Without a refresh cookie it answers `401 REFRESH_REQUIRED`, which is the client's cue to log in.
+- The two planes have separate cookies: `auth_token` and `refresh_token` for the tenant plane,
+  `control_token` and `control_refresh_token` for the platform (`/system/auth/*`). An operator who
+  impersonates a user keeps the platform session that can end the impersonation.
+- The MFA pre-auth token and the impersonation token travel in the cookie as well (`tempToken: null`,
+  `token: null` in the body).
+- The `Authorization` header is read, and accepts **integration tokens only**: a session token presented
+  there is refused with `401 CREDENTIAL_CHANNEL`. When a request carries both, the header is the credential.
+- **Deployment constraint.** `SameSite=Strict` means the admin and the API must be on the same site, that is
+  the same registrable domain (`admin.example.com` and `api.example.com` are; `admin.example.com` and
+  `example-api.net` are not), with CORS granting credentials to the admin's origin (`CORS_ORIGINS`). Across
+  sites the cookie would need `SameSite=None`, `Secure` and an explicit CSRF defence, which the framework does
+  not provide.
+- **Best for:** browser applications, the admin included.
 
-### 2. Cookie Mode (`AUTH_MODE=COOKIE`)
+### 2. Bearer mode (`AUTH_MODE=BEARER`)
 
-- **Browser-secure behavior**.
-- Login sets an `HttpOnly`, `Secure`, `SameSite=Strict` cookie named `auth_token`.
-- Login returns `{ user: ... }` (Token is hidden from JavaScript).
-- Authorization header is ignored; the server validates the cookie.
-- **Best for:** Single Page Applications (React, Vue, etc.) to prevent XSS token theft.
+- Login returns `token` and `refreshToken` in the body; every request sends `Authorization: Bearer <token>`.
+- Renewal sends both tokens in the body: `{ token, refreshToken }`.
+- **Best for:** clients that cannot hold a cookie, such as mobile apps and server-to-server sessions. A
+  deployment that serves both a browser and such a client picks bearer, or the client keeps a cookie jar.
 
-To enable Cookie mode, you must set `COOKIE_SECRET` in `.env`.
+In both modes the refresh token carries `typ: 'refresh'`, and each token is refused in the other's place:
+the two namespaces share `JWT_SECRET` when `JWT_REFRESH_SECRET` is unset, and without the claim a refresh
+token would open every route for months and an access token could renew itself forever.
 
-With `reply.jwtSign(payload)` is possible obtain a fresh JWT token. Each authenticated calls must be recalled specifying in the header:
-
-`Authorization: Bearer <generated-token>`
-
-With `await reply.server.jwt['refreshToken'].sign(payload)` is possible obtain a new Refresh JWT token.
-
-All tokens (authorization and refresh) can be invalidated through the appropriate route.
+All tokens (access and refresh) of a user can be invalidated through `/auth/invalidate-tokens`, which
+regenerates the `externalId` they carry.
 **Example**: Both `JWT_SECRET` and `JWT_REFRESH_SECRET` can be generated with a command like `openssl rand -base64 64`
 
 ## Swagger
