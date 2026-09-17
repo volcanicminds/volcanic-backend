@@ -68,8 +68,8 @@ describe('manifest · resources and capabilities (T-9.5)', () => {
     const m = build()
     expect(m.version).toBe(2)
     expect(m.resources.map((r: any) => r.name)).toEqual(['products'])
-    // The segment, without a leading slash: the console composes it under its own base path
-    // (`/admin/<path>`), so a leading slash here would produce `//products`.
+    // The segment, without a leading slash: the console composes it as `<apiUrl>/<path>` (plus an
+    // optional prefix), so a leading slash here would produce `//products`.
     expect(resourceOf(m).path).toBe('products')
   })
 
@@ -145,6 +145,11 @@ describe('manifest · fields, and what never leaves the server (T-9.5)', () => {
     // Not read-only: read-only is the opposite property, and it is what a field the server
     // only ever sends gets.
     expect(password.readOnly).toBeFalsy()
+    // And it says so out loud, because a console cannot infer it. Without the flag `password` is
+    // indistinguishable from a field the server simply never filled in, so the console draws a
+    // column of empty cells and a detail row that can never have a value: exactly what the
+    // platform console did until this was emitted.
+    expect(password.writeOnly).toBe(true)
   })
 
   it('marks a field the schema requires, so the form does not have to guess', () => {
@@ -184,7 +189,11 @@ describe('manifest · fields, and what never leaves the server (T-9.5)', () => {
     })
 
     expect(fieldOf(m, 'computed', 'things').readOnly).toBe(true)
+    expect(fieldOf(m, 'computed', 'things').writeOnly).toBeFalsy()
+    // `id` travels in both directions, so it is neither: the two flags are not each other's
+    // negation, and a field that is plainly readable and writable carries no flag at all.
     expect(fieldOf(m, 'id', 'things').readOnly).toBeFalsy()
+    expect(fieldOf(m, 'id', 'things').writeOnly).toBeFalsy()
   })
 
   it('honours a caller who redefines what counts as sensitive', () => {
@@ -237,9 +246,17 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
       expect(tenancyOf()).toEqual({ mode: 'single' })
     })
 
-    it('offers a switcher on the header the backend actually reads', () => {
+    it('names the header the backend actually reads, and offers no switcher (T-10.15)', () => {
+      // From the login on the token binds the tenant (T-3.2): another tenant under the same
+      // session is TENANT_MISMATCH, so a console switches by signing in again. The list the
+      // switcher read, `/tenants`, is a control route no customer user can call either.
       withTenants({ strategy: 'schema', resolver: 'header', headerKey: 'x-org' })
-      expect(tenancyOf()).toEqual({ mode: 'multi', switchable: true, header: 'x-org', listEndpoint: '/tenants' })
+      expect(tenancyOf()).toEqual({ mode: 'multi', switchable: false, header: 'x-org' })
+    })
+
+    it('names no header on the control plane, where there is no tenant to declare (T-10.14)', () => {
+      withTenants({ strategy: 'schema', resolver: 'header', headerKey: 'x-org' })
+      expect(tenancyOf('control')).toEqual({ mode: 'multi', switchable: false })
     })
 
     it('offers no switcher and no header when the host is the tenant', () => {
@@ -248,6 +265,45 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
       expect(tenancy.mode).toBe('multi')
       expect(tenancy.switchable).toBe(false)
       expect(tenancy.header).toBeUndefined()
+    })
+  })
+
+  describe('one console, one plane (T-10.14)', () => {
+    // The router resolves `scope: 'control'` into `tenantContext: false`.
+    const PLANES = [
+      ...CRUD.map((r) => ({ ...r, tenantContext: true })),
+      route({ method: 'GET', path: '/tenants', tenantContext: false, roles: [{ code: 'system:admin' }] }),
+      route({ method: 'POST', path: '/tenants', tenantContext: false, roles: [{ code: 'system:admin' }] })
+    ]
+    const names = (m: any) => m.resources.map((r: any) => r.name).sort()
+
+    it('describes only the tenant routes to a tenant console when the planes are split', () => {
+      const m = build(PLANES, { splitPlanes: true, plane: 'tenant' })
+      // A customer's users must not receive the platform's route map and role codes.
+      expect(names(m)).toEqual(['products'])
+      expect(m.auth.plane).toBe('tenant')
+      expect(m.auth.endpoints.login).toBe('/auth/login')
+    })
+
+    it('describes only the control routes to the platform console, with the platform auth routes', () => {
+      const m = build(PLANES, { splitPlanes: true, plane: 'control' })
+      expect(names(m)).toEqual(['tenants'])
+      expect(m.auth.plane).toBe('control')
+      // The tenant login resolves users inside a container: an operator is not there.
+      expect(m.auth.endpoints).toMatchObject({
+        login: '/system/auth/login',
+        refresh: '/system/auth/refresh-token',
+        logout: '/system/auth/logout',
+        me: '/system/auth/me',
+        mfaVerify: '/system/auth/mfa/verify'
+      })
+    })
+
+    it('filters nothing where the two planes are one identity space', () => {
+      // Without tenants a control route authenticates the application's own users, so leaving
+      // it out would hide screens those users can open.
+      expect(names(build(PLANES, { splitPlanes: false }))).toEqual(['products', 'tenants'])
+      expect(build(PLANES).auth.plane).toBe('tenant')
     })
   })
 
@@ -265,10 +321,143 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
     expect(m.groups.map((g: any) => g.name)).toEqual(['catalog'])
   })
 
+  describe('the input of a custom action (T-10.16)', () => {
+    const impersonateSchema = {
+      $id: 'impersonateSchema',
+      type: 'object',
+      required: ['userId'],
+      properties: { userId: { type: 'string' }, reason: { type: 'string' }, ttl: { type: 'integer' } }
+    }
+    const destroySchema = {
+      $id: 'destroySchema',
+      type: 'object',
+      properties: { token: { type: 'string' }, slug: { type: 'string' }, otp: { type: 'string' } }
+    }
+    const withActions = (actions: any[]) =>
+      buildManifest({
+        routes: [...CRUD, ...actions] as any,
+        schemas: { productSchema, impersonateSchema, destroySchema },
+        options: {}
+      })
+    const actionOf = (m: any, name: string) => resourceOf(m).capabilities.find((c: any) => c.name === name)
+
+    it('derives the fields and their types from the body schema the route validates', () => {
+      const m = withActions([
+        route({ method: 'POST', path: '/products/:id/impersonate', doc: { body: { $ref: 'impersonateSchema#' } } })
+      ])
+      expect(actionOf(m, 'impersonate').input).toEqual({
+        fields: [
+          { name: 'userId', type: 'string', required: true },
+          { name: 'reason', type: 'string' },
+          { name: 'ttl', type: 'integer' }
+        ]
+      })
+    })
+
+    it('lets the route hint add presentation, exclusions and a required the controller enforces', () => {
+      const m = withActions([
+        route({
+          method: 'POST',
+          path: '/products/:id/impersonate',
+          doc: { body: { $ref: 'impersonateSchema#' } },
+          input: {
+            exclude: ['ttl'],
+            fields: { reason: { required: true, widget: 'textarea', label: 'input.reason' } },
+            submitLabel: 'action.impersonate.go'
+          }
+        })
+      ])
+      expect(actionOf(m, 'impersonate').input).toEqual({
+        fields: [
+          { name: 'userId', type: 'string', required: true },
+          { name: 'reason', type: 'string', required: true, widget: 'textarea', label: 'input.reason' }
+        ],
+        submitLabel: 'action.impersonate.go'
+      })
+    })
+
+    it('asks for the destruction token: an input is typed, never read back, so nothing is filtered', () => {
+      const m = withActions([route({ method: 'DELETE', path: '/products/:id/data', doc: { body: { $ref: 'destroySchema#' } } })])
+      expect(actionOf(m, 'data').input.fields.map((f: any) => f.name)).toEqual(['token', 'slug', 'otp'])
+    })
+
+    it('describes no input for an action without a body, and none for CRUD', () => {
+      const m = withActions([route({ method: 'POST', path: '/products/:id/publish' })])
+      expect(actionOf(m, 'publish').input).toBeUndefined()
+      for (const cap of resourceOf(m).capabilities.filter((c: any) => c.kind !== 'action')) {
+        expect(cap.input).toBeUndefined()
+      }
+    })
+  })
+
   it('survives a route whose schema is missing, instead of failing the whole manifest', () => {
     // One resource with a broken $ref must not cost the console every other resource.
     const m = build([...CRUD, route({ method: 'GET', path: '/ghosts', doc: { response: { 200: { $ref: 'nowhere#' } } } })])
     expect(m.resources.map((r: any) => r.name).sort()).toEqual(['ghosts', 'products'])
     expect(resourceOf(m, 'ghosts').fields).toEqual([])
+  })
+})
+
+//
+// T-10.20: a resource does not always begin at the first segment.
+//
+// The platform's operators live at `/system/users`, and `system` is shared with the platform
+// login and the console manifest. Grouped on that first segment they are not a resource at all:
+// six methods on one table land among the loose capabilities, and the console has no screen for
+// deciding who administers the platform.
+//
+describe('manifest · a resource declared under a longer prefix (T-10.20)', () => {
+  const hint = { prefix: 'system/users', name: 'systemUser', titleField: 'email' }
+  const op = (over: any) => route({ resource: hint, ...over })
+
+  const OPERATORS = [
+    op({ path: '/system/users', doc: { response: { 200: { type: 'array', items: { $ref: 'productSchema#' } } } } }),
+    op({ path: '/system/users/count' }),
+    op({ path: '/system/users/:id', doc: { response: { 200: { $ref: 'productSchema#' } } } }),
+    op({ method: 'POST', path: '/system/users', doc: { body: { $ref: 'productSchema#' } } }),
+    op({ method: 'PUT', path: '/system/users/:id' }),
+    op({ method: 'DELETE', path: '/system/users/:id' }),
+    op({ method: 'POST', path: '/system/users/:id/block' }),
+    op({ method: 'POST', path: '/system/users/:id/mfa/reset' })
+  ]
+  // The rest of the same first segment: no prefix declared, so they group as they always did.
+  const REST = [route({ method: 'POST', path: '/system/auth/login' }), route({ path: '/system/manifest' })]
+  const all = () => build([...OPERATORS, ...REST])
+
+  it('groups on the declared prefix and gives the routes the shape of a resource', () => {
+    const operators = resourceOf(all(), 'systemUser')
+    expect(operators.path).toBe('system/users')
+    expect(operators.titleField).toBe('email')
+    const kinds = operators.capabilities.filter((c: any) => c.kind !== 'action').map((c: any) => c.kind)
+    expect(kinds.sort()).toEqual(['create', 'delete', 'list', 'read', 'update'])
+    // The fields are collected the same way: a resource under a prefix is a resource.
+    expect(operators.fields.map((f: any) => f.name)).toContain('name')
+  })
+
+  it('reads every path from the end of the prefix, so /system/users/:id is an item', () => {
+    const operators = resourceOf(all(), 'systemUser')
+    expect(operators.capabilities.find((c: any) => c.kind === 'read').path).toBe('/system/users/:id')
+    const actions = operators.capabilities.filter((c: any) => c.kind === 'action')
+    expect(actions.map((a: any) => a.name).sort()).toEqual(['block', 'reset'])
+    // Two segments deep and still a row action: the console draws it on the record, not on the
+    // list, which is the difference between resetting one operator's factor and everyone's.
+    expect(actions.find((a: any) => a.name === 'block').target).toEqual(['row'])
+    expect(operators.capabilities.map((c: any) => c.name)).not.toContain('count')
+  })
+
+  it('leaves the rest of the first segment out of the resource', () => {
+    const m = all()
+    expect(m.resources.map((r: any) => r.name)).toEqual(['systemUser'])
+    expect(resourceOf(m, 'systemUser').capabilities.every((c: any) => c.path.startsWith('/system/users'))).toBe(true)
+    // The login and the manifest are no CRUD, so they stay loose capabilities, as before.
+    expect((m.capabilities || []).map((c: any) => c.name).sort()).toEqual(['login', 'manifest'])
+  })
+
+  it('ignores a prefix the path does not start with, and groups by the URL', () => {
+    // The router serves the URL; a hint that disagreed with it would file the route under a
+    // resource whose every call is a 404.
+    const m = build([...CRUD, route({ method: 'POST', path: '/products/:id/audit', resource: { prefix: 'system/users' } })])
+    expect(m.resources.map((r: any) => r.name)).toEqual(['products'])
+    expect(resourceOf(m).capabilities.map((c: any) => c.name)).toContain('audit')
   })
 })

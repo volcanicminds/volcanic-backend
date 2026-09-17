@@ -38,7 +38,9 @@ import cookie from '@fastify/cookie'
 
 import require from './lib/util/require.js'
 import { assertSecretStrength } from './lib/util/secret.js'
-import { assertCorsOptions } from './lib/util/cors.js'
+import { assertCorsOptions, withTenantHeader } from './lib/util/cors.js'
+import { tenantsConfig } from './lib/util/tenancy.js'
+import { assertPolicies, controlPolicy, floorPolicy, mfaAvailable, unavailableMandatory } from './lib/util/mfaPolicy.js'
 import { configureCache, cache } from './lib/util/cache.js'
 
 import type { TransferManagement } from './types/global.js'
@@ -268,8 +270,11 @@ const start = async (decorators = {}) => {
     // Checked on the EFFECTIVE options, not on the framework default: a consuming project
     // that writes its own `config/plugins.ts` replaces that default whole, and the one
     // combination that must never reach production has to be caught wherever it was written.
-    assertCorsOptions(plugins.cors, { prod: process.env.NODE_ENV === 'production' })
-    await server.register(cors, plugins.cors || {})
+    // The tenant header joins the allowlist where the backend reads it (T-10.15): without it a
+    // browser console on another origin cannot even send its login.
+    const corsOptions = withTenantHeader(plugins.cors, tenantsConfig())
+    assertCorsOptions(corsOptions, { prod: process.env.NODE_ENV === 'production' })
+    await server.register(cors, corsOptions || {})
   }
   if (plugins?.compress) await server.register(compress, plugins.compress || {})
   // Static file serving (e.g. a public uploads folder in dev; behind nginx/CDN in
@@ -329,6 +334,16 @@ const start = async (decorators = {}) => {
       await server.decorate(key, decorators[key])
     })
   )
+
+  // After the injection, because a project may bring its own manager: a policy that demands a
+  // second factor this build cannot issue is a locked door with no key, and the first login is
+  // where everyone would find out (T-10.19).
+  const mfaGap = unavailableMandatory({
+    floor: floorPolicy(),
+    control: controlPolicy(),
+    implemented: mfaAvailable((decorators as Record<string, unknown>).mfaManager)
+  })
+  if (mfaGap) throw new Error(mfaGap)
 
   // Before anything writes: an instance does not serve traffic on a schema its code does not
   // match (T-5.4). It runs BEFORE the genesis reconciliation on purpose, because that one
@@ -422,7 +437,10 @@ const start = async (decorators = {}) => {
     try {
       await server.ready()
       const { writeFileSync } = await import('node:fs')
-      writeFileSync(manifestDumpPath, JSON.stringify(generateManifest(server), null, 2))
+      // One manifest per console plane (T-10.14): MANIFEST_DUMP_PLANE=control dumps the platform
+      // console's, which a build cannot pull in cookie mode (no integration token on that plane).
+      const plane = process.env.MANIFEST_DUMP_PLANE === 'control' ? 'control' : 'tenant'
+      writeFileSync(manifestDumpPath, JSON.stringify(generateManifest(server, { plane }), null, 2))
       if (log.i) log.info(`Manifest 📄 dumped to ${manifestDumpPath}`)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -457,11 +475,23 @@ const start = async (decorators = {}) => {
       // The policy the auth controllers ENFORCE, read from where they read it (T-10.4). This
       // used to read the framework's own defaults file, so a project that set
       // `mfa_policy: 'MANDATORY'` in its config was told at boot that MFA was optional.
-      const { mfa_policy = MfaPolicy.OPTIONAL } = global.config?.options || {}
-      if (log.w && mfa_policy !== MfaPolicy.OPTIONAL) {
-        log.warn(`Security MFA 🔑 enforced to ${mfa_policy}`)
+      // Two planes since T-10.19: the deployment value is the floor, and the control plane may
+      // be stricter. A tenant's own value lives in its registry row and is resolved per request.
+      // A value that is written and is not a policy stops the boot, as a bad `AUTH_MODE` does:
+      // reading it as "the default" is how a setting comes to mean the opposite of what it says.
+      try {
+        assertPolicies()
+      } catch (error) {
+        if (log.f) log.fatal(`Startup Security: ${(error as Error).message}`)
+        process.exit(1)
+      }
+      const floor = floorPolicy()
+      const controlPlane = controlPolicy()
+      const stated = controlPlane === floor ? `${floor}` : `${floor}, control plane ${controlPlane}`
+      if (log.w && (floor !== MfaPolicy.OPTIONAL || controlPlane !== floor)) {
+        log.warn(`Security MFA 🔑 enforced to ${stated}`)
       } else if (log.i) {
-        log.info(`Security MFA 🔑 set to ${mfa_policy}`)
+        log.info(`Security MFA 🔑 set to ${stated}`)
       }
 
       if (log.i) {

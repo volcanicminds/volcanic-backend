@@ -99,7 +99,9 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Suspend Tenant',
-        description: 'Suspends a tenant: explicit, instead of editing a status field by hand.'
+        description: 'Suspends a tenant: explicit, instead of editing a status field by hand.',
+        body: { $ref: 'tenantSuspendBodySchema#' },
+        manifest: { input: { fields: { reason: { widget: 'textarea' } } } }
       }
     },
     {
@@ -121,7 +123,14 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Destroy a container (phase 2)',
-        description: 'Body: token, slug typed again, and the operator second factor. Exports first, always'
+        description: 'Body: token, slug typed again, and the operator second factor. Exports first, always',
+        body: { $ref: 'tenantDestroyBodySchema#' },
+        // Marked required here and not in the schema (T-10.16): the refusals belong to the
+        // controller, which names what is wrong, while the console learns from this hint what to
+        // ask for before spending a token that expires.
+        manifest: {
+          input: { fields: { token: { required: true }, slug: { required: true }, otp: { required: true } } }
+        }
       }
     },
     {
@@ -143,7 +152,18 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Act as a user of a tenant',
-        description: 'Records who, into which tenant, as whom and why, then issues a short-lived tenant token'
+        description: 'Records who, into which tenant, as whom and why, then issues a short-lived tenant token',
+        body: { $ref: 'tenantImpersonateBodySchema#' },
+        // Both are refused by the controller when missing (USER_REQUIRED, REASON_REQUIRED), so the
+        // console marks them here rather than through the schema (T-10.16).
+        manifest: {
+          input: {
+            fields: {
+              userId: { required: true, placeholder: 'input.tenant.impersonate.userId' },
+              reason: { required: true, widget: 'textarea' }
+            }
+          }
+        }
       }
     },
     {

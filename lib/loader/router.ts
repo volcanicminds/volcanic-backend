@@ -4,11 +4,11 @@ import type { Role, Route, ConfiguredRoute, RouteConfig } from '../../types/glob
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { normalizePatterns } from '../util/path.js'
 import { normalizeRouteCache, buildCacheHooks, cacheEnabled } from '../util/cache.js'
-import { isSystemRoleCode, SYSTEM_CAPABILITIES, SYSTEM_PREFIX } from './roles.js'
+import { isSystemRoleCode, SHARED_CAPABILITIES, SYSTEM_CAPABILITIES, SYSTEM_PREFIX } from './roles.js'
 import { isTenancyEnabled } from '../util/tenancy.js'
 import { globSync } from 'glob'
 import path from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -134,7 +134,8 @@ function resolveRequiredRoles(
     if (isControl && !SYSTEM_CAPABILITIES.includes(capability as never)) {
       roleErrors.push(`${where} → '${capability}' is not in the control catalogue: ${SYSTEM_CAPABILITIES.join(', ')}`)
     }
-    if (!isControl && SYSTEM_CAPABILITIES.includes(capability as never)) {
+    // `manifest` is reserved by both catalogues, one per plane: see SHARED_CAPABILITIES.
+    if (!isControl && SYSTEM_CAPABILITIES.includes(capability as never) && !SHARED_CAPABILITIES.includes(capability as never)) {
       roleErrors.push(`${where} → '${capability}' is a control capability and cannot gate a tenant route`)
     }
   }
@@ -356,7 +357,10 @@ export function processRoute(
       // Structural hints (manifest L1): authored under `config.manifest`, taken from the
       // file-level `config` (defaultConfig) with optional per-route override.
       group: config?.manifest?.group ?? defaultConfig?.manifest?.group,
-      resource: config?.manifest?.resource ?? defaultConfig?.manifest?.resource
+      resource: config?.manifest?.resource ?? defaultConfig?.manifest?.resource,
+      // Per route only: an input hint describes one body, and a file-level default would lend it
+      // to every other action of the file.
+      input: config?.manifest?.input
     }
   }
 
@@ -469,13 +473,16 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
         handler: async function (req: FastifyRequest, reply: FastifyReply) {
           let module
           try {
+            // A bare path and a file URL are two module keys for the same file: the loader
+            // would compile the handler (and everything it imports) a second time, with its
+            // own module-level state. The URL form is also the only one Windows accepts.
             try {
-              module = await import(file + '.js')
+              module = await import(pathToFileURL(file + '.js').href)
             } catch {
               try {
-                module = await import(file + '.ts')
+                module = await import(pathToFileURL(file + '.ts').href)
               } catch {
-                module = await import(file)
+                module = await import(pathToFileURL(file).href)
               }
             }
           } catch (err) {

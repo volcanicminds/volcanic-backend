@@ -4,6 +4,7 @@ import { httpError } from '../../../util/httpError.js'
 import * as regExp from '../../../util/regexp.js'
 import { isSystemRoleCode } from '../../../loader/roles.js'
 import { present } from './systemAuth.js'
+import { controlPolicy } from '../../../util/mfaPolicy.js'
 
 //
 // Platform identities, managed from the control scope (T-4.1).
@@ -32,6 +33,27 @@ function unavailable(req: FastifyRequest, reply: FastifyReply): boolean {
 function invalidRoles(roles: unknown): string[] {
   if (!Array.isArray(roles)) return []
   return roles.filter((r) => !isSystemRoleCode(r) || !(global.systemRoles || {})[String(r)]).map(String)
+}
+
+/**
+ * The way back for an operator who lost the device (T-10.19).
+ *
+ * It belongs to whoever holds `system-users`, never to the person concerned: on a plane where
+ * `MANDATORY` is the setting to recommend, a second factor its owner can remove alone is a second
+ * factor the policy cannot hold. The same reason the tenant scope gives this to an admin only.
+ */
+export async function resetMfa(req: FastifyRequest, reply: FastifyReply) {
+  if (unavailable(req, reply)) return
+
+  const { id } = req.parameters()
+  if (!id) return reply.status(400).send(httpError(400, 'Missing user id'))
+
+  const target = await manager(req).retrieveSystemUserById(control(req), String(id))
+  if (!target) return reply.status(404).send()
+
+  await manager(req).disableMfa(control(req), target.id)
+  if (log.i) log.info(`System MFA reset for ${target.email}, policy ${controlPolicy()}`)
+  return { ok: true }
 }
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {

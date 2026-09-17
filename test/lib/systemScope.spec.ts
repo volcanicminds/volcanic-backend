@@ -12,11 +12,24 @@ import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import authHook from '../../lib/hooks/onRequest.js'
 import { loadSystem } from '../../lib/loader/roles.js'
+import { preHandler as isAuthenticated } from '../../lib/middleware/isAuthenticated.js'
+import { login as systemLogin, me } from '../../lib/api/system/controller/systemAuth.js'
 
 const SECRET = 'system-scope-test-secret-32-chars!'
 
 const ROOT = { id: 'sys-1', externalId: 'sys-ext-1', email: 'root@system.test', roles: ['system:admin'], blocked: false }
 const AUDITOR = { id: 'sys-2', externalId: 'sys-ext-2', email: 'auditor@system.test', roles: ['system:auditor'], blocked: false }
+// Carries the credential columns a row really has, so a response that leaked them would show it.
+const OPERATOR = {
+  id: 'sys-3',
+  externalId: 'sys-ext-3',
+  email: 'operator@system.test',
+  roles: ['system:operator'],
+  blocked: false,
+  password: '$2b$12$hash',
+  mfaSecret: 'encrypted-secret',
+  mfaRecoveryCodes: ['code']
+}
 const TENANT_USER = { getId: () => 'u1', externalId: 'u-ext-1', email: 'admin@acme.test', roles: ['admin'] }
 
 ;(global as any).log = {}
@@ -43,14 +56,18 @@ function giveCataloguesBack() {
 }
 
 function serverWith(opts: any = {}) {
-  ;(global as any).config = { options: { tenants: opts.tenants ?? null } }
+  ;(global as any).config = { options: { tenants: opts.tenants ?? null, ...(opts.options ?? {}) } }
 
   const server: any = fastify()
   server.decorate('provider', {})
   server.decorate('systemUserManager', {
     isImplemented: () => opts.systemUsers !== false,
     retrieveSystemUserByExternalId: async (_ctx: any, externalId: string) =>
-      [ROOT, AUDITOR].find((u) => u.externalId === externalId) ?? null
+      [ROOT, AUDITOR, OPERATOR].find((u) => u.externalId === externalId) ?? null,
+    // The password is not what these tests are about: the login here is the door the MFA policy
+    // stands in front of (T-10.19).
+    retrieveSystemUserByPassword: async (_ctx: any, email: string) =>
+      [ROOT, AUDITOR, OPERATOR].find((u) => u.email === email) ?? null
   })
   server.decorate('userManager', {
     isImplemented: () => true,
@@ -69,7 +86,7 @@ async function build(opts: any = {}) {
   await server.register(jwtValidator, { secret: SECRET })
 
   server.addHook('onRequest', async (req: any) => {
-    req.data = () => ({})
+    req.data = () => (req.body as any) ?? {}
     req.parameters = () => ({})
     // What lib/loader/tenant.ts sets: the control plane on every request, the tenant when
     // one was resolved.
@@ -94,6 +111,14 @@ async function build(opts: any = {}) {
   server.get('/orders', { config: { tenantContext: true, requiredRoles: [{ code: 'admin' }] } }, async (req: any) => ({
     who: req.user?.email ?? null
   }))
+  // What lib/api/system/routes.ts declares for `GET /system/auth/me`: `public` on the role gate,
+  // `isAuthenticated` as the middleware.
+  server.get(
+    '/system/auth/me',
+    { config: { tenantContext: false, requiredRoles: [{ code: 'public' }] }, preHandler: isAuthenticated },
+    me
+  )
+  server.post('/system/auth/login', { config: { tenantContext: false, requiredRoles: [{ code: 'public' }] } }, systemLogin)
 
   await server.ready()
   return server
@@ -154,6 +179,15 @@ describe('control scope · platform identities (T-4.1)', () => {
     await server.close()
   })
 
+  it('gives the day-to-day role the capability that opens the platform console (T-10.14)', () => {
+    // Without `manifest` the operator cannot load the console the job is done in, and a project
+    // cannot add it: the capabilities of a protected role are not a consumer's to change.
+    const catalogue = (global as any).systemRoles
+    expect(catalogue['system:operator'].capabilities).toContain('manifest')
+    // And what only the superuser may do stays out of it.
+    expect(catalogue['system:operator'].capabilities).not.toContain('tenants:destroy')
+  })
+
   it('refuses an anonymous caller on a platform route', async () => {
     const server = await build({ tenants: MULTI })
     const res = await get(server, '/platform')
@@ -195,6 +229,92 @@ describe('control scope · platform identities (T-4.1)', () => {
     const res = await get(server, '/platform', token)
     expect(res.statusCode).toBe(503)
     expect(JSON.parse(res.body).code).toBe('SYSTEM_USERS_NOT_AVAILABLE')
+    await server.close()
+  })
+})
+
+//
+// T-10.14: a platform console has to learn who logged in. `/users/me` is a tenant route, and a
+// control token there is refused, so before this route a console could sign an operator in and
+// never know which roles to draw the screens for.
+//
+describe('control scope · the identity behind a platform session (T-10.14)', () => {
+  before(takeCatalogues)
+  after(giveCataloguesBack)
+
+  afterEach(() => {
+    ;(global as any).config = undefined
+  })
+
+  it('answers every platform identity with its roles, not only the superuser', async () => {
+    const server = await build({ tenants: MULTI })
+    const token = server.jwt.sign({ sub: OPERATOR.externalId, scp: 'control' })
+
+    const res = await get(server, '/system/auth/me', token)
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.email).toBe('operator@system.test')
+    expect(body.roles).toEqual(['system:operator'])
+    await server.close()
+  })
+
+  it('never returns the credential columns of the row', async () => {
+    const server = await build({ tenants: MULTI })
+    const token = server.jwt.sign({ sub: OPERATOR.externalId, scp: 'control' })
+
+    const body = JSON.parse((await get(server, '/system/auth/me', token)).body)
+    for (const secret of ['password', 'mfaSecret', 'mfaRecoveryCodes']) expect(body).not.toHaveProperty(secret)
+    await server.close()
+  })
+
+  it('refuses an anonymous caller, although the role gate is public', async () => {
+    const server = await build({ tenants: MULTI })
+    const res = await get(server, '/system/auth/me')
+    expect(res.statusCode).toBe(401)
+    expect(JSON.parse(res.body).code).toBe('UNAUTHORIZED')
+    await server.close()
+  })
+
+  it('makes the platform policy oblige the operators too (T-10.19)', async () => {
+    // Until now `MFA_POLICY` was read only by the tenant routes: `MANDATORY` obliged the users of
+    // every customer and none of the people who can destroy a customer.
+    const server = await build({ tenants: MULTI, options: { system_mfa_policy: 'MANDATORY' } })
+
+    const res = await server.inject({
+      method: 'POST',
+      url: '/system/auth/login',
+      payload: { email: OPERATOR.email, password: 'whatever' }
+    })
+
+    expect(res.statusCode).toBe(202)
+    const body = JSON.parse(res.body)
+    // No factor yet, and the policy requires one: the first factor buys the enrolment, not a session.
+    expect(body.mfaSetupRequired).toBe(true)
+    expect(body.mfaRequired).toBe(false)
+    expect(body.token).toBeUndefined()
+    await server.close()
+  })
+
+  it('leaves the operators alone where the platform asks for no second factor', async () => {
+    const server = await build({ tenants: MULTI })
+    const res = await server.inject({
+      method: 'POST',
+      url: '/system/auth/login',
+      payload: { email: OPERATOR.email, password: 'whatever' }
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).securityPolicy).toEqual({ mfaPolicy: 'OPTIONAL' })
+    await server.close()
+  })
+
+  it('refuses a tenant token: a customer session is not a platform identity', async () => {
+    const server = await build({ tenants: MULTI })
+    const tenantToken = server.jwt.sign({ sub: TENANT_USER.externalId, tid: 'id-acme' })
+
+    const res = await get(server, '/system/auth/me', tenantToken)
+    expect(res.statusCode).toBe(403)
+    expect(JSON.parse(res.body).code).toBe('SCOPE_MISMATCH')
     await server.close()
   })
 })

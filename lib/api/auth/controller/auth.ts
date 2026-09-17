@@ -2,6 +2,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import * as regExp from '../../../util/regexp.js'
 import { MfaPolicy } from '../../../config/constants.js'
+import { allowsEnrolment, allowsSelfDisable, mfaAvailable, tenantPolicy } from '../../../util/mfaPolicy.js'
 import { httpError } from '../../../util/httpError.js'
 import { dataContext, isTenancyEnabled } from '../../../util/tenancy.js'
 import { uuidv7 } from '../../../util/uuid.js'
@@ -325,7 +326,9 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
 
 export async function login(req: FastifyRequest, reply: FastifyReply) {
   const { email, password } = req.data()
-  const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
+  // The policy of THIS tenant (T-10.19): the deployment value is the floor, a customer may only
+  // tighten it, and its own value rides in the registry row the resolution has already loaded.
+  const mfa_policy = tenantPolicy(req.tenantInfo)
 
   if (!req.server['userManager'].isImplemented()) {
     throw new Error('Not implemented')
@@ -566,6 +569,12 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
 export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
   if (!user) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Unauthorized' })
+  if (!allowsEnrolment(tenantPolicy(req.tenantInfo))) {
+    return reply.status(403).send(httpError(403, 'This policy accepts no new second factors', 'MFA_DISABLED'))
+  }
+  if (!mfaAvailable(req.server['mfaManager'])) {
+    return reply.status(503).send(httpError(503, 'This build has no MFA manager', 'MFA_NOT_AVAILABLE'))
+  }
 
   try {
     // Use mfaManager (injected) for logic
@@ -581,9 +590,15 @@ export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
 export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
   const { secret, token } = req.data()
-  const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
+  const mfa_policy = tenantPolicy(req.tenantInfo)
 
   if (!user || !secret || !token) return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing parameters' })
+  if (!allowsEnrolment(mfa_policy)) {
+    return reply.status(403).send(httpError(403, 'This policy accepts no new second factors', 'MFA_DISABLED'))
+  }
+  if (!mfaAvailable(req.server['mfaManager'])) {
+    return reply.status(503).send(httpError(503, 'This build has no MFA manager', 'MFA_NOT_AVAILABLE'))
+  }
 
   try {
     // 1. Verify using mfaManager (tools)
@@ -630,7 +645,9 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   // In cookie mode the pre-auth token is in the access cookie, and reading the header by hand
   // here made MFA unusable in that mode.
   const tokenStr = sessionTokenOf(req, 'tenant')
-  const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
+  // Verifying is allowed under every policy, `OFF` included: a factor already enrolled keeps
+  // working, and it is only enrolment that the policy closes.
+  const mfa_policy = tenantPolicy(req.tenantInfo)
 
   if (!tokenStr) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Missing authorization' })
 
@@ -693,8 +710,10 @@ export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
   if (!user) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Unauthorized' })
 
-  const { mfa_policy = MfaPolicy.OPTIONAL } = global.config.options || {}
-  if (mfa_policy === MfaPolicy.MANDATORY || mfa_policy === MfaPolicy.ONE_WAY) {
+  // Self-service removal exists only where the factor is optional (T-10.19): `ONE_WAY` and
+  // `MANDATORY` already refused it, and under `OFF` the way out is a reset by an administrator,
+  // not a switch that undoes what the policy has just frozen.
+  if (!allowsSelfDisable(tenantPolicy(req.tenantInfo))) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA disable is not allowed by security policy' })
   }
 

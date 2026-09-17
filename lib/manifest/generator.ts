@@ -14,9 +14,14 @@ import { isCookieMode } from '../util/credential.js'
 
 // ── Output types (mirror the v2 JSON Schema; the engine owns the canonical TS type) ──
 type CapabilityKind = 'list' | 'read' | 'create' | 'update' | 'delete' | 'action'
+// The first line is what `mapType` infers from JSON Schema. The second arrives only from admin
+// overrides, because a schema cannot tell those apart from a string or an object: long and rich
+// text are presentations, a relation needs its target and foreign key, an image or a file needs
+// upload endpoints. Identical to `FieldType` in @volcanicminds/admin and to
+// manifest.v2.schema.json (T-10.17).
 type FieldType =
-  | 'string' | 'text' | 'richtext' | 'integer' | 'number' | 'boolean' | 'date' | 'datetime'
-  | 'enum' | 'relation' | 'email' | 'url' | 'uuid' | 'json' | 'image' | 'file'
+  | 'string' | 'integer' | 'number' | 'boolean' | 'date' | 'datetime' | 'enum' | 'email' | 'url' | 'uuid' | 'json'
+  | 'text' | 'textarea' | 'richtext' | 'relation' | 'image' | 'file'
 
 export interface CapabilitySpec {
   name: string
@@ -26,12 +31,35 @@ export interface CapabilitySpec {
   roles: string[]
   label?: string
   target?: ('row' | 'bulk' | 'collection')[]
+  /** What the action's dialog asks before calling it (T-10.16). Actions only, and only with a body. */
+  input?: ActionInput
+}
+export interface ActionInputField {
+  name: string
+  type: FieldType
+  label?: string
+  widget?: string
+  required?: boolean
+  placeholder?: string
+}
+export interface ActionInput {
+  fields: ActionInputField[]
+  submitLabel?: string
 }
 export interface FieldSpec {
   name: string
   type: FieldType
   required?: boolean
   readOnly?: boolean
+  /**
+   * Written and never read back: it appears in a body schema and in no response.
+   *
+   * The opposite of `readOnly`, and it has to be said out loud. Without it a console cannot tell
+   * `password` apart from a field the server simply never filled in, so it draws a column of
+   * empty cells and a detail row that can never have a value. The form is the one place such a
+   * field belongs.
+   */
+  writeOnly?: boolean
   enum?: { value: string; label: string }[]
   validation?: Record<string, any>
 }
@@ -46,11 +74,18 @@ export interface ResourceSpec {
   search?: { fields: string[]; operator?: string }
   fields: FieldSpec[]
 }
+/** The identity space a console works in: a customer's users, or the platform's operators. */
+export type Plane = 'tenant' | 'control'
+
 export interface Manifest {
   version: 2
   generatedAt: string
   i18n: { defaultLocale: string; locales: string[] }
-  auth: { mode: 'cookie' | 'bearer'; endpoints: { login: string; refresh: string; logout: string; [k: string]: string } }
+  auth: {
+    mode: 'cookie' | 'bearer'
+    plane: Plane
+    endpoints: { login: string; refresh: string; logout: string; [k: string]: string }
+  }
   tenancy: { mode: 'single' | 'multi'; switchable?: boolean; header?: string; listEndpoint?: string }
   groups: { name: string; label: string }[]
   enums: Record<string, { value: string; label: string }[]>
@@ -62,7 +97,35 @@ export interface Manifest {
 const SENSITIVE_ALWAYS = ['token', 'externalId', 'mfaSecret', 'refreshToken', 'resetPasswordToken', 'confirmationToken']
 const SENSITIVE_WRITE_ONLY = ['password']
 
+/**
+ * The auth routes of each plane. A console that read the tenant ones on the control plane would
+ * log an operator in as nobody: `/auth/login` resolves users inside a container.
+ */
+export const AUTH_ENDPOINTS: Record<Plane, Manifest['auth']['endpoints']> = {
+  tenant: { login: '/auth/login', refresh: '/auth/refresh-token', logout: '/auth/logout' },
+  control: {
+    login: '/system/auth/login',
+    refresh: '/system/auth/refresh-token',
+    logout: '/system/auth/logout',
+    me: '/system/auth/me',
+    mfaSetup: '/system/auth/mfa/setup',
+    mfaEnable: '/system/auth/mfa/enable',
+    mfaVerify: '/system/auth/mfa/verify'
+  }
+}
+
 export interface BuildOptions {
+  /**
+   * The plane of the console that reads this manifest (T-10.14). Default `tenant`. When the
+   * planes are split, only that plane's routes are described and its auth routes are named.
+   */
+  plane?: Plane
+  /**
+   * Whether the two planes are distinct identity spaces, i.e. tenants are declared.
+   * `generateManifest` reads it from the deployment; without it nothing is filtered, because
+   * a deployment without tenants authenticates its own users on control routes too.
+   */
+  splitPlanes?: boolean
   authMode?: 'cookie' | 'bearer'
   tenancy?: Manifest['tenancy']
   i18n?: Manifest['i18n']
@@ -74,6 +137,19 @@ export interface BuildOptions {
 
 function segments(p: string): string[] {
   return (p || '').split('/').filter(Boolean)
+}
+
+/**
+ * The path a route's resource is grouped under (T-10.20).
+ *
+ * The first segment, unless the route declares a longer prefix. A prefix the path does not
+ * actually start with is ignored rather than trusted: the URL is what the router serves, and a
+ * hint that disagreed with it would file a route under a resource nobody can call.
+ */
+function resourceBase(route: ConfiguredRoute, segs: string[]): string {
+  const declared = segments(route.resource?.prefix || '')
+  if (declared.length && declared.every((s, i) => segs[i] === s)) return declared.join('/')
+  return segs[0]
 }
 
 function rolesOf(route: ConfiguredRoute): string[] {
@@ -169,13 +245,23 @@ export function buildManifest(input: {
   const { routes = [], schemas = {}, options = {} } = input
   const sensitiveAlways = options.sensitiveAlways ?? SENSITIVE_ALWAYS
   const sensitiveWriteOnly = options.sensitiveWriteOnly ?? SENSITIVE_WRITE_ONLY
+  const plane: Plane = options.plane ?? 'tenant'
 
-  // group routes by URL base segment
+  // One console, one plane (T-10.14). A route belongs to the control plane when the router
+  // resolved `scope: 'control'` into `tenantContext: false`. Describing the other plane's routes
+  // would hand a customer's users the platform's route map and role codes, and would draw
+  // screens whose every call is refused with SCOPE_MISMATCH.
+  const described = options.splitPlanes
+    ? routes.filter((r) => (r.tenantContext === false ? 'control' : 'tenant') === plane)
+    : routes
+
+  // group routes by the path their resource lives under: the first URL segment, or the longer
+  // prefix a route declares (T-10.20)
   const bySegment = new Map<string, ConfiguredRoute[]>()
-  for (const r of routes) {
+  for (const r of described) {
     const segs = segments(r.path)
     if (!segs.length) continue
-    const base = segs[0]
+    const base = resourceBase(r, segs)
     if (!bySegment.has(base)) bySegment.set(base, [])
     bySegment.get(base)!.push(r)
   }
@@ -187,6 +273,10 @@ export function buildManifest(input: {
   for (const [base, segRoutes] of bySegment) {
     const hint: ResourceHints | undefined = segRoutes.find((r) => r.resource)?.resource
     const name = hint?.name || base
+    // Everything below reads a path RELATIVE to the resource, so it counts from the end of the
+    // base and not from the first segment: under a two-segment base `/system/users/:id` is an
+    // item and not an unnamed action.
+    const depth = segments(base).length
     const group = segRoutes.find((r) => r.group)?.group
     if (group) groupNames.add(group)
 
@@ -197,7 +287,7 @@ export function buildManifest(input: {
     let hasItemDelete = false
     let hasCollDelete = false
     for (const r of segRoutes) {
-      const rest = segments(r.path).slice(1)
+      const rest = segments(r.path).slice(depth)
       if (rest[rest.length - 1] === 'count') continue // internal pagination helper
       const kind = crudKind(r.method, rest)
       if (kind) {
@@ -214,7 +304,7 @@ export function buildManifest(input: {
         let actName = lastNamed || r.method.toLowerCase()
         while (usedNames.has(actName)) actName = `${actName}_${r.method.toLowerCase()}`
         usedNames.add(actName)
-        actions.push({
+        const action: CapabilitySpec = {
           name: actName,
           kind: 'action',
           method: r.method,
@@ -222,7 +312,10 @@ export function buildManifest(input: {
           roles: rolesOf(r),
           label: `action.${name}.${actName}`,
           target: rest.some((s) => s.startsWith(':')) ? ['row'] : ['collection']
-        })
+        }
+        const input = inputOf(r, schemas)
+        if (input) action.input = input
+        actions.push(action)
       }
     }
     const del = crud.get('delete')
@@ -241,7 +334,7 @@ export function buildManifest(input: {
     }
 
     // fields — collapse body (writable) + response (readable) onto (resource, field)
-    const fields = collectFields(segRoutes, schemas, sensitiveAlways, sensitiveWriteOnly)
+    const fields = collectFields(segRoutes, schemas, sensitiveAlways, sensitiveWriteOnly, depth)
 
     const resource: ResourceSpec = {
       name,
@@ -265,7 +358,8 @@ export function buildManifest(input: {
       // The framework default since T-10.37: a manifest built without saying otherwise
       // describes a deployment that keeps the session in a cookie.
       mode: options.authMode || 'cookie',
-      endpoints: options.authEndpoints || { login: '/auth/login', refresh: '/auth/refresh-token', logout: '/auth/logout' }
+      plane,
+      endpoints: options.authEndpoints || AUTH_ENDPOINTS[plane]
     },
     tenancy: options.tenancy || { mode: 'single' },
     groups: [...groupNames].map((n) => ({ name: n, label: `group.${n}` })),
@@ -276,11 +370,50 @@ export function buildManifest(input: {
   return manifest
 }
 
+/**
+ * The input of a custom action, derived from the body schema of its route (T-10.16).
+ *
+ * The schema is the one description of the body that cannot drift from what the route accepts,
+ * because it is what Fastify validates. Field names, types and the schema's `required` come from
+ * it; the route's `config.manifest.input` hint adds presentation, exclusions, and `required` for a
+ * field the controller refuses with its own code. No sensitive filter here, unlike `collectFields`:
+ * an input is typed by the operator and never read back, and the destruction `token` is precisely
+ * what the dialog has to ask for.
+ */
+function inputOf(route: ConfiguredRoute, schemas: Record<string, any>): ActionInput | undefined {
+  const body = deref(route.doc?.body, schemas)
+  const props = body?.properties
+  if (!props || typeof props !== 'object') return undefined
+
+  const hint = route.input
+  const required: string[] = Array.isArray(body.required) ? body.required : []
+  const excluded = new Set(hint?.exclude ?? [])
+  const fields: ActionInputField[] = []
+
+  for (const [name, ps] of Object.entries<any>(props)) {
+    if (excluded.has(name)) continue
+    const extra = hint?.fields?.[name] ?? {}
+    const field: ActionInputField = { name, type: mapType(ps) }
+    if (required.includes(name) || extra.required) field.required = true
+    if (extra.widget) field.widget = extra.widget
+    if (extra.label) field.label = extra.label
+    if (extra.placeholder) field.placeholder = extra.placeholder
+    fields.push(field)
+  }
+
+  if (!fields.length) return undefined
+  return hint?.submitLabel ? { fields, submitLabel: hint.submitLabel } : { fields }
+}
+
 function collectFields(
   segRoutes: ConfiguredRoute[],
   schemas: Record<string, any>,
   sensitiveAlways: string[],
-  sensitiveWriteOnly: string[]
+  sensitiveWriteOnly: string[],
+  // How many segments of the path belong to the resource itself (T-10.20). Counted from the
+  // wrong end, a resource under a prefix has no create and no list, so it draws a form with no
+  // fields: not an error, just an empty screen.
+  depth = 1
 ): FieldSpec[] {
   const byName = new Map<string, FieldAcc>()
 
@@ -313,7 +446,7 @@ function collectFields(
   }
 
   for (const r of segRoutes) {
-    const rest = segments(r.path).slice(1)
+    const rest = segments(r.path).slice(depth)
     const kind = crudKind(r.method, rest)
     // Write side: create/update bodies, plus a PUT/PATCH on the BASE path — the singleton
     // update (e.g. PUT /company), which crudKind classifies as 'action'. Restricted to the
@@ -331,6 +464,7 @@ function collectFields(
   for (const f of byName.values()) {
     const { _read, _write, ...rest } = f
     if (_read && !_write) rest.readOnly = true
+    if (_write && !_read) rest.writeOnly = true
     out.push(rest)
   }
   return out
@@ -341,10 +475,18 @@ export function generateManifest(server: any, options: BuildOptions = {}): Manif
   const routes: ConfiguredRoute[] = ((global as any).routes as ConfiguredRoute[]) || []
   const schemas: Record<string, any> = typeof server?.getSchemas === 'function' ? server.getSchemas() : {}
   const authMode: 'cookie' | 'bearer' = isCookieMode() ? 'cookie' : 'bearer'
+  const plane: Plane = options.plane ?? 'tenant'
   return buildManifest({
     routes,
     schemas,
-    options: { authMode, tenancy: tenancyOf(), generatedAt: new Date().toISOString(), ...options }
+    options: {
+      authMode,
+      plane,
+      splitPlanes: isTenancyEnabled(),
+      tenancy: tenancyOf(plane),
+      generatedAt: new Date().toISOString(),
+      ...options
+    }
   })
 }
 
@@ -356,13 +498,14 @@ export function generateManifest(server: any, options: BuildOptions = {}): Manif
  * (`resolveTenancy` falls back to 'none') while the manifest used to announce `multi`: a
  * console then drew a tenant switcher and sent a header a single-tenant backend never reads.
  *
- * The switcher is offered only when the tenant travels in a HEADER. Under the `subdomain`
- * resolver the host is the tenant and `declaredTenant` never reads the header, so a switcher
- * would change a value with no effect.
+ * `header` is named only where a console must send it: on the tenant plane, under the `header`
+ * resolver, from the login on (T-10.15). Under `subdomain` the host is the tenant; on the control
+ * plane there is no tenant to declare. `switchable` is always false: from the login the token
+ * binds the tenant (T-3.2), and a different one is a new login, not a switch under the session.
  */
-export function tenancyOf(): Manifest['tenancy'] {
+export function tenancyOf(plane: Plane = 'tenant'): Manifest['tenancy'] {
   const tenants = tenantsConfig()
   if (!tenants || !isTenancyEnabled()) return { mode: 'single' }
-  if ((tenants.resolver ?? 'header') === 'subdomain') return { mode: 'multi', switchable: false, listEndpoint: '/tenants' }
-  return { mode: 'multi', switchable: true, header: tenants.headerKey || 'x-tenant-id', listEndpoint: '/tenants' }
+  if (plane === 'control' || (tenants.resolver ?? 'header') === 'subdomain') return { mode: 'multi', switchable: false }
+  return { mode: 'multi', switchable: false, header: tenants.headerKey || 'x-tenant-id' }
 }

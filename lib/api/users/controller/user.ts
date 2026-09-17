@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import type { AuthenticatedUser } from '../../../../types/global.js'
-import { MfaPolicy } from '../../../config/constants.js'
+import { tenantPolicy } from '../../../util/mfaPolicy.js'
 import { includesRole, isFounder } from '../../../util/authz.js'
 import { dataContext } from '../../../util/tenancy.js'
 
@@ -141,7 +141,9 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
 
 export async function getCurrentUser(req: FastifyRequest, reply: FastifyReply) {
   const user: AuthenticatedUser | undefined = req.user
-  const mfaPolicy = global.config.options?.mfa_policy || MfaPolicy.OPTIONAL
+  // The policy this tenant actually enforces (T-10.19), not the deployment's: a console decides
+  // from here whether to offer the switch, and offering one the server refuses is a lie.
+  const mfaPolicy = tenantPolicy(req.tenantInfo)
 
   return reply.send(
     user

@@ -3162,8 +3162,10 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Tenants | `POST /tenants/:id/destruction-request` · `DELETE /tenants/:id/data` | `tenants:destroy` cap⁷ | **yes** | `destructionManager` |
 | Tenants | `POST /tenants/:id/impersonate` · `POST /tenants/impersonate/end` | `tenants:impersonate` cap | **yes** | `impersonationManager` |
 | System | `POST /system/auth/login` · `/refresh-token` · `/logout` · `/mfa/*` | public / control token | varies | `systemUserManager` |
+| System | `GET /system/auth/me` | any control token | **yes** | — (the resolved `req.systemUser`) |
 | System | `GET /system/users` · `POST /system/users` · `PUT/DELETE /system/users/:id` · `/block` · `/unblock` | `system-users` cap | **yes** | `systemUserManager` |
-| Admin | `GET /admin/manifest` | `manifest` cap | **yes** | — (schema only) |
+| System | `GET /system/manifest` (control plane, only with tenants) | `manifest` cap (control) | **yes** | — (schema only) |
+| Admin | `GET /admin/manifest` (tenant plane) | `manifest` cap | **yes** | — (schema only) |
 
 `/tool/*` is **gone**, with `POST /tool/synchronize-schemas`: schemas are versioned migrations now,
 and a route that rewrites a production schema on request is not a feature.
@@ -3254,6 +3256,13 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
   `scheduler` / `multi_tenant`. When enabled, the framework mounts `GET /admin/manifest`
   (`requireCapability: 'manifest'` — `admin` plus any role granted the `manifest` capability; operators need the
   manifest to boot the admin console, the engine hides what their roles cannot reach, and every API route still enforces).
+- **One manifest per console plane** (T-10.14). `GET /admin/manifest` is tenant scope; with a `tenants` block it
+  describes only the tenant routes, with `auth.plane: 'tenant'` and the `/auth/*` endpoints. `GET /system/manifest`
+  (control scope, mounted only with tenants) describes only the control routes, with `auth.plane: 'control'` and the
+  `/system/auth/*` endpoints including `me: '/system/auth/me'`. `manifest` is reserved by both role catalogues, one
+  per plane. Without tenants `/admin/manifest` describes every route. The admin console picks one with its `plane`
+  prop. `tenancy.switchable` is always `false` (the token binds the tenant) and `tenancy.header` is named only on the
+  tenant plane under the `header` resolver.
 - **Schema-only generation.** The manifest is derived from `global.routes` + the registered JSON Schemas
   (`server.getSchemas()`) — **never** from entity metadata, so the core stays decoupled from the data layer
   (enforced by `depcruise`). Consequence: relations are emitted "thin" (target only, no kind/foreign-key) and enums
@@ -3270,6 +3279,7 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
   excluded.
 - **Snapshot for CI.** `MANIFEST_DUMP=<path>` writes the manifest to a file after boot; add `MANIFEST_DUMP_EXIT=true`
   to skip `listen()` and exit (a pure dump command, so the admin build is decoupled from a live backend).
+  `MANIFEST_DUMP_PLANE=control` writes the platform console's manifest instead of the tenant one.
   `generateManifest(server)` / `buildManifest({ routes, schemas })` are exported from the package.
 - **No `autoCrud`.** The framework does **not** auto-mount a generic `/admin/<resource>` CRUD. The manifest describes
   the project's **hand-written** endpoints (real paths); a generic-CRUD capability remains a possible future addition.

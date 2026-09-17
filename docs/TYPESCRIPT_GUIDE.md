@@ -1,178 +1,196 @@
-# TypeScript Guide: Extending the Framework
+# TypeScript guide: extending the framework
 
-`@volcanicminds/backend` is built with TypeScript and allows for powerful type safety and extensibility through Declaration Merging. This guide explains how to properly type your application context, global variables, and request objects.
+`@volcanicminds/backend` is written in TypeScript, and a consuming project is expected to be too.
+This guide covers the three places where a project meets the framework's types: what it adds to
+the request, how it names the container a request works on, and what its `tsconfig.json` has to
+agree with.
 
-## 1. Declaration Merging (`types/index.d.ts`)
+Everything here is v5. Where v4 spellings appear they are marked as such, and none of them
+compiles any more: `req.db`, `global.connection`, `global.entity` and `global.repository` were
+removed rather than deprecated, so the compiler answers before the first request does.
 
-To add custom properties to the standard Fastify Request or Global scope without causing compilation errors, you need to extend the existing type definitions.
+## 1. Declaration merging (`types/index.d.ts`)
 
-Create or edit `types/index.d.ts` in your project root:
+The framework already declares its own globals, so a project never redeclares `log`, `server`,
+`config`, `roles` or `routes`. What a project does declare is what it adds: the properties it
+hangs on the request, and the shape of its own context.
 
 ```typescript
-import { FastifyRequest as _FastifyRequest } from 'fastify'
+import type { DataHandle } from '@volcanicminds/backend'
 
-// 1. Extend FastifyRequest
 declare module 'fastify' {
   export interface FastifyRequest {
-    // Add your custom context property
+    // Whatever a preHandler computes once and every service reads afterwards.
     userContext: UserContext
   }
 }
 
-// 2. Define your UserContext interface
 export interface UserContext {
   userId: string | null
-  role: 'admin' | 'manager' | 'user' | 'public'
-  // Add app-specific context fields
-  company?: string
+  roles: string[]
+  /** Which plane the request is on. Useful in rules that differ between them, and in logs. */
+  container: 'control' | 'tenant'
+  // Whatever else the domain needs, read from the row and never from what the caller sent.
+  companyId?: string
   professionalId?: string
-}
-
-// 3. Extend Global scope
-// This allows TS to recognize global.entity, global.connection, etc.
-declare global {
-  var log: any
-  var server: any
-  var config: any
-  var roles: any
-  var connection: any
-  // You can make these more specific if you have type definitions for your entities
-  var entity: any
-  var repository: any
 }
 
 export {}
 ```
 
-**Note**: Ensure your `tsconfig.json` includes this file in the `include` array or via `typeRoots`.
+Two things are deliberately absent. There is no `var entity` and no `var connection`, because in
+v5 there is no ambient database to reach: a request receives its container, and a module that
+wants one asks for it. And there is no `var repository`, because the accessor that had to be
+guarded at runtime in v4 simply does not exist here, so there is nothing left to forbid.
 
-## 2. Context Injection (`preHandler`)
+Make sure `tsconfig.json` picks the file up, through `include` or `typeRoots`.
 
-A common pattern is to enrich the request object with a calculated "User Context" early in the request lifecycle. This decouples your Service Layer from the raw HTTP Request.
+## 2. The handles, and why typing them `any` is not a shortcut
 
-Create a hook in `src/hooks/preHandler.ts`:
+A route receives one of two containers, and the framework brands them:
+
+| Type | What it addresses |
+|---|---|
+| `ControlHandle` | the control plane: the tenant registry, the platform's own identities |
+| `TenantHandle` | one customer's container |
+| `DataHandle` | either of the two, when a piece of code genuinely works on both |
+
+All three are exported from `@volcanicminds/backend`:
 
 ```typescript
-import { FastifyRequest, FastifyReply } from '@volcanicminds/backend'
+import type { ControlHandle, TenantHandle, DataHandle } from '@volcanicminds/backend'
+```
 
-// This hook runs before every controller handler
+A service layer typed with `any` compiles exactly the same, and that is the problem: with `any`
+the control plane and a customer's container are interchangeable, which is the one confusion the
+two brands exist to prevent. The compiler is the cheapest place to catch a query that was written
+for a tenant and handed the registry.
+
+To get the handle of the current request, call `dataContext(req)` rather than writing the choice
+by hand:
+
+```typescript
+import { dataContext } from '@volcanicminds/backend'
+
+const handle = dataContext(req) // DataHandle
+```
+
+The shortest hand-written version, `req.tenant ?? req.control`, looks equivalent and is not: in a
+deployment with tenants, a request that lost its context would read the control plane instead of
+failing. `dataContext` throws `NoDataContextError` there, and a consumer catching that error is
+catching a framework bug, not a bad request.
+
+## 3. Context injection (`preHandler`)
+
+A hook computes the context once, so services never see `req`:
+
+```typescript
+import type { FastifyRequest, FastifyReply } from '@volcanicminds/backend'
+
 export default async (req: FastifyRequest, _reply: FastifyReply) => {
-  const user = req.user as any
-  const roles = user?.roles || []
-  const professional = user?.professional
+  const user = req.user
+  const roles = req.roles()
 
-  // Build the context based on the authenticated user
-  const context: any = {
-    userId: user?.id || null,
-    role: 'public',
-    company: undefined,
-    professionalId: undefined
+  req.userContext = {
+    userId: user?.id ?? null,
+    roles,
+    container: req.tenant ? 'tenant' : 'control',
+    companyId: user?.companyId,
+    professionalId: user?.professionalId
+  }
+}
+```
+
+Everything in that object comes from the verified token or from a row the framework already
+loaded. Nothing comes from the query string or the body: a context a caller can influence is not
+a security context, it is a suggestion.
+
+## 4. Typing a service bound to a container
+
+A service is bound to a container and typed by the tables of that container. The full reference
+implementation is in `llms.txt` Part 5 and in `docs/ADVANCED_ARCHITECTURE.md`; what matters for
+typing is the seam:
+
+```typescript
+import type { DataHandle } from '@volcanicminds/backend'
+import { access, type QueryOptions } from '@volcanicminds/backend/db'
+import { tablesFor, type AppTables } from '../tables/index.js'
+
+export abstract class BaseService<K extends keyof AppTables> {
+  protected handle?: DataHandle
+
+  constructor(protected readonly tableName: K) {}
+
+  /** Returns a scoped clone bound to this request's container. */
+  on(handle?: DataHandle): this {
+    const scoped = Object.create(this) as this
+    scoped.handle = handle
+    return scoped
   }
 
-  if (user) {
-    if (roles.includes('admin')) {
-      context.role = 'admin'
-    } else if (roles.includes('manager')) {
-      context.role = 'manager'
-      // Specific logic: Manager is bound to a company
-      context.company = professional?.company
-    } else {
-      context.role = 'user'
-      context.professionalId = professional?.id
-      context.company = professional?.company
+  protected get bound() {
+    if (!this.handle) {
+      throw new Error(`[${this.constructor.name}] used without a container. Call service.on(dataContext(req)).`)
     }
-  }
-
-  // Inject into the request.
-  // Thanks to the types/index.d.ts extension, this is type-safe!
-  req.userContext = context
-}
-```
-
-## 3. Using Context in Services
-
-Now your Services can define methods that accept `UserContext` instead of `FastifyRequest`. This makes them cleaner and easier to test.
-
-```typescript
-// src/services/order.service.ts
-import { UserContext } from '../../types/index.js'
-
-export class OrderService {
-  // Method signature uses the custom UserContext type
-  async findAll(ctx: UserContext, params: any) {
-    // You get intellisense on ctx properties!
-    if (ctx.role === 'manager') {
-      // ... filter by ctx.company
-    }
-
-    // ... implementation
+    const { db, dialect } = access(this.handle, this.constructor.name)
+    return { db, table: tablesFor(this.handle)[this.tableName], options: { dialect } as QueryOptions }
   }
 }
 ```
 
-## 4. Global Augmentation Best Practices
+`access(handle)` is what opens a handle: it returns `db`, `dialect`, `locator`, `execute` and
+`transaction`. It is exported from the data layer subpath, `@volcanicminds/backend/db`, and it is
+the only supported way in: without it the alternative was a cast, and a cast is how a typed seam
+stops being one.
 
-The data layer exposes `global.entity.<Pascal>` (the entity classes) and `global.connection`
-(the `DataSource`). **Do not use `global.repository.X`** — it is a fail-fast Proxy that
-**throws at runtime** on any access. The framework forbids it on purpose so every data access
-stays request-scoped and multi-tenant safe.
+`tablesFor(handle)` builds the project's own tables **for the locator that handle addresses**. The
+same service, the same code, a different container: that is the property the types are there to
+keep.
 
-**Recommendation:** access data through the Service layer bound to the request-scoped
-`EntityManager` (`req.db`). A `BaseService` resolves its repository from whatever you pass to
-`.use(req.db)`, so the same service is safe across tenants:
+## 5. The subpaths, and what each one is for
 
 ```typescript
-// In a controller — bind the service to req.db, then query.
-const { headers, records } = await orderService.use(req.db).findAll(req.userContext, req.data())
+import { preload, start, dataContext } from '@volcanicminds/backend'      // core: HTTP, auth, loader
+import { start as startDataLayer, access } from '@volcanicminds/backend/db' // data layer: Drizzle
 ```
 
-Construct services with the entity class (e.g. `super(Order)` in the service, or
-`global.connection.getRepository(Order)`), never via `global.repository`. See
-`docs/ADVANCED_ARCHITECTURE.md` for the full Service/Repository pattern.
+The core does not import the data layer, and the boundary is verified in CI. A project that
+imports both is doing the wiring the framework expects; a framework module that did would be
+rejected before it shipped.
 
-If you want stricter typing on the (valid) `global.entity`, keep `types/index.d.ts` up to date:
+## 6. `tsconfig.json`
 
-```typescript
-import { User } from '../src/entities/user.e'
-import { Order } from '../src/entities/order.e'
+The framework is ESM only and targets Node 24. A consumer agrees with it on four points:
 
-declare global {
-  // Entity classes are exposed as global.entity.<Pascal>. There is NO global.repository:
-  // resolve repositories via service.use(req.db) / global.connection.getRepository(...).
-  var entity: { User: typeof User; Order: typeof Order /* … */ }
+```jsonc
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "strict": true
+  }
 }
 ```
 
-## Data layer & tsconfig
+- **`"type": "module"` in `package.json`.** The framework is ESM; removing it breaks the build.
+- **Import with the `.js` extension, in `.ts` files too.** That is what `NodeNext` resolution
+  means, and it is what the emitted code needs.
+- **No decorator options.** `strictPropertyInitialization: false`, `emitDecoratorMetadata` and the
+  rest were there for TypeORM entities. Drizzle tables are plain objects, so those flags are not
+  merely unnecessary, they hide real errors.
+- **Keep `types/index.d.ts` in `include`**, or the declaration merging above never happens and
+  `req.userContext` reads as an error.
 
-The data layer is included as the subpath `@volcanicminds/backend/typeorm`:
+## 7. Spellings that no longer compile
 
-```typescript
-import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
-```
+| v4 | v5 |
+|---|---|
+| `req.db` | `req.control`, `req.tenant`, or `dataContext(req)` |
+| `global.connection`, `global.entity`, `global.repository` | removed; a container is passed, never ambient |
+| `service.use(req.db)` | `service.on(dataContext(req))` |
+| `import … from '@volcanicminds/backend/typeorm'` | `import … from '@volcanicminds/backend/db'` |
+| `tenantContext: false` on a route | `scope: 'control'` (the v4 spelling is refused at boot) |
 
-**TypeORM entities** (decorated properties without an initializer) require the `tsconfig.json` to set
-`strictPropertyInitialization: false`, `useUnknownInCatchVariables: false`, `noUnusedLocals: false` — already
-set in the framework repo. A consumer that defines its own entities must replicate them in its own tsconfig.
-
-### Always set an explicit column `type`
-
-Every decorated column must declare an explicit `type`:
-
-```typescript
-@Column({ type: 'varchar', nullable: true })   name: string
-@Column({ type: 'boolean', default: false })    visible: boolean
-@Column({ type: 'timestamp', nullable: true })  publishedAt: Date
-@Column({ type: 'int', default: 0 })            importance: number
-```
-
-Do **not** rely on TypeORM inferring the column type from the property's TypeScript type. That inference
-needs `emitDecoratorMetadata`, which the **`tsx` / esbuild** dev runner (`npm run dev`, `npm start`) does
-**not** emit. An untyped `@Column()` compiles and boots fine under `tsc` (`npm run build`) but throws
-`ColumnTypeUndefinedError: Column type for X#field is not defined` at startup under `tsx`. Setting the type
-explicitly keeps dev and build identical. The special decorators (`@PrimaryGeneratedColumn`,
-`@CreateDateColumn`, `@UpdateDateColumn`, `@DeleteDateColumn`, `@VersionColumn`) already carry a known type
-and need no `type` option.
-
-Also keep `"type": "module"` in the consumer's `package.json` (the framework is ESM) — removing it breaks
-the `tsc` build.
+The porting steps are in `docs/MIGRATION_V4_V5.md`. Where this guide and the source disagree, the
+source wins.

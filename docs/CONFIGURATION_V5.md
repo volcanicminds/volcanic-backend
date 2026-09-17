@@ -135,6 +135,18 @@ variables are read only when it is empty.
 only be chosen in `config/general.ts`. Whether it should have one is an open decision, not an
 oversight to fill silently.
 
+**Three levels, and one of them is not in the environment at all.** The MFA policy (T-10.19) is
+`MFA_POLICY` for the deployment, `SYSTEM_MFA_POLICY` for the control plane, and, for one customer,
+`mfa_policy` inside the `config` of its registry row (`{ "mfa_policy": "MANDATORY" }`). The
+deployment value is the **floor**: a plane or a tenant may only tighten it. A weaker value is
+refused where it is written, with `MFA_POLICY_WEAKER`, rather than stored and ignored when read,
+and a value that is not one of the four (`OFF`, `OPTIONAL`, `ONE_WAY`, `MANDATORY`) refuses the
+boot. The effective policy travels back in `securityPolicy.mfaPolicy` of `/users/me` and
+`/system/auth/me`, because that is where a console decides what to offer. `MANDATORY` also needs an
+MFA manager: without one the boot refuses, a tenant that asks for it is refused with
+`MFA_NOT_AVAILABLE`, and an enrolment answers `503` instead of the `500` the Null Object used to
+raise from three layers down.
+
 **Removed in v5**: `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` (incompatible with versioned migrations),
 `VOLCANIC_CUSTOM_QUERY_OPERATORS` (the `:raw` operator is gone),
 `VOLCANIC_CASE_INSENSITIVE_DEFAULT` (case sensitivity is now a property of the operator, so the
@@ -151,6 +163,7 @@ same URL cannot mean two things on two servers).
 | unsupported engine/strategy | warning, boot continues without isolation | fatal, exit 1 | invariant 2 (defect D-04) |
 | query without context in multi-tenant | falls back to the global connection | throws | invariant 3 (defect D-06) |
 | `_logic` that does not parse | silently becomes `AND` of everything | 400 | defect D-13 |
+| MFA policy | one value for the whole deployment, read only by the tenant routes | three levels (deployment floor, control plane, tenant), enforced on both planes | `MANDATORY` obliged every customer's users and none of the operators who can destroy a customer (T-10.19) |
 
 ---
 

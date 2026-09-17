@@ -94,6 +94,16 @@ export interface Data {
 // at the file-level `config` of a routes.ts (one file ≈ one resource), overridable per-route.
 export interface ResourceHints {
   name?: string // canonical resource name; maps schemas → resource without heuristics
+  /**
+   * The path the resource lives under, when it is not the first segment of the route (T-10.20).
+   *
+   * `/system/users` is a CRUD on the platform's operators, but its first segment is `system`,
+   * which it shares with the platform login and the console manifest: grouped there, its six
+   * methods never take the shape of a resource and the console has no operators screen. Declared
+   * per route rather than per file, because one routes.ts can serve a resource and a handful of
+   * paths that are not it.
+   */
+  prefix?: string
   titleField?: string | string[]
   subtitleField?: string | string[]
   globalSearch?: string[] // omni-search fields (OR)
@@ -104,6 +114,21 @@ export interface ResourceHints {
 export interface ManifestHints {
   group?: string // sidebar group hint
   resource?: ResourceHints // resource-level hints (name, titleField, …)
+  input?: ActionInputHints // per route: what the body schema of a custom action cannot say
+}
+
+/**
+ * What a console's action dialog needs beyond the route's body schema (T-10.16).
+ *
+ * The fields, their types and the schema's `required` come from the schema itself; this adds only
+ * presentation, and `required` for a field whose absence the controller refuses with its own code
+ * (a schema `required` would answer first with a generic FST_ERR_VALIDATION).
+ */
+export interface ActionInputHints {
+  /** Body properties the dialog does not ask for: filled by the console, or optional and noise. */
+  exclude?: string[]
+  fields?: Record<string, { widget?: string; label?: string; placeholder?: string; required?: boolean }>
+  submitLabel?: string
 }
 
 export interface RouteConfig {
@@ -315,6 +340,11 @@ export interface GeneralConfig {
     // (`MFA_ADMIN_FORCED_RESET_EMAIL`/`_UNTIL`): the two keys typed here until T-10.6 were
     // read by nobody, so setting them compiled and did nothing.
     mfa_policy?: MfaPolicy | string
+    /**
+     * The control plane's own policy, never weaker than `mfa_policy` (T-10.19). Absent means the
+     * deployment value. A tenant declares its own in the `config` of its registry row.
+     */
+    system_mfa_policy?: MfaPolicy | string
     // Lifetime of a /auth/forgot-password reset token, in seconds (default 3600).
     reset_password_token_ttl?: number
     /** Seconds an impersonation session lasts (T-4.2). Default 1800, hard maximum 14400. */
@@ -427,6 +457,7 @@ export interface ConfiguredRoute {
   }
   group?: string // structural hint (manifest)
   resource?: ResourceHints // structural hints (manifest)
+  input?: ActionInputHints // action input hint (manifest), per route only
   cache?: NormalizedRouteCache // per-route caching (normalized)
 }
 

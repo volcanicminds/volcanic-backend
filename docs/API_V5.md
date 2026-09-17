@@ -15,7 +15,8 @@
 | `/users/*` | tenant | user management inside a tenant |
 | `/token/*` | tenant | machine credentials inside a tenant |
 | `/health` | control | liveness |
-| `/admin/manifest` | control | description of the manageable API |
+| `/admin/manifest` | tenant | description of the manageable API, for a customer's console |
+| `/system/manifest` | control | description of the manageable API, for the platform console |
 | `/system/auth/*` | control | authentication of platform administrators |
 | `/system/users/*` | control | management of platform administrators |
 | `/tenants/*` | control | the tenant registry and container life cycle |
@@ -118,7 +119,11 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/auth/login` | public | rate limited, same uniform messages as §2.1 |
 | POST | `/system/auth/logout` | authenticated (control) | |
 | POST | `/system/auth/refresh-token` | valid control refresh token | as `/auth/refresh-token`, with the `control_refresh_token` cookie and `SCOPE_MISMATCH` instead of `TENANT_MISMATCH` |
+| POST | `/system/auth/mfa/setup` | any platform identity | starts the operator's own enrolment: every identity enrols itself, and `roles: []` here would have meant the superuser alone |
+| POST | `/system/auth/mfa/enable` | any platform identity | finishes it with a code from the authenticator |
 | POST | `/system/auth/mfa/verify` | authenticated (control) | |
+| GET | `/system/auth/me` | any platform identity (`public` role gate plus `isAuthenticated`) | the operator behind the session with its roles, never the credential columns. A console reads it instead of `/users/me`, which refuses a control token (T-10.14) |
+| GET | `/system/manifest` | capability `manifest` (control catalogue) | the platform console's manifest, §7. Mounted with tenants and `options.manifest.enabled` |
 | GET | `/system/users` | capability `system-users` | |
 | POST | `/system/users` | capability `system-users` | |
 | GET | `/system/users/:id` | capability `system-users` | |
@@ -187,20 +192,65 @@ Failure modes and their codes: `DESTRUCTION_TOKEN_INVALID`, `DESTRUCTION_TOKEN_E
 
 ---
 
-## 7. `/health` and `/admin/manifest` (control scope)
+## 7. `/health` and the manifests
 
-| Method | Path | Auth | Notes |
-|---|---|---|---|
-| GET | `/health` | public | never touches a tenant container |
-| GET | `/admin/manifest` | capability `manifest` | the **whole** manifest, every capability with the roles it declares. Not filtered per caller |
+| Method | Path | Scope | Auth | Notes |
+|---|---|---|---|---|
+| GET | `/health` | control | public | never touches a tenant container |
+| GET | `/admin/manifest` | tenant | capability `manifest` (tenant catalogue) | the manifest of a customer's console |
+| GET | `/system/manifest` | control | capability `manifest` (control catalogue) | the manifest of the platform console; only with tenants |
 
-The manifest is the same for every caller (`lib/api/admin/controller/manifest.ts`): the console
-hides what the caller's roles cannot reach, and every route still enforces its own gate. Until
-T-10.7 this table said the opposite. What that means in practice: whoever holds the `manifest`
-capability can read the full list of routes and role codes of the deployment, so grant it to the
-roles that operate the console and to nobody else. Filtering on the server is possible but not
-free, because a manifest pulled into a repository at build time would then depend on who pulled
-it.
+**One console, one plane (T-10.14).** With tenants declared the two manifests describe disjoint
+sets of routes: `/admin/manifest` the tenant routes, with `auth.plane: 'tenant'` and the `/auth/*`
+endpoints; `/system/manifest` the control routes, with `auth.plane: 'control'` and the
+`/system/auth/*` endpoints (`me` and the MFA steps included). A customer's users therefore never
+receive the platform's route map and role codes. Without tenants there is one identity space:
+`/admin/manifest` describes every route and `/system/manifest` is not mounted.
+
+**`tenancy` (T-10.15).** `header` is named only on the tenant plane under the `header` resolver,
+where a console must send it from the login on; `switchable` is always `false`, because the token
+binds the tenant and a different one is a new login. `listEndpoint` is no longer emitted.
+
+Within a plane the manifest is the same for every caller (`lib/api/admin/controller/manifest.ts`,
+`lib/api/system/controller/systemManifest.ts`): the console hides what the caller's roles cannot
+reach, and every route still enforces its own gate. Whoever holds `manifest` reads that plane's
+route list and role codes, so grant it to the roles that operate the console. `MANIFEST_DUMP_PLANE`
+chooses which of the two `MANIFEST_DUMP` writes; the platform one cannot be pulled in cookie mode,
+where the header accepts integration tokens only and the control plane has none.
+
+### 7.1 Action input (T-10.16)
+
+A custom action, a route that is not CRUD, may carry `input`: the fields a console asks for before
+calling it. From the platform manifest of a deployment with tenants:
+
+```json
+{
+  "name": "impersonate", "kind": "action", "method": "POST", "path": "/tenants/:id/impersonate",
+  "input": {
+    "fields": [
+      { "name": "userId", "type": "string", "required": true, "placeholder": "input.tenant.impersonate.userId" },
+      { "name": "reason", "type": "string", "required": true, "widget": "textarea" }
+    ]
+  }
+}
+```
+
+- **Derived from the body schema** of the route (`config.body`), because that is the one description
+  of the body that cannot drift from what the route accepts. One field per property, its `type` mapped
+  as for resource fields, `required` from the schema's `required`. An action without a body schema has
+  no `input`, and CRUD capabilities never do.
+- **The route hint adds what a schema cannot say.** `config.manifest.input`, per route and never at
+  file level: `exclude` (properties the dialog does not ask for), `fields.<name>` with `widget`,
+  `label`, `placeholder` and `required`, and `submitLabel`.
+- **`required` for a controller's own refusal.** A field whose absence the controller refuses with a
+  specific code (`REASON_REQUIRED`, `USER_REQUIRED`) is not `required` in the schema, where Fastify
+  would answer first with `FST_ERR_VALIDATION`; the hint marks it, and the code stays the contract.
+  Such a body schema is `nullable`, so a request without a body still reaches the controller.
+- **No sensitive filter**, unlike resource fields: an input is typed by the operator and never read
+  back, and the destruction `token` is exactly what that dialog has to ask for.
+- The contract is `ActionInput` and `ActionInputField` in `manifest.v2.schema.json` of
+  `@volcanicminds/admin`, which draws the dialog. Today two registry actions use it: `suspend` and
+  `impersonate`.
 
 ---
 

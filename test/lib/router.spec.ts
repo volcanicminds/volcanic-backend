@@ -78,6 +78,21 @@ describe('loader/router — processRoute', () => {
     expect(borrowed[0]).toContain('cannot gate a tenant route')
   })
 
+  it('lets `manifest` gate a tenant route: both catalogues reserve it, one per plane (T-10.14)', () => {
+    // `/admin/manifest` became a tenant route and `/system/manifest` the control one. Refusing the
+    // shared name would stop every multi-tenant deployment with the manifest enabled from booting.
+    ;(global as any).roles.ops.capabilities = ['users', 'manifest']
+    try {
+      const errors: string[] = []
+      const r: any = run({ method: 'GET', path: '/manifest', handler: 'x.y', requireCapability: 'manifest' }, [], errors)
+      expect(errors).toEqual([])
+      expect(codes(r)).toEqual(expect.arrayContaining(['admin', 'ops']))
+      expect(codes(r)).not.toContain('system:auditor')
+    } finally {
+      ;(global as any).roles.ops.capabilities = ['users']
+    }
+  })
+
   it('gives a control route the system superuser, and never public', () => {
     // A property of a deployment WITH tenants: there the two planes are real (T-4.1).
     ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }

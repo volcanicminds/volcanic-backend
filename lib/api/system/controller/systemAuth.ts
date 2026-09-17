@@ -1,6 +1,8 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import type { ControlHandle, SystemUserManagement } from '../../../../types/global.js'
 import { httpError } from '../../../util/httpError.js'
+import { allowsEnrolment, controlPolicy, mfaAvailable } from '../../../util/mfaPolicy.js'
+import { MfaPolicy } from '../../../config/constants.js'
 import * as regExp from '../../../util/regexp.js'
 import {
   clearSessionCookies,
@@ -65,23 +67,45 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(httpError(403, 'Wrong credentials'))
   }
 
-  // The second factor, when this operator has one (T-6.3). The first factor alone buys a
-  // five-minute pre-auth token and nothing else: it names the subject and opens no route.
-  if (user.mfaEnabled) {
+  // The second factor, when this operator has one (T-6.3) or when the platform requires it of
+  // everyone (T-10.19): until now the policy was read only by the tenant routes, so `MANDATORY`
+  // obliged the users of every customer and none of the people who can destroy a customer. The
+  // first factor alone buys a five-minute pre-auth token and nothing else: it names the subject
+  // and opens no route.
+  const policy = controlPolicy()
+  const mandatory = policy === MfaPolicy.MANDATORY
+  if (user.mfaEnabled || mandatory) {
     // In cookie mode the pre-auth token goes in the control cookie and `tempToken` is null.
     const tempToken = await issuePreAuth(reply, 'control', { sub: user.externalId, scp: 'control' })
-    return reply.status(202).send({ mfaRequired: true, tempToken })
+    return reply.status(202).send({
+      mfaRequired: Boolean(user.mfaEnabled),
+      mfaSetupRequired: mandatory && !user.mfaEnabled,
+      tempToken
+    })
   }
 
   // The control plane has its own cookies: v4 wrote the platform session into `auth_token`,
   // the tenant one, and returned the refresh token in the body even in cookie mode.
   const { token, refreshToken } = await issueSession(reply, 'control', { sub: user.externalId, scp: 'control' })
-  return { ...present(user), token, refreshToken }
+  return { ...present(user), token, refreshToken, securityPolicy: { mfaPolicy: policy } }
 }
 
 export async function logout(_req: FastifyRequest, reply: FastifyReply) {
   clearSessionCookies(reply, 'control')
   return { ok: true }
+}
+
+/**
+ * The platform identity behind the session, with its roles (T-10.14).
+ *
+ * A console asks this to decide what to draw. `/users/me` is a tenant route: a control token
+ * there is refused, so without this a platform console could log in and never learn who it is.
+ */
+export async function me(req: FastifyRequest, reply: FastifyReply) {
+  const actor = req.systemUser
+  if (!actor) return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
+  // The policy that is actually enforced here, so a console never offers what the server refuses.
+  return { ...present(actor), roles: req.roles(), securityPolicy: { mfaPolicy: controlPolicy() } }
 }
 
 export async function renew(req: FastifyRequest, reply: FastifyReply) {
@@ -187,6 +211,13 @@ export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
   const actor = req.systemUser
   if (!actor) return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
+  if (!allowsEnrolment(controlPolicy())) {
+    return reply.status(403).send(httpError(403, 'The platform policy accepts no new second factors', 'MFA_DISABLED'))
+  }
+  if (!mfaAvailable(req.server['mfaManager'])) {
+    // Said as itself, not as the 500 the Null Object would raise from three layers down.
+    return reply.status(503).send(httpError(503, 'This build has no MFA manager', 'MFA_NOT_AVAILABLE'))
+  }
 
   const appName = process.env.MFA_APP_NAME || 'VolcanicApp'
   return await req.server['mfaManager'].generateSetup(appName, actor.email)
@@ -197,6 +228,12 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   const actor = req.systemUser
   const { secret, token } = req.data()
   if (!actor) return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
+  if (!allowsEnrolment(controlPolicy())) {
+    return reply.status(403).send(httpError(403, 'The platform policy accepts no new second factors', 'MFA_DISABLED'))
+  }
+  if (!mfaAvailable(req.server['mfaManager'])) {
+    return reply.status(503).send(httpError(503, 'This build has no MFA manager', 'MFA_NOT_AVAILABLE'))
+  }
   if (!secret || !token) return reply.status(400).send(httpError(400, 'secret and token are both required'))
 
   // Confirmed before it is trusted: enabling MFA on a secret the operator never proved they

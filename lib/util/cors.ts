@@ -50,6 +50,31 @@ export function corsOriginFromEnv(raw?: string): CorsOrigin {
   return origins
 }
 
+/**
+ * The tenant header in the preflight allowlist, wherever the backend reads one (T-10.15).
+ *
+ * A browser console on another origin sends the tenant header with its login, and a preflight
+ * that does not list it blocks the request before the backend sees it: under the `header`
+ * resolver no console could log in at all, and no test outside a browser could tell. Applied to
+ * the effective options, so a project's own `config/plugins.ts` list gets the header too. A list
+ * left unset is not touched: @fastify/cors then echoes whatever the preflight asks for.
+ */
+export function withTenantHeader(
+  options: any,
+  tenants: { strategy?: string; resolver?: string; headerKey?: string } | null
+): any {
+  if (!options || !tenants?.strategy || (tenants.resolver ?? 'header') !== 'header') return options
+  const key = tenants.headerKey || 'x-tenant-id'
+  const listed = (list: string[]) => list.some((h) => h.trim().toLowerCase() === key.toLowerCase())
+
+  const headers = options.allowedHeaders
+  if (typeof headers === 'string') {
+    return listed(headers.split(',')) ? options : { ...options, allowedHeaders: `${headers}, ${key}` }
+  }
+  if (!Array.isArray(headers) || listed(headers.map(String))) return options
+  return { ...options, allowedHeaders: [...headers, key] }
+}
+
 /** Whether credentials may be granted for this allowlist. Never against a wildcard. */
 export function corsCredentialsFor(origin: CorsOrigin): boolean {
   return !isWildcardOrigin(origin)

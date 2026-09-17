@@ -38,6 +38,15 @@ jobs:
         with: { node-version: 24, cache: npm }
       - run: npm ci # compila bcrypt (nativo); ubuntu-latest ha i build tools
       - run: npm test # `pretest` builds first — i test girano contro dist/ (self-reference @volcanicminds/backend)
+      # A floor nobody runs is not a gate: `npm run coverage` existed since phase 8 and no job
+      # executed it, so it had been failing on its own thresholds unnoticed (T-10.27).
+      - run: npm run coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
       # Il job Postgres reale (isolamento fra tenant, bloccante anche al tag) entra con la
       # suite che esegue: T-0.2 di EVO_FRAMEWORK.md, vedi docs/TESTING_V5.md §5.
 
@@ -98,7 +107,10 @@ jobs:
       - run: npm run build
       # Una versione con suffisso (5.0.0-alpha.0) esce su dist-tag `next`, mai su `latest`:
       # `latest` passa alla 5 solo quando la fase 7 è chiusa e la guida di migrazione esiste.
-      - run: echo "DIST_TAG=$(node -p "require('./package.json').version.includes('-') ? 'next' : 'latest'")" >> $GITHUB_ENV
+      # Block scalar, not a plain one: the ternary inside puts `? ` and ` : ` in the value, which
+      # YAML reads as a complex mapping key and rejects.
+      - run: |
+          echo "DIST_TAG=$(node -p "require('./package.json').version.includes('-') ? 'next' : 'latest'")" >> $GITHUB_ENV
       - run: npm publish --access public --tag "$DIST_TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -11,12 +11,15 @@
     "lib/middleware/pre*.ts",
     "lib/middleware/post*.ts"
   ],
+  "experimental-monocart": true,
+  "exclude-after-remap": true,
   "reporter": ["text-summary", "lcov", "json-summary"],
   "reports-dir": "coverage",
   "skip-full": true,
   "clean": true,
-  "lines": 70,
-  "branches": 74,
-  "functions": 72,
-  "check-coverage": true
+  "statements": 82,
+  "lines": 82,
+  "branches": 88,
+  "functions": 80,
+  "check-coverage": false
 }

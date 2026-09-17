@@ -7,6 +7,26 @@ npm run coverage        # measures and enforces the floor
 npm run coverage:report # measures and writes coverage/, without enforcing
 ```
 
+It runs in CI, in the `test` job. Before T-10.27 it did not, and nobody noticed that it had been
+failing on its own thresholds.
+
+## How it is measured
+
+`c8` with the **monocart** backend (`experimental-monocart` in `.c8rc.json`), and the floors
+enforced by `scripts/check-coverage.mjs`. Both choices are there because the default path
+measured something else:
+
+- under `tsx` a module can be compiled twice in the same process, once as CommonJS and once as
+  ESM, with the same URL on both scripts. istanbul keeps the last of two file coverages whose
+  structure differs instead of summing them, so `lib/manifest/generator.ts` read 94.98% alone
+  with its own spec and 42.58% in the full suite. Monocart merges the V8 ranges first, and reads
+  93.8% in the full suite;
+- monocart counts **executable** lines; plain `c8` counts every physical line, comments and type
+  declarations included, which is why the same file was 479 lines there and 111 here;
+- c8's own `--check-coverage` under monocart divides covered lines by the *statement* count, so
+  it enforced 81.77% on a run that reported 85.06%. The script compares the floors against the
+  same `coverage/coverage-summary.json` the report prints.
+
 ## The number is a floor, not a target
 
 The thresholds in `.c8rc.json` sit just under what the suite reaches today. That is

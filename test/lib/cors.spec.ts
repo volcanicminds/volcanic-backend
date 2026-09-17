@@ -6,7 +6,46 @@
 // nothing.
 //
 import { expect } from 'expect'
-import { corsOriginFromEnv, corsCredentialsFor, isWildcardOrigin, validateCorsOptions } from '../../lib/util/cors.js'
+import {
+  corsOriginFromEnv,
+  corsCredentialsFor,
+  isWildcardOrigin,
+  validateCorsOptions,
+  withTenantHeader
+} from '../../lib/util/cors.js'
+
+//
+// T-10.15: found by a browser, not by a test. A console on another origin sends the tenant
+// header with its login, the preflight did not allow it, and the login never left the page.
+//
+describe('util/cors · the tenant header in the preflight (T-10.15)', () => {
+  const HEADER = { strategy: 'schema', resolver: 'header', headerKey: 'x-org' }
+  const base = { origin: ['https://admin.example'], allowedHeaders: ['Content-Type', 'Authorization'] }
+
+  it('allows the header the backend reads, under the header resolver', () => {
+    expect(withTenantHeader(base, HEADER).allowedHeaders).toEqual(['Content-Type', 'Authorization', 'x-org'])
+    expect(withTenantHeader(base, { strategy: 'schema' }).allowedHeaders).toContain('x-tenant-id')
+  })
+
+  it('adds nothing where no tenant header is read', () => {
+    expect(withTenantHeader(base, null)).toBe(base)
+    expect(withTenantHeader(base, { resolver: 'header', headerKey: 'x-org' })).toBe(base) // no strategy: single tenant
+    expect(withTenantHeader(base, { strategy: 'schema', resolver: 'subdomain' })).toBe(base)
+  })
+
+  it('does not list it twice, whatever the case it was written in', () => {
+    const already = { ...base, allowedHeaders: ['Content-Type', 'X-Org'] }
+    expect(withTenantHeader(already, HEADER)).toBe(already)
+  })
+
+  it('extends a list written as a string, and leaves an unset list to echo the preflight', () => {
+    expect(withTenantHeader({ allowedHeaders: 'Content-Type, Authorization' }, HEADER).allowedHeaders).toBe(
+      'Content-Type, Authorization, x-org'
+    )
+    const echo = { origin: ['https://admin.example'] }
+    expect(withTenantHeader(echo, HEADER)).toBe(echo)
+  })
+})
 
 describe('util/cors · the allowlist from the environment (T-8.1)', () => {
   it('reads a comma-separated list, trimming what people actually type', () => {

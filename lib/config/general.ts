@@ -9,7 +9,12 @@ export default {
     reset_external_id_on_login: false,
     scheduler: false,
     embedded_auth: true,
-    mfa_policy: process.env.MFA_POLICY || 'OPTIONAL', // OPTIONAL, MANDATORY, ONE_WAY
+    mfa_policy: process.env.MFA_POLICY || 'OPTIONAL', // OFF, OPTIONAL, MANDATORY, ONE_WAY
+    // Il piano di controllo può essere più stretto del resto del deployment, mai più largo
+    // (T-10.19): gli operatori sono quelli che possono distruggere il contenitore di un cliente.
+    // Assente vale il valore qui sopra, che fa da pavimento; un tenant fa lo stesso nel `config`
+    // della sua riga di registro, e una politica più debole del pavimento viene rifiutata.
+    system_mfa_policy: process.env.SYSTEM_MFA_POLICY || undefined,
     // How long a /auth/forgot-password reset token stays usable, in seconds.
     // Checked against `user.resetPasswordTokenAt` by /auth/reset-password.
     reset_password_token_ttl: Number(process.env.RESET_PASSWORD_TOKEN_TTL) || 3600,

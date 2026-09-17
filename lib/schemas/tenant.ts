@@ -78,3 +78,51 @@ export const tenantListResponseSchema = {
   type: 'array',
   items: { $ref: 'tenantResponseSchema#' }
 }
+
+//
+// The bodies of two registry actions (T-10.16). They describe the shape and add no constraint the
+// controllers did not already enforce: no `required`, because a missing `userId` or `reason` is
+// refused by the controller with USER_REQUIRED or REASON_REQUIRED, codes a client acts on, and a
+// schema would answer first with a generic FST_ERR_VALIDATION. The console learns what is required
+// from the route's `config.manifest.input` hint. `nullable`, so a caller that sends no body is
+// still answered by the controller.
+//
+export const tenantSuspendBodySchema = {
+  $id: 'tenantSuspendBodySchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    reason: { type: 'string', description: 'Why the tenant is suspended, recorded with the change' }
+  }
+}
+
+export const tenantImpersonateBodySchema = {
+  $id: 'tenantImpersonateBodySchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    userId: { type: 'string', description: 'The id or the email address of the user inside the tenant' },
+    reason: { type: 'string', description: 'Why, recorded with the impersonation session' }
+  }
+}
+
+//
+// Phase 2 of a destruction (T-10.21). Without this, the route has no body description, so a
+// console built from the manifest draws a button with nothing behind it.
+//
+// No `required`, for the same reason as the two schemas above: all three fields are refused by
+// the controller with codes a client acts on (DESTRUCTION_TOKEN_INVALID, DESTRUCTION_SLUG_MISMATCH,
+// DESTRUCTION_OTP_INVALID), and a schema `required` would answer first with a generic
+// FST_ERR_VALIDATION. What the dialog must ask for is declared on the route, under
+// `config.manifest.input` (T-10.16).
+//
+export const tenantDestroyBodySchema = {
+  $id: 'tenantDestroyBodySchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    token: { type: 'string', description: 'The one-time token returned by phase 1, shown once and never again' },
+    slug: { type: 'string', description: 'The slug of the tenant, typed again by hand' },
+    otp: { type: 'string', description: 'The second factor of the operator asking' }
+  }
+}

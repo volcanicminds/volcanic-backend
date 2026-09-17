@@ -482,3 +482,56 @@ tenant (`TENANT_MISMATCH` otherwise) and account state are checked on the refres
 bearer renewal additionally refuses an access token issued more than thirty days before; the cookie
 renewal has no such idle bound, and the session lasts at most `JWT_REFRESH_EXPIRES_IN` from the login.
 `/auth/invalidate-tokens` ends every session of the user in both modes.
+
+## 25. One console per plane (T-10.12, T-10.14, T-10.15)
+
+| | before (5.0.0-alpha, until T-10.14) | now |
+|---|---|---|
+| `GET /admin/manifest` | control scope: with tenants, a platform identity only | **tenant scope**, the tenant routes only when tenants are declared |
+| the platform console's manifest | the same route | `GET /system/manifest`, control scope, only with tenants |
+| who a platform session is | no route: `/users/me` refuses a control token | `GET /system/auth/me` |
+| `manifest.auth` | `mode`, `endpoints` of the tenant plane | also `plane`; the endpoints of that plane |
+| `manifest.tenancy` | `switchable: true`, `listEndpoint: '/tenants'` under the header resolver | `switchable: false`, no `listEndpoint`; `header` only on the tenant plane |
+| CORS preflight | `x-tenant-id` not allowed: a browser on another origin could not send a login | the tenant header is added to `allowedHeaders` wherever the backend reads it |
+| `requireCapability: 'manifest'` on a tenant route | refused at boot | allowed: the name is reserved by both catalogues |
+
+**Why.** With tenants the two planes are distinct identity spaces, and one manifest for both handed a
+customer's users the platform's route map and role codes while drawing screens they could never call.
+The token binds the tenant from the login on, so a switcher under a session could only produce
+`TENANT_MISMATCH`, and the list it read is a control route.
+
+**What a deployment has to do.** Nothing, if it runs without tenants. With tenants: grant `manifest` in
+`config/roles.ts` to the tenant roles that operate a customer's console, and in the control catalogue to
+the operators of the platform console (`system:auditor` holds it; `system:operator` does not). A pinned
+platform manifest comes from `MANIFEST_DUMP` with `MANIFEST_DUMP_PLANE=control`: in cookie mode the header
+accepts integration tokens only, and the control plane has none. A project that writes its own `cors`
+block in `config/plugins.ts` does not need to list the tenant header: it is added to the effective options.
+
+**What a console has to change.** `@volcanicminds/admin` takes `plane="control"` for the platform console
+and asks for the tenant on the login screen of a customer's console (or takes it from `tenant`). A custom
+client reads the platform identity from `/system/auth/me`, sends the tenant header on the login and on
+every call before the session exists, and stops expecting `tenancy.listEndpoint`.
+
+## 26. The second factor, per plane and per tenant (T-10.19)
+
+| | before (v4 and 5.0.0-alpha until T-10.19) | now |
+|---|---|---|
+| `MFA_POLICY` | one value for the deployment, read only by `/auth/*` | the **floor**: the control plane and each tenant may tighten it, never loosen it |
+| the platform's operators | no policy at all: `MANDATORY` did not oblige them | `SYSTEM_MFA_POLICY`, which defaults to `MFA_POLICY` |
+| a single tenant | nothing of its own | `config.mfa_policy` in its registry row; a value weaker than the floor is refused with `MFA_POLICY_WEAKER`, an unknown one with `MFA_POLICY_INVALID` |
+| values | `OPTIONAL`, `MANDATORY`, `ONE_WAY` | the same, plus `OFF`: no new enrolments, while whoever already has a factor keeps being asked for it |
+| enrolment on the control plane | superuser only (`roles: []` on a control route) | every platform identity, for itself (T-10.24) |
+| an operator who lost the device | nothing: `POST /system/users/:id/mfa/reset` was in this documentation and the route did not exist | it exists, and belongs to whoever holds `system-users` |
+| `securityPolicy.mfaPolicy` | the deployment value | the policy actually enforced for that caller, on both planes |
+| a policy nothing can honour | accepted, and the first login found out: `MANDATORY` answered «enrol first» and the enrolment answered `500` | refused. The boot stops when `MANDATORY` meets a build with no MFA manager, a tenant that asks for it is refused with `MFA_NOT_AVAILABLE`, and an enrolment attempt answers `503` with the same code |
+
+**Why.** A policy that only the tenant routes read is a policy that stops exactly where the damage
+starts: an operator can destroy a customer's container, and `MANDATORY` did not ask them for a
+second factor. And one value for everybody meant a customer who wanted more could not have it.
+
+**What a deployment has to do.** Nothing to keep today's behaviour: unset, both new settings follow
+`MFA_POLICY`. To tighten the platform alone, set `SYSTEM_MFA_POLICY=MANDATORY`, and give the
+operators a way back by granting `system-users` to whoever answers the support call. A value that is
+not one of the four now refuses the boot instead of being read as the default, and `MANDATORY` needs
+a build that can actually issue a second factor: without an MFA manager the boot refuses, because
+the alternative is an instance where the first login locks everybody out.

@@ -87,7 +87,7 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 | **Raw body** | ✅ | — | — | `fastify-raw-body` for webhooks/signatures. Opt-in (`enable`) |
 | **Scheduler / cron** | ✅ | — | — | `@fastify/schedule` + `toad-scheduler`. Enabled by `options.scheduler` |
 | **In-memory cache** | ✅ | — | — | LRU+TTL per-route cache (`cache:`), `invalidateCache`. Enabled by `options.cache.enabled` |
-| **Manifest endpoint** | ✅ | — | — | `GET /admin/manifest` (gated by the `manifest` capability) for the admin console. Enabled by `options.manifest.enabled` |
+| **Manifest endpoint** | ✅ | — | — | `GET /admin/manifest` (tenant plane) and, with tenants, `GET /system/manifest` (platform console), each gated by the `manifest` capability of its catalogue. Enabled by `options.manifest.enabled` |
 | **Multi-tenant** | ✅ | — | — | Header or subdomain resolver, and the **token decides** whenever there is one. Enabled by declaring the `tenants` block; a schema, a database or a file per customer |
 | **Data layer (Magic Query)** | ✅ | — | — | Drizzle + query builder via subpath `/db`. Optional peer deps (`drizzle-orm`, `pg` or `better-sqlite3`/`@libsql/client`, `bcrypt`) |
 | **Schema migrations** | ✅ | — | ✅ | Committed SQL applied in order, versioned **inside each container**. The instance refuses to boot behind its own schema |
@@ -493,7 +493,7 @@ npm run test:lib          # the core alone
 npm run test:db           # the data layer, on SQLite in memory
 npm run test:migrations   # the migration runner
 npm run test:e2e:mt:pg    # the isolation bench, against a real Postgres
-npm run coverage          # measures, and fails under the floor
+npm run coverage          # measures, and fails under the floor (runs in CI, in the `test` job)
 npm run check-all         # lint, types, layer boundary, session state, migration sets, refusals
 ```
 
@@ -514,8 +514,12 @@ definition, so it could never fire — and a repeated query parameter went throu
 string, which is v4's "silently keep the last one" wearing a different hat.
 
 Coverage is measured too (`npm run coverage`) and the thresholds are a **floor against
-regression**, not a target. What is excluded from the measurement, and why, is written down in
-[COVERAGE.md](COVERAGE.md).
+regression**, not a target: statements 82, lines 82, branches 88, functions 80, against a suite
+that reaches 85.15%, 85.06%, 91.49% and 83.23%. It is measured with the monocart backend of `c8`,
+because the default one reads a module compiled twice under `tsx` (once as CommonJS, once as ESM)
+as two coverages and keeps the last: the same file measured 94.98% alone and 42.58% in the full
+suite. What is excluded from the measurement, why, and how the floors are enforced is written
+down in [COVERAGE.md](COVERAGE.md).
 
 ### The suites that need a real database say so
 
@@ -571,7 +575,8 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `SWAGGER_DESCRIPTION`          | The description for the API documentation.                              |    No    |                     |
 | `SWAGGER_VERSION`              | The version of the API.                                                 |    No    | `0.0.1`             |
 | `SWAGGER_PREFIX_URL`           | The path where Swagger UI is available.                                 |    No    | `/api-docs`         |
-| `MFA_POLICY`                   | MFA Security Policy (`OPTIONAL`, `MANDATORY`, `ONE_WAY`)                |    No    | `OPTIONAL`          |
+| `MFA_POLICY`                   | MFA policy of the deployment, and the **floor** under the others: `OFF` (no new enrolments, whoever has a factor keeps being asked), `OPTIONAL`, `ONE_WAY` (no self-service removal), `MANDATORY` (login forces enrolment, and needs an injected MFA manager or the boot refuses). A value that is not one of the four refuses the boot. |    No    | `OPTIONAL`          |
+| `SYSTEM_MFA_POLICY`            | The control plane's own policy, for the operators who administer the platform. It may only tighten `MFA_POLICY`, never loosen it. A tenant does the same in the `config` of its registry row. |    No    | `MFA_POLICY`        |
 | `AUTH_CODE_SIZE`               | Length of the generated authorization codes (nanoid).                   |    No    | `10`                |
 | `MFA_APP_NAME`                 | Name of the application displayed in Authenticator apps.                |    No    | `VolcanicApp`       |
 | `MFA_ADMIN_FORCED_RESET_EMAIL` | Admin email for emergency MFA reset                                     |    No    |                     |
@@ -600,6 +605,7 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `PASSWORD_EXPIRATION_DAYS`     | Days after which a password must be changed. Unset means never. A value that is not a positive number makes every login fail rather than read as "never". |    No    |                     |
 | `MANIFEST_DUMP`                | Path: writes the admin manifest there at boot (a CI snapshot, no live backend needed). |    No    |                     |
 | `MANIFEST_DUMP_EXIT`           | With `MANIFEST_DUMP`, exit after writing instead of listening.          |    No    | `false`             |
+| `MANIFEST_DUMP_PLANE`          | Which console's manifest `MANIFEST_DUMP` writes: `tenant` (`/admin/manifest`) or `control` (`/system/manifest`, only with tenants). |    No    | `tenant`            |
 
 Four of the variables above — `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`,
 `TENANT_CONTAINERS_DIR`, `DESTRUCTION_TOKEN_TTL` — were documented from the start of v5 and read

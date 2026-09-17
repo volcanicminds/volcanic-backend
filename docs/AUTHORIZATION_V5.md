@@ -71,7 +71,7 @@ their code or capabilities):
 | Code | Meaning | Capabilities |
 |---|---|---|
 | `system:admin` | superuser of the control scope. Appended to every control route, exactly as `admin` is appended in the tenant scope | all, implicitly |
-| `system:operator` | day-to-day operations: read the registry, create and suspend tenants, impersonate | `tenants`, `tenants:impersonate` |
+| `system:operator` | day-to-day operations: read the registry, create and suspend tenants, impersonate, open the platform console | `tenants`, `tenants:read`, `tenants:impersonate`, `manifest` |
 | `system:auditor` | read-only oversight | `tenants:read`, `manifest` |
 
 A consumer may define further control roles in its own configuration and grant them capabilities
@@ -85,6 +85,11 @@ framework route, exactly as in the tenant scope.
 The tenant catalogue is unchanged: `manifest`, `users`, `tokens` (see
 `docs/AUTHORIZATION_MODEL.md` §3.2), plus whatever the consumer coins for its own routes.
 
+`manifest` is the one name both catalogues reserve, each for its own plane (T-10.14): with the
+tenant catalogue it gates `GET /admin/manifest`, the manifest of a customer's console; with the
+control catalogue it gates `GET /system/manifest`, the platform console's. Every other control
+capability is refused on a tenant route at boot (`SHARED_CAPABILITIES`, `lib/loader/roles.ts`).
+
 The control catalogue is **new and reserved**:
 
 | Capability | Grants | Framework routes |
@@ -95,7 +100,7 @@ The control catalogue is **new and reserved**:
 | `tenants:export` | export a container | `POST /tenants/:id/export` |
 | `tenants:destroy` | destroy a container's data | `POST /tenants/:id/destruction-request`, `DELETE /tenants/:id/data` |
 | `migrations` | read schema versions, run the fleet migrator through the API | `GET /tenants/migrations` |
-| `manifest` | read the admin manifest | `GET /admin/manifest` |
+| `manifest` | read the platform console manifest | `GET /system/manifest` |
 | `system-users` | manage platform identities | `/system/users/*` |
 
 `tenants:destroy` is deliberately **not** part of `tenants`: creating a tenant and destroying its

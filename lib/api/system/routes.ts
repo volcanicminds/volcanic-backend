@@ -20,6 +20,20 @@ const authRateLimit = {
   timeWindow: Math.floor(Number(process.env.AUTH_RATELIMIT_WINDOW) || 60000)
 }
 
+//
+// The operators are a resource, and they live two segments deep (T-10.20).
+//
+// This file serves the platform login, the console manifest and this CRUD, so the hint cannot be
+// declared once at file level: it is named by the routes that are the resource, and by no other.
+// Without it the manifest groups everything under `system`, where six methods on one table look
+// like six unrelated capabilities and the console has no screen to manage who administers the
+// platform.
+//
+const operators = {
+  group: 'system',
+  resource: { prefix: 'system/users', name: 'systemUser', titleField: 'email' }
+}
+
 export default {
   config: {
     title: 'Platform administration',
@@ -58,9 +72,40 @@ export default {
       config: { title: 'Renew a control token', description: 'Exchanges a valid control refresh token' }
     },
     {
+      method: 'GET',
+      path: '/auth/me',
+      // Any platform identity, whatever its roles (T-10.14): `public` opens the role gate and
+      // `isAuthenticated` closes it again to anonymous callers. `roles: []` would have meant the
+      // superuser alone on a control route, and a console needs this answer for every operator.
+      roles: ['public'],
+      handler: 'systemAuth.me',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'The platform administrator behind the session',
+        description: 'Profile and roles, which a console reads to decide what to draw'
+      }
+    },
+    {
+      method: 'GET',
+      path: '/manifest',
+      requireCapability: 'manifest',
+      handler: 'systemManifest.get',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        // Two switches, as for `/admin/manifest`: the manifest is opt-in, and this file only
+        // exists where there are tenants.
+        enable: isTenancyEnabled() && Boolean(global.config?.options?.manifest?.enabled),
+        title: 'Platform console manifest',
+        description: 'Manifest v2 of the control plane: its routes, its roles, its auth endpoints'
+      }
+    },
+    {
       method: 'POST',
       path: '/auth/mfa/setup',
-      roles: [],
+      // Every platform identity enrols its own second factor: `public` opens the role gate and
+      // `isAuthenticated` closes it to anonymous callers, as for `/auth/me`. With `roles: []` a
+      // control route means the superuser alone, so an operator could not turn MFA on at all.
+      roles: ['public'],
       handler: 'systemAuth.mfaSetup',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -71,7 +116,7 @@ export default {
     {
       method: 'POST',
       path: '/auth/mfa/enable',
-      roles: [],
+      roles: ['public'],
       handler: 'systemAuth.mfaEnable',
       middlewares: ['global.isAuthenticated'],
       config: { title: 'Finish MFA enrolment', description: 'Body: the code from the authenticator' }
@@ -90,7 +135,13 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.find',
       middlewares: ['global.isAuthenticated'],
-      config: { title: 'Find platform administrators', description: 'Magic Query over the control plane' }
+      config: {
+        title: 'Find platform administrators',
+        description: 'Magic Query over the control plane',
+        manifest: operators,
+        query: { $ref: 'getQueryParamsSchema' },
+        response: { 200: { type: 'array', items: { $ref: 'systemUserSchema#' } } }
+      }
     },
     {
       method: 'GET',
@@ -98,7 +149,12 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.count',
       middlewares: ['global.isAuthenticated'],
-      config: { title: 'Count platform administrators', description: 'Count' }
+      config: {
+        title: 'Count platform administrators',
+        description: 'Count',
+        manifest: operators,
+        query: { $ref: 'getQueryParamsSchema' }
+      }
     },
     {
       method: 'GET',
@@ -106,7 +162,12 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.findOne',
       middlewares: ['global.isAuthenticated'],
-      config: { title: 'Read one platform administrator', description: 'By id' }
+      config: {
+        title: 'Read one platform administrator',
+        description: 'By id',
+        manifest: operators,
+        response: { 200: { $ref: 'systemUserSchema#' } }
+      }
     },
     {
       method: 'POST',
@@ -114,7 +175,13 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.create',
       middlewares: ['global.isAuthenticated'],
-      config: { title: 'Provision a platform administrator', description: 'There is no self-registration' }
+      config: {
+        title: 'Provision a platform administrator',
+        description: 'There is no self-registration',
+        manifest: operators,
+        body: { $ref: 'systemUserBodySchema#' },
+        response: { 201: { $ref: 'systemUserSchema#' } }
+      }
     },
     {
       method: 'PUT',
@@ -122,7 +189,13 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.update',
       middlewares: ['global.isAuthenticated'],
-      config: { title: 'Update a platform administrator', description: 'Roles and labels; never the password' }
+      config: {
+        title: 'Update a platform administrator',
+        description: 'Roles and labels; never the password',
+        manifest: operators,
+        body: { $ref: 'systemUserBodySchema#' },
+        response: { 200: { $ref: 'systemUserSchema#' } }
+      }
     },
     {
       method: 'DELETE',
@@ -130,7 +203,12 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.remove',
       middlewares: ['global.isAuthenticated'],
-      config: { title: 'Delete a platform administrator', description: 'Soft delete' }
+      config: {
+        title: 'Delete a platform administrator',
+        description: 'Soft delete',
+        manifest: operators,
+        response: { 200: { $ref: 'defaultResponse#' } }
+      }
     },
     {
       method: 'POST',
@@ -138,7 +216,13 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.block',
       middlewares: ['global.isAuthenticated'],
-      config: { title: 'Block a platform administrator', description: 'With a stated reason' }
+      config: {
+        title: 'Block a platform administrator',
+        description: 'With a stated reason',
+        manifest: { ...operators, input: { fields: { reason: { widget: 'textarea' } } } },
+        body: { $ref: 'blockBodySchema#' },
+        response: { 200: { $ref: 'systemUserSchema#' } }
+      }
     },
     {
       method: 'POST',
@@ -146,7 +230,25 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.unblock',
       middlewares: ['global.isAuthenticated'],
-      config: { title: 'Unblock a platform administrator', description: 'Restores access' }
+      config: {
+        title: 'Unblock a platform administrator',
+        description: 'Restores access',
+        manifest: operators,
+        response: { 200: { $ref: 'systemUserSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/users/:id/mfa/reset',
+      requireCapability: 'system-users',
+      handler: 'systemUser.resetMfa',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Reset the second factor of a platform administrator',
+        description: 'The way back for an operator who lost the device. Never self-service (T-10.19)',
+        manifest: operators,
+        response: { 200: { $ref: 'defaultResponse#' } }
+      }
     }
   ]
 }

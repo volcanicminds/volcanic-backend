@@ -120,21 +120,38 @@ exists. If any of them passes before the fix, it is checking a configuration and
 
 ## 4. Coverage
 
-Measured with `c8`, over `lib/**`, `index.ts` and the data-layer entry point:
+Measured with `c8` over `lib/**`, `index.ts` and the data-layer entry point, with the monocart
+backend, and enforced by `scripts/check-coverage.mjs`:
 
 ```bash
-npx c8@10 --reporter=text-summary \
-  --include='lib/**' --include='index.ts' --include='db.ts' --all \
-  npm test
+npm run coverage         # measures and enforces the floors declared in .c8rc.json
+npm run coverage:report  # measures only
 ```
 
-**The rule for v5** (definition of done, point 5): every **new or rewritten** file of the data
-layer and of the tenant path stays **above 85% of lines**. Files not touched keep the
-no-regression rule against the reference of the survey: lines 79.7%, branches 72.1%.
+**Why not plain `c8`, and why not its own `--check-coverage`.** Two defects, both found on
+16 September 2026 (T-10.27), made the number say something other than what it measured.
 
-Reference numbers from the survey, to know where the holes were: `tenants.ts` 28.4%,
-`schedules.ts` 38.4%, `userManager.ts` 43.2%, `query.ts` 45.5%, `tracker.ts` 66.4%,
-`manifest.ts` and `isAdmin.ts` 0%.
+1. Under `tsx` the same module can be compiled twice in one process, once as CommonJS and once
+   as ESM, and the two scripts carry the same URL. istanbul does not sum two file coverages
+   whose structure differs, it keeps the last one: `lib/manifest/generator.ts` measured **94.98%
+   alone with its own spec and 42.58% in the full suite**, same code, same tests. Monocart merges
+   the V8 ranges before remapping and reports 93.8% for that file in the full suite. It also
+   counts **executable** lines, where plain `c8` counts every physical line of the file (479 for
+   that one, which is its length, comments and type declarations included).
+2. c8's `--check-coverage` under monocart compares covered lines against the *statement* count:
+   a run whose report says 85.06% of lines is enforced as 1435/1755 = 81.77%. The floors are
+   therefore checked by `scripts/check-coverage.mjs`, which reads the same
+   `coverage/coverage-summary.json` the report prints.
+
+**The floors** (`.c8rc.json`): statements 82, lines 82, branches 88, functions 80, against a
+suite that reaches 85.15%, 85.06%, 91.49% and 83.23% without `DATABASE_URL`. They sit just under
+what the suite reaches, so they fail a change that *removes* coverage and say nothing else.
+
+**The rule for v5** (definition of done, point 5): every **new or rewritten** file of the data
+layer and of the tenant path stays **above 85% of lines**. The reference numbers of the v4
+survey (`tenants.ts` 28.4%, `schedules.ts` 38.4%, `userManager.ts` 43.2%, `query.ts` 45.5%,
+`tracker.ts` 66.4%, `manifest.ts` and `isAdmin.ts` 0%) say where the holes were, but they were
+measured on physical lines and do not compare with the numbers above.
 
 ---
 

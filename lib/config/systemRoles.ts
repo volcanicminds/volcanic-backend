@@ -25,7 +25,10 @@ const systemRoles: SystemRole[] = [
     code: 'system:operator',
     name: 'System operator',
     description: 'Day-to-day platform operations: the registry, provisioning, impersonation',
-    capabilities: ['tenants', 'tenants:read', 'tenants:impersonate']
+    // `manifest` because the console is how that day-to-day work is done: without it the role
+    // cannot even load the platform console, and a project cannot add it, since the capabilities
+    // of a protected role are not a consumer's to change.
+    capabilities: ['tenants', 'tenants:read', 'tenants:impersonate', 'manifest']
   },
   {
     code: 'system:auditor',

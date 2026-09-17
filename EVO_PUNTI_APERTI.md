@@ -170,3 +170,15 @@ dichiarati e reversibili.
 | F10 | una coppia di cookie **per piano** (`auth_token`/`refresh_token`, `control_token`/`control_refresh_token`) | con un cookie solo, aprire un'impersonificazione cancellava la sessione di controllo, cioè l'unica che può chiuderla |
 | F11 | in modalità cookie il rinnovo usa **solo** il refresh token, senza il vincolo dei 30 giorni sull'access token del rinnovo bearer; niente rotazione del refresh token | il cookie di accesso muore con il suo token (T-10.38), quindi al rinnovo non c'è più; la sessione dura al massimo `JWT_REFRESH_EXPIRES_IN` e `/auth/invalidate-tokens` la chiude. Rotazione e rilevamento del riuso restano aperti |
 | F12 | i refresh token emessi prima di `typ: 'refresh'` non rinnovano più | accettarli significherebbe accettare un access token come refresh ogni volta che i due segreti coincidono; il costo è un login per utente dopo l'aggiornamento |
+
+### Blocco C, decisioni del 15 settembre 2026
+
+Prese su domanda esplicita durante T-10.14, T-10.15 e T-10.16, con le alternative scartate.
+
+| | Decisione | Criterio |
+|---|---|---|
+| F13 | una console lavora su **un piano**, scelto con la prop `plane` dell'admin (`tenant` di default, `control` per la piattaforma); il backend aggiunge `GET /system/auth/me` (T-10.14) | scartati l'interruttore sulla schermata di login, che fa cambiare piano a una sessione, e i piani dichiarati nel manifest, che aggiungono grammatica per lo stesso comportamento |
+| F14 | **un manifest per piano**: `/admin/manifest` di scope tenant con le sole rotte tenant, `/system/manifest` di controllo con le sole rotte di controllo; senza tenant nessun filtro. Precisa F4: uguale per tutti i chiamanti **dello stesso piano** | scartato il manifest pinnato per le console dei clienti: nel bundle è leggibile senza login con le rotte e i ruoli della piattaforma, e in modalità cookie la pull non si autentica sul piano di controllo. Il percorso di esempio della domanda era `/admin/manifest/tenant`; scelto `/admin/manifest` per il tenant e `/system/manifest` per la piattaforma, perché lascia invariato il caso comune e mette la superficie di controllo sotto `/system` |
+| F15 | con resolver `header` il tenant **si chiede al login** e si ricorda nel browser, o lo fissa la prop `tenant`; `tenancy.switchable` è sempre `false` e il selettore sparisce (T-10.15) | dal login il token lega il tenant (T-3.2) e la lista `/tenants` è una rotta di controllo: un selettore sotto la sessione produrrebbe solo `TENANT_MISMATCH`. Scartate la sola prop e il solo resolver `subdomain` |
+| F16 | `manifest` resta un nome riservato da **entrambi** i cataloghi, uno per piano (`SHARED_CAPABILITIES`) | è l'unico caso in cui la stessa operazione esiste su due piani; un nome nuovo per il piano tenant avrebbe rotto ogni `config/roles.ts` che concede già `manifest` |
+| F17 | la descrizione dell'input di un'azione non-CRUD si **deriva dal body schema** della rotta; un hint `config.manifest.input` aggiunge widget, etichette ed esclusioni (T-10.16) | una fonte sola, la validazione. Scartato l'hint scritto a mano da solo: due descrizioni dello stesso body divergono alla prima modifica |

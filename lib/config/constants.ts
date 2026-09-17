@@ -1,4 +1,10 @@
 export enum MfaPolicy {
+  /**
+   * No new enrolments (T-10.19). Whoever already has a second factor keeps being asked for it,
+   * and only a reset by an administrator takes it away: flipping a switch must not lower the
+   * protection of the accounts that had it.
+   */
+  OFF = 'OFF',
   OPTIONAL = 'OPTIONAL',
   MANDATORY = 'MANDATORY',
   ONE_WAY = 'ONE_WAY'

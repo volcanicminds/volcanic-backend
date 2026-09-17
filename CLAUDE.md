@@ -1,116 +1,147 @@
-# CLAUDE.md — @volcanicminds/backend
+# CLAUDE.md: @volcanicminds/backend
 
-> **Questo repo È il framework, non un'applicazione.** Pacchetto npm `@volcanicminds/backend`
-> (codename `rome`, **v3.x**). Wrapper opinionato attorno a **Fastify v5**. **Include il
-> data layer** (Magic Query + multi-tenant) esposto come **subpath interno `@volcanicminds/backend/typeorm`**.
-> Gli esempi "applicativi" in `llms.txt` (controller, service, entità di dominio come `Order`/`Client`) si
-> riferiscono a un **repo consumer separato** (`volcanic-backend-sample`), NON a questo.
-> Qui si lavora sugli **interni del framework** in `lib/`.
+> **Questo repo è il framework, non un'applicazione.** Pacchetto npm `@volcanicminds/backend`
+> (codename `rome`). Linea di lavoro **v5** su branch `develop` (`5.0.0-alpha.0`; su npm `latest`
+> è ancora la 4.x). Wrapper opinionato attorno a **Fastify v5**, con il **data layer su Drizzle**
+> esposto come subpath `@volcanicminds/backend/db`. Gli esempi applicativi di `llms.txt`
+> (controller, service, tabelle di dominio) si riferiscono a un repo consumer separato
+> (`volcanic-backend-sample`), non a questo. Qui si lavora sugli interni in `lib/`.
+>
+> **Stato dei lavori**: `EVO_STATO.md` (stato, una riga per compito), `EVO_FRAMEWORK.md` (piano;
+> la sezione 0 dice in che ordine leggere), `EVO_PUNTI_APERTI.md` (decisioni), `EVO_FASE_10.md`
+> (igiene e consumer). Lo stato sta lì, non in questo file.
 
-## Ecosistema (2 pilastri, indipendenti ma integrati)
+## Ecosistema npm
 
-| Pacchetto | Repo | Ruolo | Context7 |
-|---|---|---|---|
-| `@volcanicminds/backend` | `volcanic-backend` (questo) | Core HTTP/Fastify, auth, autodiscovery, hooks **+ data layer come subpath `/typeorm`** (Magic Query + multi-tenant) | `/volcanicminds/volcanic-backend` |
-| `@volcanicminds/tools` | `volcanic-tools` | Utility tree-shakeable: mfa, mailer, logger, storage, transfer, ai | `/volcanicminds/volcanic-tools` |
+| Pacchetto | Repo | Ruolo |
+|---|---|---|
+| `@volcanicminds/backend` | `volcanic-backend` (questo) | core HTTP/Fastify, auth, autodiscovery, hooks, data layer come subpath `/db` |
+| `@volcanicminds/tools` | `volcanic-tools` | utility tree-shakeable: mfa, mailer, logger, storage, transfer, ai |
+| `@volcanicminds/admin` | `volcanic-admin` | pannello manifest-driven che consuma il backend |
+| `@volcanicminds/rag` | `volcanic-rag` | retrieval; pacchetto unico con subpath, non ancora pubblicato (D7 in `volcanic-rag/TASKS.md`) |
 
-**Disaccoppiamento (reale):** il core **non** importa il data layer. Il decoupling è garantito da
-**subpath export + peer dependencies opzionali + boundary enforced in CI** (`dependency-cruiser`, regola
-`core-no-datalayer-import`). Verifica:
-`npm run depcruise`. L'integrazione runtime è invariata: **iniezione di "Manager"** (Null Object Pattern) via
-`start(decorators)` — `userManager`, `tokenManager`, `dataBaseManager`, `mfaManager`, `transferManager`,
-`tenantManager`. I tipi delle interfacce (`UserManagement`, `TokenManagement`, `DataBaseManagement`,
-`MfaManagement`, `TransferManagement`) sono esportati da `index.ts`. Se un manager non è iniettato, parte un
-default no-op → il server si avvia comunque.
+`@volcanicminds/typeorm` è deprecato su npm, e il subpath `/typeorm` della v3/v4 non esiste più
+in v5. I consumer in produzione su v3/v4 restano su TypeORM finché non migrano
+(`docs/MIGRATION_V4_V5.md`).
 
-Wiring consumer:
+**Disaccoppiamento**: il core non importa il data layer. Lo garantiscono il subpath export, le
+peer dependencies opzionali e il confine verificato in CI (`dependency-cruiser`, regole
+`core-no-datalayer-import` e `datalayer-may-use-core-types-only`, `npm run depcruise`).
+L'integrazione è per iniezione di manager (Null Object): `startDataLayer()` restituisce i
+manager e il consumer li passa a `startServer(layer)`. Contratti in `docs/MANAGERS_V5.md`; da
+`index.ts` sono esportati i tipi (`UserManagement`, `TokenManagement`, `TrackingManagement`,
+`MfaManagement`, `TransferManagement`, `ControlHandle`, `TenantHandle`, `DataHandle`). Senza data
+layer partono i default no-op e il server si avvia comunque.
+
+Wiring consumer, in quest'ordine (il motivo è nel README):
+
 ```typescript
-import { start as startServer } from '@volcanicminds/backend'
-import { start as startDatabase, userManager, DataSource } from '@volcanicminds/backend/typeorm'
+import { preload, start as startServer } from '@volcanicminds/backend'
+import { start as startDataLayer } from '@volcanicminds/backend/db'
 
-const db = await startDatabase(databaseOptions)
-await startServer({ userManager })
+await preload() // prima del data layer: senza, ripiega in silenzio sui propri default
+const layer = await startDataLayer()
+await layer.migrations.apply({ locator: 'public' }) // in produzione: npm run db:migrate
+await startServer(layer)
 ```
-Le dipendenze del data layer (`typeorm`, `bcrypt`, `pluralize`, `reflect-metadata`, `pg`) sono **peer
-opzionali**: chi usa solo il core non le installa. Chi usa il subpath `/typeorm` le aggiunge nel proprio
-`package.json`.
 
-## Stack & convenzioni (valgono per entrambi i repo)
+Peer opzionali del data layer: `drizzle-orm`, `pg`, `better-sqlite3`, `@libsql/client`,
+`@electric-sql/pglite` (con `pglite-pgvector`), `bcrypt`. `drizzle-kit` va nelle
+devDependencies del consumer: genera le migrazioni, non le applica.
 
-- **Node >= 24** (`.nvmrc` = v24.11.0), **ESM puro** (`"type": "module"`, tsconfig `module: NodeNext`).
-- **Import sempre con estensione `.js`** anche nei `.ts` (es. `import x from './x.js'`).
-- **Sorgente in `lib/`** (NON `src/`). Entry point `index.ts` (core) + `typeorm.ts` (subpath data layer). Build `tsc` → `dist/`.
-- TypeScript 5.9, ESLint 9 flat config (`eslint.config.js`), Prettier.
-- `combine.js` (`npm run combine`) genera `OUTPUT.md` (dump del codice, base per `llms.txt`/Context7).
+## Stack e convenzioni
+
+- **Node >= 24** (`.nvmrc` = v24.11.0), **ESM puro** (`"type": "module"`, `module: NodeNext`).
+- **Import sempre con estensione `.js`** anche nei `.ts`.
+- **Sorgente in `lib/`** (non `src/`). Entry `index.ts` (core) e `db.ts` (subpath `/db`); CLI
+  `bin/volcanic.mjs` (`npx volcanic migrate --tenants`). Build `tsc` → `dist/`.
+- ESLint flat config (`eslint.config.js`), Prettier. `combine.js` genera `OUTPUT.md`.
 
 ## Comandi
 
 ```bash
-npm run dev          # tsx watch server.ts (hot reload, --env-file .env)
-npm start            # tsx server.ts
-npm run build        # tsc -> dist/ (prebuild fa clean; postbuild copy-assets)
-npm test             # test:core (49) + test:typeorm (32), tutto NODE_ENV=memory (no Postgres)
-npm run type-check   # tsc --noEmit
-npm run lint         # eslint .   (lint:fix per autofix)
-npm run depcruise    # confine core ↛ lib/database/** (dependency-cruiser)
-npm run check-all    # lint + type-check + depcruise  <-- esegui prima di committare
+npm run dev               # tsx watch server.ts
+npm run build             # tsc -> dist/
+npm test                  # test:lib + test:db + test:migrations (scripts/run-tests.mjs)
+npm run test:e2e:mt:pg    # banco nero multi-tenant, vuole Postgres reale
+npm run check-all         # lint, type-check, depcruise, check:session-state, check:migration-sets, check:refusals
+npm run coverage          # c8 (backend monocart) + scripts/check-coverage.mjs; gira in CI
+npm run db:migrate        # piano di controllo; i tenant con npx volcanic migrate --tenants
+npm run db:generate       # anche :tenant, :sqlite, :tenant:sqlite
+npm run tune              # banco di taratura (docs/TUNING.md)
 ```
+
+**Senza `DATABASE_URL` le suite che vogliono Postgres saltano invece di fallire**: un verde senza
+quella variabile non dice quello che sembra. Il comando Docker per il Postgres di prova è in
+`EVO_STATO.md`.
 
 ## Architettura interna (`lib/`)
 
-- `index.ts` — bootstrap `start()` del **core**: registra plugin Fastify, JWT (+refresh come namespace separato),
-  Swagger (opz.), poi loader: tenant → hooks → schemas → router. Gestisce TUS transfer mount e il check
-  "Admin MFA forced reset" all'avvio.
-- `typeorm.ts` (radice) — entry del **subpath** `@volcanicminds/backend/typeorm`: re-export del data layer.
-- `lib/loader/*` — autodiscovery: `router`, `schemas`, `hooks`, `plugins`, `roles`, `schedules`, `tracking`,
-  `tenant`, `translation`, `general`.
-- `lib/api/*` — API native del framework: `auth`, `health`, `tenants`, `token`, `tool`, `users`.
-- `lib/hooks/*` — `onRequest`, `onResponse`, `onError`, `preHandler`, `preSerialization`.
-- `lib/middleware/*` — `isAuthenticated`, `isAdmin`, pre/post auth & forgot-password.
-- `lib/schemas/*` — JSON Schema core (override via deep-merge se il consumer usa lo stesso `$id`).
-- `lib/defaults/managers.ts` — i Null Object dei manager.
-- **`lib/database/typeorm/**`** — **data layer**: `query.ts`/`query/*` (Magic Query),
-  `entities/*` (User/Tenant/Token/Change), `loader/*` (manager + autoload entità + multi-tenant), `util/*`.
-  Il core **non** deve importarlo (regola `depcruise`); il flusso è data layer → core (solo import type-only).
+- `index.ts`: bootstrap `start()` del core (plugin Fastify, JWT, Swagger opzionale, CORS con
+  allowlist in `lib/util/cors.ts`, loader).
+- `lib/loader/*`: autodiscovery, risoluzione del tenant (`tenant.ts`), controllo di allineamento
+  dello schema all'avvio (`schemaVersion.ts`).
+- `lib/api/*`: `admin`, `auth`, `health`, `system` (piano di controllo, montato solo con il
+  blocco `tenants`), `tenants`, `token`, `users`. `/tool` non esiste più.
+- `lib/hooks/*`, `lib/middleware/*`, `lib/schemas/*`, `lib/manifest/*` (manifest per
+  `volcanic-admin`), `lib/defaults/managers.ts`.
+- `lib/database/**`: data layer. `ports.ts`, `capabilities.ts` (matrice motori e strategie, rifiuto
+  all'avvio), `adapters/{postgres,sqlite}`, `schema/{pg,sqlite}.ts`, `query/` (Magic Query v5),
+  `managers/`, `migrations/` (runner e flotta), `containers/` (export, replica Litestream),
+  `leases.ts`, `access.ts`. Il core non deve importarlo.
 
-## Sicurezza / nozioni non ovvie
+## Nozioni non ovvie (v5)
 
-- **Auth dual-mode** via `AUTH_MODE`: `BEARER` (token nel body+header) o `COOKIE` (HttpOnly/Secure/SameSite, richiede `COOKIE_SECRET`).
-- **Revoca token** via pattern `externalId`: il JWT porta `externalId`, non l'id DB; rigenerarlo invalida tutti i token (logout globale / cambio password).
-- **MFA gatekeeper**: login con MFA pendente risponde `202` + `tempToken` (ruolo `pre-auth-mfa`, 5 min); solo `/auth/mfa/*` accessibile finché non si verifica il TOTP.
-- **HIDE_ERROR_DETAILS** (default `true` in prod): nasconde i dettagli errore in risposta.
-- `mark.ts` stampa il banner; `global.log` (Pino) è settato prima di tutto.
+- **Due piani**: `req.control` (piano di controllo) e `req.tenant` (contenitore del tenant);
+  `dataContext(req)` sceglie e, senza contesto, lancia `NoDataContextError`. `req.db`,
+  `global.connection`, `global.entity` e `global.repository` **non esistono più**.
+- Una rotta di piattaforma dichiara `scope: 'control'`; `tenantContext` scritto da un consumer
+  **rifiuta l'avvio**.
+- **Il tenant parte dal token** (`tid`); header o sottodominio solo senza token, mai la query
+  string. Token e header discordi: 403 `TENANT_MISMATCH`.
+- **Niente stato di sessione su Postgres**: `set search_path` fuori transazione è vietato due
+  volte (`scripts/check-session-state.mjs` e guardia sul driver).
+- **Auth**: `AUTH_MODE` di default `COOKIE` (richiede il plugin `cookie`), `BEARER` in
+  alternativa. Revoca via `externalId`. MFA pendente: token `pre-auth-mfa` da 5 minuti. Login
+  fallito sempre `401 AUTH_INVALID_CREDENTIALS` (in v4 era 403).
+- **Identità di sistema** separate da quelle dei tenant (`global.systemRoles`, capability a
+  catalogo chiuso, rotte `/system/*`). Il fondatore è la colonna `is_founder` nel contenitore;
+  `ADMIN_EMAIL` serve solo alla genesi.
+- **Migrazioni** forward-only: SQL generato da drizzle-kit e applicato dal runner del framework,
+  due insiemi (`control`, `tenant`) per dialetto (`pg`, `sqlite`).
+- `HIDE_ERROR_DETAILS` vale su entrambi i gestori d'errore; il `code` resta sempre.
+- `req.data()` fonde query string e corpo, e vince il corpo.
+- Un codice di rifiuto nuovo arriva con un test, o `check:refusals` fallisce.
+- `lib/util/mark.ts` stampa il banner; `global.log` (Pino) è impostato prima di tutto.
 
-## Globals iniettati a runtime (da non reinventare)
+## Globals a runtime
 
-`log` (Pino), `config`, `roles`, `t` (i18n), `server`, `tracking`/`trackingConfig`.
-Dal data layer `@volcanicminds/backend/typeorm` (lato consumer): `entity.[Pascal]`, `connection`.
-**`global.repository.X` è VIETATO** (Proxy fail-fast in `typeorm.ts`/`start()`): usa `service.use(req.db)`.
+`log`, `server`, `config`, `roles`, `systemRoles`, `t` (i18n), `tracking`/`trackingConfig`,
+`routes`, `cache`, `transferConfig`/`transferPath`.
 
-## ⚠️ Drift documentazione vs codice
+## Documentazione: cosa è v5 e cosa no
 
-`llms.txt` (3100+ righe, ottima guida ai pattern) e i doc Context7 possono essere **leggermente disallineati**
-dal codice corrente. In particolare alcuni snippet mostrano `repository.orders…` per l'accesso dati, ma il data
-layer **vieta `global.repository.X`** (Proxy fail-fast) imponendo `service.use(req.db)` (vedi
-`docs/ADVANCED_ARCHITECTURE.md`, fonte aggiornata). In caso di conflitto, **vince il codice**.
+- **v5**: `README.md`, `llms.txt`, `docs/*_V5.md` (SCHEMA, MAGIC_QUERY, MANAGERS, AUTHORIZATION,
+  API, CONFIGURATION, TESTING), `docs/MIGRATION_V4_V5.md`, `docs/CACHE.md`, `docs/TUNING.md`,
+  `docs/ADVANCED_ARCHITECTURE.md` e `docs/TYPESCRIPT_GUIDE.md` (riscritti sulla v5).
+- **v4, con cartello di sostituzione**: `docs/DATA_LAYER_MAGIC.md`, `docs/CONFIGURATION.md`,
+  `docs/PGLITE.md`. `docs/AUTH_COMPOSABLE_EVOLUTION.md` è rinviato fuori dalla v5.
+- In caso di conflitto **vince il codice**.
 
-## Maturità (stato al 2026-06)
+## Maturità
 
-- ✅ Suite di test reale (mocha/E2E/unit) — core + data layer, tutto in-memory.
-- ✅ **CI presente** (`.github/workflows/ci.yml`): job `verify` (lint/type-check/depcruise/build/publint/attw),
-  `test`, `release` (publish su tag `v*`). Secret richiesto: `NPM_TOKEN`.
+- CI in `.github/workflows/ci.yml`: `verify` (lint, type-check, depcruise, check di sessione e di
+  migrazioni, build, publint, attw `esm-only`), `test` (suite più `npm run coverage`, con
+  `lcov.info` come artefatto), `test-pg` (Postgres 16 di servizio), `release` su tag `v*`.
+- **La copertura si misura con il backend monocart di `c8`**: sotto `tsx` lo stesso modulo può
+  essere compilato due volte, come CommonJS e come ESM, e c8 semplice tiene solo una delle due
+  coperture. Il pavimento lo applica `scripts/check-coverage.mjs`, perché `--check-coverage` di c8
+  sotto monocart confronta un numero che non stampa. Il perché per esteso è in `COVERAGE.md`.
+- Pubblicazione npm: fino alla 3.x era manuale con OTP, perché `NPM_TOKEN` non era configurato.
+  Verificare prima di pubblicare la v5.
 - Versioning via `package.json` (i tag git storici non sono affidabili).
 
-## Tooling / MCP — Context7
+## Tooling: Context7
 
-I pacchetti sono indicizzati su **Context7** (MCP): `/volcanicminds/volcanic-backend`, `/volcanicminds/volcanic-tools`.
-Il data layer è documentato sotto `/volcanicminds/volcanic-backend` (subpath `/typeorm`): non esiste un ID
-Context7 dedicato al database. Usa Context7 per **panoramica e firma API**, ma i suoi snippet derivano da
-`llms.txt`/README → per i **pattern correnti** valida sempre sul sorgente in `lib/` (vedi sezione "Drift" sopra).
-
-## Documenti chiave da consultare
-
-`llms.txt` (guida pattern completa), `README.md`,
-`docs/ADVANCED_ARCHITECTURE.md` (Service/Repository pattern, `.use(req.db)`), `docs/SECURITY_MFA.md`,
-`docs/SCHEMA_OVERRIDING.md`, `docs/DATA_LAYER_MAGIC.md`, `docs/CONFIGURATION.md` (config data layer),
-`docs/TYPESCRIPT_GUIDE.md`, `DOCKER.md`.
+Indicizzati `/volcanicminds/volcanic-backend` e `/volcanicminds/volcanic-tools`. Gli snippet
+derivano da `llms.txt` e README: per i pattern correnti valida sempre sul sorgente in `lib/`.

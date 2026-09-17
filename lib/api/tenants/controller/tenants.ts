@@ -8,6 +8,7 @@ import type {
 } from '../../../../types/global.js'
 import crypto from 'crypto'
 import { httpError } from '../../../util/httpError.js'
+import { checkTenantPolicy, demandsEnrolment, mfaAvailable, type PolicyVerdict } from '../../../util/mfaPolicy.js'
 import { envInt } from '../../../util/env.js'
 import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
 
@@ -96,11 +97,33 @@ export function locatorFor(slug: string): string {
  * safe precisely because we are before the row: what we remove is a schema created seconds
  * ago that nothing points at and that has never held a customer's data.
  */
+/**
+ * The two ways a tenant's MFA policy is refused (T-10.19): weaker than the deployment floor, or
+ * demanding a second factor this build cannot issue, which would lock that customer's users out at
+ * their next login. Shared by creation and update, so the two cannot drift apart.
+ */
+function refusePolicy(req: FastifyRequest, reply: FastifyReply, verdict: PolicyVerdict) {
+  if (!verdict.ok) return reply.status(400).send(httpError(400, verdict.message, verdict.code))
+  if (verdict.policy && demandsEnrolment(verdict.policy) && !mfaAvailable(req.server['mfaManager'])) {
+    return reply
+      .status(503)
+      .send(httpError(503, 'This build has no MFA manager: that policy would lock this tenant out', 'MFA_NOT_AVAILABLE'))
+  }
+  return null
+}
+
 export async function create(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const data = req.data()
   const declared = String(data.locator ?? '')
+
+  // A tenant may only tighten the deployment's MFA policy (T-10.19). A weaker one is refused here
+  // rather than stored and ignored at read time: a value an operator can read back is a value they
+  // believe applies.
+  const policy = checkTenantPolicy((data.config as Record<string, unknown> | undefined)?.mfa_policy)
+  const policyRefusal = refusePolicy(req, reply, policy)
+  if (policyRefusal) return policyRefusal
 
   // Sanitised once, before it is stored, and a value that CHANGES under sanitisation is
   // refused rather than adjusted: v4 saved the raw name and used the sanitised one, so a
@@ -180,7 +203,14 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const { id } = req.parameters()
-  const tenant = await managerOf(req).updateTenant(control(req), id, req.data())
+  const patch = req.data()
+
+  // Same rule as on creation: the policy of a tenant may tighten the deployment's, never loosen it.
+  const policy = checkTenantPolicy((patch.config as Record<string, unknown> | undefined)?.mfa_policy)
+  const policyRefusal = refusePolicy(req, reply, policy)
+  if (policyRefusal) return policyRefusal
+
+  const tenant = await managerOf(req).updateTenant(control(req), id, patch)
   if (!tenant) return reply.status(404).send()
   return reply.send(tenant)
 }
