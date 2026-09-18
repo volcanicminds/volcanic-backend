@@ -146,7 +146,7 @@ non c'è emissione, senza emissione non c'è rotazione.
 
 ## D. Bordi
 
-- [~] **T-11.11** Risoluzione del contenitore sulla rotta di rinnovo.
+- [x] **T-11.11** Risoluzione del contenitore sulla rotta di rinnovo.
   **Dove**: `lib/loader/tenant.ts:218`, che oggi legge il `tid` dal claim di un JWT.
   **Perché**: con il token opaco il tenant si legge dal prefisso di instradamento, e va
   confrontato con quello della richiesta come fa oggi il controllo `TENANT_MISMATCH`.
@@ -222,6 +222,7 @@ preesistenti, zero errori), `npm test` verde.
 | T-11.16 | `npm test` 566 passanti e 30 saltati; unità del formato e degli orologi, banco SQLite del manager, prove HTTP di rotazione, grazia, riuso, logout e rotte |
 | T-11.10 | `logout` revoca la riga sui due piani; `invalidate-tokens` chiude tutte le sessioni **prima** di ruotare l'`external_id` |
 
+| T-11.11 | `test/e2e-mt-pg/renewal.e2e.spec.ts`, sei prove su Postgres reale: la riga di sessione sta nel contenitore del suo tenant e in nessun altro, il rinnovo ruota, il credenziale di un tenant presentato come un altro è 403 `TENANT_MISMATCH`, il riuso chiude la famiglia e scrive il motivo, dopo il logout non si rinnova più, la sessione di piattaforma vive e si rinnova solo nel piano di controllo. `npm run test:e2e:mt:pg` 14 su 14 |
 | T-11.13 | blocco `sessions` in `lib/config/general.ts` e nei tipi, tre variabili d'ambiente che vincono sulla configurazione, documentato in `docs/CONFIGURATION_V5.md`; `test/lib/sessionToken.spec.ts` prova i default, l'override e i tre modi di spegnerlo |
 | T-11.17 | `docs/AUTHORIZATION_V5.md` §9, `docs/API_V5.md` §2.3 e §2.4, `docs/CONFIGURATION_V5.md`, `docs/SCHEMA_V5.md` §2.5, `docs/MANAGERS_V5.md` §11, `docs/MIGRATION_V4_V5.md` §27, `README.md`, `llms.txt` |
 

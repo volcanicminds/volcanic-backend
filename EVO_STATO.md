@@ -46,8 +46,10 @@ refresh token. Chiusi i blocchi A (tabella `session` sui due dialetti, quattro m
 `SessionManagement` e manager) e C (credenziale opaca, rotazione con finestra di grazia, rilevamento
 del riuso, logout che revoca davvero), D (rotte `/auth/sessions` sui due piani, purga per predicato
 più comando `npx volcanic sessions --purge`, avviso di boot su `reset_external_id_on_login`) e le
-prove. Resta la verifica del rinnovo sul banco multi-tenant (T-11.11) e la decisione su console e
-sample (T-11.18).
+prove, banco multi-tenant compreso: `test/e2e-mt-pg` è a 14 prove su 14 contro Postgres reale, e le
+sei nuove dimostrano che una sessione vive nel contenitore del suo tenant, che il credenziale di un
+tenant presentato come un altro è rifiutato, e che dopo logout o riuso non si rinnova più. Resta
+solo la decisione su console e sample (T-11.18).
 
 **Cosa resta**, e non è nel piano: il push (`develop` è avanti al remoto, serve una richiesta
 esplicita), la pubblicazione dell'alpha su npm, e il porting del sample committato — oggi è
