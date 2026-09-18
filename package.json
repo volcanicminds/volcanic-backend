@@ -82,7 +82,7 @@
     "db:generate:sqlite": "cross-env MIGRATION_SET=control MIGRATION_DIALECT=sqlite drizzle-kit generate",
     "db:generate:tenant:sqlite": "cross-env MIGRATION_SET=tenant MIGRATION_DIALECT=sqlite drizzle-kit generate",
     "coverage": "npm run coverage:report && node scripts/check-coverage.mjs",
-    "coverage:report": "c8 --config .c8rc.json cross-env NODE_ENV=memory mocha --import=tsx \"./test/lib/**/*.spec.ts\" \"./test/db/**/*.spec.ts\" \"./test/migrations/**/*.spec.ts\" -t 30000 --exit",
+    "coverage:report": "c8 --config .c8rc.json cross-env NODE_ENV=memory AUTH_MODE=BEARER mocha --import=tsx \"./test/lib/**/*.spec.ts\" \"./test/db/**/*.spec.ts\" \"./test/migrations/**/*.spec.ts\" -t 30000 --exit",
     "check:refusals": "node scripts/check-refusals.mjs",
     "tune": "tsx --env-file-if-exists=.env scripts/tune.ts"
   },
