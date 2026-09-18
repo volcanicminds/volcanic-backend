@@ -102,11 +102,17 @@ const SENSITIVE_WRITE_ONLY = ['password']
  * log an operator in as nobody: `/auth/login` resolves users inside a container.
  */
 export const AUTH_ENDPOINTS: Record<Plane, Manifest['auth']['endpoints']> = {
-  tenant: { login: '/auth/login', refresh: '/auth/refresh-token', logout: '/auth/logout' },
+  // `sessions` is announced rather than left to the console to know (T-11.18). The list of a
+  // caller's own devices is not a resource of the manifest, because it is not a collection
+  // anybody can query: it is the sessions of whoever is asking. So it travels here, where the
+  // console already reads the routes it must not hardcode, and a build without a session
+  // registry simply answers 404 on it.
+  tenant: { login: '/auth/login', refresh: '/auth/refresh-token', logout: '/auth/logout', sessions: '/auth/sessions' },
   control: {
     login: '/system/auth/login',
     refresh: '/system/auth/refresh-token',
     logout: '/system/auth/logout',
+    sessions: '/system/auth/sessions',
     me: '/system/auth/me',
     mfaSetup: '/system/auth/mfa/setup',
     mfaEnable: '/system/auth/mfa/enable',

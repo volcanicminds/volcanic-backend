@@ -283,6 +283,8 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
       expect(names(m)).toEqual(['products'])
       expect(m.auth.plane).toBe('tenant')
       expect(m.auth.endpoints.login).toBe('/auth/login')
+      // T-11.18: the console reads where its own devices are listed instead of knowing the path.
+      expect(m.auth.endpoints.sessions).toBe('/auth/sessions')
     })
 
     it('describes only the control routes to the platform console, with the platform auth routes', () => {
@@ -295,7 +297,10 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
         refresh: '/system/auth/refresh-token',
         logout: '/system/auth/logout',
         me: '/system/auth/me',
-        mfaVerify: '/system/auth/mfa/verify'
+        mfaVerify: '/system/auth/mfa/verify',
+        // The platform sessions are their own list: an operator closing a device must not be
+        // pointed at the tenant route, which resolves users inside a container.
+        sessions: '/system/auth/sessions'
       })
     })
 
