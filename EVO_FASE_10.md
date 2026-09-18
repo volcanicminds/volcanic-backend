@@ -1022,8 +1022,19 @@ chiedono un disegno, non una riga. Vale la stessa regola dell'evidenza citata.
   **sbagliato** il pulsante di conferma resta disabilitato; con quello giusto e un codice la
   seconda chiamata parte, la riga sparisce dall'elenco e il dialogo si chiude azzerando il
   permesso. Il token non è mai passato per un URL: entrambe le fasi lo portano nel corpo.
-  **Resta**: la stessa prova contro un backend vivo. Il mock rifiuta token, slug e codice con i
-  tre messaggi del controller, ma un mock scritto da me non è il controller.
+  **Fatto il 18 settembre 2026, contro un backend vivo**: contenitore `beta-trial` distrutto dalla
+  console di controllo, su Postgres reale. Il passo 1 ha mostrato i conteggi veri del contenitore
+  (`user` 1, `migration` 3, e fra le tabelle anche `session`, quella della fase 11), la scadenza
+  del permesso e l'avvertenza sui backup; con lo slug ribattuto e il secondo fattore il passo 2 ha
+  esportato **prima** (`data/exports/beta-trial-0001_sessions_tenant-...sql`) e poi distrutto.
+  Verità dal database, non dallo schermo: lo schema `tenant_beta_trial` non esiste più, la riga del
+  registro è `archived` e cancellata, e nella lista resta solo `acme-live`.
+  **Difetto trovato qui, la terza copia della stessa regola**: `verifySecondFactor`
+  (`lib/api/tenants/controller/tenants.ts`) confrontava il **delta** del verificatore con il passo
+  assoluto ormai salvato correttamente, quindi rifiutava ogni codice valido con «That code has
+  already been used»: un operatore con secondo fattore non avrebbe potuto distruggere nulla, e il
+  messaggio diceva l'opposto di quel che accadeva. Corretta a usare `lib/util/mfaCounter.ts` come
+  gli altri due piani, e solo dopo la distruzione è andata a buon fine.
   **Nota**: l'export **non** ha un input. Il suo controller legge solo l'id dall'URL, quindi per
   quell'azione non c'è niente da chiedere e uno schema del corpo sarebbe una promessa vuota.
 

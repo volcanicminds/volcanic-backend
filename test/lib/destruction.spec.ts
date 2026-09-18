@@ -84,7 +84,11 @@ function fakes(over: any = {}) {
     },
     mfaManager: {
       isImplemented: () => true,
-      verify: async (code: string) => (code === '123456' ? 42 : null)
+      // A verifier answers with a DELTA: how many steps away from now the accepted code was,
+      // which is zero for a code typed in its own window. The fixture used to answer `42`, a
+      // number no verifier returns, and that is what let the replay check pass while comparing
+      // the wrong two things (T-10.21).
+      verify: async (code: string) => (code === '123456' ? 0 : null)
     },
     systemUserManager: {
       isImplemented: () => true,
@@ -291,7 +295,12 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     expect(JSON.parse(wrong.body).code).toBe('DESTRUCTION_OTP_INVALID')
 
     // The step is spent by the first use, so the same code cannot destroy a second container.
-    ACTOR.mfaLastUsedCounter = 42
+    //
+    // The value is a STEP, not a delta. The fixture said `42` and passed for the wrong reason:
+    // the code compared the verifier's delta against it, and 0 was always smaller. Now that all
+    // three call sites store what `lib/util/mfaCounter.ts` computes, a spent step is the step a
+    // current code belongs to (T-10.21, found by destroying a container from a live console).
+    ACTOR.mfaLastUsedCounter = Math.floor(Date.now() / 1000 / 30)
     const replayed = await destroy(server, { token, slug: 'acme', otp: '123456' })
     expect(replayed.statusCode).toBe(403)
     expect(dropped).toEqual([])

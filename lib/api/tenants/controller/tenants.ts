@@ -9,6 +9,7 @@ import type {
 import crypto from 'crypto'
 import { httpError } from '../../../util/httpError.js'
 import { checkTenantPolicy, demandsEnrolment, mfaAvailable, type PolicyVerdict } from '../../../util/mfaPolicy.js'
+import { absoluteStep, isReplay } from '../../../util/mfaCounter.js'
 import { envInt } from '../../../util/env.js'
 import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
 
@@ -464,13 +465,17 @@ async function verifySecondFactor(req: FastifyRequest, actor: any, otp: string):
   const secret = await systemUsers.retrieveMfaSecret(req.control, actor.id)
   if (!secret) return { ok: false, message: 'This operator has MFA enabled but no secret on file' }
 
-  const counter = await mfa.verify(otp, secret)
-  if (counter == null) return { ok: false, message: 'The code is not valid' }
+  // The third copy of one rule, and the one that made the other two worth fixing: a verifier
+  // answers with a DELTA, and comparing it against the stored STEP reads every valid code as
+  // already spent. Here the effect was that an operator with a second factor could never destroy
+  // anything, with a message saying the opposite of what was happening (found live, T-10.21).
+  const { valid, counter } = absoluteStep(await mfa.verify(otp, secret))
+  if (!valid) return { ok: false, message: 'The code is not valid' }
   // The step is spent: the same code cannot destroy a second container.
-  if (actor.mfaLastUsedCounter != null && Number(counter) <= Number(actor.mfaLastUsedCounter)) {
+  if (isReplay(counter, actor.mfaLastUsedCounter)) {
     return { ok: false, message: 'That code has already been used' }
   }
-  await systemUsers.recordMfaCounter(req.control, actor.id, Number(counter))
+  if (counter !== null) await systemUsers.recordMfaCounter(req.control, actor.id, counter)
   return { ok: true, message: '' }
 }
 
