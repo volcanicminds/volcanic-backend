@@ -14,3 +14,6 @@ export const token = app.token
 export const change = app.change
 export const migration = app.migration
 export const session = app.session
+export const authFlow = app.authFlow
+export const externalIdentity = app.externalIdentity
+export const accessLog = app.accessLog

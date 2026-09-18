@@ -44,12 +44,12 @@ describe('migrations · two sets, not one (T-5.2)', () => {
     // On every dialect: invariant 7 does not hold "on Postgres".
     for (const dialect of DIALECTS) {
       const tenant = tablesOf(sqlOf('tenant', dialect))
-      expect(tenant).toEqual(['change', 'migration', 'session', 'token', 'user'])
+      expect(tenant).toEqual(['access_log', 'auth_flow', 'change', 'external_identity', 'migration', 'session', 'token', 'user'])
 
       // Invariant 7 as a file list: outside the customer's container goes only what you could
       // publish, and the registry of every other customer is the clearest example of what you
       // could not.
-      for (const platform of ['tenant', 'system_user', 'impersonation', 'destruction_request']) {
+      for (const platform of ['tenant', 'system_user', 'impersonation', 'destruction_request', 'identity_provider']) {
         expect(tenant).not.toContain(platform)
       }
     }
@@ -58,12 +58,12 @@ describe('migrations · two sets, not one (T-5.2)', () => {
   it('gives the control plane the platform tables AND the application ones', () => {
     for (const dialect of DIALECTS) {
       const control = tablesOf(sqlOf('control', dialect))
-      for (const platform of ['tenant', 'system_user', 'impersonation', 'destruction_request']) {
+      for (const platform of ['tenant', 'system_user', 'impersonation', 'destruction_request', 'identity_provider']) {
         expect(control).toContain(platform)
       }
       // Not an oversight: with no `tenants` block the application data lives here, so the
       // control plane is also a container.
-      for (const shared of ['user', 'token', 'change', 'migration']) {
+      for (const shared of ['user', 'token', 'change', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log']) {
         expect(control).toContain(shared)
       }
     }

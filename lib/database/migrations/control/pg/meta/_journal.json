@@ -15,6 +15,13 @@
       "when": 1789686124558,
       "tag": "0001_sessions_control",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789768240855,
+      "tag": "0002_auth_flow_control",
+      "breakpoints": true
     }
   ]
 }

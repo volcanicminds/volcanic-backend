@@ -194,6 +194,9 @@ export function appTables(schemaName: string) {
       // Set when the session is an impersonation, so ending the impersonation ends the
       // session it authorised (T-4.2).
       impersonationId: text('impersonation_id'),
+      // The methods the login satisfied (F45), e.g. `{password,totp}`. Null on sessions opened
+      // before the flow engine: what is not known is not written as an empty list.
+      authMethods: text('auth_methods').array(),
       createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
     },
     (t) => [
@@ -205,7 +208,102 @@ export function appTables(schemaName: string) {
     ]
   )
 
-  return { user, token, change, migration, session }
+  //
+  // A login in progress (F37). It lives in the container of its subject, like `session`, with
+  // `scope` telling a platform identity from a tenant user in a container that holds both.
+  //
+  // Only the SHA-256 of the flow secret and of `state` is stored, and the code only as an HMAC
+  // keyed by the flow secret, which this table does not hold: a copy of it is not enough to try
+  // the million six-digit codes offline. `external` is ciphertext written by the manager, which
+  // is why it is text and not jsonb.
+  //
+  // A retired flow (completed, cancelled, evicted) keeps its row with every secret cleared, until
+  // its sends leave the per-subject window: deleting it would reset the count a restart must not
+  // reset.
+  //
+  const authFlow = table(
+    'auth_flow',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      flowId: text('flow_id').notNull(),
+      scope: text('scope').notNull().default('tenant'),
+      // Set once the first stage is passed; only then does the flow hold the subject's slot.
+      subjectId: text('subject_id'),
+      candidateSubjectId: text('candidate_subject_id'),
+      secretHash: text('secret_hash').notNull(),
+      flowName: text('flow_name'),
+      stageIndex: integer('stage_index').notNull().default(0),
+      satisfied: jsonb('satisfied').$type<string[]>().notNull().default([]),
+      challengeMethod: text('challenge_method'),
+      challengeHash: text('challenge_hash'),
+      challengeExpiresAt: timestamp('challenge_expires_at', { withTimezone: true }),
+      challengeAttempts: integer('challenge_attempts').notNull().default(0),
+      challengeSends: integer('challenge_sends').notNull().default(0),
+      lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+      stateHash: text('state_hash'),
+      external: text('external'),
+      externalResult: jsonb('external_result'),
+      version: integer('version').notNull().default(1),
+      ip: text('ip'),
+      userAgent: text('user_agent'),
+      createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+      expiresAt: timestamp('expires_at', { withTimezone: true }).notNull()
+    },
+    (t) => [
+      uniqueIndex('auth_flow_flow_id_uq').on(t.flowId),
+      uniqueIndex('auth_flow_subject_uq').on(t.subjectId, t.scope).where(sql`${t.subjectId} is not null`),
+      index('auth_flow_state_idx').on(t.stateHash),
+      index('auth_flow_candidate_idx').on(t.candidateSubjectId, t.lastSentAt),
+      index('auth_flow_expires_idx').on(t.expiresAt)
+    ]
+  )
+
+  // An identity at a provider, linked to a subject (F40). `sub` is unique per issuer only, and an
+  // email is never a key: it changes, it is recycled, and on many providers it is not verified.
+  const externalIdentity = table(
+    'external_identity',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      scope: text('scope').notNull().default('tenant'),
+      subjectId: text('subject_id').notNull(),
+      provider: text('provider').notNull(),
+      issuer: text('issuer').notNull(),
+      subject: text('subject').notNull(),
+      emailAtLink: text('email_at_link'),
+      createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+      lastUsedAt: timestamp('last_used_at', { withTimezone: true })
+    },
+    (t) => [
+      uniqueIndex('external_identity_key_uq').on(t.scope, t.provider, t.issuer, t.subject),
+      index('external_identity_subject_idx').on(t.subjectId, t.scope)
+    ]
+  )
+
+  // The access log (F44). Append-only like `change`: no `updatedAt`, no `deletedAt`. Never a
+  // password, a code, a token or a claim, and the address truncated before it gets here.
+  const accessLog = table(
+    'access_log',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+      scope: text('scope').notNull().default('tenant'),
+      event: text('event').notNull(),
+      outcome: text('outcome').notNull(),
+      code: text('code'),
+      subjectId: text('subject_id'),
+      methods: text('methods').array(),
+      provider: text('provider'),
+      flowId: text('flow_id'),
+      sid: text('sid'),
+      ip: text('ip')
+    },
+    (t) => [
+      index('access_log_occurred_idx').on(t.occurredAt),
+      index('access_log_subject_idx').on(t.subjectId, t.occurredAt)
+    ]
+  )
+
+  return { user, token, change, migration, session, authFlow, externalIdentity, accessLog }
 }
 
 /** The registry and the platform's own identities. Control plane only, never in a container. */
@@ -295,7 +393,26 @@ export function registryTables(schemaName: string) {
     (t) => [index('destruction_tenant_idx').on(t.tenantId), index('destruction_expires_idx').on(t.expiresAt)]
   )
 
-  return { tenant, systemUser, impersonation, destructionRequest }
+  // A tenant's own identity provider (F38). Here and never in `tenant.config`, which is
+  // serialized to whoever reads the tenant. The client secret is ciphertext, the rest is not
+  // secret. Deleted for real, not soft-deleted: a key must be reusable after a removal.
+  const identityProvider = table(
+    'identity_provider',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      tenantId: text('tenant_id').notNull(),
+      key: text('key').notNull(),
+      type: text('type').notNull().default('oidc'),
+      status: text('status').notNull().default('active'),
+      config: jsonb('config').notNull().default({}),
+      secretEnc: text('secret_enc'),
+      createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+    },
+    (t) => [uniqueIndex('identity_provider_tenant_key_uq').on(t.tenantId, t.key)]
+  )
+
+  return { tenant, systemUser, impersonation, destructionRequest, identityProvider }
 }
 
 export type AppTables = ReturnType<typeof appTables>

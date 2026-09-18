@@ -15,6 +15,13 @@
       "when": 1789686126212,
       "tag": "0001_sessions_tenant",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789768242158,
+      "tag": "0002_auth_flow_tenant",
+      "breakpoints": true
     }
   ]
 }

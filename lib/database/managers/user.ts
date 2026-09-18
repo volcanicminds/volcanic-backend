@@ -42,7 +42,7 @@ const EMAIL_TAKEN_CODE = 'EMAIL_ALREADY_REGISTERED'
 // Every engine we support names a unique violation somewhere in the code or the message:
 // Postgres answers 23505, better-sqlite3 and libSQL answer SQLITE_CONSTRAINT_UNIQUE. The test
 // is deliberately loose because it is not what decides: the lookup that follows it is.
-function isUniqueViolation(err: unknown): boolean {
+export function isUniqueViolation(err: unknown): boolean {
   const { code: rawCode, message: rawMessage } = (err ?? {}) as { code?: unknown; message?: unknown }
   const code = String(rawCode ?? '')
   const message = String(rawMessage ?? '').toLowerCase()

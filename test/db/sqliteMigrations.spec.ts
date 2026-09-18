@@ -62,11 +62,11 @@ describe('database/migrations · a SQLite container, migrated (T-9.1)', function
     expect(await runner.version({ locator: 'control.db' })).toBeNull()
 
     const applied = await runner.apply({ locator: 'control.db' })
-    expect(applied).toBe('0001_sessions_control')
+    expect(applied).toBe('0002_auth_flow_control')
 
     // The version lives IN the container, never in a central table: when a container is
     // restored from a backup its schema version has to travel back with it.
-    expect(await runner.version({ locator: 'control.db' })).toBe('0001_sessions_control')
+    expect(await runner.version({ locator: 'control.db' })).toBe('0002_auth_flow_control')
     expect(await runner.pending({ locator: 'control.db' })).toEqual([])
   })
 
@@ -86,7 +86,7 @@ describe('database/migrations · a SQLite container, migrated (T-9.1)', function
     // Invariant 7, on this engine too: outside the customer's container goes only what you
     // could publish, and the registry of every other customer is the clearest example of what
     // you could not.
-    expect(tenant).toEqual(['change', 'migration', 'session', 'token', 'user'])
+    expect(tenant).toEqual(['access_log', 'auth_flow', 'change', 'external_identity', 'migration', 'session', 'token', 'user'])
   })
 
   it('lets the managers work through the schema they were given', async () => {

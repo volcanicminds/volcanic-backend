@@ -24,9 +24,14 @@ describe('database/schema · parity between the two dialects', () => {
     // the table is part of the set that defines a container.
     // `session` joined them in T-11.1: the registry of live sessions lives in the container of
     // the subject it belongs to, so it is part of what defines a container too.
-    expect(Object.keys(pgApp).sort()).toEqual(['change', 'migration', 'session', 'token', 'user'])
+    // `authFlow`, `externalIdentity` and `accessLog` joined them in T-12.8 for the same reason.
+    expect(Object.keys(pgApp).sort()).toEqual([
+      'accessLog', 'authFlow', 'change', 'externalIdentity', 'migration', 'session', 'token', 'user'
+    ])
     expect(Object.keys(liteApp).sort()).toEqual(Object.keys(pgApp).sort())
-    expect(Object.keys(pgReg).sort()).toEqual(['destructionRequest', 'impersonation', 'systemUser', 'tenant'])
+    expect(Object.keys(pgReg).sort()).toEqual([
+      'destructionRequest', 'identityProvider', 'impersonation', 'systemUser', 'tenant'
+    ])
     expect(Object.keys(liteReg).sort()).toEqual(Object.keys(pgReg).sort())
   })
 
@@ -39,12 +44,31 @@ describe('database/schema · parity between the two dialects', () => {
     }
   })
 
+  it('declares the same indexes, with the same names and the same uniqueness (T-12.9)', () => {
+    const indexes = (config: any) =>
+      config.indexes.map((i: any) => `${i.config.name}${i.config.unique ? ' unique' : ''}${i.config.where ? ' partial' : ''}`).sort()
+    for (const name of ['authFlow', 'externalIdentity', 'accessLog', 'session']) {
+      expect(indexes(sqliteConfig((liteApp as any)[name]))).toEqual(indexes(pgConfig((pgApp as any)[name])))
+    }
+    expect(indexes(sqliteConfig(liteReg.identityProvider))).toEqual(indexes(pgConfig(pgReg.identityProvider)))
+    expect(indexes(pgConfig(pgApp.authFlow))).toContain('auth_flow_subject_uq unique partial')
+    expect(indexes(pgConfig(pgApp.externalIdentity))).toContain('external_identity_key_uq unique')
+  })
+
   it('keeps the registry out of a tenant container', () => {
     // v4 synchronised every entity into every tenant schema, so each container carried a
     // copy of the `tenant` table — which is what made a poisoned connection able to list
     // the wrong registry (D-01). A container holds application data and nothing else.
     expect(Object.keys(pgApp)).not.toContain('tenant')
     expect(Object.keys(pgApp)).not.toContain('systemUser')
+    // A tenant's IdP secret sits in the control plane, never inside the container it serves (F38).
+    expect(Object.keys(pgApp)).not.toContain('identityProvider')
+  })
+
+  it('keeps the access log append-only (F44)', () => {
+    const log = pgConfig(pgApp.accessLog)
+    expect(columns(log)).not.toContain('updated_at')
+    expect(columns(log)).not.toContain('deleted_at')
   })
 })
 

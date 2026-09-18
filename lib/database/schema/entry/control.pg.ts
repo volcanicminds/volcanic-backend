@@ -20,8 +20,12 @@ export const token = app.token
 export const change = app.change
 export const migration = app.migration
 export const session = app.session
+export const authFlow = app.authFlow
+export const externalIdentity = app.externalIdentity
+export const accessLog = app.accessLog
 
 export const tenant = registry.tenant
 export const systemUser = registry.systemUser
 export const impersonation = registry.impersonation
 export const destructionRequest = registry.destructionRequest
+export const identityProvider = registry.identityProvider

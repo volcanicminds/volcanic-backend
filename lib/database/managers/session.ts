@@ -77,7 +77,8 @@ export function createSessionManager(): SessionManagement {
           absoluteExpiresAt: new Date(data.absoluteExpiresAt as never),
           ip: data.ip ?? null,
           userAgent: data.userAgent ?? null,
-          impersonationId: data.impersonationId ?? null
+          impersonationId: data.impersonationId ?? null,
+          authMethods: data.authMethods ?? null
         })
         .returning()
       return rows[0] as Session

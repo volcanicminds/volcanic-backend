@@ -7,6 +7,10 @@ import { createSystemUserManager } from './systemUser.js'
 import { createImpersonationManager } from './impersonation.js'
 import { createDestructionManager } from './destruction.js'
 import { createSessionManager } from './session.js'
+import { createAuthFlowManager } from './authFlow.js'
+import { createExternalIdentityManager } from './externalIdentity.js'
+import { createIdentityProviderManager } from './identityProvider.js'
+import { createAccessLogManager } from './accessLog.js'
 
 export {
   createUserManager,
@@ -16,8 +20,14 @@ export {
   createSystemUserManager,
   createImpersonationManager,
   createDestructionManager,
-  createSessionManager
+  createSessionManager,
+  createAuthFlowManager,
+  createExternalIdentityManager,
+  createIdentityProviderManager,
+  createAccessLogManager
 }
+export { challengeMac } from './authFlow.js'
+export { truncateIp, type AccessLogIpMode } from './accessLog.js'
 export { runtime, control } from './runtime.js'
 
 //
@@ -40,6 +50,12 @@ export function buildManagers(provider: TenantProvider & { control(): ControlHan
     destructionManager: createDestructionManager(),
     // The live sessions, in the container of their subject (T-11.5). Without this one there is
     // no renewal at all: a refresh nobody can consume is a credential that never expires.
-    sessionManager: createSessionManager()
+    sessionManager: createSessionManager(),
+    // Multi-step logins (T-12.12): without it only a flow that closes in one request can run (F46).
+    authFlowManager: createAuthFlowManager(),
+    externalIdentityManager: createExternalIdentityManager(),
+    // Control plane only: a tenant's IdP secret never sits in the container it serves (F38).
+    identityProviderManager: createIdentityProviderManager(),
+    accessLogManager: createAccessLogManager()
   }
 }

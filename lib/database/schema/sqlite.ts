@@ -144,6 +144,7 @@ export function appTables() {
       ip: text('ip'),
       userAgent: text('user_agent'),
       impersonationId: text('impersonation_id'),
+      authMethods: text('auth_methods', { mode: 'json' }).$type<string[]>(),
       createdAt: integer('created_at', { mode: 'timestamp_ms' })
         .notNull()
         .default(sql`(unixepoch() * 1000)`)
@@ -157,7 +158,92 @@ export function appTables() {
     ]
   )
 
-  return { user, token, change, migration, session }
+  // A login in progress (F37), an identity at a provider (F40) and the access log (F44). The
+  // shapes and the reasons are in ./pg.ts.
+  const authFlow = sqliteTable(
+    'auth_flow',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      flowId: text('flow_id').notNull(),
+      scope: text('scope').notNull().default('tenant'),
+      subjectId: text('subject_id'),
+      candidateSubjectId: text('candidate_subject_id'),
+      secretHash: text('secret_hash').notNull(),
+      flowName: text('flow_name'),
+      stageIndex: integer('stage_index').notNull().default(0),
+      satisfied: text('satisfied', { mode: 'json' }).$type<string[]>().notNull().default([]),
+      challengeMethod: text('challenge_method'),
+      challengeHash: text('challenge_hash'),
+      challengeExpiresAt: integer('challenge_expires_at', { mode: 'timestamp_ms' }),
+      challengeAttempts: integer('challenge_attempts').notNull().default(0),
+      challengeSends: integer('challenge_sends').notNull().default(0),
+      lastSentAt: integer('last_sent_at', { mode: 'timestamp_ms' }),
+      stateHash: text('state_hash'),
+      external: text('external'),
+      externalResult: text('external_result', { mode: 'json' }),
+      version: integer('version').notNull().default(1),
+      ip: text('ip'),
+      userAgent: text('user_agent'),
+      createdAt: integer('created_at', { mode: 'timestamp_ms' })
+        .notNull()
+        .default(sql`(unixepoch() * 1000)`),
+      expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull()
+    },
+    (t) => [
+      uniqueIndex('auth_flow_flow_id_uq').on(t.flowId),
+      uniqueIndex('auth_flow_subject_uq').on(t.subjectId, t.scope).where(sql`${t.subjectId} is not null`),
+      index('auth_flow_state_idx').on(t.stateHash),
+      index('auth_flow_candidate_idx').on(t.candidateSubjectId, t.lastSentAt),
+      index('auth_flow_expires_idx').on(t.expiresAt)
+    ]
+  )
+
+  const externalIdentity = sqliteTable(
+    'external_identity',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      scope: text('scope').notNull().default('tenant'),
+      subjectId: text('subject_id').notNull(),
+      provider: text('provider').notNull(),
+      issuer: text('issuer').notNull(),
+      subject: text('subject').notNull(),
+      emailAtLink: text('email_at_link'),
+      createdAt: integer('created_at', { mode: 'timestamp_ms' })
+        .notNull()
+        .default(sql`(unixepoch() * 1000)`),
+      lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' })
+    },
+    (t) => [
+      uniqueIndex('external_identity_key_uq').on(t.scope, t.provider, t.issuer, t.subject),
+      index('external_identity_subject_idx').on(t.subjectId, t.scope)
+    ]
+  )
+
+  const accessLog = sqliteTable(
+    'access_log',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      occurredAt: integer('occurred_at', { mode: 'timestamp_ms' })
+        .notNull()
+        .default(sql`(unixepoch() * 1000)`),
+      scope: text('scope').notNull().default('tenant'),
+      event: text('event').notNull(),
+      outcome: text('outcome').notNull(),
+      code: text('code'),
+      subjectId: text('subject_id'),
+      methods: text('methods', { mode: 'json' }).$type<string[]>(),
+      provider: text('provider'),
+      flowId: text('flow_id'),
+      sid: text('sid'),
+      ip: text('ip')
+    },
+    (t) => [
+      index('access_log_occurred_idx').on(t.occurredAt),
+      index('access_log_subject_idx').on(t.subjectId, t.occurredAt)
+    ]
+  )
+
+  return { user, token, change, migration, session, authFlow, externalIdentity, accessLog }
 }
 
 export function registryTables() {
@@ -244,7 +330,24 @@ export function registryTables() {
     (t) => [index('destruction_tenant_idx').on(t.tenantId), index('destruction_expires_idx').on(t.expiresAt)]
   )
 
-  return { tenant, systemUser, impersonation, destructionRequest }
+  // A tenant's own identity provider (F38). See ./pg.ts.
+  const identityProvider = sqliteTable(
+    'identity_provider',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      tenantId: text('tenant_id').notNull(),
+      key: text('key').notNull(),
+      type: text('type').notNull().default('oidc'),
+      status: text('status').notNull().default('active'),
+      config: text('config', { mode: 'json' }).notNull().default({}),
+      secretEnc: text('secret_enc'),
+      createdAt: stamps.createdAt,
+      updatedAt: stamps.updatedAt
+    },
+    (t) => [uniqueIndex('identity_provider_tenant_key_uq').on(t.tenantId, t.key)]
+  )
+
+  return { tenant, systemUser, impersonation, destructionRequest, identityProvider }
 }
 
 export type AppTables = ReturnType<typeof appTables>

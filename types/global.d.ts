@@ -677,6 +677,8 @@ export interface Session {
   ip?: string | null
   userAgent?: string | null
   impersonationId?: string | null
+  /** The methods the login satisfied (F45). Null for a session opened before the flow engine. */
+  authMethods?: string[] | null
   createdAt: Date | string
 }
 
@@ -717,6 +719,7 @@ export interface SessionManagement {
       ip?: string | null
       userAgent?: string | null
       impersonationId?: string | null
+      authMethods?: string[] | null
     }
   ): Promise<Session>
   /** Classifies a presented secret. A malformed or unknown secret is an answer, not a throw. */
