@@ -1,7 +1,7 @@
 # EVO framework v5: piano di riscrittura multi-tenant di `@volcanicminds/backend`
 
 > **Versione del piano**: 6 settembre 2026 · repository `volcanic-backend` · branch di lavoro
-> **`develop`**, allineato a `main` · bersaglio **`5.0.0`, breaking dichiarata** · data layer
+> **`v5`** (in origine `develop`, allineato a `main`; spostato su `v5` il 9 settembre 2026) · bersaglio **`5.0.0`, breaking dichiarata** · data layer
 > **Drizzle**.
 >
 > **Base di partenza**: il rilievo del 1 settembre 2026 su `v4.0.3`. Le sezioni 2, 4 e le
@@ -329,7 +329,8 @@ Obiettivo della fase: **esistono il giudice e la specifica, prima del codice da 
 
 **Cosa fare.**
 
-1. Si lavora su **`develop`**, già allineato a `main`. `main` resta la v4 e non riceve altro
+1. Si lavora su **`develop`**, già allineato a `main` (dal 9 settembre 2026 il lavoro sta su `v5`,
+   che contiene tutto `develop`). `main` resta la v4 e non riceve altro
    che eventuali correzioni di sicurezza per i consumer esistenti.
 2. Versione `5.0.0-alpha.0` in `package.json`, e pubblicazione alpha sul tag `v5.0.0-alpha.*`
    con dist-tag `next`, mai `latest`, finché la fase 7 non è chiusa.
@@ -1472,7 +1473,7 @@ Il pacchetto è pubblicato su npm e ha consumer in esercizio, **tutti in single 
 | | |
 |---|---|
 | `main` | resta la linea **4.x**. Riceve solo correzioni di sicurezza, se emergono |
-| `develop` | è la linea **5.x**. Pubblica alpha e beta con dist-tag `next` |
+| `v5` | è la linea **5.x** (lo era `develop` fino al 9 settembre 2026). Pubblica alpha e beta con dist-tag `next` |
 | `latest` | passa alla 5 solo a fase 7 chiusa e con T-8.3 scritta |
 
 **La v5 è breaking e non finge il contrario.** Non si scrive codice di compatibilità, non si

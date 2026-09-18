@@ -2,7 +2,7 @@
 
 > **Status: complete for the v5 surface.** This file was written one line at a time, as each
 > break landed, and not reconstructed at the end (task T-8.3); it was then read through in
-> full, once, with the API stable. Everything below is true of the code on `develop`.
+> full, once, with the API stable. Everything below is true of the code on the `v5` branch.
 >
 > Twenty-seven sections, in the order a port meets them: the data layer and the configuration
 > first, because nothing else compiles until they are right; then what changed inside a

@@ -1042,8 +1042,9 @@ chiedono un disegno, non una riga. Vale la stessa regola dell'evidenza citata.
 
 ## Non in questa fase
 
-- [-] **Ripubblicare l'alpha su npm e fare il push di `develop`**: sono già segnate come lavoro
-  che resta in `EVO_STATO.md` e richiedono una richiesta esplicita, non una checklist.
+- [-] **Ripubblicare l'alpha su npm e decidere la sorte di `develop`**: sono già segnate come lavoro
+  che resta in `EVO_STATO.md` e richiedono una richiesta esplicita, non una checklist. Il push
+  del lavoro è fatto, su `v5`.
 - [-] **I 67 warning `no-explicit-any` del framework**: sono rumore noto e non un difetto; vanno
   affrontati per file quando quel file si tocca, non in un passaggio unico che tocca tutto.
 - [-] **Gli `export` inutili di `volcanic-admin`** (`countActiveFilters`, `buildRecordTitle`,

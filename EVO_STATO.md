@@ -8,7 +8,8 @@
 > **Regola unica**: una casella si chiude solo con un'**evidenza citata**, cioè un `file:riga`,
 > un identificativo di commit o l'output di un comando. Senza evidenza resta aperta.
 >
-> Linea di lavoro: branch `develop`, versione bersaglio `5.0.0`, data layer Drizzle.
+> Linea di lavoro: branch `v5`, pubblicato su `origin/v5` (dal 9 settembre 2026; prima era `develop`), versione bersaglio
+> `5.0.0`, data layer Drizzle.
 
 | Simbolo | |
 |---|---|
@@ -51,9 +52,10 @@ sei nuove dimostrano che una sessione vive nel contenitore del suo tenant, che i
 tenant presentato come un altro è rifiutato, e che dopo logout o riuso non si rinnova più. **Fase 11 chiusa**: T-11.18 decisa e implementata, la lista dei dispositivi collegati è un pannello
 dell'account nella console, non una risorsa del manifest, che ne annuncia l'endpoint per piano.
 
-**Cosa resta**, e non è nel piano: il push (`develop` è avanti al remoto, serve una richiesta
-esplicita), la pubblicazione dell'alpha su npm, e il porting del sample committato — oggi è
-lavoro verificato ma non committato, per scelta.
+**Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
+`main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:
+`v5` coincide con `origin/v5` in tutti e cinque i repository, e il porting del sample è committato
+(`volcanic-backend-sample@23c6c04`).
 
 La rottura da guardare per prima in qualunque consumer: il login risponde **401** dove v4
 rispondeva 403, e un livello HTTP che tratta il 401 come «sessione scaduta, torna al login»
@@ -171,12 +173,12 @@ documenti esistono e in che ordine si leggono.
 
 | | Stato | Nota |
 |---|---|---|
-| Push forzato di `develop` su `origin` | `[ ]` | il remoto è indietro di 209 commit; serve una richiesta esplicita |
+| Sorte di `develop` e `main` | `[ ]` | verificato il 18 settembre 2026 con `git rev-list --left-right --count` sui remoti: in ogni repository `develop` e `main` sono **antenati stretti** di `v5`, quindi nessun commit andrebbe perso e ogni allineamento è un fast-forward. Backend: `develop` (fermo all'8 settembre) è 21 avanti a `main` e 33 dietro a `v5`, `main` è 54 dietro a `v5`. Sample: `develop` (fermo al 12 novembre 2025) è 25 dietro a `main` e 26 dietro a `v5`. `volcanic-tools`, `volcanic-admin` e `volcanic-rag` non hanno `develop`, e `main` è dietro a `v5` di 1, 5 e 7. Da decidere se `v5` confluisce in `develop` o lo sostituisce, e quando `main` passa alla 5 (sezione 7 di `EVO_FRAMEWORK.md`: a fase 7 chiusa e T-8.3 scritta, condizioni già vere); serve una richiesta esplicita. Il vecchio residuo «push forzato di `develop`, 209 commit dietro» è superato: il lavoro è passato su `v5` |
 | Pubblicazione su npm | `[ ]` | il registro ha `latest` 4.0.3 (verificato il 15 settembre 2026); va l'alpha `5.0.0-alpha.0` sul dist-tag `next`, serve una richiesta esplicita. Mappa dei pacchetti decisa lo stesso giorno: `@volcanicminds/backend`, `@volcanicminds/tools` e `@volcanicminds/admin` restano a sé (l'admin si pubblica dopo il blocco C di `EVO_FASE_10.md`, chiuso il 15 settembre 2026), il RAG è un pacchetto unico con subpath (`volcanic-rag/TASKS.md`, D7), `@volcanicminds/typeorm` è già deprecato sul registro |
 | Cartelli sui documenti v4 | `[x]` | `DATA_LAYER_MAGIC.md` e `CONFIGURATION.md` marcati come sostituiti, `AUTH_COMPOSABLE_EVOLUTION.md` come rinviato fuori dalla v5. Il 15 settembre 2026 aggiunti `ADVANCED_ARCHITECTURE.md` e `TYPESCRIPT_GUIDE.md`, rimasti senza: insegnavano `service.use(req.db)` e il primo si dichiarava ancora fonte canonica |
 | Riscrittura di `ADVANCED_ARCHITECTURE.md` e `TYPESCRIPT_GUIDE.md` sulla v5 | `[x]` | riscritti entrambi il 17 settembre 2026, cartello tolto perché non c'è più niente da sostituire. **Architettura**: il service layer legato a un **contenitore** e non a un `EntityManager`, `service.on(dataContext(req))`, `applyPermissions` che **restituisce** una condizione `SQL` portata da `extraWhere` e messa in AND per ultima (filtrare dopo la query taglia la pagina prima e filtra dopo: pagine corte e totale sbagliato), il default deny scritto e non assunto, niente hook `addRelations` perché un join non è una proprietà del servizio, controller sottile, transazioni prese dall'handle, e la tabella «v4 → v5» che spiega perché non è un rinomino: in v4 la strada vietata andava recintata perché era raggiungibile, in v5 non esiste un contenitore ambientale da raggiungere. **TypeScript**: i tre handle (`ControlHandle`, `TenantHandle`, `DataHandle`) e perché tiparli `any` non è una scorciatoia, `dataContext(req)` invece di `req.tenant ?? req.control`, `access(handle)` come unica porta d'ingresso, i globali che il framework dichiara già (quindi nessuna ridichiarazione, e niente `entity`/`connection`/`repository`), i due subpath, il `tsconfig` senza le opzioni dei decoratori TypeORM, e l'elenco delle grafie che non compilano più |
 | `docs/AUTHORIZATION_MODEL.md` | `[-]` | resta valido: `AUTHORIZATION_V5.md` lo estende, non lo sostituisce |
-| Dipendenze Drizzle installate e verificate su Node 24.11 | `[~]` | verificate su Node **v24.11.0**: `better-sqlite3` **12.11.1** compila e apre un database (è il motore di 118 test del data layer), `drizzle-orm` 0.45.2 e `drizzle-kit` 0.31.10 generano e applicano, `pg` e `bcrypt` girano contro Postgres 16 reale. Resta a metà `@libsql/client` 0.18.0: si importa e espone `createClient`, ma nessun test lo apre davvero — lo tocca solo la matrice di capacità, che è un test di configurazione e non di connessione. **Quella metà è T-9.2** |
+| Dipendenze Drizzle installate e verificate su Node 24.11 | `[x]` | verificate su Node **v24.11.0**: `better-sqlite3` **12.11.1** compila e apre un database (è il motore di 118 test del data layer), `drizzle-orm` 0.45.2 e `drizzle-kit` 0.31.10 generano e applicano, `pg` e `bcrypt` girano contro Postgres 16 reale. Resta a metà `@libsql/client` 0.18.0: si importa e espone `createClient`, ma nessun test lo apre davvero — lo tocca solo la matrice di capacità, che è un test di configurazione e non di connessione. **Quella metà l'ha chiusa T-9.2**: `test/db/libsql.spec.ts` apre il driver vero su un file locale |
 | `npm audit fix` sulla baseline | `[x]` | assorbito in T-8.1. Produzione: **0 vulnerabilità**. Sviluppo: da 13 a 7, tutte in `drizzle-kit` e `autocannon`, dove l'unico rimedio proposto è un downgrade di major e non si applica |
 | Finestra senza rete di test | `[x]` | chiusa. Aperta il 6 settembre 2026 con 49 test su 432, richiusa il 10 settembre 2026: **470 test** (306 core, 130 data layer, 34 migrazioni) più gli **8 del banco nero** su Postgres reale. Le suite end-to-end della v4 non sono state recuperate e non lo saranno: il banco di T-0.2 copre le proprietà che contavano, e gli spec vecchi restano in `main` (`git show main:test/e2e/auth-lifecycle.e2e.spec.ts`) per chi volesse rileggerli |
 | Insieme di migrazioni per SQLite e libSQL | `[-]` | **promosso a T-9.1**, non è più fuori piano. Trovato portando il sample: `lib/database/schema/sqlite.ts` e l'adattatore esistono, le migrazioni no: `drizzle.config.ts` genera solo `dialect: 'postgresql'` e le uniche cartelle sono quelle Postgres. Un deployment SQLite applicherebbe DDL Postgres e fallirebbe. Finché non c'è, SQLite è un motore che il framework sa aprire e non sa preparare, e il sample dichiara Postgres per questo |

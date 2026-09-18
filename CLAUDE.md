@@ -1,9 +1,9 @@
 # CLAUDE.md: @volcanicminds/backend
 
 > **Questo repo è il framework, non un'applicazione.** Pacchetto npm `@volcanicminds/backend`
-> (codename `rome`). Linea di lavoro **v5** su branch `develop` (`5.0.0-alpha.0`; su npm `latest`
-> è ancora la 4.x). Wrapper opinionato attorno a **Fastify v5**, con il **data layer su Drizzle**
-> esposto come subpath `@volcanicminds/backend/db`. Gli esempi applicativi di `llms.txt`
+> (codename `rome`). Linea di lavoro **v5** su branch `v5` (`5.0.0-alpha.0`; su npm `latest` è
+> ancora la 4.x). `develop` e `main` sono antenati fermi di `v5` e non si usano. Wrapper
+> opinionato attorno a **Fastify v5**, con il **data layer su Drizzle** esposto come subpath `@volcanicminds/backend/db`. Gli esempi applicativi di `llms.txt`
 > (controller, service, tabelle di dominio) si riferiscono a un repo consumer separato
 > (`volcanic-backend-sample`), non a questo. Qui si lavora sugli interni in `lib/`.
 >
