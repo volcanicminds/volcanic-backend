@@ -193,7 +193,7 @@ non c'è emissione, senza emissione non c'è rotazione.
   tabella), `docs/MIGRATION_V4_V5.md` (cosa rompe), `README.md` e `llms.txt`.
   **Chiuso quando**: nessuno dei file descrive ancora il rinnovo senza registro.
 
-- [ ] **T-11.18** Console e sample.
+- [x] **T-11.18** Console e sample.
   **Dove**: `volcanic-admin` per la lista delle sessioni, `volcanic-backend-sample` se la
   superficie cambia per un consumer.
   **Chiuso quando**: deciso se entra nella v5 o resta fuori, con il motivo scritto.
@@ -222,6 +222,7 @@ preesistenti, zero errori), `npm test` verde.
 | T-11.16 | `npm test` 566 passanti e 30 saltati; unità del formato e degli orologi, banco SQLite del manager, prove HTTP di rotazione, grazia, riuso, logout e rotte |
 | T-11.10 | `logout` revoca la riga sui due piani; `invalidate-tokens` chiude tutte le sessioni **prima** di ruotare l'`external_id` |
 
+| T-11.18 | deciso che entra nella v5 come pannello del proprio account e non come risorsa del manifest: il manifest annuncia `auth.endpoints.sessions` per piano (`lib/manifest/generator.ts`, due prove in `test/lib/manifest.spec.ts`) e la console lo consuma in `volcanic-admin/src/ui/views/AccountView.tsx` con tabella, conferma distruttiva e ricarica quando si chiude la sessione corrente |
 | T-11.11 | `test/e2e-mt-pg/renewal.e2e.spec.ts`, sei prove su Postgres reale: la riga di sessione sta nel contenitore del suo tenant e in nessun altro, il rinnovo ruota, il credenziale di un tenant presentato come un altro è 403 `TENANT_MISMATCH`, il riuso chiude la famiglia e scrive il motivo, dopo il logout non si rinnova più, la sessione di piattaforma vive e si rinnova solo nel piano di controllo. `npm run test:e2e:mt:pg` 14 su 14 |
 | T-11.13 | blocco `sessions` in `lib/config/general.ts` e nei tipi, tre variabili d'ambiente che vincono sulla configurazione, documentato in `docs/CONFIGURATION_V5.md`; `test/lib/sessionToken.spec.ts` prova i default, l'override e i tre modi di spegnerlo |
 | T-11.17 | `docs/AUTHORIZATION_V5.md` §9, `docs/API_V5.md` §2.3 e §2.4, `docs/CONFIGURATION_V5.md`, `docs/SCHEMA_V5.md` §2.5, `docs/MANAGERS_V5.md` §11, `docs/MIGRATION_V4_V5.md` §27, `README.md`, `llms.txt` |
