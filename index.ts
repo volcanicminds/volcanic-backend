@@ -17,6 +17,7 @@ import * as loaderSchemas from './lib/loader/schemas.js'
 import * as loaderTracking from './lib/loader/tracking.js'
 import * as loaderTranslation from './lib/loader/translation.js'
 import * as loaderConfig from './lib/loader/general.js'
+import * as loaderAuthFlows from './lib/loader/authFlows.js'
 import { ensureGenesisAdmin } from './lib/loader/genesis.js'
 import { assertControlSchemaCurrent } from './lib/loader/schemaVersion.js'
 import * as loaderSchedules from './lib/loader/schedules.js'
@@ -40,7 +41,7 @@ import require from './lib/util/require.js'
 import { assertSecretStrength } from './lib/util/secret.js'
 import { assertCorsOptions, withTenantHeader } from './lib/util/cors.js'
 import { tenantsConfig } from './lib/util/tenancy.js'
-import { assertPolicies, controlPolicy, floorPolicy, mfaAvailable, unavailableMandatory } from './lib/util/mfaPolicy.js'
+import { assertPolicies, controlPolicy, floorPolicy, mfaAvailable } from './lib/util/mfaPolicy.js'
 import { configureCache, cache } from './lib/util/cache.js'
 
 import type { Authenticator, TransferManagement } from './types/global.js'
@@ -68,6 +69,7 @@ import {
   defaultAccessLogManager
 } from './lib/defaults/managers.js'
 import { buildAuthenticatorRegistry } from './lib/auth/registry.js'
+import { authFlowProblems, canImport, isImplemented, listsMethod, OIDC, OIDC_LIBRARY } from './lib/auth/validate.js'
 
 global.log = logger
 
@@ -177,6 +179,9 @@ const preload = async () => {
   // that can suspend a customer and a role that can read a customer's orders are not two
   // rows of one list.
   global.systemRoles = await loaderRoles.loadSystem()
+  // Before the data layer, like the rest: the flows are configuration, and the methods that run
+  // them arrive later, through start().
+  global.authFlows = await loaderAuthFlows.load()
 }
 
 /** The managers to inject, plus the authenticators that feed the registry (T-12.3). */
@@ -184,6 +189,7 @@ type StartOptions = object & { authenticators?: readonly Authenticator[] }
 
 const start = async (decorators: StartOptions = {}) => {
   if (!global.config) await preload()
+  if (!global.authFlows) global.authFlows = await loaderAuthFlows.load()
 
   const begin = new Date().getTime()
   mark.print(logger)
@@ -357,17 +363,26 @@ const start = async (decorators: StartOptions = {}) => {
       await server.decorate(key, managers[key])
     })
   )
-  server.decorate('authRegistry', buildAuthenticatorRegistry(authenticators ?? []))
+  const authRegistry = buildAuthenticatorRegistry(authenticators ?? [])
+  server.decorate('authRegistry', authRegistry)
 
-  // After the injection, because a project may bring its own manager: a policy that demands a
-  // second factor this build cannot issue is a locked door with no key, and the first login is
-  // where everyone would find out (T-10.19).
-  const mfaGap = unavailableMandatory({
-    floor: floorPolicy(),
-    control: controlPolicy(),
-    implemented: mfaAvailable(managers.mfaManager)
+  // After the injection, because a project may bring its own managers and methods: a flow this
+  // build cannot run, or a policy that demands a second factor it cannot issue (T-10.19), is a
+  // locked door with no key, and the first login is where everyone would find out (T-12.6).
+  const flowProblems = authFlowProblems({
+    flows: global.authFlows,
+    registry: authRegistry,
+    roles: { tenant: Object.keys(global.roles ?? {}), control: Object.keys(global.systemRoles ?? {}) },
+    implemented: {
+      mfa: mfaAvailable(managers.mfaManager),
+      challengeDelivery: isImplemented(managers.challengeDeliveryManager),
+      authFlow: isImplemented(managers.authFlowManager)
+    },
+    policies: { floor: floorPolicy(), control: controlPolicy() },
+    oidcLibrary: listsMethod(global.authFlows, OIDC) ? await canImport(OIDC_LIBRARY) : true,
+    env: process.env
   })
-  if (mfaGap) throw new Error(mfaGap)
+  if (flowProblems.length) throw new Error(flowProblems.join('\n'))
 
   // Before anything writes: an instance does not serve traffic on a schema its code does not
   // match (T-5.4). It runs BEFORE the genesis reconciliation on purpose, because that one
@@ -625,6 +640,14 @@ export type {
   AccessLogEntry,
   AccessLogRecord,
   AccessLogManagement,
+  // What a project's `src/config/authFlows.ts` is typed with (T-12.5).
+  AuthFlowsConfig,
+  AuthPlaneFlows,
+  AuthFlowDefinition,
+  AuthStage,
+  AuthFlowLimits,
+  DeploymentProvider,
+  ResolvedAuthFlows,
   TransferManagement,
   TransferCallback,
   JobSchedule,

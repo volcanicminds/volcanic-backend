@@ -13,7 +13,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Authenticator } from '../../types/global.js'
 import type logger from '../../lib/util/logger.js'
 
-const GLOBAL_KEYS = ['config', 'roles', 'systemRoles', 't', 'server', 'tracking', 'trackingConfig', 'cache', 'transferPath', 'authFlows']
+const GLOBAL_KEYS = ['log', 'config', 'roles', 'systemRoles', 't', 'server', 'tracking', 'trackingConfig', 'cache', 'transferPath', 'authFlows']
 const ENV_KEYS = ['JWT_SECRET', 'MANIFEST_DUMP', 'MANIFEST_DUMP_EXIT', 'AUTH_MODE']
 
 const bag = globalThis as unknown as Record<string, unknown>
@@ -47,14 +47,14 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
   })
 
   after(() => {
+    log().level = level
+    log().updateLevel()
     for (const key of GLOBAL_KEYS) bag[key] = savedGlobals[key]
     for (const key of ENV_KEYS) {
       if (savedEnv[key] === undefined) delete process.env[key]
       else process.env[key] = savedEnv[key]
     }
     rmSync(dump, { force: true })
-    log().level = level
-    log().updateLevel()
   })
 
   const boot = async (decorators: object = {}) => {
@@ -85,6 +85,25 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
     expect(server.authRegistry.get('tenant', 'sms')).toBe(sms)
     expect(server.authRegistry.get('control', 'sms')).toBeUndefined()
     expect(server.hasDecorator('authenticators')).toBe(false)
+  })
+
+  it('validates the default flows at boot and loads them onto global.authFlows (T-12.5, T-12.6)', async () => {
+    await boot()
+    const flows = bag.authFlows as { tenant: { identify: string[] } }
+    expect(flows.tenant.identify).toEqual(['password'])
+    expect(Object.isFrozen(flows)).toBe(true)
+  })
+
+  it('refuses to boot on a flow this build cannot run', async () => {
+    await preload()
+    const frozen = bag.authFlows as Record<string, unknown>
+    bag.authFlows = {
+      ...frozen,
+      tenant: { identify: ['password', 'email-otp'], flows: [{ roles: ['*'], stages: [] }] }
+    }
+    await expect(start({})).rejects.toThrow(
+      "authFlows.tenant: `identify` names 'email-otp', which is not an authenticator of the tenant plane"
+    )
   })
 
   it('keeps an injected manager over its default', async () => {

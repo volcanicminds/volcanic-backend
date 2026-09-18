@@ -886,7 +886,8 @@ export interface AuthContext {
  */
 export interface Authenticator {
   readonly id: string
-  readonly kind: AuthenticatorKind
+  /** Both, for a method that plays either role: `email-otp` identifies, or verifies a known subject. */
+  readonly kind: AuthenticatorKind | readonly AuthenticatorKind[]
   readonly planes: readonly AuthPlane[]
   initiate?(ctx: AuthContext, input: AuthInput): Promise<AuthResult>
   verify(ctx: AuthContext, input: AuthInput): Promise<AuthResult>
@@ -919,6 +920,62 @@ export interface OidcProviderSettings {
   jit?: { enabled: boolean; roles: string[] }
   /** Whether the provider's own second factor counts (`idp-mfa`). Absent: it does not. */
   mfa?: { trust: 'amr' | 'acr'; values: string[] }
+}
+
+/** One stage: `anyOf` is the OR, the list of stages is the AND. */
+export interface AuthStage {
+  anyOf: string[]
+  /** Applies only to a subject already enrolled in one of its methods. */
+  optional?: boolean
+}
+
+/** Chosen after identification: the first whose roles meet the subject's. `'*'` is last. */
+export interface AuthFlowDefinition {
+  roles: string[]
+  /** The identifiers this flow accepts; absent means every one of `identify`. */
+  identifiers?: string[]
+  stages: AuthStage[]
+}
+
+/** A provider declared by the deployment in `authFlows.ts`. The secret is a variable name, never a value. */
+export interface DeploymentProvider extends OidcProviderSettings {
+  type: 'oidc'
+  clientSecretEnv: string
+}
+
+/** The flows of one plane. A project's block replaces the framework's whole, never merged. */
+export interface AuthPlaneFlows {
+  identify: string[]
+  flows: AuthFlowDefinition[]
+  /** Where a return from an external provider sends the browser back to. */
+  returnUrl?: string
+  providers?: Record<string, DeploymentProvider>
+}
+
+/** Seconds and counts. The environment wins over the file (`AUTH_FLOW_TTL`, `AUTH_OTP_*`). */
+export interface AuthFlowLimits {
+  /** Absolute lifetime of a flow. Never extended. */
+  flowTtl: number
+  /** Lifetime of one sent code. */
+  otpTtl: number
+  /** Wrong codes before the flow dies. */
+  otpMaxAttempts: number
+  /** Sends within one flow. */
+  otpMaxSends: number
+}
+
+/** `config/authFlows.ts` as written by a project: every key optional. */
+export interface AuthFlowsConfig {
+  tenant?: AuthPlaneFlows
+  control?: AuthPlaneFlows
+  limits?: Partial<AuthFlowLimits>
+}
+
+/** What the loader leaves on `global.authFlows`: both planes, every limit, frozen. */
+export interface ResolvedAuthFlows {
+  readonly tenant: AuthPlaneFlows
+  readonly control: AuthPlaneFlows
+  readonly limits: Readonly<AuthFlowLimits>
 }
 
 /** What a flow holds from outside: decrypted by the manager, never written in clear. */
@@ -1415,6 +1472,8 @@ declare global {
   var roles: Roles
   /** The control-scope catalogue. Separate map, separate namespace (T-4.1). */
   var systemRoles: SystemRoles
+  /** The flows of both planes (`config/authFlows.ts`), frozen, read by the manifest and the engine. */
+  var authFlows: ResolvedAuthFlows
   /**
    * The i18n instance loaded at boot (`lib/loader/translation.ts`).
    *

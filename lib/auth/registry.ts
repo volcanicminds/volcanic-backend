@@ -1,15 +1,20 @@
-import type { AuthPlane, Authenticator, AuthenticatorRegistry } from '../../types/global.js'
+import type { AuthPlane, Authenticator, AuthenticatorKind, AuthenticatorRegistry } from '../../types/global.js'
 import { BUILTIN_AUTHENTICATORS } from './builtins.js'
 
 const PLANES: readonly AuthPlane[] = ['tenant', 'control']
 const KINDS: readonly string[] = ['identifier', 'verifier']
 
+/** The roles an authenticator can play, whether it declared one or both. */
+export const kindsOf = (authenticator: Authenticator): readonly AuthenticatorKind[] =>
+  typeof authenticator.kind === 'string' ? [authenticator.kind] : authenticator.kind
+
 /** Refused when registered, so a malformed entry stops the boot instead of answering 500 at a login. */
 function assertShape(candidate: Authenticator): void {
   const id = typeof candidate?.id === 'string' ? candidate.id.trim() : ''
   if (!id) throw new Error('Authenticators: every authenticator needs a non-empty `id`')
-  if (!KINDS.includes(candidate.kind)) {
-    throw new Error(`Authenticator '${id}': kind must be 'identifier' or 'verifier', got '${String(candidate.kind)}'`)
+  const kinds: unknown[] = Array.isArray(candidate.kind) ? candidate.kind : [candidate.kind]
+  if (!kinds.length || kinds.some((k) => !KINDS.includes(k as string))) {
+    throw new Error(`Authenticator '${id}': kind must be 'identifier', 'verifier' or both, got '${String(candidate.kind)}'`)
   }
   const planes: unknown = candidate.planes
   if (!Array.isArray(planes) || !planes.length || planes.some((p) => !PLANES.includes(p))) {

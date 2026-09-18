@@ -16,6 +16,7 @@ import { httpError } from '../../../util/httpError.js'
 import { checkTenantPolicy, demandsEnrolment, mfaAvailable, type PolicyVerdict } from '../../../util/mfaPolicy.js'
 import { absoluteStep, isReplay } from '../../../util/mfaCounter.js'
 import { envInt } from '../../../util/env.js'
+import { ENROLMENT_METHOD, floorEnrollable } from '../../../auth/validate.js'
 import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
 
 //
@@ -157,9 +158,9 @@ export function locatorFor(slug: string): string {
  * ago that nothing points at and that has never held a customer's data.
  */
 /**
- * The two ways a tenant's MFA policy is refused (T-10.19): weaker than the deployment floor, or
- * demanding a second factor this build cannot issue, which would lock that customer's users out at
- * their next login. Shared by creation and update, so the two cannot drift apart.
+ * The ways a tenant's MFA policy is refused (T-10.19, T-12.7): weaker than the deployment floor, or
+ * demanding a second factor this build cannot issue or cannot enrol anyone in, which would lock that
+ * customer's users out at their next login. Shared by creation and update, so the two cannot drift.
  */
 function refusePolicy(req: FastifyRequest, reply: FastifyReply, verdict: PolicyVerdict) {
   if (!verdict.ok) return reply.status(400).send(httpError(400, verdict.message, verdict.code))
@@ -167,6 +168,17 @@ function refusePolicy(req: FastifyRequest, reply: FastifyReply, verdict: PolicyV
     return reply
       .status(503)
       .send(httpError(503, 'This build has no MFA manager: that policy would lock this tenant out', 'MFA_NOT_AVAILABLE'))
+  }
+  if (verdict.policy && !floorEnrollable(verdict.policy, req.server.authRegistry, 'tenant')) {
+    return reply
+      .status(503)
+      .send(
+        httpError(
+          503,
+          `This build has no '${ENROLMENT_METHOD}' authenticator on the tenant plane: a user with no factor could not enrol, and that policy would lock them out`,
+          'MFA_POLICY_UNSUPPORTED'
+        )
+      )
   }
   return null
 }

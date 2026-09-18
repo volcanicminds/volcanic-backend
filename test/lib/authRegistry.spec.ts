@@ -81,7 +81,8 @@ describe('auth · authenticator contract and registry (T-12.2, T-12.3)', () => {
     const broken = (shape: Record<string, unknown>) => () => registry.register(shape as unknown as Authenticator)
 
     expect(broken({ id: ' ', kind: 'verifier', planes: ['tenant'], verify })).toThrow(/non-empty `id`/)
-    expect(broken({ id: 'x', kind: 'second', planes: ['tenant'], verify })).toThrow(/kind must be 'identifier' or 'verifier'/)
+    expect(broken({ id: 'x', kind: 'second', planes: ['tenant'], verify })).toThrow(/kind must be 'identifier', 'verifier' or both/)
+    expect(broken({ id: 'x', kind: [], planes: ['tenant'], verify })).toThrow(/kind must be/)
     expect(broken({ id: 'x', kind: 'verifier', planes: [], verify })).toThrow(/planes must list/)
     expect(broken({ id: 'x', kind: 'verifier', planes: ['everywhere'], verify })).toThrow(/planes must list/)
     expect(broken({ id: 'x', kind: 'verifier', planes: ['tenant'] })).toThrow(/verify must be a function/)

@@ -11,6 +11,8 @@ import { expect } from 'expect'
 import fastify from 'fastify'
 import { create, exportContainer } from '../../lib/api/tenants/controller/tenants.js'
 import { getData, getParams } from '../../lib/util/common.js'
+import { buildAuthenticatorRegistry, createAuthenticatorRegistry } from '../../lib/auth/registry.js'
+import { passwordAuthenticator } from '../../lib/auth/builtins.js'
 
 ;(global as any).log = {}
 
@@ -35,6 +37,8 @@ async function build(over: any = {}) {
     isImplemented: () => true,
     createUser: async (_c: any, data: any) => ({ id: 'u1', ...data })
   })
+  if (over.mfa) server.decorate('mfaManager', { isImplemented: () => true })
+  if (over.registry) server.decorate('authRegistry', over.registry)
   server.decorate('migrations', { apply: async () => '0001_init', version: async () => '0001_init' })
   server.decorate('provider', {
     createContainer: async () => {},
@@ -113,6 +117,34 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     expect(JSON.parse(res.body).code).toBe('TENANT_EXISTS')
     expect(created.length).toBe(0)
     await server.close()
+  })
+
+  it('answers 503 MFA_POLICY_UNSUPPORTED to MANDATORY when the tenant plane has nothing to enrol a user in (T-12.7)', async () => {
+    // The MFA manager is there, so MFA_NOT_AVAILABLE does not fire; what is missing is the method
+    // the engine enrols a user without a factor in. Written anyway, the policy would send every
+    // such user of this customer into a stage nobody can pass.
+    const tenantPlaneBare = createAuthenticatorRegistry()
+    tenantPlaneBare.register(passwordAuthenticator)
+    const { server, created } = await build({ mfa: true, registry: tenantPlaneBare })
+
+    const payload = {
+      slug: 'acme',
+      name: 'Acme',
+      config: { mfa_policy: 'MANDATORY' },
+      admin: { email: 'admin@acme.test', password: 'Str0ng-passw0rd!' }
+    }
+    const res = await provision(server, payload)
+    expect(res.statusCode).toBe(503)
+    expect(JSON.parse(res.body).code).toBe('MFA_POLICY_UNSUPPORTED')
+    expect(created.length).toBe(0)
+    await server.close()
+
+    // The same write on a build whose registry has the built-ins goes through.
+    const whole = await build({ mfa: true, registry: buildAuthenticatorRegistry() })
+    const accepted = await provision(whole.server, payload)
+    expect(accepted.statusCode).toBeLessThan(400)
+    expect(whole.created.length).toBe(1)
+    await whole.server.close()
   })
 
   it('answers 503 EXPORT_NOT_AVAILABLE when the data layer cannot produce one', async () => {
