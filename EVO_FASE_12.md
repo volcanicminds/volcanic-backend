@@ -595,7 +595,7 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## D. Persistenza
 
-- [ ] **T-12.8** Tabelle `auth_flow`, `external_identity` e `access_log` nello schema Postgres.
+- [x] **T-12.8** Tabelle `auth_flow`, `external_identity` e `access_log` nello schema Postgres.
   **Cosa fare**: in `appTables` (`pg.ts:42-209`). `auth_flow`: `id`, `flow_id` (unico),
   `scope`, `subject_id` (nullo finché il soggetto non è provato), `candidate_subject_id` (il
   soggetto di un `email-otp` non ancora provato, per contare gli invii), `secret_hash`,
@@ -613,30 +613,54 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   `(subject_id, occurred_at)`. Più la colonna `auth_methods` su `session` (F45).
   **Dove**: `lib/database/schema/pg.ts`.
   **Criterio di chiusura**: `npm run check-all` verde.
+  **Evidenza**: commit `9dc13c6`; `lib/database/schema/pg.ts:224` (`auth_flow`, con l'indice unico
+  parziale `auth_flow_subject_uq` e gli indici su `state_hash`, `(candidate_subject_id,
+  last_sent_at)` ed `expires_at`), `:263` (`external_identity`, unico `external_identity_key_uq` sulla
+  quadrupla), `:284` (`access_log`, senza `updated_at` né `deleted_at`), `:199` (`session.auth_methods`);
+  `npm run check-all` verde. Deriva dal piano: `external` è `text` e non `jsonb`, perché ciò che il
+  manager scrive è il testo cifrato di `lib/database/crypto.ts` (`v2:salt:iv:tag:dati`), che in un
+  `jsonb` sarebbe solo una stringa travestita.
 
-- [ ] **T-12.9** Le stesse tabelle nello schema SQLite, con gli stessi nomi.
+- [x] **T-12.9** Le stesse tabelle nello schema SQLite, con gli stessi nomi.
   **Cosa fare**: convenzioni del dialetto già in uso (epoch in intero, JSON in testo, 0/1), indice
   parziale con la stessa clausola.
   **Dove**: `lib/database/schema/sqlite.ts`, `appTables`.
   **Criterio di chiusura**: `test/db/schema.spec.ts` vede tabelle, colonne e indici con nomi
   identici sui due dialetti.
+  **Evidenza**: commit `9dc13c6`; `lib/database/schema/sqlite.ts:163` e seguenti, `:147`
+  (`auth_methods` in JSON); `test/db/schema.spec.ts:47`, prova nuova che confronta nome, unicità e
+  parzialità di ogni indice sui due dialetti, più le liste di tabelle aggiornate a `:27`.
 
-- [ ] **T-12.10** Tabella `identity_provider` nel registro.
+- [x] **T-12.10** Tabella `identity_provider` nel registro.
   **Cosa fare**: in `registryTables` (`pg.ts:212-299`) e nella gemella SQLite: `id`, `tenant_id`,
   `key`, `type` (per ora `oidc`), `status`, `config` (jsonb, niente segreti), `secret_enc`, timbri;
   unico su `(tenant_id, key)`.
   **Dove**: i due schemi.
   **Criterio di chiusura**: la tabella esiste solo nell'insieme `control`, verificato da
   `test/db/schema.spec.ts`.
+  **Evidenza**: commit `9dc13c6`; `lib/database/schema/pg.ts:399`, `lib/database/schema/sqlite.ts:334`,
+  unico `identity_provider_tenant_key_uq`; `identity_provider` aggiunta a `CONTROL_ONLY` in
+  `scripts/check-migration-sets.mjs:33`, e `test/db/schema.spec.ts` la tiene fuori da `appTables`.
+  Deriva dal piano: timbri `created_at` e `updated_at` senza `deleted_at`, perché la rimozione è
+  vera e una chiave deve tornare disponibile sotto il vincolo di unicità. Resta aperto, e va con
+  T-12.26: le righe di un tenant distrutto non si tolgono ancora con il suo contenitore.
 
-- [ ] **T-12.11** Le quattro migrazioni.
+- [x] **T-12.11** Le quattro migrazioni.
   **Cosa fare**: `npm run db:generate`, `db:generate:tenant`, `db:generate:sqlite`,
   `db:generate:tenant:sqlite`, SQL generato da drizzle-kit e committato come `0002_auth_flow_*`
   in `lib/database/migrations/{control,tenant}/{pg,sqlite}` accanto a `0001_sessions_*`.
   **Criterio di chiusura**: `npm run check:migration-sets` riporta tre migrazioni per insieme, e
   `npm run test:migrations` applica i quattro insiemi su un database vuoto e su uno fermo alla 0001.
+  **Evidenza**: commit `9dc13c6`; `0002_auth_flow_control` e `0002_auth_flow_tenant` nei quattro
+  insiemi, generate da drizzle-kit con `--name`; `npm run check:migration-sets` → «four migration
+  sets: control/pg (3), control/sqlite (3), tenant/pg (3), tenant/sqlite (3)», con le tre tabelle in
+  `SHARED` (`scripts/check-migration-sets.mjs:34`). `test/migrations/authFlowUpgrade.spec.ts`: su
+  SQLite sempre e su Postgres con `DATABASE_URL`, contenitore vuoto e contenitore fermo alla 0001 con
+  una sessione della fase 11, che arriva intatta con `auth_methods` nullo. Il controllo di versione
+  all'avvio (`lib/loader/schemaVersion.ts`) legge l'atteso dal giornale e non ha nomi scritti: non
+  è cambiato.
 
-- [ ] **T-12.12** I manager.
+- [x] **T-12.12** I manager.
   **Cosa fare**: `AuthFlowManagement` con `openFlow` (sfratta lo slot del soggetto provato nella
   stessa istruzione), `findBySecret` (`current` | `expired` | `unknown`), `findByState`, `advance`
   (ottimistico su `version`, null se un altro passo ha vinto), `recordChallenge` (applica
@@ -655,6 +679,32 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   reale provano lo sfratto, il doppio invio concorrente dello stesso codice con un solo successo,
   i tetti che sopravvivono al riavvio del flusso, la cifratura dei campi esterni, il troncamento
   degli IPv4 e IPv6 e la purga per predicato.
+  **Evidenza**: commit `9dc13c6`; `lib/database/managers/authFlow.ts` (`openFlow` a `:204`,
+  `recordChallenge` a `:296` con il lucchetto consultivo di transazione su Postgres a `:339`,
+  `consumeChallenge` a `:364`, `purgeExpired` a `:440`), `externalIdentity.ts`,
+  `identityProvider.ts` (segreto cifrato con `encrypt` di `lib/database/crypto.ts`, restituito solo da
+  `get`, `:67`), `accessLog.ts` (`truncateIp` a `:63`, rifiuti `ACCESS_EVENT_UNKNOWN` e
+  `ACCESS_LOG_ENTRY_INVALID`); cablati in `lib/database/managers/index.ts:55-59`, quindi restituiti da
+  `startDataLayer()` ed esportati da `db.ts`. `test/db/authFlow.spec.ts` (22 prove per motore) e
+  `test/db/accessLog.spec.ts` (7) su SQLite migrato davvero, e su Postgres con `DATABASE_URL`:
+  sfratto, flussi non provati che non sfrattano, quattro consumi concorrenti con un solo `ok`, tetti
+  per soggetto attraverso flussi sfrattati e annullati, ventiquattro invii concorrenti da flussi
+  diversi con esattamente tre riusciti (senza il lucchetto, su Postgres, ne passano ventuno: provato),
+  cifratura di `external` e del segreto dell'IdP, IPv4 e IPv6 troncati, purga per predicato.
+  Derive dal piano: lo sfratto e il completamento **non cancellano** la riga, la ritirano (segreti
+  azzerati, slot liberato, soggetto conservato in `candidate_subject_id`), perché cancellarla
+  azzerava il conto per soggetto e un attaccante con la password avrebbe potuto spedire codici senza
+  tetto riavviando il flusso; `purgeExpired` tiene le righe finché i loro invii restano nella finestra
+  più lunga (24 ore, opzione del manager). Lo sfratto è un `UPDATE` seguito dall'`INSERT`, con un
+  nuovo tentativo sulla violazione dell'indice unico, e non una sola istruzione: SQLite non ha CTE
+  che modificano, e sostituire la riga sul posto con un upsert perdeva gli invii. Lo sfratto avviene
+  anche in `advance` quando un flusso diventa provato, che il piano non diceva. `version` si muove solo
+  con `advance` e con il ritiro, non con le operazioni sul codice, altrimenti ogni invio farebbe
+  perdere al motore il suo `advance`. `recordChallenge` e `consumeChallenge` vincolano anche l'hash
+  del segreto del flusso, non solo il `flowId`. `findByState` risponde `null` per un flusso scaduto.
+  Il blocco `accessLog` della configurazione arriva con T-12.31: oggi il manager legge
+  `ACCESS_LOG_IP` a ogni scrittura o l'opzione `ip`; la lettura per piano dovrà filtrare `scope`
+  sul server, perché `findQuery` non lo aggiunge da sé.
 
 ## E. Motore e rotte sui due piani
 
@@ -1015,3 +1065,4 @@ chieda una riautenticazione fresca.
 | T-12.1 | commit `1b50994`: `lib/api/auth/controller/auth.ts:576-584`, `lib/api/system/controller/systemAuth.ts:229`, `:249`, quattro prove in `test/lib/mfaEnrolment.spec.ts`, `docs/API_V5.md:47-48`, `:186` |
 | T-12.2 → T-12.4 | commit `d8b6890`: `types/global.d.ts:770-1431`, `lib/auth/registry.ts`, `lib/auth/builtins.ts`, `lib/defaults/managers.ts:134-148`, `test/lib/authRegistry.spec.ts`, `test/lib/authBoot.spec.ts`, `test/lib/defaultManagers.spec.ts` |
 | T-12.5 → T-12.7 | commit `0e2f98b`: `lib/config/authFlows.ts`, `lib/loader/authFlows.ts`, `lib/auth/validate.ts`, `index.ts:366-385`, `lib/api/tenants/controller/tenants.ts:172-181`, `test/lib/authFlowConfig.spec.ts`, `test/lib/tenantProvisioning.spec.ts:122`; `npm test` 616 prove, 30 saltate senza `DATABASE_URL` |
+| T-12.8 → T-12.12 | commit `9dc13c6`: `lib/database/schema/pg.ts:199-306`, `:399`, `lib/database/schema/sqlite.ts:147-246`, `:334`, migrazioni `0002_auth_flow_control` e `0002_auth_flow_tenant` nei quattro insiemi, `lib/database/managers/{authFlow,externalIdentity,identityProvider,accessLog}.ts`, `lib/database/managers/index.ts:55-59`, `test/db/authFlow.spec.ts`, `test/db/accessLog.spec.ts`, `test/migrations/authFlowUpgrade.spec.ts`; `npm test` 649 prove e 31 saltate senza `DATABASE_URL`, 706 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi |

@@ -59,7 +59,10 @@ successiva, collegamento self-service degli account rinviato dopo la 5.0 (F48). 
 bypass della MFA per reiscrizione (`1b50994`); le versioni 4.x e 3.x pubblicate restano esposte,
 hotfix non richiesto per ora. Chiusi i blocchi B e C (T-12.2 → T-12.7, `d8b6890`,
 `0e2f98b`): contratto, registro, i cinque port con i Null Object, `authFlows.ts` e la validazione
-all'avvio; il login resta quello di oggi.
+all'avvio; il login resta quello di oggi. Chiuso il blocco D (T-12.8 → T-12.12, `9dc13c6`):
+tabelle `auth_flow`, `external_identity`, `access_log` e `identity_provider`, migrazioni
+`0002_auth_flow_*` nei quattro insiemi, i quattro manager cablati in `startDataLayer()`; provato
+anche su Postgres. Prossimo: il blocco E, il motore.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:
