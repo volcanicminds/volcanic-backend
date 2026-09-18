@@ -1045,8 +1045,9 @@ chiedono un disegno, non una riga. Vale la stessa regola dell'evidenza citata.
 - [-] **Ripubblicare l'alpha su npm e decidere la sorte di `develop`**: sono già segnate come lavoro
   che resta in `EVO_STATO.md` e richiedono una richiesta esplicita, non una checklist. Il push
   del lavoro è fatto, su `v5`.
-- [-] **I 67 warning `no-explicit-any` del framework**: sono rumore noto e non un difetto; vanno
-  affrontati per file quando quel file si tocca, non in un passaggio unico che tocca tutto.
+- [x] **I warning `no-explicit-any` del framework**: rinviati qui, poi chiusi in un passaggio unico il
+  18 settembre 2026 (erano diventati 73), commit `6077da8`. Ne resta uno, dichiarato e spiegato:
+  `CrossDialectDb` in `lib/database/managers/runtime.ts`.
 - [-] **Gli `export` inutili di `volcanic-admin`** (`countActiveFilters`, `buildRecordTitle`,
   `SINGLETON_ID`, `RICHTEXT_ACTIONS`, `ROW_REM`, `DEFAULT_MAX_ROWS`, `VIEWPORT_CAP`,
   `ListUiState`, `ListStateApi`): sono simboli usati solo nel proprio file, quindi superficie in

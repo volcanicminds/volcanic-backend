@@ -52,6 +52,13 @@ sei nuove dimostrano che una sessione vive nel contenitore del suo tenant, che i
 tenant presentato come un altro è rifiutato, e che dopo logout o riuso non si rinnova più. **Fase 11 chiusa**: T-11.18 decisa e implementata, la lista dei dispositivi collegati è un pannello
 dell'account nella console, non una risorsa del manifest, che ne annuncia l'endpoint per piano.
 
+**Fase 12 aperta il 18 settembre 2026** (`EVO_FASE_12.md`): motore di autenticazione componibile su
+entrambi i piani (password, TOTP, email-otp, OIDC, contratto per SMS e social), `/auth/flow/*` al
+posto delle rotte di login attuali, registro degli accessi `access_log`. SAML rinviato a una fase
+successiva, collegamento self-service degli account ancora da decidere (F48). Chiusa T-12.1, il
+bypass della MFA per reiscrizione (`1b50994`); le versioni 4.x e 3.x pubblicate restano esposte,
+hotfix non richiesto per ora.
+
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:
 `v5` coincide con `origin/v5` in tutti e cinque i repository, e il porting del sample è committato

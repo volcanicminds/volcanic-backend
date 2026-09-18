@@ -125,7 +125,8 @@ quella variabile non dice quello che sembra. Il comando Docker per il Postgres d
   API, CONFIGURATION, TESTING), `docs/MIGRATION_V4_V5.md`, `docs/CACHE.md`, `docs/TUNING.md`,
   `docs/ADVANCED_ARCHITECTURE.md` e `docs/TYPESCRIPT_GUIDE.md` (riscritti sulla v5).
 - **v4, con cartello di sostituzione**: `docs/DATA_LAYER_MAGIC.md`, `docs/CONFIGURATION.md`,
-  `docs/PGLITE.md`. `docs/AUTH_COMPOSABLE_EVOLUTION.md` è rinviato fuori dalla v5.
+  `docs/PGLITE.md`. `docs/AUTH_COMPOSABLE_EVOLUTION.md` è il progetto v4 del motore di
+  autenticazione, riallineato alla v5 in `EVO_FASE_12.md`, che prevale.
 - In caso di conflitto **vince il codice**.
 
 ## Maturità
