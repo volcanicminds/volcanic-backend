@@ -962,7 +962,27 @@ chiedono un disegno, non una riga. Vale la stessa regola dell'evidenza citata.
   `test/lib/manifest.spec.ts`.
   **Resta, ed è presentazione**: `roles` non compare come colonna perché arriva tipizzato `json`.
   Si sistema negli overrides della console, non qui.
-  **Resta**: la stessa prova contro un backend vivo invece che contro il data provider mock.
+  **Fatto il 18 settembre 2026, contro un backend vivo** (sample multi-tenant su Postgres reale,
+  `SAMPLE_TENANTS=header`, `AUTH_MODE=BEARER`, console di controllo in sviluppo). La prova ha
+  trovato due difetti che il mock non poteva mostrare, ed è la ragione per cui la voce era rimasta
+  aperta.
+  **Difetto 1, nel framework**: sul piano di controllo il contatore anti-replay del secondo fattore
+  salvava il **delta** restituito dal verificatore invece del passo assoluto. Il delta di un codice
+  digitato nella propria finestra è zero, quindi la prima verifica scriveva `0` e ogni codice
+  successivo, anch'esso zero, cadeva in `counter <= last`: un operatore che abilitava MFA non
+  riusciva più ad autenticarsi, mai. Il piano tenant convertiva il delta in casa propria ed era
+  corretto, ed è il modo tipico in cui due copie della stessa regola divergono. La conversione ora
+  vive in un solo posto (`lib/util/mfaCounter.ts`) e la usano entrambi i piani; prove in
+  `test/lib/mfaCounter.spec.ts`. Evidenza del difetto sul database vivo: `mfa_last_used_counter = 0`
+  per il fondatore dopo l'abilitazione.
+  **Difetto 2, nella console** (`volcanic-admin`): il provider conservava i token solo se credeva
+  di essere in modalità bearer, ma la modalità arriva dal manifest e sul piano di controllo
+  `/system/manifest` richiede la sessione che si sta cercando di aprire. Al primo accesso la
+  console resta quindi sul default `cookie`, buttava via il token appena emesso e rispediva
+  l'operatore al login senza un errore da leggere. Ora la decisione si prende sulla **risposta**:
+  un token nel corpo lo manda solo un deployment bearer, perché in modalità cookie il backend
+  risponde `null`, e la console adotta quella modalità per le richieste successive.
+  **Resta**: la lista operatori e il flusso di distruzione riprovati a schermo fino in fondo.
 
 - [x] **T-10.21** La distruzione in due fasi non ha un flusso nella console. · **M**
   **Oggi**: `POST /tenants/:id/destruction-request` e `DELETE /tenants/:id/data` non hanno schema del

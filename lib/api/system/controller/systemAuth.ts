@@ -7,6 +7,7 @@ import * as regExp from '../../../util/regexp.js'
 import { clearSessionCookies, isCookieMode, issuePreAuth, issueSession, sessionTokenOf, type SessionOrigin } from '../../../util/credential.js'
 import { renew as renewSession } from '../../../util/renewal.js'
 import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.js'
+import { absoluteStep, isReplay } from '../../../util/mfaCounter.js'
 
 //
 // Authentication of the control scope (T-4.1, docs/API_V5.md §5).
@@ -248,12 +249,15 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
 
   // Confirmed before it is trusted: enabling MFA on a secret the operator never proved they
   // hold would lock them out of the account and out of the destruction path with it.
-  const counter = await req.server['mfaManager'].verify(String(token), String(secret))
-  if (counter == null) return reply.status(400).send(httpError(400, 'The code is not valid'))
+  // What the verifier answers is a DELTA, not a position in time. Writing it down as if it were
+  // is what locked an operator out after the first enrolment (T-10.20): the delta of a code typed
+  // in its own window is zero, and every later code, also zero, then read as already spent.
+  const { valid, counter } = absoluteStep(await req.server['mfaManager'].verify(String(token), String(secret)))
+  if (!valid) return reply.status(400).send(httpError(400, 'The code is not valid'))
 
   await manager(req).saveMfaSecret(control(req), actor.id, String(secret))
   await manager(req).enableMfa(control(req), actor.id)
-  await manager(req).recordMfaCounter(control(req), actor.id, Number(counter))
+  if (counter !== null) await manager(req).recordMfaCounter(control(req), actor.id, counter)
 
   if (log.i) log.info(`System MFA enabled for ${actor.email}`)
   return { ok: true }
@@ -286,13 +290,13 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   const secret = await manager(req).retrieveMfaSecret(control(req), user.id)
   if (!secret) return reply.status(403).send(httpError(403, 'Wrong credentials'))
 
-  const counter = await req.server['mfaManager'].verify(String(token), secret)
-  if (counter == null) return reply.status(403).send(httpError(403, 'The code is not valid'))
-  if (user.mfaLastUsedCounter != null && Number(counter) <= Number(user.mfaLastUsedCounter)) {
+  const { valid, counter } = absoluteStep(await req.server['mfaManager'].verify(String(token), secret))
+  if (!valid) return reply.status(403).send(httpError(403, 'The code is not valid'))
+  if (isReplay(counter, user.mfaLastUsedCounter)) {
     // A replayed step is a stolen code being used a second time.
     return reply.status(403).send(httpError(403, 'That code has already been used'))
   }
-  await manager(req).recordMfaCounter(control(req), user.id, Number(counter))
+  if (counter !== null) await manager(req).recordMfaCounter(control(req), user.id, counter)
 
   // The whole session, as `login` issues it: v4 returned the access token alone, so an
   // operator with MFA could never renew, and in cookie mode got a token in the body.

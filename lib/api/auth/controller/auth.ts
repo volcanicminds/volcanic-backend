@@ -10,13 +10,13 @@ import { EMAIL_ALREADY_REGISTERED } from '../../../config/constants.js'
 import { clearSessionCookies, issuePreAuth, issueSession, sessionTokenOf, type SessionOrigin } from '../../../util/credential.js'
 import { renew } from '../../../util/renewal.js'
 import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.js'
+// The delta-to-step conversion used to live here, and the control plane had its own copy that
+// did not convert at all (T-10.20). One rule, one place.
+import { absoluteStep as evaluateMfaResult, isReplay } from '../../../util/mfaCounter.js'
 
 // Upper bound for the password accepted at login: a cheap guard against oversized
 // payloads. Complexity is enforced only when a password is set, not at login.
 const MAX_PASSWORD_LENGTH = 256
-
-// TOTP period in seconds — must match the period used by the MFA manager (tools default: 30).
-const TOTP_PERIOD_SECONDS = 30
 
 const DEFAULT_RESET_PASSWORD_TOKEN_TTL = 3600
 
@@ -65,25 +65,6 @@ function isResetTokenExpired(code: string): boolean {
   const expiresAt = Number(String(code ?? '').split('.')[0])
   if (!Number.isFinite(expiresAt)) return true
   return Date.now() / 1000 > expiresAt
-}
-
-/**
- * Normalizes the MFA manager `verify` result and turns the relative time-step delta into the
- * absolute step consumed, so it can be persisted for anti-replay.
- *
- * - New managers return `number | null` (delta or invalid).
- * - Legacy managers returning a boolean are tolerated: valid/invalid without a usable counter.
- *
- * @returns `{ valid, counter }` — `counter` is the absolute TOTP step, or `null` when unknown.
- */
-function evaluateMfaResult(result: number | boolean | null): { valid: boolean; counter: number | null } {
-  if (result === null || result === false) return { valid: false, counter: null }
-  if (typeof result === 'number') {
-    const currentStep = Math.floor(Date.now() / 1000 / TOTP_PERIOD_SECONDS)
-    return { valid: true, counter: currentStep + result }
-  }
-  // Legacy boolean `true`: valid, but no delta to track replays with.
-  return { valid: true, counter: null }
 }
 
 /**
@@ -697,7 +678,7 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
 
   // 3. Anti-replay: reject a code whose time-step was already consumed (same or earlier than the last).
   const lastCounter = user.mfaLastUsedCounter
-  if (counter !== null && lastCounter != null && counter <= lastCounter) {
+  if (isReplay(counter, lastCounter)) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA token already used' })
   }
   if (counter !== null) {
