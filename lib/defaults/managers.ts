@@ -8,7 +8,12 @@ import {
   SystemUserManagement,
   ImpersonationManagement,
   DestructionManagement,
-  SessionManagement
+  SessionManagement,
+  AuthFlowManagement,
+  ExternalIdentityManagement,
+  IdentityProviderManagement,
+  ChallengeDeliveryManagement,
+  AccessLogManagement
 } from '../../types/global.js'
 
 //
@@ -89,6 +94,19 @@ const DESTRUCTION_METHODS = ['openRequest', 'findLiveRequest', 'consumeRequest']
 
 const MFA_METHODS = ['generateSetup', 'verify'] as const
 
+const AUTH_FLOW_METHODS = [
+  'openFlow', 'findBySecret', 'findByState', 'advance', 'recordChallenge', 'consumeChallenge',
+  'bindExternal', 'recordExternalResult', 'completeFlow', 'cancelFlow', 'purgeExpired'
+] as const
+
+const EXTERNAL_IDENTITY_METHODS = ['findLink', 'createLink', 'listOfSubject', 'removeLink', 'touch'] as const
+
+const IDENTITY_PROVIDER_METHODS = ['list', 'get', 'create', 'update', 'remove'] as const
+
+const CHALLENGE_DELIVERY_METHODS = ['deliver'] as const
+
+const ACCESS_LOG_METHODS = ['record', 'findQuery', 'countQuery', 'purgeBefore'] as const
+
 const TRANSFER_METHODS = [
   'getPath', 'getServer', 'onUploadCreate', 'onUploadFinish', 'onUploadTerminate', 'handle', 'isValid'
 ] as const
@@ -111,3 +129,20 @@ export const defaultDestructionManager = notImplemented<DestructionManagement>(
 export const defaultSessionManager = notImplemented<SessionManagement>('sessionManager', SESSION_METHODS)
 export const defaultMfaManager = notImplemented<MfaManagement>('mfaManager', MFA_METHODS)
 export const defaultTransferManager = notImplemented<TransferManagement>('transferManager', TRANSFER_METHODS)
+// Without a flow store only the flows that close in one request can run (F46): a second step with
+// no memory is a second step that counts no attempts.
+export const defaultAuthFlowManager = notImplemented<AuthFlowManagement>('authFlowManager', AUTH_FLOW_METHODS)
+export const defaultExternalIdentityManager = notImplemented<ExternalIdentityManagement>(
+  'externalIdentityManager',
+  EXTERNAL_IDENTITY_METHODS
+)
+export const defaultIdentityProviderManager = notImplemented<IdentityProviderManagement>(
+  'identityProviderManager',
+  IDENTITY_PROVIDER_METHODS
+)
+export const defaultChallengeDeliveryManager = notImplemented<ChallengeDeliveryManagement>(
+  'challengeDeliveryManager',
+  CHALLENGE_DELIVERY_METHODS
+)
+// Asked with isImplemented() before every write: without it an access is written to the process log only.
+export const defaultAccessLogManager = notImplemented<AccessLogManagement>('accessLogManager', ACCESS_LOG_METHODS)

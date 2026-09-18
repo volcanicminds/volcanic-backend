@@ -757,6 +757,446 @@ export interface MfaManagement {
   verify(token: string, secret: string): Promise<number | null> | number | null
 }
 
+// ---------------------------------------------------------------------------------------
+// Composable authentication (EVO_FASE_12.md, F33 to F47)
+//
+// A login is a flow: one `identify` stage that says who the subject is, then the ordered stages
+// of the first flow whose roles meet the subject's. Every method is an `Authenticator`; the
+// engine is the only caller, and it is the one that writes the flow row, counts attempts and
+// issues the session. An authenticator reads the flow and answers.
+// ---------------------------------------------------------------------------------------
+
+/** The two planes a flow runs on: the users of a tenant, and the platform's own identities. */
+export type AuthPlane = 'tenant' | 'control'
+
+/** An identifier establishes who the subject is; a verifier proves something more about a known one. */
+export type AuthenticatorKind = 'identifier' | 'verifier'
+
+/** A refusal is always a code, never a sentence: the console translates, the backend does not. */
+export type AuthRefusalCode = Uppercase<string>
+
+/** The subject as the engine sees it, the same shape on both planes. */
+export interface AuthSubject {
+  /** The row's own identifier. */
+  id: string
+  /** What the session and the access token carry in `sub`. */
+  externalId: string
+  email: string
+  /** Role codes: the tenant catalogue on the tenant plane, `system:*` codes on the control plane. */
+  roles: readonly string[]
+  /** The ids of the methods this subject has enrolled, e.g. `['totp']`. */
+  factors: readonly string[]
+  confirmed: boolean
+  blocked: boolean
+}
+
+export type ChallengeChannel = 'email' | 'sms'
+
+/** A code sent somewhere. The destination is masked (`d***@a***.com`) and derived by the server. */
+export interface ChallengeDescriptor {
+  channel: ChallengeChannel
+  destination: string
+  expiresAt: string
+  /** When the next send is allowed; null when the sends of this flow are spent. */
+  resendAt: string | null
+}
+
+/** What a subject needs to configure an authenticator app during an in-flow enrolment. */
+export interface EnrolmentSetup {
+  secret: string
+  uri: string
+  qrCode?: string
+}
+
+/** Where the browser goes next for a method that leaves the site, as a link or as a posted form. */
+export type AuthAction =
+  | { type: 'redirect'; url: string }
+  | { type: 'post'; url: string; fields: Readonly<Record<string, string>> }
+
+/** One method a stage offers. Codes and identifiers only: labels belong to the console. */
+export interface StageOption {
+  id: string
+  kind: AuthenticatorKind
+  challenge?: ChallengeDescriptor
+  /** `true` when the stage demands an enrolment; the setup once the enrolment has started. */
+  enrol?: boolean | EnrolmentSetup
+  action?: AuthAction
+}
+
+/** The stage a partial authentication (202) is waiting on. */
+export interface StageDescriptor {
+  options: readonly StageOption[]
+}
+
+/**
+ * What an authenticator answers.
+ *
+ * `satisfied` on a success names the methods it proves besides its own: an OIDC login whose
+ * provider is trusted for its second factor also satisfies `idp-mfa`. `pending` is an external
+ * round trip that has not come back yet.
+ */
+export type AuthResult =
+  | { outcome: 'success'; subject?: AuthSubject; satisfied?: readonly string[] }
+  | { outcome: 'challenge'; challenge: ChallengeDescriptor }
+  | { outcome: 'redirect'; binding: 'redirect'; url: string }
+  | { outcome: 'redirect'; binding: 'post'; url: string; fields: Readonly<Record<string, string>> }
+  | { outcome: 'pending' }
+  | { outcome: 'fail'; reason: AuthRefusalCode }
+
+/** The fields a step carries, as the client sent them. Credentials never leave this object. */
+export type AuthInput = Readonly<Record<string, unknown>>
+
+/** The input of a return from outside (a GET query or a posted form), already flattened. */
+export type AuthReturnInput = Readonly<Record<string, string>>
+
+/** The managers an authenticator may call, named as they are decorated on the server. */
+export interface AuthManagers {
+  readonly userManager: UserManagement
+  readonly systemUserManager: SystemUserManagement
+  readonly mfaManager: MfaManagement
+  readonly sessionManager: SessionManagement
+  readonly authFlowManager: AuthFlowManagement
+  readonly externalIdentityManager: ExternalIdentityManagement
+  readonly identityProviderManager: IdentityProviderManagement
+  readonly challengeDeliveryManager: ChallengeDeliveryManagement
+  readonly accessLogManager: AccessLogManagement
+}
+
+/** Everything an authenticator is told. Nothing implicit: the handle is explicit, as for managers. */
+export interface AuthContext {
+  readonly plane: AuthPlane
+  readonly handle: DataHandle
+  /** The registry row on a multi-tenant tenant plane; null on the control plane and in single tenant. */
+  readonly tenant: Tenant | null
+  /** Known once the identify stage has passed. */
+  readonly subject: AuthSubject | null
+  /** The effective policy of this plane and tenant, the floor already applied. */
+  readonly policy: MfaPolicy
+  readonly managers: AuthManagers
+  readonly flow: Readonly<AuthFlow> | null
+}
+
+/**
+ * One authentication method (T-12.2).
+ *
+ * `initiate` starts what cannot finish in one request: it sends a code, or answers with the
+ * address of an external provider. `complete` receives the return from that provider, which
+ * arrives without the flow credential and is bound to the flow by its `state`. A method that has
+ * neither closes in the request that calls `verify`.
+ */
+export interface Authenticator {
+  readonly id: string
+  readonly kind: AuthenticatorKind
+  readonly planes: readonly AuthPlane[]
+  initiate?(ctx: AuthContext, input: AuthInput): Promise<AuthResult>
+  verify(ctx: AuthContext, input: AuthInput): Promise<AuthResult>
+  complete?(ctx: AuthContext, input: AuthReturnInput): Promise<AuthResult>
+  /** Whether an optional stage applies to this subject. */
+  isEnrolled?(ctx: AuthContext, subject: AuthSubject): boolean | Promise<boolean>
+  /** Starts an in-flow enrolment; the engine keeps the secret in the flow row, never on the client. */
+  enrol?(ctx: AuthContext, subject: AuthSubject): Promise<EnrolmentSetup>
+}
+
+/** The authenticators of both planes (T-12.3). Built-ins first, then a consumer's, replacing by `id`. */
+export interface AuthenticatorRegistry {
+  register(authenticator: Authenticator): void
+  get(plane: AuthPlane, id: string): Authenticator | undefined
+  list(plane: AuthPlane): Authenticator[]
+}
+
+/** The settings of an OIDC provider that are not secret. */
+export interface OidcProviderSettings {
+  issuer: string
+  clientId: string
+  /** Explicit, never derived from the `Host` header. */
+  redirectUri: string
+  scopes?: string[]
+  tokenAuthMethod?: 'client_secret_basic' | 'client_secret_post'
+  /** Link an existing account by email: needs `email_verified` and a domain in `emailDomains`. */
+  linkByEmail?: boolean
+  emailDomains?: string[]
+  /** Just-in-time provisioning, tenant plane only. The roles never include `admin`. */
+  jit?: { enabled: boolean; roles: string[] }
+  /** Whether the provider's own second factor counts (`idp-mfa`). Absent: it does not. */
+  mfa?: { trust: 'amr' | 'acr'; values: string[] }
+}
+
+/** What a flow holds from outside: decrypted by the manager, never written in clear. */
+export interface AuthFlowExternal {
+  provider?: string
+  codeVerifier?: string
+  nonce?: string
+  /** The TOTP secret of an in-flow enrolment, until the code confirms it. */
+  enrolmentSecret?: string
+}
+
+/** The validated claims a return from a provider left in the flow, to be cashed by the next step. */
+export interface ExternalAuthResult {
+  provider: string
+  issuer: string
+  subject: string
+  email?: string | null
+  emailVerified?: boolean
+  amr?: string[]
+  acr?: string | null
+}
+
+/**
+ * A flow row (F37). The hashes of the flow secret, of the code and of `state` are deliberately
+ * absent, as the secrets are from `Session`.
+ */
+export interface AuthFlow {
+  id: string
+  flowId: string
+  scope: SessionScope
+  /** Null until the subject is proven: only a proven flow holds the subject's slot. */
+  subjectId: string | null
+  /** The subject an unproven flow sends codes to, so its sends are counted. */
+  candidateSubjectId: string | null
+  flowName: string | null
+  stageIndex: number
+  satisfied: string[]
+  challengeMethod: string | null
+  challengeExpiresAt: Date | string | null
+  challengeAttempts: number
+  challengeSends: number
+  lastSentAt: Date | string | null
+  external: AuthFlowExternal | null
+  externalResult: ExternalAuthResult | null
+  version: number
+  ip?: string | null
+  userAgent?: string | null
+  createdAt: Date | string
+  expiresAt: Date | string
+}
+
+export type AuthFlowLookup =
+  | { outcome: 'current'; flow: AuthFlow }
+  | { outcome: 'expired'; flow: AuthFlow }
+  | { outcome: 'unknown' }
+
+/** The ceilings of one send: per flow, and per subject across every flow in each window. */
+export interface ChallengeLimits {
+  perFlow: number
+  perSubject: ReadonlyArray<{ max: number; windowSeconds: number }>
+}
+
+export type ChallengeRecord =
+  | { outcome: 'sent'; sends: number; resendAt: Date | string | null }
+  | { outcome: 'limit'; scope: 'flow' | 'subject'; retryAt: Date | string | null }
+
+export type ChallengeConsumption =
+  | { outcome: 'ok' }
+  | { outcome: 'invalid'; remaining: number }
+  | { outcome: 'exhausted' }
+  | { outcome: 'expired' }
+
+/**
+ * The flow store (F37, T-12.12). The row lives in the container of its subject, like `session`.
+ * Every change is one conditional statement: a read followed by a write would let two steps
+ * racing each other both win.
+ */
+export interface AuthFlowManagement {
+  isImplemented(): boolean
+  /** A proven subject evicts its previous flow in the same statement. The clear secret is hashed. */
+  openFlow(
+    ctx: DataHandle,
+    data: {
+      flowId: string
+      scope: SessionScope
+      secret: string
+      subjectId?: string | null
+      candidateSubjectId?: string | null
+      flowName?: string | null
+      expiresAt: Date | string
+      ip?: string | null
+      userAgent?: string | null
+    }
+  ): Promise<AuthFlow>
+  /** A malformed or unknown secret is an answer, not a throw. */
+  findBySecret(ctx: DataHandle, flowId: string, secret: string): Promise<AuthFlowLookup>
+  findByState(ctx: DataHandle, state: string): Promise<AuthFlow | null>
+  /** Optimistic on `version`: null when another step moved the flow first. */
+  advance(
+    ctx: DataHandle,
+    flowId: string,
+    version: number,
+    patch: {
+      subjectId?: string | null
+      candidateSubjectId?: string | null
+      flowName?: string | null
+      stageIndex?: number
+      satisfied?: string[]
+    }
+  ): Promise<AuthFlow | null>
+  /** Stores the code as an HMAC keyed by the flow secret, and applies both ceilings atomically. */
+  recordChallenge(
+    ctx: DataHandle,
+    flowId: string,
+    data: { secret: string; method: string; code: string; expiresAt: Date | string; limits: ChallengeLimits }
+  ): Promise<ChallengeRecord>
+  /** One conditional `UPDATE`: two concurrent submissions of the right code have one winner. */
+  consumeChallenge(
+    ctx: DataHandle,
+    flowId: string,
+    data: { secret: string; code: string; maxAttempts: number }
+  ): Promise<ChallengeConsumption>
+  bindExternal(ctx: DataHandle, flowId: string, data: { state?: string | null; external: AuthFlowExternal }): Promise<boolean>
+  recordExternalResult(ctx: DataHandle, flowId: string, result: ExternalAuthResult): Promise<boolean>
+  completeFlow(ctx: DataHandle, flowId: string): Promise<boolean>
+  cancelFlow(ctx: DataHandle, flowId: string): Promise<boolean>
+  purgeExpired(ctx: DataHandle, before?: Date | string): Promise<number>
+}
+
+/** A link between an identity at a provider and a subject (F40). Unique on the four keys, never on the email. */
+export interface ExternalIdentity {
+  id: string
+  scope: SessionScope
+  /** The subject's `externalId`, as `session.subjectId`. */
+  subjectId: string
+  provider: string
+  issuer: string
+  subject: string
+  emailAtLink?: string | null
+  createdAt: Date | string
+  lastUsedAt?: Date | string | null
+}
+
+export interface ExternalIdentityKey {
+  scope: SessionScope
+  provider: string
+  issuer: string
+  subject: string
+}
+
+export interface ExternalIdentityManagement {
+  isImplemented(): boolean
+  findLink(ctx: DataHandle, key: ExternalIdentityKey): Promise<ExternalIdentity | null>
+  createLink(ctx: DataHandle, data: ExternalIdentityKey & { subjectId: string; emailAtLink?: string | null }): Promise<ExternalIdentity>
+  listOfSubject(ctx: DataHandle, subjectId: string, scope: SessionScope): Promise<ExternalIdentity[]>
+  /** Removes the link only when it belongs to `subjectId`. */
+  removeLink(ctx: DataHandle, id: string, subjectId: string): Promise<boolean>
+  touch(ctx: DataHandle, id: string): Promise<boolean>
+}
+
+export type IdentityProviderType = 'oidc'
+
+/** A tenant's own provider, in the control plane registry (F38). Never in `tenant.config`. */
+export interface IdentityProvider {
+  id: string
+  tenantId: string
+  key: string
+  type: IdentityProviderType
+  status: 'active' | 'disabled'
+  config: OidcProviderSettings
+  createdAt: Date | string
+  updatedAt: Date | string
+}
+
+/** What only `get` returns: the client secret, decrypted by the data layer. */
+export interface IdentityProviderWithSecret extends IdentityProvider {
+  clientSecret: string | null
+}
+
+export interface IdentityProviderManagement {
+  isImplemented(): boolean
+  list(ctx: ControlHandle, tenantId: string): Promise<IdentityProvider[]>
+  get(ctx: ControlHandle, tenantId: string, key: string): Promise<IdentityProviderWithSecret | null>
+  create(
+    ctx: ControlHandle,
+    data: {
+      tenantId: string
+      key: string
+      type: IdentityProviderType
+      status?: 'active' | 'disabled'
+      config: OidcProviderSettings
+      clientSecret?: string | null
+    }
+  ): Promise<IdentityProvider>
+  update(
+    ctx: ControlHandle,
+    tenantId: string,
+    key: string,
+    patch: { status?: 'active' | 'disabled'; config?: OidcProviderSettings; clientSecret?: string | null }
+  ): Promise<IdentityProvider | null>
+  remove(ctx: ControlHandle, tenantId: string, key: string): Promise<boolean>
+}
+
+export type ChallengePurpose = 'identify' | 'verify'
+
+/**
+ * One code to deliver (F43). The consumer composes subject and text: the backend hands over data,
+ * not presentation. `to` is always the address on file, never one taken from a request body.
+ */
+export interface ChallengeDelivery {
+  channel: ChallengeChannel
+  to: string
+  code: string
+  purpose: ChallengePurpose
+  expiresAt: Date | string
+  plane: AuthPlane
+  tenantId: string | null
+  subjectId: string
+  locale?: string | null
+}
+
+export interface ChallengeDeliveryManagement {
+  isImplemented(): boolean
+  deliver(message: ChallengeDelivery): Promise<void>
+}
+
+/** The closed vocabulary of the access log (F44). A successful renewal is deliberately not an event. */
+export type AccessEvent =
+  | 'login.succeeded'
+  | 'login.failed'
+  | 'flow.started'
+  | 'stage.passed'
+  | 'stage.failed'
+  | 'challenge.sent'
+  | 'challenge.refused'
+  | 'flow.expired'
+  | 'flow.exhausted'
+  | 'idp.linked'
+  | 'idp.unlinked'
+  | 'idp.provisioned'
+  | 'idp.rejected'
+  | 'mfa.enrolled'
+  | 'mfa.disabled'
+  | 'logout'
+  | 'session.revoked'
+  | 'session.reuse_detected'
+  | 'tokens.invalidated'
+
+/** One access, as written. Never a password, a code, a secret, a token or a claim. */
+export interface AccessLogEntry {
+  event: AccessEvent
+  outcome: 'success' | 'failure'
+  scope: SessionScope
+  code?: string | null
+  /** The subject's `externalId`; null when the subject is not known. */
+  subjectId?: string | null
+  methods?: string[]
+  provider?: string | null
+  flowId?: string | null
+  sid?: string | null
+  /** Truncated by the manager (/24, /48), or dropped with `ACCESS_LOG_IP=none`. */
+  ip?: string | null
+}
+
+export interface AccessLogRecord extends AccessLogEntry {
+  id: string
+  occurredAt: Date | string
+}
+
+export interface AccessLogManagement {
+  isImplemented(): boolean
+  /** Refuses an event outside the vocabulary. */
+  record(ctx: DataHandle, entry: AccessLogEntry): Promise<AccessLogRecord>
+  findQuery(ctx: DataHandle, query: VQuery): Promise<VFindResult<AccessLogRecord>>
+  countQuery(ctx: DataHandle, query: VQuery): Promise<number>
+  purgeBefore(ctx: DataHandle, before: Date | string): Promise<number>
+}
+
 // Callback type signature: (uploadOrId, req, res) => void
 export type TransferCallback = (data: any, req: any, res: any) => void
 
@@ -910,7 +1350,7 @@ declare module 'fastify' {
    *
    * None of them is optional, and that is the honest shape: `start()` decorates every one before
    * the server accepts a request, with the no-op defaults where a consumer injected nothing. A
-   * build without a data layer therefore has all ten; what it does not have is an implementation,
+   * build without a data layer therefore has all of them; what it does not have is an implementation,
    * and asking one of those is an error that says so. Declaring them optional would put a
    * `possibly undefined` on hundreds of call sites to describe a state that never happens.
    */
@@ -925,6 +1365,13 @@ declare module 'fastify' {
     sessionManager: SessionManagement
     mfaManager: MfaManagement
     transferManager: TransferManagement
+    authFlowManager: AuthFlowManagement
+    externalIdentityManager: ExternalIdentityManagement
+    identityProviderManager: IdentityProviderManagement
+    challengeDeliveryManager: ChallengeDeliveryManagement
+    accessLogManager: AccessLogManagement
+    /** Not a manager: the authenticators of both planes, built by `start()` (T-12.3). */
+    authRegistry: AuthenticatorRegistry
   }
 }
 

@@ -31,9 +31,10 @@ let savedSystemRoles: any
 let savedConfig: any
 
 // Both files decide at import time whether they are enabled at all (`enable: isTenancyEnabled()`),
-// so the config has to be in place before the module is loaded, not before it is used.
+// so the config has to be in place before the module is loaded, not before it is used. Loaded
+// afresh for the same reason: a suite that booted the real server has it cached with its own config.
 async function routesOf(dir: string) {
-  const mod = await import(`../../lib/api/${dir}/routes.js`)
+  const mod = await import(`../../lib/api/${dir}/routes.js?fresh=${Date.now()}`)
   const file = mod.default
   const errors: string[] = []
   const out: any[] = []

@@ -43,7 +43,7 @@ import { tenantsConfig } from './lib/util/tenancy.js'
 import { assertPolicies, controlPolicy, floorPolicy, mfaAvailable, unavailableMandatory } from './lib/util/mfaPolicy.js'
 import { configureCache, cache } from './lib/util/cache.js'
 
-import type { TransferManagement } from './types/global.js'
+import type { Authenticator, TransferManagement } from './types/global.js'
 // `lib/config/general.js` is deliberately NOT imported here (T-10.4). It is the framework's
 // layer of defaults and `loaderConfig.load()` merges it with the project's; reading it directly
 // skips that merge. A static import is also hoisted above `dotenv.config()`, so the
@@ -60,8 +60,14 @@ import {
   defaultSystemUserManager,
   defaultImpersonationManager,
   defaultDestructionManager,
-  defaultSessionManager
+  defaultSessionManager,
+  defaultAuthFlowManager,
+  defaultExternalIdentityManager,
+  defaultIdentityProviderManager,
+  defaultChallengeDeliveryManager,
+  defaultAccessLogManager
 } from './lib/defaults/managers.js'
+import { buildAuthenticatorRegistry } from './lib/auth/registry.js'
 
 global.log = logger
 
@@ -173,7 +179,10 @@ const preload = async () => {
   global.systemRoles = await loaderRoles.loadSystem()
 }
 
-const start = async (decorators = {}) => {
+/** The managers to inject, plus the authenticators that feed the registry (T-12.3). */
+type StartOptions = object & { authenticators?: readonly Authenticator[] }
+
+const start = async (decorators: StartOptions = {}) => {
   if (!global.config) await preload()
 
   const begin = new Date().getTime()
@@ -319,8 +328,11 @@ const start = async (decorators = {}) => {
 
   const schedules = loaderSchedules.load()
 
+  // `authenticators` is not a manager and is not decorated: it feeds the registry, which is.
+  const { authenticators, ...injected } = decorators as StartOptions & Record<string, unknown>
+
   // Decorators with Defaults (Null Object Pattern)
-  decorators = {
+  const managers: Record<string, unknown> = {
     userManager: defaultUserManager,
     tokenManager: defaultTokenManager,
     trackingManager: defaultTrackingManager,
@@ -331,15 +343,21 @@ const start = async (decorators = {}) => {
     impersonationManager: defaultImpersonationManager,
     destructionManager: defaultDestructionManager,
     sessionManager: defaultSessionManager,
-    ...decorators
+    authFlowManager: defaultAuthFlowManager,
+    externalIdentityManager: defaultExternalIdentityManager,
+    identityProviderManager: defaultIdentityProviderManager,
+    challengeDeliveryManager: defaultChallengeDeliveryManager,
+    accessLogManager: defaultAccessLogManager,
+    ...injected
   }
 
   // Register decorators on Server instance (Dependency Injection)
   await Promise.all(
-    Object.keys(decorators || {}).map(async (key) => {
-      await server.decorate(key, (decorators as Record<string, unknown>)[key])
+    Object.keys(managers).map(async (key) => {
+      await server.decorate(key, managers[key])
     })
   )
+  server.decorate('authRegistry', buildAuthenticatorRegistry(authenticators ?? []))
 
   // After the injection, because a project may bring its own manager: a policy that demands a
   // second factor this build cannot issue is a locked door with no key, and the first login is
@@ -347,7 +365,7 @@ const start = async (decorators = {}) => {
   const mfaGap = unavailableMandatory({
     floor: floorPolicy(),
     control: controlPolicy(),
-    implemented: mfaAvailable((decorators as Record<string, unknown>).mfaManager)
+    implemented: mfaAvailable(managers.mfaManager)
   })
   if (mfaGap) throw new Error(mfaGap)
 
@@ -565,6 +583,48 @@ export type {
   SessionScope,
   SessionLookup,
   MfaManagement,
+  // Composable authentication (T-12.2, T-12.4): the contract a consumer's own method implements,
+  // and the ports a consumer may inject instead of the data layer's.
+  Authenticator,
+  AuthenticatorKind,
+  AuthenticatorRegistry,
+  AuthPlane,
+  AuthContext,
+  AuthManagers,
+  AuthInput,
+  AuthReturnInput,
+  AuthResult,
+  AuthRefusalCode,
+  AuthSubject,
+  AuthAction,
+  ChallengeChannel,
+  ChallengeDescriptor,
+  EnrolmentSetup,
+  StageDescriptor,
+  StageOption,
+  AuthFlow,
+  AuthFlowLookup,
+  AuthFlowExternal,
+  AuthFlowManagement,
+  ChallengeLimits,
+  ChallengeRecord,
+  ChallengeConsumption,
+  ExternalAuthResult,
+  ExternalIdentity,
+  ExternalIdentityKey,
+  ExternalIdentityManagement,
+  IdentityProvider,
+  IdentityProviderType,
+  IdentityProviderWithSecret,
+  IdentityProviderManagement,
+  OidcProviderSettings,
+  ChallengeDelivery,
+  ChallengePurpose,
+  ChallengeDeliveryManagement,
+  AccessEvent,
+  AccessLogEntry,
+  AccessLogRecord,
+  AccessLogManagement,
   TransferManagement,
   TransferCallback,
   JobSchedule,

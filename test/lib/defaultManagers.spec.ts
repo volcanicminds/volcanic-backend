@@ -19,7 +19,13 @@ import {
   defaultImpersonationManager,
   defaultDestructionManager,
   defaultMfaManager,
-  defaultTransferManager
+  defaultTransferManager,
+  defaultSessionManager,
+  defaultAuthFlowManager,
+  defaultExternalIdentityManager,
+  defaultIdentityProviderManager,
+  defaultChallengeDeliveryManager,
+  defaultAccessLogManager
 } from '../../lib/defaults/managers.js'
 
 ;(global as any).log = {}
@@ -33,7 +39,13 @@ const ALL: Array<[string, any]> = [
   ['impersonationManager', defaultImpersonationManager],
   ['destructionManager', defaultDestructionManager],
   ['mfaManager', defaultMfaManager],
-  ['transferManager', defaultTransferManager]
+  ['transferManager', defaultTransferManager],
+  ['sessionManager', defaultSessionManager],
+  ['authFlowManager', defaultAuthFlowManager],
+  ['externalIdentityManager', defaultExternalIdentityManager],
+  ['identityProviderManager', defaultIdentityProviderManager],
+  ['challengeDeliveryManager', defaultChallengeDeliveryManager],
+  ['accessLogManager', defaultAccessLogManager]
 ]
 
 describe('defaults/managers · booting without a data layer (T-9.5)', () => {
@@ -47,7 +59,7 @@ describe('defaults/managers · booting without a data layer (T-9.5)', () => {
 
   it('rejects every method of the contract it stands in for', async () => {
     // Sampled across the managers rather than one call on one of them: the factory builds all
-    // nine from a list, so a name missing from a list is the failure mode, and it shows up as
+    // of them from a list, so a name missing from a list is the failure mode, and it shows up as
     // `undefined is not a function` at the call site instead of as a readable refusal.
     const calls: Array<[string, Promise<unknown>]> = [
       ['userManager', (defaultUserManager as any).createUser({}, {})],
@@ -55,7 +67,13 @@ describe('defaults/managers · booting without a data layer (T-9.5)', () => {
       ['trackingManager', (defaultTrackingManager as any).addChange({}, {})],
       ['tenantManager', (defaultTenantManager as any).listTenants({})],
       ['systemUserManager', (defaultSystemUserManager as any).retrieveSystemUserByEmail({}, 'x@y.z')],
-      ['mfaManager', (defaultMfaManager as any).verify('123456', 'secret')]
+      ['mfaManager', (defaultMfaManager as any).verify('123456', 'secret')],
+      ['sessionManager', (defaultSessionManager as any).findBySecret({}, 'x', 10)],
+      ['authFlowManager', (defaultAuthFlowManager as any).findBySecret({}, 'flow', 'secret')],
+      ['externalIdentityManager', (defaultExternalIdentityManager as any).findLink({}, {})],
+      ['identityProviderManager', (defaultIdentityProviderManager as any).get({}, 't', 'k')],
+      ['challengeDeliveryManager', (defaultChallengeDeliveryManager as any).deliver({})],
+      ['accessLogManager', (defaultAccessLogManager as any).record({}, {})]
     ]
 
     for (const [name, call] of calls) {
