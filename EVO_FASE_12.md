@@ -469,7 +469,7 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## B. Contratti e registro
 
-- [ ] **T-12.2** Tipi del motore.
+- [x] **T-12.2** Tipi del motore.
   **Cosa fare**: `AuthenticatorKind` (`identifier` | `verifier`), `Authenticator` con `id`,
   `kind`, `planes`, `initiate?`, `verify`, `complete?` (l'input di un ritorno dall'esterno, GET o
   POST, già in forma di dizionario), `isEnrolled?`, `enrol?`; `AuthContext` (piano, `DataHandle`
@@ -483,8 +483,17 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Criterio di chiusura**: `npm run type-check` verde, e due autenticatori finti in
   `test/lib/fixtures/` compilano contro il contratto senza cast: un identificatore con ritorno in
   POST (la forma di SAML) e un verificatore con sfida (la forma di sms).
+  **Evidenza**: commit `d8b6890`; `types/global.d.ts:770` (`AuthPlane`), `:779` (`AuthSubject`),
+  `:796` (`ChallengeDescriptor`), `:827` (`StageDescriptor`), `:838` (`AuthResult`), `:866`
+  (`AuthContext`), `:887` (`Authenticator`); esportazioni in `index.ts:601`. I due finti in
+  `test/lib/fixtures/authenticators.ts` (`postReturnIdentifier`, `challengeVerifier`), esercitati
+  da due prove in `test/lib/authRegistry.spec.ts`; `npm run type-check` verde. Deriva dal piano:
+  `kind` accetta anche entrambi i valori (`types/global.d.ts:890`, commit `0e2f98b`), perché
+  `email-otp` identifica e verifica (F34) e un solo `kind` non lo poteva dire; `enrol` restituisce
+  un `EnrolmentSetup` invece di un `AuthResult`, perché il segreto lo custodisce il motore e non il
+  metodo (T-12.21).
 
-- [ ] **T-12.3** Registro degli autenticatori.
+- [x] **T-12.3** Registro degli autenticatori.
   **Cosa fare**: registro per piano con `register` (sostituzione per `id` dichiarata a log),
   `get`, `list`; built-in registrati prima di quelli del consumer; `start()` accetta
   `authenticators: Authenticator[]` accanto ai manager e non li decora come manager.
@@ -492,8 +501,15 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Criterio di chiusura**: prova che un autenticatore iniettato con lo stesso `id` di un built-in
   lo sostituisce e lo dice a log, e che uno con `planes: ['tenant']` non è visibile dal piano di
   controllo.
+  **Evidenza**: commit `d8b6890`; `lib/auth/registry.ts:31` (una mappa per piano, sostituzione a
+  log, forma rifiutata alla registrazione), `:51`; built-in `password` e `totp` in
+  `lib/auth/builtins.ts:12`, `:19`, che il motore non chiama ancora e rifiutano con un codice;
+  `index.ts:188`, `:366` (il registro decorato come `authRegistry`, `authenticators` non decorato).
+  Prove in `test/lib/authRegistry.spec.ts` («lets an injected authenticator with a built-in id
+  replace it, and says so at log», «keeps a tenant-only authenticator out of the control plane»)
+  e in `test/lib/authBoot.spec.ts` attraverso il vero `start()`.
 
-- [ ] **T-12.4** I nuovi port e i loro Null Object.
+- [x] **T-12.4** I nuovi port e i loro Null Object.
   **Cosa fare**: `AuthFlowManagement`, `ExternalIdentityManagement`,
   `IdentityProviderManagement`, `ChallengeDeliveryManagement`, `AccessLogManagement` (firme nel
   blocco D, in F43 e in F44), con le liste di metodi e i default in `lib/defaults/managers.ts`,
@@ -502,10 +518,17 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Dove**: `types/global.d.ts`, `lib/defaults/managers.ts`, `index.ts:323-335`.
   **Criterio di chiusura**: `test/lib/defaultManagers.spec.ts` copre i cinque, e il server parte
   senza data layer con il flusso di default.
+  **Evidenza**: commit `d8b6890`; i cinque port in `types/global.d.ts:1056`, `:1129`, `:1158`,
+  `:1200`, `:1248`, con il vocabolario chiuso di F44 già qui (`:1206`) perché la firma di `record`
+  lo nomina; dichiarati su `FastifyInstance` a `:1425`; default in
+  `lib/defaults/managers.ts:134-148`, cablati in `index.ts:352`. `test/lib/defaultManagers.spec.ts`
+  copre i cinque (più `sessionManager`, che mancava); `test/lib/authBoot.spec.ts` avvia `start()`
+  senza data layer e con il flusso di default («boots, decorates the five new ports as Null
+  Objects»).
 
 ## C. Configurazione e validazione all'avvio
 
-- [ ] **T-12.5** Il file `authFlows.ts` e il suo caricatore.
+- [x] **T-12.5** Il file `authFlows.ts` e il suo caricatore.
   **Cosa fare**: default del framework in `lib/config/authFlows.ts` (parità con oggi, F34);
   caricatore con semantica di **sostituzione per piano**; esposizione in sola lettura su
   `global.authFlows` per il manifest; blocco `limits` in camelCase (F5) con le quattro variabili
@@ -514,8 +537,17 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   in `index.ts`.
   **Criterio di chiusura**: prova che un progetto che dichiara solo `tenant` eredita `control` dal
   framework e che uno stadio dichiarato dal progetto non si fonde con quello del framework.
+  **Evidenza**: commit `0e2f98b`; `lib/config/authFlows.ts`, `lib/loader/authFlows.ts:29`
+  (sostituzione per piano, limiti chiave per chiave con l'ambiente che vince, risultato congelato),
+  chiamato da `preload()` (`index.ts:184`) e da `start()` quando `preload()` non è passato
+  (`index.ts:192`, il caso del banco multi-tenant); `global.authFlows` a `types/global.d.ts:1476`;
+  tipi della configurazione esportati da `index.ts:643`. Prova «lets a project that declares only
+  `tenant` inherit `control`, and replaces the tenant block whole» in
+  `test/lib/authFlowConfig.spec.ts`, sul progetto finto `test/lib/fixtures/authFlows/`. Il blocco
+  `limits` porta le quattro voci con una variabile; i tetti per soggetto e le lunghezze del codice
+  di F37 arrivano con `email-otp` (blocco G).
 
-- [ ] **T-12.6** Validazione che rifiuta l'avvio.
+- [x] **T-12.6** Validazione che rifiuta l'avvio.
   **Cosa fare**: il processo non parte se: manca `'*'` o non è l'ultimo; un `id` non esiste nel
   registro di quel piano; `identify` contiene un verificatore, o uno stadio successivo contiene un
   identificatore; un `anyOf` è vuoto; un ruolo non esiste nel catalogo del piano (`roles.ts` per il
@@ -529,13 +561,37 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   in `index.ts` dopo la registrazione dei decoratori (`index.ts:337-352`).
   **Criterio di chiusura**: una prova per ogni causa in `test/lib/authFlowConfig.spec.ts`, ognuna
   sul testo del messaggio.
+  **Evidenza**: commit `0e2f98b`; `lib/auth/validate.ts:217` (`authFlowProblems`, pura), chiamata in
+  `index.ts:372-385` dopo i decoratori, dove assorbe il vecchio `unavailableMandatory`
+  (`validate.ts:220`, stesso messaggio). Diciannove prove nel secondo `describe` di
+  `test/lib/authFlowConfig.spec.ts`, una per causa e sul testo del messaggio, più due in `test/lib/authBoot.spec.ts` sul vero `start()` (il default passa,
+  una configurazione sbagliata ferma l'avvio). Cause aggiunte al piano: `limits` non interi,
+  blocchi di forma sbagliata, flusso senza ruoli, e `MANDATORY` su un piano che non ha `totp` da
+  iscrivere (`validate.ts:184`). Due scelte da segnalare: `totp` rifiuta l'avvio senza
+  `MfaManagement` solo in uno stadio non facoltativo (`:177`), e F46 non conta uno stadio
+  facoltativo i cui metodi non hanno `initiate` (`:191`), perché il default ha uno stadio `totp`
+  facoltativo e deve partire sia senza data layer sia sul data layer attuale, che fino a T-12.12 non
+  porta `AuthFlowManagement`; chi ha già un fattore incontrerà il rifiuto del motore al passo
+  (T-12.14). `MANDATORY` senza `AuthFlowManagement` non ferma ancora l'avvio: oggi il secondo
+  passo non ha bisogno della riga, e rifiutarlo ora romperebbe i deploy `MANDATORY` prima di
+  T-12.12; va aggiunto quando il motore sostituisce le rotte vecchie. `idp-mfa` non è registrato:
+  arriva con T-12.30.
 
-- [ ] **T-12.7** La politica per tenant non può chiedere ciò che la build non sa dare.
+- [x] **T-12.7** La politica per tenant non può chiedere ciò che la build non sa dare.
   **Cosa fare**: oggi `checkTenantPolicy` valida solo la forza del valore (`mfaPolicy.ts:107-129`),
   quindi un operatore può scrivere `MANDATORY` su un tenant di una build senza MFA e bloccarne
   tutti gli utenti al primo login. La scrittura si rifiuta con un codice nuovo.
   **Dove**: `lib/api/tenants/controller/tenants.ts:183`, `:268`.
   **Criterio di chiusura**: prova del rifiuto in `test/lib/tenantProvisioning.spec.ts`.
+  **Evidenza**: commit `0e2f98b`; `lib/api/tenants/controller/tenants.ts:172-181`, 503
+  `MFA_POLICY_UNSUPPORTED` quando il piano tenant non ha `totp` da iscrivere
+  (`lib/auth/validate.ts:65`), condiviso da creazione e aggiornamento (`:196`, `:281`); prova
+  «answers 503 MFA_POLICY_UNSUPPORTED to MANDATORY when the tenant plane has nothing to enrol a
+  user in» in `test/lib/tenantProvisioning.spec.ts:122`. Deriva dal piano: il caso di una build
+  senza `MfaManagement` era già rifiutato, con 503 `MFA_NOT_AVAILABLE` (`tenants.ts:167-171`,
+  commit `2986358`), e resta com'era; il codice nuovo copre ciò che il modello a flussi aggiunge.
+  Il caso di una build senza `AuthFlowManagement` segue la stessa regola di T-12.6 e arriva con il
+  motore.
 
 ## D. Persistenza
 
@@ -957,3 +1013,5 @@ chieda una riautenticazione fresca.
 | Voce | Evidenza |
 |---|---|
 | T-12.1 | commit `1b50994`: `lib/api/auth/controller/auth.ts:576-584`, `lib/api/system/controller/systemAuth.ts:229`, `:249`, quattro prove in `test/lib/mfaEnrolment.spec.ts`, `docs/API_V5.md:47-48`, `:186` |
+| T-12.2 → T-12.4 | commit `d8b6890`: `types/global.d.ts:770-1431`, `lib/auth/registry.ts`, `lib/auth/builtins.ts`, `lib/defaults/managers.ts:134-148`, `test/lib/authRegistry.spec.ts`, `test/lib/authBoot.spec.ts`, `test/lib/defaultManagers.spec.ts` |
+| T-12.5 → T-12.7 | commit `0e2f98b`: `lib/config/authFlows.ts`, `lib/loader/authFlows.ts`, `lib/auth/validate.ts`, `index.ts:366-385`, `lib/api/tenants/controller/tenants.ts:172-181`, `test/lib/authFlowConfig.spec.ts`, `test/lib/tenantProvisioning.spec.ts:122`; `npm test` 616 prove, 30 saltate senza `DATABASE_URL` |

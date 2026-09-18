@@ -57,7 +57,9 @@ entrambi i piani (password, TOTP, email-otp, OIDC, contratto per SMS e social), 
 posto delle rotte di login attuali, registro degli accessi `access_log`. SAML rinviato a una fase
 successiva, collegamento self-service degli account rinviato dopo la 5.0 (F48). Chiusa T-12.1, il
 bypass della MFA per reiscrizione (`1b50994`); le versioni 4.x e 3.x pubblicate restano esposte,
-hotfix non richiesto per ora.
+hotfix non richiesto per ora. Chiusi i blocchi B e C (T-12.2 → T-12.7, `d8b6890`,
+`0e2f98b`): contratto, registro, i cinque port con i Null Object, `authFlows.ts` e la validazione
+all'avvio; il login resta quello di oggi.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:
