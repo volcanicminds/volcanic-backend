@@ -48,7 +48,7 @@ del riuso, logout che revoca davvero), D (rotte `/auth/sessions` sui due piani, 
 più comando `npx volcanic sessions --purge`, avviso di boot su `reset_external_id_on_login`) e le
 prove, banco multi-tenant compreso: `test/e2e-mt-pg` è a 14 prove su 14 contro Postgres reale, e le
 sei nuove dimostrano che una sessione vive nel contenitore del suo tenant, che il credenziale di un
-tenant presentato come un altro è rifiutato, e che dopo logout o riuso non si rinnova più. **Fase 11 chiusa**: T-11.18 decisa e implementata, la lista dei dispositivi collegati e un pannello
+tenant presentato come un altro è rifiutato, e che dopo logout o riuso non si rinnova più. **Fase 11 chiusa**: T-11.18 decisa e implementata, la lista dei dispositivi collegati è un pannello
 dell'account nella console, non una risorsa del manifest, che ne annuncia l'endpoint per piano.
 
 **Cosa resta**, e non è nel piano: il push (`develop` è avanti al remoto, serve una richiesta
