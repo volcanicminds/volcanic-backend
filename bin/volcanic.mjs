@@ -25,6 +25,11 @@ const value = (name, fallback) => {
 }
 
 const USAGE = `
+volcanic sessions --purge [--tenants]
+
+  --purge            REQUIRED. Removes the session rows no renewal can use any more (T-11.12).
+  --tenants          Every active container as well as the control plane, instead of it alone.
+
 volcanic migrate --tenants --snapshot <reference> [options]
 
   --snapshot <ref>   REQUIRED. The backup you would restore from. Recorded in the run log.
@@ -48,9 +53,14 @@ async function load(specifier) {
 }
 
 async function main() {
-  if (argv[0] !== 'migrate' || flag('help')) {
+  const command = argv[0]
+  const known = command === 'migrate' || command === 'sessions'
+  // `sessions` has no default behaviour: the only thing it does is delete rows, so it is asked
+  // for by name or not at all.
+  const asked = command === 'sessions' ? flag('purge') : true
+  if (!known || !asked || flag('help')) {
     console.log(USAGE)
-    process.exit(argv[0] === 'migrate' ? 0 : 1)
+    process.exit(known && flag('help') ? 0 : 1)
   }
 
   const logger = (await load('lib/util/logger.js')).default
@@ -63,6 +73,38 @@ async function main() {
   const layer = await dataLayer.start(config.options)
 
   try {
+    // T-11.12. Rows whose two clocks have run out are rows no renewal can use, and they are the
+    // only ones removed: a revoked session stays until its own deadline, because "when did this
+    // session end, and why" has to outlive the session itself.
+    if (argv[0] === 'sessions') {
+      const control = await layer.provider.control()
+      let removed = await layer.sessionManager.purgeExpired(control)
+      let containers = 1
+
+      if (flag('tenants')) {
+        // Paged, and filtered by the registry rather than here: a fleet is not something to read
+        // in one query, and a fixed ceiling would skip the containers past it without saying so.
+        const pageSize = 100
+        for (let page = 1; ; page++) {
+          const result = await layer.tenantManager.listTenants(control, {
+            'status:eq': 'active',
+            _page: page,
+            _pageSize: pageSize
+          })
+          const records = result?.records ?? []
+          for (const tenant of records) {
+            const handle = await layer.provider.tenant(tenant.id)
+            removed += await layer.sessionManager.purgeExpired(handle)
+            containers += 1
+          }
+          if (records.length < pageSize) break
+        }
+      }
+
+      console.log(`sessions: ${removed} expired row(s) removed from ${containers} container(s)`)
+      return 0
+    }
+
     if (flag('control')) {
       const container = { locator: config.options?.control?.schema || 'public' }
       const pending = await layer.migrations.pending(container)

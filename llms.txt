@@ -188,17 +188,18 @@ your own table objects must be built for.
 
 6.  **[Part 6: Authentication and Security](#part-6-authentication-and-security)**
     - **6.1 Auth Stack & JWT Lifecycle**
-      - Access Token, Refresh Token, and Revocation (`externalId`)
+      - Access Token, the session registry behind the Refresh Credential, and Revocation at three levels
       - Dual Mode Support (Bearer vs Cookie HttpOnly)
 
 ### 6.1.1 Dual Mode Configuration
 
 `AUTH_MODE` decides where a **session** travels; integration tokens (`/token`) always travel in the `Authorization` header.
 
-1.  **Cookie Mode** (`AUTH_MODE=COOKIE`), **the default**: login sets two `HttpOnly`, `SameSite=Strict`, signed cookies (`Secure` in production), the access token (`Path=/`) and the refresh token (limited to the renewal route); the body carries `token: null`, `refreshToken: null`. `Max-Age` is read from each token's `exp`. Renewal: `POST /auth/refresh-token` with an empty body, answered with a new access cookie or `401 REFRESH_REQUIRED`. The platform plane has its own pair (`control_token`, `control_refresh_token`). The MFA pre-auth token and the impersonation token travel in the cookie too. The header accepts integration tokens only: a session token there is `401 CREDENTIAL_CHANNEL`. Requires `COOKIE_SECRET`; admin and API on the same site. `COOKIE_PATH_PREFIX` when a proxy strips a path prefix.
-2.  **Bearer Token Mode** (`AUTH_MODE=BEARER`): tokens in the login body, `Authorization: Bearer <token>` on every request, renewal with `{ token, refreshToken }`. For mobile apps and clients without a cookie jar.
-    - **Logout**: in cookie mode, `/auth/logout` clears both cookies of the tenant plane, `/system/auth/logout` those of the platform.
-    - Refresh tokens carry `typ: 'refresh'`; each token is refused in the other's place. The access token lasts `1h` by default (`JWT_EXPIRES_IN`).
+1.  **Cookie Mode** (`AUTH_MODE=COOKIE`), **the default**: login sets two `HttpOnly`, `SameSite=Strict`, signed cookies (`Secure` in production), the access token (`Path=/`) and the refresh credential (limited to the renewal route); the body carries `token: null`, `refreshToken: null`. The access cookie's `Max-Age` is read from its `exp`, the refresh cookie's from the session row's earlier deadline. Renewal: `POST /auth/refresh-token` with an empty body, answered with a new access cookie **and a new refresh cookie**, or `401 REFRESH_REQUIRED`. The platform plane has its own pair (`control_token`, `control_refresh_token`). The MFA pre-auth token and the impersonation token travel in the cookie too. The header accepts integration tokens only: a session token there is `401 CREDENTIAL_CHANNEL`. Requires `COOKIE_SECRET`; admin and API on the same site. `COOKIE_PATH_PREFIX` when a proxy strips a path prefix.
+2.  **Bearer Token Mode** (`AUTH_MODE=BEARER`): tokens in the login body, `Authorization: Bearer <token>` on every request, renewal with `{ refreshToken }` alone, answered with a new `token` and a new `refreshToken` that the client must store. For mobile apps and clients without a cookie jar.
+    - **Logout**: `/auth/logout` revokes the session row and, in cookie mode, clears both cookies of the tenant plane; `/system/auth/logout` does the same on the platform.
+    - **Session management**: `GET /auth/sessions` lists where the caller is logged in (`sid`, `current`, the two clocks, `ip`, `userAgent`, and no secret of any kind), `DELETE /auth/sessions/:id` closes one; a session of somebody else answers **404**, exactly as one that does not exist, so a `sid` is never an oracle. Closing the current one is a logout. The platform twins are `GET`/`DELETE /system/auth/sessions[/:id]`. Without a registry both answer `404`. Expired rows are cleared by `npx volcanic sessions --purge [--tenants]` and, opportunistically, by about one renewal in fifty.
+    - The refresh credential is **opaque** (`vs1.<routing>.<sid>.<secret>`) and means a row in the `session` table: it is consumed and rotated at every renewal, a spent one presented outside `SESSION_GRACE_SECONDS` is `401 SESSION_REUSE_DETECTED` and closes the session, and without a data layer the renewal routes answer `404`. The access token lasts `1h` by default (`JWT_EXPIRES_IN`) and carries `sid`.
 
     - **6.2 Multi-Factor Authentication (MFA)**
       - Policy and "Gatekeeper" Flow (Pre-Auth Token)
@@ -276,7 +277,7 @@ The framework is an **opinionated** system composed of three modular packages wo
 1.  **`@volcanicminds/backend` (Server Core)**
     - **Fastify** wrapper.
     - Manages the HTTP lifecycle, automatic route loading (`Auto-Discovery`), JSON Schema validation, and the Global Hooks system.
-    - Natively integrates the Authentication system (JWT, Refresh Token) and Security (MFA Gatekeeper).
+    - Natively integrates the Authentication system (JWT access tokens, rotating sessions) and Security (MFA Gatekeeper).
     - **The container of a request**: hands every request `req.control`, and `req.tenant` where tenancy is declared. Two distinct types, no ambient fallback, and a call with neither throws.
 2.  **`@volcanicminds/backend/db` (Data Layer)**
     - Drizzle underneath, and the subpath says so nowhere on purpose: in v4 it was `/typeorm`, so the ORM was
@@ -485,9 +486,10 @@ An example `.env` for production.
 | `PORT`                         | The port for the server to listen on.                                   |    No    | `2230`              |
 | `JWT_SECRET`                   | Secret key for signing JWTs.                                            | **Yes**  |                     |
 | `JWT_EXPIRES_IN`               | Lifetime of the access token (e.g. `1h`, `15m`), and of its cookie.    |    No    | `1h`                |
-| `JWT_REFRESH`                  | Enable refresh tokens.                                                  |    No    | `true`              |
-| `JWT_REFRESH_SECRET`           | Secret key for signing refresh tokens.                                  | **Yes**¹ |                     |
-| `JWT_REFRESH_EXPIRES_IN`       | Expiration time for refresh tokens.                                     |    No    | `180d`              |
+| `JWT_REFRESH`                  | Enable session renewal.¹                                                |    No    | `true`              |
+| `SESSION_IDLE_TTL`             | Seconds without a renewal before a session ends.                        |    No    | `2592000`           |
+| `SESSION_ABSOLUTE_TTL`         | Seconds a session may live, however often it renews.                    |    No    | `15552000`          |
+| `SESSION_GRACE_SECONDS`        | Seconds the just-rotated credential stays acceptable.                   |    No    | `10`                |
 | `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`). |    No    | `info`              |
 | `LOG_COLORIZE`                 | Enable colorized log output.                                            |    No    | `true`              |
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
@@ -516,7 +518,9 @@ An example `.env` for production.
 | `DESTRUCTION_TOKEN_TTL`        | Seconds a container-destruction request stays valid.                    |    No    | `600`               |
 | `IMPERSONATION_TTL`            | Seconds an impersonation token lasts. Hard maximum 14400.               |    No    | `1800`              |
 
-¹ Required if `JWT_REFRESH` is enabled.
+¹ Renewal needs a data layer: the refresh credential is opaque and its meaning is a row in the `session`
+table, so without one the renewal routes answer `404`. `JWT_REFRESH_SECRET` and `JWT_REFRESH_EXPIRES_IN` are
+ignored since 5.0 and warn at boot.
 ² Required in production.
 ³ Read only at boot, to seed the first identity. With no identity and no `ADMIN_EMAIL`, startup fails fast.
 
@@ -612,9 +616,10 @@ ADMIN_EMAIL=admin@example.com
 JWT_SECRET=super_secret_key_change_me
 JWT_EXPIRES_IN=1h
 JWT_REFRESH=true
-JWT_REFRESH_SECRET=super_secret_refresh_key_change_me
-JWT_REFRESH_EXPIRES_IN=30d
-MFA_DB_SECRET=a_third_secret_at_least_32_characters
+SESSION_IDLE_TTL=2592000
+SESSION_ABSOLUTE_TTL=15552000
+SESSION_GRACE_SECONDS=10
+MFA_DB_SECRET=a_second_secret_at_least_32_characters
 
 # MFA
 MFA_POLICY=OPTIONAL
@@ -850,8 +855,8 @@ inside application code. Two lines well spent.
 
 ## 2.3 Never redefine a framework table
 
-The framework owns `user`, `token`, `change`, `migration` and, in the control plane, `tenant`,
-`system_user`, `impersonation`, `destruction_request`. **Do not extend them.**
+The framework owns `user`, `token`, `change`, `session`, `migration` and, in the control plane,
+`tenant`, `system_user`, `impersonation`, `destruction_request`. **Do not extend them.**
 
 In v4 the way to add `firstName` to a user was to subclass the framework's `User` entity. In v5
 those fields go in a table of your own, keyed by `user.id`:
@@ -1904,10 +1909,11 @@ Following variables are mandatory to enable token encryption.
 JWT_SECRET=super_long_random_string_at_least_64_bytes
 JWT_EXPIRES_IN=15m  # Short duration for security
 
-# Refresh Token (long duration, for fluid UX)
+# Sessions (the refresh credential is opaque: it has no secret of its own to sign)
 JWT_REFRESH=true
-JWT_REFRESH_SECRET=another_super_long_random_string_different_from_above
-JWT_REFRESH_EXPIRES_IN=7d
+SESSION_IDLE_TTL=2592000      # 30 days without a renewal end the session
+SESSION_ABSOLUTE_TTL=15552000 # 180 days, however often it renews
+SESSION_GRACE_SECONDS=10      # tolerance for tabs renewing together
 ```
 
 ### The "External ID" Pattern (Token Revocation)
@@ -1919,8 +1925,15 @@ Standard JWT problem is they cannot be revoked before expiration. Volcanic solve
 3.  At login/verification, system finds user via `externalId`.
 
 **How invalidation works (Global Logout / Password Change):**
-When user changes password or clicks "Logout from all devices", system regenerates their `externalId` in database.
-_Result:_ All previously issued tokens (Access and Refresh) contain old `externalId`, which matches no user anymore. They are instantly rejected.
+When user changes password or clicks "Logout from all devices", `/auth/invalidate-tokens` revokes every row of
+that subject in the `session` table **first**, then regenerates their `externalId`.
+_Result:_ no refresh credential of that user can be spent any more, and every access token already signed
+carries an `externalId` that matches no user, so it is rejected on sight.
+
+The rotation of `externalId` is the emergency level, not the routine one: it is a public identifier that
+appears in responses and that integrations store. The two levels below it are `/auth/logout`, which revokes the
+single session the caller holds, and the reuse detection of the renewal, which revokes a session by itself when
+a spent credential comes back. The mechanism in full: `docs/AUTHORIZATION_V5.md` §9.
 
 ---
 
@@ -2631,8 +2644,9 @@ NODE_OPTIONS=--max-old-space-size=3072
 JWT_SECRET=CHANGE_THIS_TO_VERY_LONG_RANDOM_STRING
 JWT_EXPIRES_IN=15m
 JWT_REFRESH=true
-JWT_REFRESH_SECRET=CHANGE_THIS_TO_DIFFERENT_RANDOM_STRING
-JWT_REFRESH_EXPIRES_IN=30d
+SESSION_IDLE_TTL=2592000
+SESSION_ABSOLUTE_TTL=15552000
+SESSION_GRACE_SECONDS=10
 
 # --- DATABASE (E.g. OVH Managed or AWS RDS) ---
 # One URL, SSL included in it. There is no START_DB: the data layer is started by index.ts, and
@@ -2963,17 +2977,20 @@ Before deploying `volcanic-sample-backend`, verify:
 2.  [ ] **Logs**: `LOG_LEVEL=info` (not `trace` or `debug`).
 3.  [ ] **Schema**: `npm run db:migrate` ran as a **deploy step**. There is no `DB_SYNCHRONIZE` to
         turn off any more — the instance refuses to boot when the control plane is behind.
-4.  [ ] **Auth**: `JWT_SECRET`, `JWT_REFRESH_SECRET` and `MFA_DB_SECRET` are long, complex and
-        different from each other. Startup refuses a weak one in production.
-5.  [ ] **CORS**: `CORS_ORIGINS` is set. A wildcard that arrived by omission refuses the boot, and
+4.  [ ] **Auth**: `JWT_SECRET` and `MFA_DB_SECRET` are long, complex and different from each
+        other. Startup refuses a weak one in production. `JWT_REFRESH_SECRET` and
+        `JWT_REFRESH_EXPIRES_IN` are ignored since 5.0 and should be removed from the environment.
+5.  [ ] **Sessions**: the `session` table exists in the control plane and in every tenant container
+        (the `0001_sessions_*` migrations). Without it there is no renewal at all.
+6.  [ ] **CORS**: `CORS_ORIGINS` is set. A wildcard that arrived by omission refuses the boot, and
         so does the wildcard-with-credentials pair.
-6.  [ ] **Work factor**: `BCRYPT_COST` measured on this machine (`npm run tune`), not inherited.
-7.  [ ] **Connections**: the pool arithmetic fits under `max_connections` with a reserve — the
+7.  [ ] **Work factor**: `BCRYPT_COST` measured on this machine (`npm run tune`), not inherited.
+8.  [ ] **Connections**: the pool arithmetic fits under `max_connections` with a reserve — the
         framework checks it before handing out the first connection, and refuses to start if it
         does not.
-8.  [ ] **MFA**: policy set according to business requirements (`OPTIONAL` or `MANDATORY`).
-9.  [ ] **Admin**: the founder has a strong password and active MFA.
-10. [ ] **Backups**: a `--snapshot` reference exists and you have restored from one at least once.
+9.  [ ] **MFA**: policy set according to business requirements (`OPTIONAL` or `MANDATORY`).
+10. [ ] **Admin**: the founder has a strong password and active MFA.
+11. [ ] **Backups**: a `--snapshot` reference exists and you have restored from one at least once.
         A fleet migration refuses to run without naming it, and a reference nobody has tested is
         a reference.
 
@@ -2999,7 +3016,7 @@ const server = await start(decorators) // decorators is an object of managers; r
 ```
 
 - `start()` registers Fastify plugins (cookie, helmet, rate-limit, multipart, cors, compress, raw-body, static), JWT
-  (+ a separate `refreshToken` namespace), Swagger (if `SWAGGER=true`), the loaders (**tenant → hooks → schemas →
+  (one namespace: the refresh credential is opaque and signs nothing), Swagger (if `SWAGGER=true`), the loaders (**tenant → hooks → schemas →
   router**), the scheduler (if enabled), then **decorates the server with the managers** and finally
   `listen()`s. It also mounts the TUS transfer route (if `transferManager` is implemented) and runs the
   "Admin MFA forced reset" startup check.
@@ -3049,6 +3066,7 @@ in v4 the argument did not exist and the answer came from a global.
 | `systemUserManager` | `SystemUserManagement` | `@volcanicminds/backend/db` | `/system/auth/*` and `/system/users/*`: the platform's own identities | `retrieveSystemUserByEmail`/`ByExternalId`/`ById`, `createSystemUser`, `blockSystemUser`, `retrieveMfaSecret`, `recordMfaCounter`, `findQuery`/`countQuery` |
 | `impersonationManager` | `ImpersonationManagement` | `@volcanicminds/backend/db` | `/tenants/:id/impersonate`: a **persisted, revocable** session | `open`, `retrieveImpersonation`, `end` |
 | `destructionManager` | `DestructionManagement` | `@volcanicminds/backend/db` | The two-phase destruction of a container | `openRequest`, `findLiveRequest`, `consumeRequest` |
+| `sessionManager` | `SessionManagement` | `@volcanicminds/backend/db` — or your own (Redis, say) | The session registry: renewal, rotation, reuse detection, logout. Without it there is **no renewal** | `openSession`, `findBySecret`, `rotate`, `revokeSession`, `revokeAllOfSubject`, `listOfSubject`, `purgeExpired` |
 
 **Gone:** `dataBaseManager`, with `synchronizeSchemas` (schemas are versioned migrations) and the
 generic `retrieveBy` over `global.entity` (there is no registry of consumer entities to resolve a
@@ -3147,6 +3165,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Auth | `POST /auth/register` · `/unregister` · `/login` | public | no | `userManager` |
 | Auth | `POST /auth/validate-password` · `/confirm-email` · `/forgot-password` · `/reset-password` | public | no | `userManager` |
 | Auth | `POST /auth/change-password` · `/invalidate-tokens` | any authenticated | **yes** | `userManager` |
+| Auth | `GET /auth/sessions` · `DELETE /auth/sessions/:id` | any authenticated | **yes** | `sessionManager`⁸ |
 | Auth | `POST /auth/logout` · `/refresh-token` | public¹ | no | `userManager` |
 | Auth (MFA) | `POST /auth/mfa/setup` · `/mfa/enable` · `/mfa/disable` | any authenticated | **yes** | `userManager` + `mfaManager` |
 | Auth (MFA) | `POST /auth/mfa/verify` | public (during login) | no² | `userManager` + `mfaManager` |
@@ -3163,6 +3182,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Tenants | `POST /tenants/:id/impersonate` · `POST /tenants/impersonate/end` | `tenants:impersonate` cap | **yes** | `impersonationManager` |
 | System | `POST /system/auth/login` · `/refresh-token` · `/logout` · `/mfa/*` | public / control token | varies | `systemUserManager` |
 | System | `GET /system/auth/me` | any control token | **yes** | — (the resolved `req.systemUser`) |
+| System | `GET /system/auth/sessions` · `DELETE /system/auth/sessions/:id` | any control token | **yes** | `sessionManager`⁸ |
 | System | `GET /system/users` · `POST /system/users` · `PUT/DELETE /system/users/:id` · `/block` · `/unblock` | `system-users` cap | **yes** | `systemUserManager` |
 | System | `GET /system/manifest` (control plane, only with tenants) | `manifest` cap (control) | **yes** | — (schema only) |
 | Admin | `GET /admin/manifest` (tenant plane) | `manifest` cap | **yes** | — (schema only) |
@@ -3173,7 +3193,8 @@ and a route that rewrites a production schema on request is not a feature.
 `X cap` = `admin` **or** any role that declares the `X` capability (route gated with `requireCapability: 'X'`). The
 framework reserves `users`, `tokens` and `manifest`; a consumer grants them to its own roles in `config/roles.ts`.
 
-¹ `/refresh-token` consumes the refresh token (body or cookie); `/logout` clears the auth cookie in COOKIE mode.
+¹ `/refresh-token` consumes the refresh credential (body or cookie) and issues a new one; `/logout` revokes the
+session row and, in COOKIE mode, clears the cookies. Both need `sessionManager`.
 ² `/auth/mfa/verify` is reached with the **pre-auth MFA temp token** issued by login (`202`); see Part 6.2.
 ³ Token read routes declare roles but no `isAuthenticated` middleware — gate by roles; harden with the middleware if exposing publicly.
 ⁴ Admin-created users start **unconfirmed** by default (standard confirmation flow). Opt-in
@@ -3194,6 +3215,11 @@ password with **no** old-password check.
 MFA. Destruction is two-phase: a request that reports what would be lost and returns a one-time
 token good for ten minutes, then a delete that types the slug again, presents the token and an OTP,
 **exports first**, records the event, and only then drops.
+
+⁸ The session routes need a registry, so they answer `404` without a data layer, with
+`sessions.enabled: false` or with `JWT_REFRESH=false`, exactly as the renewal does. A caller sees
+only its own sessions, and one belonging to somebody else answers `404` as well: a `sid` is a
+handle, never an authorisation.
 
 **Two things about `/auth` that changed and will surprise a v4 client** (see `docs/API_V5.md` §2.1):
 
@@ -3370,8 +3396,9 @@ await startServer(layer)
 **Use when:** SPA/mobile/S2S with JWT in the `Authorization` header.
 **Packages:** `+ /db`. **Managers:** all of them, from the layer — `userManager` and `tokenManager`
 are the ones these routes need.
-**Config/env:** `AUTH_MODE=BEARER` (explicit: the default is `COOKIE`), strong `JWT_SECRET` (+
-`JWT_REFRESH_SECRET`), and `CORS_ORIGINS` before production.
+**Config/env:** `AUTH_MODE=BEARER` (explicit: the default is `COOKIE`), a strong `JWT_SECRET`, and
+`CORS_ORIGINS` before production. Renewal needs no second secret: it needs the data layer, which
+this scenario already has.
 
 ```typescript
 import { preload, start as startServer } from '@volcanicminds/backend'
@@ -3384,7 +3411,9 @@ await startServer(layer)
 ```
 
 Flow: `POST /auth/login` → `{ token, refreshToken }`; client sends `Authorization: Bearer <token>`; private
-routes (`roles: [roles.admin]`, …) are enforced by the core. Refresh via `POST /auth/refresh-token`.
+routes (`roles: [roles.admin]`, …) are enforced by the core. Refresh via `POST /auth/refresh-token` with
+`{ refreshToken }` alone, storing the new `refreshToken` that comes back: the credential rotates at every
+renewal, and presenting a spent one closes the session.
 
 ### D. Private API — Cookie mode (browser-first)
 

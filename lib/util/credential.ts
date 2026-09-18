@@ -27,6 +27,14 @@
 // would make opening an impersonation the same act as losing the session that can end it.
 //
 import type { FastifyReply, FastifyRequest } from 'fastify'
+import type { DataHandle, SessionManagement, SessionScope } from '../../types/global.js'
+import {
+  CONTROL_ROUTING,
+  composeRefreshCredential,
+  newSessionSecret,
+  sessionExpiries,
+  sessionRegistryEnabled
+} from './session.js'
 
 export type AuthMode = 'COOKIE' | 'BEARER'
 export type Plane = 'tenant' | 'control'
@@ -37,7 +45,14 @@ export interface Credential {
   channel: Channel
 }
 
-/** The claim that makes a refresh token unusable as an access token, and the reverse. */
+/**
+ * The claim that made a refresh JWT unusable as an access token, and the reverse.
+ *
+ * Since T-11.6 the refresh credential is opaque and can never verify as a JWT, so nothing this
+ * version issues carries it. The guards that read it stay for the upgrade window: a refresh
+ * token signed by a 5.0 alpha is still a valid signature, and without the claim it would verify
+ * as an access token wherever `JWT_REFRESH_SECRET` was left unset.
+ */
 export const REFRESH_TYP = 'refresh'
 
 export const SESSION_COOKIES: Record<Plane, { access: string; refresh: string; refreshRoute: string }> = {
@@ -145,23 +160,31 @@ function secondsLeft(reply: FastifyReply, token: string): number {
   return Math.max(0, claims.exp - Math.floor(Date.now() / 1000))
 }
 
-function write(reply: FastifyReply, name: string, token: string, path: string) {
+function write(reply: FastifyReply, name: string, token: string, path: string, maxAge: number) {
   reply.setCookie(name, token, {
     path,
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
     signed: true,
-    maxAge: secondsLeft(reply, token)
+    maxAge
   })
 }
 
 export function setAccessCookie(reply: FastifyReply, plane: Plane, token: string) {
-  write(reply, SESSION_COOKIES[plane].access, token, '/')
+  write(reply, SESSION_COOKIES[plane].access, token, '/', secondsLeft(reply, token))
 }
 
-export function setRefreshCookie(reply: FastifyReply, plane: Plane, refreshToken: string) {
-  write(reply, SESSION_COOKIES[plane].refresh, refreshToken, refreshCookiePath(plane))
+/**
+ * The refresh cookie, whose lifetime is now passed in rather than read out of the token.
+ *
+ * T-10.38 took the cookie's `maxAge` from the JWT's own `exp`, so the browser could never keep
+ * a cookie longer than the credential inside it. The refresh credential is no longer a JWT and
+ * carries no `exp` (T-11.6): the deadline lives in the session row, and the caller reads it
+ * from there. The guarantee is the same one, from the other side.
+ */
+export function setRefreshCookie(reply: FastifyReply, plane: Plane, refreshToken: string, maxAgeSeconds: number) {
+  write(reply, SESSION_COOKIES[plane].refresh, refreshToken, refreshCookiePath(plane), Math.max(0, Math.floor(maxAgeSeconds)))
 }
 
 export function clearAccessCookie(reply: FastifyReply, plane: Plane) {
@@ -179,30 +202,74 @@ export function clearSessionCookies(reply: FastifyReply, plane: Plane) {
 }
 
 /**
- * Signs a session for `claims` and hands it over the channel of the configured mode.
+ * Where a session is written down, and for whom.
  *
- * The refresh token carries `typ: 'refresh'` and the access token does not: the two
- * namespaces share `JWT_SECRET` whenever `JWT_REFRESH_SECRET` is unset, and without the claim
- * either token verifies as the other. A refresh token would then open every route for its
- * whole lifetime, and an access token could renew itself forever, which would make a short
- * access token (T-10.39) a number and not a limit.
+ * The handle is the caller's decision and never this module's: a tenant user's session belongs
+ * in the tenant container, a platform identity's in the control plane (F19). `routing` is the
+ * segment the refresh token carries so that a later renewal can find that container again
+ * before it can read anything.
+ */
+export interface SessionOrigin {
+  ctx: DataHandle
+  manager: SessionManagement
+  subjectId: string
+  scope: SessionScope
+  /** Tenant id, or `ctl` for the control plane. */
+  routing?: string | null
+  ip?: string | null
+  userAgent?: string | null
+}
+
+/**
+ * Opens a session for `claims` and hands the credentials over the channel of the configured mode.
  *
- * In cookie mode the body carries `null` in place of both tokens: the fields stay, so a
+ * The refresh token is an opaque secret written into the registry (T-11.6, T-11.7), not a second
+ * JWT. What comes back to the client is worthless without the row, the row says which generation
+ * is current, and that is what makes rotation and reuse detection possible at all.
+ *
+ * Without a registry there is **no refresh token**, and that is the decision of F28 rather than
+ * an omission: a refresh credential nobody can consume is a credential that never expires, and
+ * shipping one while calling it a session would be the worse of the two failures.
+ *
+ * The access token carries `sid`, so an action can be attributed to a session and not only to a
+ * subject. In cookie mode the body carries `null` in place of both tokens: the fields stay, so a
  * client can tell "the session is in the cookie" from "this build has no refresh tokens".
  */
 export async function issueSession(
   reply: FastifyReply,
   plane: Plane,
-  claims: Record<string, unknown>
+  claims: Record<string, unknown>,
+  origin?: SessionOrigin
 ): Promise<{ token: string | null; refreshToken: string | null | undefined }> {
-  const token = await reply.jwtSign(claims)
-  const signer = (reply.server as any).jwt['refreshToken']
-  const refreshToken: string | undefined = signer ? await signer.sign({ ...claims, typ: REFRESH_TYP }) : undefined
+  let refreshToken: string | undefined
+  let refreshMaxAge = 0
+  let sid: string | undefined
+
+  if (origin && sessionRegistryEnabled(origin.manager)) {
+    const secret = newSessionSecret()
+    const { idleExpiresAt, absoluteExpiresAt } = sessionExpiries()
+    const session = await origin.manager.openSession(origin.ctx, {
+      subjectId: origin.subjectId,
+      scope: origin.scope,
+      secret,
+      idleExpiresAt,
+      absoluteExpiresAt,
+      ip: origin.ip ?? null,
+      userAgent: origin.userAgent ?? null
+    })
+    sid = session.sid
+    refreshToken = composeRefreshCredential(origin.routing || CONTROL_ROUTING, session.sid, secret).raw
+    // The cookie dies with the earlier of the two clocks: a browser that keeps a credential the
+    // server would refuse is a browser that logs the user out by surprise instead of on time.
+    refreshMaxAge = Math.floor((Math.min(idleExpiresAt.getTime(), absoluteExpiresAt.getTime()) - Date.now()) / 1000)
+  }
+
+  const token = await reply.jwtSign(sid ? { ...claims, sid } : claims)
 
   if (!isCookieMode()) return { token, refreshToken }
 
   setAccessCookie(reply, plane, token)
-  if (refreshToken) setRefreshCookie(reply, plane, refreshToken)
+  if (refreshToken) setRefreshCookie(reply, plane, refreshToken, refreshMaxAge)
   else clearRefreshCookie(reply, plane)
   return { token: null, refreshToken: null }
 }

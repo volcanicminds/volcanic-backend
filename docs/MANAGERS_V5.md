@@ -294,6 +294,11 @@ export interface MfaManagement {
 
 ---
 
+> **`SessionManagement` belongs here and is written in §11.** It arrived with phase 11, by which
+> time the numbering of this file was already quoted from the code (`lib/database/ports.ts` cites
+> §9 for the section below), so it was appended instead of inserted and the existing numbers were
+> left alone.
+
 ## 9. Ports the framework implements (not injected by the consumer)
 
 These are internal, but they are the seam the adapters plug into (task T-1.3), and an
@@ -343,4 +348,111 @@ export interface CapabilityMatrix {
 | `tenantManager.switchContext(tenant, db)` | `tenantManager.openContainer(tenantId)` |
 | `userManager.disableUserById(id)` | `userManager.blockUserById(id, reason)` |
 | `userManager.forceDisableMfaForAdmin(email)` | `userManager.forceDisableMfa(ctx, userId)` |
+
+---
+
+## 11. `SessionManagement` (new in v5, phase 11)
+
+The registry behind the refresh credential. A row is a **session**, not a token: `sid` is fixed for
+the whole life of the session, what rotates at every renewal is the secret, and `generation` counts
+the rotations. That shape is what makes "close this device", "close the family, a stolen secret came
+back" and "where am I logged in" the same row and the same lookup. The mechanism is
+`docs/AUTHORIZATION_V5.md` §9 and the table is `docs/SCHEMA_V5.md` §2.5.
+
+```ts
+export type SessionScope = 'tenant' | 'control'
+
+export type SessionLookup =
+  | { outcome: 'current'; session: Session }
+  | { outcome: 'grace'; session: Session }
+  | { outcome: 'reused'; session: Session }
+  | { outcome: 'expired'; session: Session }
+  | { outcome: 'revoked'; session: Session }
+  | { outcome: 'unknown' }
+
+export interface SessionManagement {
+  isImplemented(): boolean
+
+  openSession(
+    ctx: DataHandle,
+    data: {
+      subjectId: string
+      scope: SessionScope
+      /** The clear secret. Only its hash is stored. */
+      secret: string
+      idleExpiresAt: Date | string
+      absoluteExpiresAt: Date | string
+      ip?: string | null
+      userAgent?: string | null
+      impersonationId?: string | null
+    }
+  ): Promise<Session>
+
+  /** Classifies a presented secret. A malformed or unknown secret is an answer, not a throw. */
+  findBySecret(ctx: DataHandle, secret: string, graceSeconds: number): Promise<SessionLookup>
+
+  /** Spends the current generation and writes the next one. Null when the generation is stale. */
+  rotate(
+    ctx: DataHandle,
+    sid: string,
+    generation: number,
+    next: { secret: string; idleExpiresAt: Date | string }
+  ): Promise<Session | null>
+
+  revokeSession(ctx: DataHandle, sid: string, reason: string): Promise<boolean>
+  /** Returns how many were closed. */
+  revokeAllOfSubject(ctx: DataHandle, subjectId: string, reason: string): Promise<number>
+  listOfSubject(ctx: DataHandle, subjectId: string): Promise<Session[]>
+  purgeExpired(ctx: DataHandle, before?: Date | string): Promise<number>
+}
+```
+
+**The secret goes in and never comes out.** `openSession` takes it in clear, writes its SHA-256 and
+keeps nothing else; no method returns one, and `Session` does not carry it. The caller composes the
+credential from the secret it already holds, so a container that leaks its rows leaks nothing that
+can renew a session. Rule 6 of §2, applied to a credential rather than to a password.
+
+**`findBySecret` classifies and does not decide.** It runs on a string a stranger chose, so every
+shape of one has an outcome instead of an exception:
+
+| Outcome | What it means | What the renewal does |
+|---|---|---|
+| `current` | the secret is the live generation | renews |
+| `grace` | the generation just replaced, still inside the tolerance window | renews, and leaves the credential alone: another call of the same session rotated first |
+| `reused` | that same spent generation, outside the window | revokes the **whole** session: the server cannot tell the owner from the thief, and nobody can explain it innocently |
+| `expired` | the right secret on a row past one of its clocks | refuses |
+| `revoked` | a secret of a session already closed | refuses |
+| `unknown` | no row carries that hash, in either generation | refuses |
+
+The last three are deliberately **one** answer on the wire, `401 REFRESH_REQUIRED`: telling them
+apart tells whoever holds a stolen credential which of the three it is holding.
+
+**`rotate` takes the generation it expects to spend**, and that parameter is the whole concurrency
+design. The update matches `sid` **and** that generation **and** a row not yet revoked, so of two
+renewals racing each other only one can win: the first moves the generation forward, the second
+matches no row. `null` is therefore **not an error and must not be raised as one**. It says "somebody
+else rotated first", and the correct answer is a fresh access token with the credential left
+untouched, because the caller's copy is now the previous generation and the grace window still
+accepts it. Minting a second live secret there is exactly the bug this signature exists to prevent.
+
+**Every method takes a `DataHandle`, never a `ControlHandle`**, because a session lives where its
+subject lives: a tenant user's inside the tenant container, a platform identity's in the control
+plane. Destroying or exporting a tenant therefore carries its sessions with it, and destroying a
+customer cannot log out the operator who ordered it. The core never chooses that handle by itself,
+the caller does, exactly as for users, and the compiler cannot catch passing the wrong one. The
+`scope` column carries the fact instead: both kinds of row sit in the same container of a deployment
+without tenants, and a renewal checks the scope it expects rather than trusting where it found the
+row.
+
+**`purgeExpired` removes what no renewal could use any more**, which means a row whose **first**
+clock has run out, revoked or not. Revocation by itself deletes nothing: the moment and the reason
+stay readable for as long as the row would have been usable had nobody closed it. It is called by
+the CLI and, opportunistically, by the renewal.
+
+**Without this manager there is no renewal at all**, and that is decision F28 rather than an
+omission. The null-object default answers `isImplemented(): false`, and the core then refuses the
+renewal and the session routes with `404` instead of issuing a refresh credential nobody could ever
+consume or revoke. A credential that cannot be spent cannot be revoked either, so shipping one and
+calling it a session is the worse of the two failures. A consumer that wants the registry elsewhere,
+in Redis for instance, implements this interface and injects it: that is what the port is for.
 | sync `encrypt` / `decrypt` | `await encrypt(...)` / `await decrypt(...)` |

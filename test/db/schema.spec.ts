@@ -22,7 +22,9 @@ describe('database/schema · parity between the two dialects', () => {
   it('declares the same tables on both engines', () => {
     // `migration` joined them in T-5.1: every container carries its own schema version, so
     // the table is part of the set that defines a container.
-    expect(Object.keys(pgApp).sort()).toEqual(['change', 'migration', 'token', 'user'])
+    // `session` joined them in T-11.1: the registry of live sessions lives in the container of
+    // the subject it belongs to, so it is part of what defines a container too.
+    expect(Object.keys(pgApp).sort()).toEqual(['change', 'migration', 'session', 'token', 'user'])
     expect(Object.keys(liteApp).sort()).toEqual(Object.keys(pgApp).sort())
     expect(Object.keys(pgReg).sort()).toEqual(['destructionRequest', 'impersonation', 'systemUser', 'tenant'])
     expect(Object.keys(liteReg).sort()).toEqual(Object.keys(pgReg).sort())

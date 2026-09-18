@@ -87,6 +87,37 @@ export default {
     },
     {
       method: 'GET',
+      path: '/auth/sessions',
+      // Every operator reads its own sessions, whatever its roles: `public` opens the role gate
+      // and `isAuthenticated` closes it to anonymous callers, as for `/auth/me`.
+      roles: ['public'],
+      handler: 'systemAuth.listSessions',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'The platform sessions of the caller',
+        description: 'Where this operator is logged in, with the current session marked',
+        response: {
+          200: { $ref: 'authSessionsResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'DELETE',
+      path: '/auth/sessions/:id',
+      roles: ['public'],
+      handler: 'systemAuth.revokeSession',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Close one platform session',
+        description: 'Closes a session of the caller by its id; a session of somebody else answers 404',
+        params: { $ref: 'onlyIdSchema#' },
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    },
+    {
+      method: 'GET',
       path: '/manifest',
       requireCapability: 'manifest',
       handler: 'systemManifest.get',

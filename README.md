@@ -65,9 +65,9 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 | Feature | In `@volcanicminds/backend` | Via `@volcanicminds/tools` | Active on startup | Description |
 |---|:---:|:---:|:---:|---|
 | **JWT auth** | ✅ | — | ✅ | `@fastify/jwt`. Login/logout, `isAuthenticated`. Signing secret required (`assertSecretStrength`). Access token of `1h` by default |
-| **Refresh token** | ✅ | — | ✅ | Separate `refreshToken` JWT namespace, `typ: 'refresh'` claim. In cookie mode an httpOnly cookie limited to the renewal route. Disable with `JWT_REFRESH=false` |
+| **Refresh token** | ✅ | — | ✅ | An opaque credential (`vs1.<routing>.<sid>.<secret>`) against the `session` registry, rotated at every renewal, with reuse detection. In cookie mode an httpOnly cookie limited to the renewal route. Needs a data layer; disable with `JWT_REFRESH=false` |
 | **Cookie auth mode** | ✅ | — | ✅ | `@fastify/cookie`, **the default** (`AUTH_MODE=COOKIE`). HttpOnly/SameSite=Strict signed cookies, one pair per plane; needs `COOKIE_SECRET`. The `Authorization` header keeps working for integration tokens |
-| **Token revocation** | ✅ | — | ✅ | `externalId` pattern in the JWT: regenerating it invalidates all tokens (global logout / password change) |
+| **Token revocation** | ✅ | — | ✅ | Three levels: one session (`logout`), every session of a subject, and the `externalId` rotation that invalidates the access tokens already signed |
 | **CORS** | ✅ | — | ✅ | `@fastify/cors`. Allowlist from `CORS_ORIGINS`, credentials only against a real allowlist, `v-*` pagination headers exposed |
 | **Helmet** | ✅ | — | ✅ | `@fastify/helmet`. Security HTTP headers |
 | **Rate limit** | ✅ | — | ✅ | `@fastify/rate-limit`, registered `global:false` → limits only opt-in routes (e.g. MFA) + 404 handler |
@@ -102,7 +102,7 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 - **Node.js ≥ 24**, **pure ESM** (`NodeNext`); CommonJS/`require` is not supported. REST-only (no GraphQL).
 - `helmet` security headers are enabled by default.
 - Startup **fails fast**, and the list of things it refuses is deliberate. A missing or weak signing secret
-  (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `COOKIE_SECRET` in cookie mode, which is the default): minimum 32
+  (`JWT_SECRET`, and `COOKIE_SECRET` in cookie mode, which is the default): minimum 32
   characters, fatal in production and a warning otherwise. An `AUTH_MODE` that is not `COOKIE` or `BEARER`,
   and cookie mode with the `cookie` plugin disabled. A CORS wildcard with credentials, or a wildcard that arrived by omission
   in production. An engine and tenancy strategy the framework cannot isolate. A control plane behind its own
@@ -142,7 +142,13 @@ old one, is in [docs/MIGRATION_V4_V5.md](docs/MIGRATION_V4_V5.md).
   directory of which addresses have accounts here.
 - **The session in a cookie, by default.** `AUTH_MODE` defaults to `COOKIE` and requires `COOKIE_SECRET`;
   the header keeps working for integration tokens, the session renews from an httpOnly refresh cookie, and
-  the access token lasts `1h` instead of `15d`. Refresh tokens issued by v4 no longer renew.
+  the access token lasts `1h` instead of `15d`.
+- **Sessions are rows, and the refresh credential rotates.** The refresh token stops being a JWT: it is an
+  opaque secret, `vs1.<routing>.<sid>.<secret>`, whose only meaning is a row in the new `session` table of the
+  subject's container. Every renewal mints a new one; a spent credential presented outside a short grace
+  window closes the whole session (`401 SESSION_REUSE_DETECTED`); `logout` revokes the row instead of clearing
+  a cookie; `JWT_REFRESH_SECRET` and `JWT_REFRESH_EXPIRES_IN` are ignored, and the lifetimes are the
+  `sessions` block. Refresh tokens issued by v4, or by an earlier 5.0 alpha, no longer renew.
 - **Defaults that changed on purpose.** CORS reads an allowlist and refuses the insecure pair at boot;
   `HIDE_ERROR_DETAILS` is honoured by every error path; a failed audit write fails the request;
   `req.data()` merges the query string and the body instead of discarding one.
@@ -441,8 +447,9 @@ JWT_SECRET=yourSecret
 JWT_EXPIRES_IN=1h
 
 JWT_REFRESH=true
-JWT_REFRESH_SECRET=yourRefreshSecret
-JWT_REFRESH_EXPIRES_IN=180d
+SESSION_IDLE_TTL=2592000
+SESSION_ABSOLUTE_TTL=15552000
+SESSION_GRACE_SECONDS=10
 
 COOKIE_SECRET=yourCookieSecret
 
@@ -561,9 +568,10 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `PORT`                         | The port for the server to listen on.                                   |    No    | `2230`              |
 | `JWT_SECRET`                   | Secret key for signing JWTs.                                            | **Yes**  |                     |
 | `JWT_EXPIRES_IN`               | Lifetime of the access token (e.g. `1h`, `15m`). In cookie mode it is also the cookie's `Max-Age`. |    No    | `1h`                |
-| `JWT_REFRESH`                  | Enable refresh tokens.                                                  |    No    | `true`              |
-| `JWT_REFRESH_SECRET`           | Secret key for signing refresh tokens.                                  | **Yes**¹ |                     |
-| `JWT_REFRESH_EXPIRES_IN`       | Expiration time for refresh tokens.                                     |    No    | `180d`              |
+| `JWT_REFRESH`                  | Enable session renewal.¹ `false` ends the session with the access token. |    No    | `true`              |
+| `SESSION_IDLE_TTL`             | Seconds without a renewal before a session ends.                        |    No    | `2592000` (30 d)    |
+| `SESSION_ABSOLUTE_TTL`         | Seconds a session may live, however often it renews.                    |    No    | `15552000` (180 d)  |
+| `SESSION_GRACE_SECONDS`        | Seconds the just-rotated credential stays acceptable, for tabs that renew together. `0` means no tolerance. |    No    | `10`                |
 | `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent`). Unset or unknown falls back to the default, which follows `NODE_ENV`. |    No    | `info` in production, `debug` otherwise |
 | `LOG_COLORIZE`                 | Enable colorized log output.                                            |    No    | `true`              |
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
@@ -637,7 +645,11 @@ address sovereign inside **every** tenant (defect D-27). Changing `ADMIN_EMAIL` 
 sovereignty: a container that already has a founder keeps it, and the boot log says so.
 See [docs/AUTHORIZATION_MODEL.md](docs/AUTHORIZATION_MODEL.md).
 
-¹ Required if `JWT_REFRESH` is enabled.
+¹ Renewal also needs a data layer, because the refresh credential is an opaque secret and its meaning is a row
+in the `session` table. Without one the renewal routes answer `404` rather than issuing a credential nothing can
+consume or revoke. `JWT_REFRESH_SECRET` and `JWT_REFRESH_EXPIRES_IN` are **ignored** since 5.0, and setting
+either one logs a warning at boot: the refresh token is no longer a JWT, and its two deadlines live in the row.
+See [docs/AUTHORIZATION_V5.md](docs/AUTHORIZATION_V5.md) §9.
 
 ## Logging levels
 
@@ -702,9 +714,11 @@ const logTimestampReadable = yn(LOG_TIMESTAMP_READABLE, true)
 JWT_SECRET=yourSecret
 JWT_EXPIRES_IN=1h
 
+# Renewal and the session registry (see below)
 JWT_REFRESH=true
-JWT_REFRESH_SECRET=yourRefreshSecret
-JWT_REFRESH_EXPIRES_IN=180d
+SESSION_IDLE_TTL=2592000
+SESSION_ABSOLUTE_TTL=15552000
+SESSION_GRACE_SECONDS=10
 
 # Where the session travels: COOKIE (default) or BEARER
 AUTH_MODE=COOKIE
@@ -721,10 +735,13 @@ COOKIE_SECRET=super_secret_cookie_key_change_me
 - Login sets two `HttpOnly`, `SameSite=Strict`, signed cookies (`Secure` in production): the access token,
   `Path=/`, and the refresh token, limited to the renewal route. The body answers `token: null` and
   `refreshToken: null`: no script of the page can read the session, so an XSS cannot carry it away.
-- Each cookie lives exactly as long as the token inside it: `Max-Age` is read from the token's `exp`, so
-  `JWT_EXPIRES_IN` and `JWT_REFRESH_EXPIRES_IN` are the only settings.
+- The access cookie lives exactly as long as the token inside it, `Max-Age` read from its `exp`, so
+  `JWT_EXPIRES_IN` is the only setting. The refresh cookie carries no token and no `exp`: its `Max-Age` is the
+  earlier of the session's two deadlines, read from the row, so the browser never keeps a credential the
+  server would already refuse.
 - Renewal reads the refresh cookie alone: `POST /auth/refresh-token` with an empty body answers a new access
-  cookie. Without a refresh cookie it answers `401 REFRESH_REQUIRED`, which is the client's cue to log in.
+  cookie **and a new refresh cookie**, because the credential rotates at every renewal. Without a refresh
+  cookie it answers `401 REFRESH_REQUIRED`, which is the client's cue to log in.
 - The two planes have separate cookies: `auth_token` and `refresh_token` for the tenant plane,
   `control_token` and `control_refresh_token` for the platform (`/system/auth/*`). An operator who
   impersonates a user keeps the platform session that can end the impersonation.
@@ -742,17 +759,52 @@ COOKIE_SECRET=super_secret_cookie_key_change_me
 ### 2. Bearer mode (`AUTH_MODE=BEARER`)
 
 - Login returns `token` and `refreshToken` in the body; every request sends `Authorization: Bearer <token>`.
-- Renewal sends both tokens in the body: `{ token, refreshToken }`.
+- Renewal sends the refresh credential alone: `{ refreshToken }`. The answer carries a new `token` **and a new
+  `refreshToken`**, which the client must store in place of the old one.
 - **Best for:** clients that cannot hold a cookie, such as mobile apps and server-to-server sessions. A
   deployment that serves both a browser and such a client picks bearer, or the client keeps a cookie jar.
 
-In both modes the refresh token carries `typ: 'refresh'`, and each token is refused in the other's place:
-the two namespaces share `JWT_SECRET` when `JWT_REFRESH_SECRET` is unset, and without the claim a refresh
-token would open every route for months and an access token could renew itself forever.
+### The session behind both modes
 
-All tokens (access and refresh) of a user can be invalidated through `/auth/invalidate-tokens`, which
-regenerates the `externalId` they carry.
-**Example**: Both `JWT_SECRET` and `JWT_REFRESH_SECRET` can be generated with a command like `openssl rand -base64 64`
+In both modes the refresh credential is **opaque**, `vs1.<routing>.<sid>.<secret>`, and it is not a token that
+verifies: it names a row in the `session` table of the subject's container, and only the SHA-256 of its secret
+is stored there. That is what makes a renewal something the server can *consume*. Every renewal writes a new
+secret and keeps the spent one for `SESSION_GRACE_SECONDS`, so two browser tabs renewing in the same instant
+are both served; the same spent credential presented later is a stolen copy by definition, and the answer is
+`401 SESSION_REUSE_DETECTED` with the whole session revoked. A session ends by inactivity (`SESSION_IDLE_TTL`)
+or when it reaches its absolute lifetime (`SESSION_ABSOLUTE_TTL`), whichever comes first, and the second one
+never moves.
+
+Revocation has three levels, from the everyday to the emergency: `/auth/logout` revokes the session the caller
+is holding; `/auth/invalidate-tokens` revokes **every** session of that user and then rotates their
+`externalId`, which also invalidates the access tokens already signed. The rotation stays available because a
+compromised account needs it, but it is no longer the only way to end a session, and it is no longer the
+routine: `externalId` is a public identifier that integrations store.
+
+A caller manages its own sessions: `GET /auth/sessions` answers where the account is logged in, one row each
+with `sid`, `current`, the two deadlines, `ip` and `userAgent` and no credential of any kind, and
+`DELETE /auth/sessions/:id` closes one of them. A `sid` that belongs to somebody else answers the same `404`
+as one that does not exist, because telling the two apart would make the identifier an oracle, and closing the
+session you are speaking from is simply a logout. The platform has the same pair under `/system/auth/sessions`.
+Where there is no registry, both answer `404`.
+
+Expiry refuses a session; it does not delete its row. That is housekeeping, and it runs by hand or by itself:
+
+```sh
+npx volcanic sessions --purge             # the control plane
+npx volcanic sessions --purge --tenants   # and every active container
+```
+
+The command refuses to do anything without `--purge`, since removing rows is all it does, and the renewal
+purges opportunistically on about one call in fifty so that an unattended deployment does not grow the table
+for ever. A revoked session is not removed by the revocation: it goes when its own clocks run out, so the
+record of when it ended, and why, outlives it.
+
+Without a data layer there is no registry, and therefore no renewal at all: the routes answer `404` instead of
+issuing a credential nobody could ever revoke. The mechanism in full is in
+[docs/AUTHORIZATION_V5.md](docs/AUTHORIZATION_V5.md) §9.
+
+**Example**: `JWT_SECRET` can be generated with a command like `openssl rand -base64 64`
 
 ## Swagger
 
@@ -1418,7 +1470,7 @@ whose tables were never created.
 | `control` | the tenant registry, the platform identities, the impersonation log, **and** the application tables (they live here when there is no `tenants` block) | **once**, `npm run db:migrate` |
 | `tenant` | the application tables and the container's own audit trail. Nothing about the platform | **once per container**, by provisioning and by the fleet migrator |
 
-The tables that exist in both (`user`, `token`, `change`, `migration`) are **duplicated**, on
+The tables that exist in both (`user`, `token`, `change`, `session`, `migration`) are **duplicated**, on
 purpose: the two sets never share a file. A shared migration would make "two sets" a naming
 convention, and one edit would move a customer's container and the registry together whether
 or not that was the intent. `npm run check:migration-sets` enforces it in CI, including that

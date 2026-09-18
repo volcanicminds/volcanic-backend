@@ -34,9 +34,11 @@ removed with no replacement.
 | POST | `/auth/register` | public | creates `confirmed: false`, always. Rate limited |
 | POST | `/auth/unregister` | authenticated | |
 | POST | `/auth/login` | public | rate limited. Returns a tenant token: in cookie mode, the default, it is written into `auth_token` and `refresh_token` and the body carries `token: null`, `refreshToken: null` (MIGRATION §24) |
-| POST | `/auth/logout` | authenticated | |
-| POST | `/auth/refresh-token` | public (valid refresh token) | **verifies `tid`** against the resolved tenant (defect D-19). Cookie mode: empty body, reads the `refresh_token` cookie, answers a new `auth_token` cookie or `401 REFRESH_REQUIRED`. Bearer mode: `{ token, refreshToken }`. A token without `typ: 'refresh'` is refused in both |
-| POST | `/auth/invalidate-tokens` | authenticated | rotates `external_id` |
+| POST | `/auth/logout` | authenticated | **revokes the session row** of the presenting token, then clears the cookies (§2.3) |
+| POST | `/auth/refresh-token` | public (valid refresh credential) | rotates the session: §2.3. **Verifies the routing segment** against the resolved tenant (defect D-19) |
+| POST | `/auth/invalidate-tokens` | authenticated | revokes **every** session of the user, then rotates `external_id` |
+| GET | `/auth/sessions` | authenticated | where this account is logged in, with the current session marked (§2.4) |
+| DELETE | `/auth/sessions/:id` | authenticated | closes one session of the caller; somebody else's answers **404** (§2.4) |
 | POST | `/auth/validate-password` | public | |
 | POST | `/auth/change-password` | authenticated | |
 | POST | `/auth/confirm-email` | public | |
@@ -70,6 +72,67 @@ depends on the distinct client messages: `volcanic-admin` contains none of those
 They are the only routes where the tenant **cannot** come from a token, so it comes from the
 resolver: header or subdomain, whichever is configured, never both (task T-3.2). If no tenant is
 resolved and tenancy is enabled, the response is 400 `TENANT_REQUIRED`.
+
+### 2.3 Renewal, logout and revocation
+
+Since T-11.8 the refresh token is not a JWT: it is an opaque credential, `vs1.<routing>.<sid>.<secret>`,
+backed by a row in the `session` table of the subject's container. The mechanism and the reasons
+are in `docs/AUTHORIZATION_V5.md` §9; what a client has to know is here.
+
+**The request.** In cookie mode the body is empty and the credential is read from the
+`refresh_token` cookie, which the browser sends only to this path. In bearer mode the body is
+`{ refreshToken }` and nothing else: the access token is no longer part of the request, because
+everything the old bearer renewal checked by comparing two JWTs (same subject, same tenant, issued
+recently enough) is a property of the row, which names one subject, lives in one container and
+carries its own clocks.
+
+**The answer.** `200` with `{ token, refreshToken }` in bearer mode, both of them new and both
+declared by the response schema, so both really reach the client: **every renewal rotates the
+credential**, and a client must store what it receives and present that next time. In cookie mode
+both fields are `null` and the two cookies are rewritten. Losing a race with
+another renewal of the same session is not a failure: the caller gets a fresh access token and
+keeps the credential it already holds, which the grace window still accepts.
+
+**The refusals**, all of them on both planes:
+
+| Code | Status | When |
+|---|---|---|
+| `REFRESH_REQUIRED` | 401 | no credential on the request, or one that is malformed, unknown, expired or revoked. Deliberately one answer for all of them |
+| `SESSION_REUSE_DETECTED` | 401 | a spent generation came back outside the grace window. **The whole session is revoked** and the reason is written in the row |
+| `TENANT_MISMATCH` | 403 | the routing segment names a tenant other than the one the request resolved to |
+| `SCOPE_MISMATCH` | 403 | a tenant session presented to the control plane's renewal, or the reverse |
+| `NOT_FOUND` | 404 | this deployment keeps no session registry, or `JWT_REFRESH=false`. There is no renewal to offer, and saying so is honest |
+
+**Logout ends the session, not the browser's memory of it.** `POST /auth/logout` revokes the row
+named by the `sid` claim of the presenting token before clearing the cookies. In v4 it cleared the
+cookies only, so whoever had copied the refresh cookie kept renewing after the user believed they
+were out.
+
+**`/auth/invalidate-tokens` is the level above**: it revokes every live session of the user and
+then rotates `external_id`, in that order. The second act is the emergency one, and it also
+invalidates every access token already signed, at the cost of changing a public identifier that
+integrations may have stored.
+
+### 2.4 Listing and closing sessions
+
+Once a registry exists, "where am I logged in" is a question with an answer, and answering it in
+the framework instead of in every consuming project is what T-11.14 is for.
+
+`GET /auth/sessions` returns the caller's own live sessions, one object each: `sid`, `current`,
+`createdAt`, `lastUsedAt`, `idleExpiresAt`, `absoluteExpiresAt`, `ip` and `userAgent`. `current`
+is true for the session the request itself arrived on, so a console can label "this device"
+without comparing anything it holds. No secret and no hash leaves the process: the only handle a
+client is given is the `sid`, which is also what it sends back to close one.
+
+`DELETE /auth/sessions/:id` closes one. Ownership is decided by looking the `sid` up among the
+caller's own sessions and never by trusting the path, and a session belonging to somebody else
+answers the **same 404** as one that does not exist. Distinguishing the two would turn the
+identifier into an oracle for "is this a live session somewhere on this deployment". Closing the
+session the call is made from is a logout, so the cookies are cleared with it.
+
+Both routes need an authenticated caller and both answer `404 NOT_FOUND` wherever the deployment
+keeps no registry (no data layer, `sessions.enabled: false`, or `JWT_REFRESH=false`), for the same
+reason the renewal does: there is nothing to list and nothing to close.
 
 ---
 
@@ -117,12 +180,14 @@ Platform administrators authenticate on their own routes and receive a token car
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | POST | `/system/auth/login` | public | rate limited, same uniform messages as §2.1 |
-| POST | `/system/auth/logout` | authenticated (control) | |
-| POST | `/system/auth/refresh-token` | valid control refresh token | as `/auth/refresh-token`, with the `control_refresh_token` cookie and `SCOPE_MISMATCH` instead of `TENANT_MISMATCH` |
+| POST | `/system/auth/logout` | authenticated (control) | revokes the platform session, then clears the control cookies |
+| POST | `/system/auth/refresh-token` | valid control refresh credential | literally the same code as `/auth/refresh-token` (§2.3), with the `control_refresh_token` cookie, the `ctl` routing segment and `scope: 'control'` on the row. A tenant session presented here is `SCOPE_MISMATCH` |
 | POST | `/system/auth/mfa/setup` | any platform identity | starts the operator's own enrolment: every identity enrols itself, and `roles: []` here would have meant the superuser alone |
 | POST | `/system/auth/mfa/enable` | any platform identity | finishes it with a code from the authenticator |
 | POST | `/system/auth/mfa/verify` | authenticated (control) | |
 | GET | `/system/auth/me` | any platform identity (`public` role gate plus `isAuthenticated`) | the operator behind the session with its roles, never the credential columns. A console reads it instead of `/users/me`, which refuses a control token (T-10.14) |
+| GET | `/system/auth/sessions` | any platform identity | the operator's own platform sessions, the twin of §2.4 and with the same shape |
+| DELETE | `/system/auth/sessions/:id` | any platform identity | closes one of them; a session of another operator answers 404, as on the tenant side |
 | GET | `/system/manifest` | capability `manifest` (control catalogue) | the platform console's manifest, §7. Mounted with tenants and `options.manifest.enabled` |
 | GET | `/system/users` | capability `system-users` | |
 | POST | `/system/users` | capability `system-users` | |
@@ -269,6 +334,10 @@ path, including the `onError` hook, which in v4 leaked the exception message on 
 | 409 | optimistic lock conflict, or an operation already in progress (fleet migration lock) |
 | 429 | rate limit |
 | 500 | unexpected. Message hidden when `HIDE_ERROR_DETAILS` is on |
+
+**The renewal has its own codes**, listed in §2.3: `REFRESH_REQUIRED` for everything a stranger
+could probe with, `SESSION_REUSE_DETECTED` when a spent credential comes back and the session is
+closed because of it, and `404` where the deployment keeps no session registry at all.
 
 **404 versus 403 across tenants.** Addressing a resource of another tenant answers **404**, never
 403: 403 would confirm that the resource exists somewhere. The same rule applies to a tenant slug

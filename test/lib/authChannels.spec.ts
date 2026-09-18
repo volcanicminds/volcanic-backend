@@ -10,9 +10,10 @@
 // the real hook and the real handlers, because the property in doubt is what a request
 // carrying a cookie actually gets back, not what a helper returns when called.
 //
-// The refresh namespace is registered with the SAME secret as the access one on purpose: it is
-// what a deployment without `JWT_REFRESH_SECRET` runs, and the only configuration where the
-// `typ` claim is the whole difference between the two tokens.
+// T-11.6 to T-11.10 changed what a refresh token IS, and these tests changed with it. The refresh
+// credential is no longer a second JWT signed with the same secret as the access one: it is an
+// opaque secret that means nothing without the session row, it rotates at every renewal, and
+// presenting a spent one closes the session instead of renewing it.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
@@ -22,12 +23,15 @@ import authHook from '../../lib/hooks/onRequest.js'
 import { login, logout, refreshToken, mfaVerify } from '../../lib/api/auth/controller/auth.js'
 import { login as systemLogin, renew as systemRenew } from '../../lib/api/system/controller/systemAuth.js'
 import { impersonate, endImpersonation } from '../../lib/api/tenants/controller/tenants.js'
-import { authMode, refreshCookiePath, REFRESH_TYP } from '../../lib/util/credential.js'
+import { authMode, refreshCookiePath } from '../../lib/util/credential.js'
+import { parseRefreshCredential } from '../../lib/util/session.js'
+import { fakeSessionStore } from './fixtures/sessionStore.js'
 
 const SECRET = 'auth-channels-test-secret-32-chars!!'
 const COOKIE_SECRET = 'auth-channels-cookie-secret-32-chars'
 const ACCESS_TTL = 7200
-const REFRESH_TTL = 3 * 86400
+// The default idle clock of the session registry, which is what the refresh cookie now lives by.
+const IDLE_TTL = 30 * 86400
 
 const ACME = { id: 'id-acme', slug: 'acme', status: 'active' }
 const USER: any = { id: 'u1', externalId: 'u-ext-1', email: 'anna@acme.test', roles: ['admin'], confirmed: true, blocked: false }
@@ -49,7 +53,11 @@ async function build() {
   const server: any = fastify()
   await server.register(cookie, { secret: COOKIE_SECRET })
   await server.register(jwtValidator, { secret: SECRET, sign: { expiresIn: `${ACCESS_TTL}s` } })
-  await server.register(jwtValidator, { namespace: 'refreshToken', secret: SECRET, sign: { expiresIn: `${REFRESH_TTL}s` } })
+  // No refresh namespace any more: since T-11.6 the refresh credential is an opaque secret whose
+  // only meaning is a row in the registry, so the store below is what makes renewal exist at all.
+  const sessions = fakeSessionStore()
+  server.decorate('sessionManager', sessions.manager)
+  server.decorate('sessionRows', sessions.rows)
 
   server.decorate('userManager', {
     isImplemented: () => true,
@@ -384,38 +392,101 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
     })
   })
 
-  describe('T-10.38 · the cookie lives as long as its token', () => {
-    it('reads Max-Age from the token it carries, for the access and the refresh cookie', async () => {
+  describe('T-10.38 · the cookie lives as long as the credential it carries', () => {
+    it('reads Max-Age from the access token, and from the session clocks for the refresh cookie', async () => {
       const server = await build()
       const res = await tenantLogin(server)
 
-      for (const [name, ttl] of [
-        ['auth_token', ACCESS_TTL],
-        ['refresh_token', REFRESH_TTL]
-      ] as const) {
-        const c = cookieOf(res, name)
-        const claims = server.jwt.decode(unsigned(server, c.value))
-        // One setting: the lifetime the token was signed with IS the cookie's lifetime. v4 wrote
-        // 86400 by hand next to a fifteen-day token.
-        expect(claims.exp - claims.iat).toBe(ttl)
-        expect(Math.abs(c.maxAge - ttl)).toBeLessThanOrEqual(1)
-      }
+      const access = cookieOf(res, 'auth_token')
+      const claims = server.jwt.decode(unsigned(server, access.value))
+      // One setting: the lifetime the token was signed with IS the cookie's lifetime. v4 wrote
+      // 86400 by hand next to a fifteen-day token.
+      expect(claims.exp - claims.iat).toBe(ACCESS_TTL)
+      expect(Math.abs(access.maxAge - ACCESS_TTL)).toBeLessThanOrEqual(1)
+
+      // The refresh credential is opaque and carries no `exp` to read back (T-11.6). Its deadline
+      // is the earlier of the two clocks on the row, which with the defaults is the idle one, so
+      // the guarantee of T-10.38 holds from the other side.
+      const refresh = cookieOf(res, 'refresh_token')
+      expect(Math.abs(refresh.maxAge - IDLE_TTL)).toBeLessThanOrEqual(2)
+      expect(parseRefreshCredential(unsigned(server, refresh.value))).toBeTruthy()
       await server.close()
     })
   })
 
-  describe('T-10.39 · renewal from the refresh cookie', () => {
-    it('renews the session with the refresh cookie alone, after the access cookie is gone', async () => {
+  describe('T-11.8 · renewal rotates the credential', () => {
+    it('renews from the refresh cookie alone, and hands back a different credential', async () => {
       const server = await build()
-      const refresh = cookieOf(await tenantLogin(server), 'refresh_token').value
+      const first = cookieOf(await tenantLogin(server), 'refresh_token').value
 
-      const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: refresh } })
+      const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: first } })
       expect(res.statusCode).toBe(200)
       expect(JSON.parse(res.body).token).toBeNull()
+
+      const second = cookieOf(res, 'refresh_token').value
+      expect(second).not.toBe(first)
 
       const renewed = cookieOf(res, 'auth_token').value
       const orders = await server.inject({ method: 'GET', url: '/orders', cookies: { auth_token: renewed } })
       expect(orders.statusCode).toBe(200)
+      // The access token names the session it belongs to, so an action can be attributed to a
+      // device and not only to a person.
+      expect(server.jwt.decode(unsigned(server, renewed)).sid).toBeTruthy()
+      await server.close()
+    })
+
+    it('accepts the just-rotated credential inside the grace window, because two tabs renew together', async () => {
+      const server = await build()
+      const first = cookieOf(await tenantLogin(server), 'refresh_token').value
+      await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: first } })
+
+      // The same credential the other tab already spent, one instant later: an honest client, not
+      // a thief, and throwing it out would be the bug this window exists to avoid.
+      const late = await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: first } })
+      expect(late.statusCode).toBe(200)
+      await server.close()
+    })
+
+    it('closes the session when a spent credential comes back outside the window (T-11.9)', async () => {
+      process.env.SESSION_GRACE_SECONDS = '0'
+      try {
+        const server = await build()
+        const stolen = cookieOf(await tenantLogin(server), 'refresh_token').value
+        const legitimate = cookieOf(
+          await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: stolen } }),
+          'refresh_token'
+        ).value
+
+        const replay = await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: stolen } })
+        expect(replay.statusCode).toBe(401)
+        expect(codeOf(replay)).toBe('SESSION_REUSE_DETECTED')
+        expect(cookieOf(replay, 'refresh_token')).toMatchObject({ value: '' })
+
+        // The whole family goes, not only the copy that came back: the server cannot tell which
+        // of the two holders is the owner, so the owner logs in again and the thief gets nothing.
+        const after = await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: legitimate } })
+        expect(after.statusCode).toBe(401)
+        expect(codeOf(after)).toBe('REFRESH_REQUIRED')
+        await server.close()
+      } finally {
+        delete process.env.SESSION_GRACE_SECONDS
+      }
+    })
+
+    it('ends the session on logout, so the credential that survived the browser does not renew (T-11.10)', async () => {
+      const server = await build()
+      const login = await tenantLogin(server)
+      const access = cookieOf(login, 'auth_token').value
+      const refresh = cookieOf(login, 'refresh_token').value
+
+      const out = await server.inject({ method: 'POST', url: '/auth/logout', cookies: { auth_token: access, refresh_token: refresh } })
+      expect(out.statusCode).toBe(200)
+      expect(cookieOf(out, 'refresh_token')).toMatchObject({ value: '', path: '/auth/refresh-token' })
+
+      // v4 cleared the cookies and called it a logout: this request is the one that used to work.
+      const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: refresh } })
+      expect(res.statusCode).toBe(401)
+      expect(codeOf(res)).toBe('REFRESH_REQUIRED')
       await server.close()
     })
 
@@ -439,62 +510,68 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
       await server.close()
     })
 
-    it('refuses a refresh cookie whose token does not verify, and clears the session', async () => {
+    it('refuses a credential nobody issued, and clears the session', async () => {
       const server = await build()
-      const token = unsigned(server, cookieOf(await tenantLogin(server), 'refresh_token').value)
-      const forged = server.signCookie(token.slice(0, -4) + 'AAAA')
+      const raw = unsigned(server, cookieOf(await tenantLogin(server), 'refresh_token').value)
+      const forged = server.signCookie(raw.slice(0, -4) + 'AAAA')
       const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: forged } })
       expect(res.statusCode).toBe(401)
       expect(cookieOf(res, 'refresh_token')).toMatchObject({ value: '' })
       await server.close()
     })
 
-    it('does not let an access token renew itself, even with one secret for both', async () => {
+    it('does not let an access token stand in for the refresh credential', async () => {
       const server = await build()
       const access = unsigned(server, cookieOf(await tenantLogin(server), 'auth_token').value)
       const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: server.signCookie(access) } })
-      expect(res.statusCode).toBe(403)
+      // Not even a shape this version recognises: a JWT is three segments, a credential is four
+      // and starts with its own version marker.
+      expect(res.statusCode).toBe(401)
       await server.close()
     })
 
-    it('does not let a refresh token open a route, even with one secret for both', async () => {
+    it('does not let a refresh credential open a route', async () => {
       const server = await build()
       const refresh = unsigned(server, cookieOf(await tenantLogin(server), 'refresh_token').value)
-      expect(server.jwt.decode(refresh).typ).toBe(REFRESH_TYP)
       const res = await server.inject({ method: 'GET', url: '/orders', cookies: { auth_token: server.signCookie(refresh) } })
       expect(res.statusCode).toBe(401)
       await server.close()
     })
   })
 
-  describe('bearer mode keeps its contract, with the same two refusals', () => {
+  describe('bearer mode keeps its contract, and rotates too', () => {
     beforeEach(() => {
       process.env.AUTH_MODE = 'BEARER'
     })
     afterEach(() => delete process.env.AUTH_MODE)
 
-    it('returns both tokens in the body and renews with them', async () => {
+    it('returns both credentials in the body and rotates the refresh one on renewal', async () => {
       const server = await build()
       const res = await tenantLogin(server)
       expect(cookieOf(res, 'auth_token')).toBeUndefined()
       const { token, refreshToken: refresh } = JSON.parse(res.body)
       expect(typeof token).toBe('string')
+      expect(parseRefreshCredential(refresh)).toBeTruthy()
 
-      const renewed = await server.inject({ method: 'POST', url: '/auth/refresh-token', payload: { token, refreshToken: refresh } })
+      const renewed = await server.inject({ method: 'POST', url: '/auth/refresh-token', payload: { refreshToken: refresh } })
       expect(renewed.statusCode).toBe(200)
-      expect(typeof JSON.parse(renewed.body).token).toBe('string')
+      const body = JSON.parse(renewed.body)
+      expect(typeof body.token).toBe('string')
+      // v4 renewed the access token and left the refresh one untouched for its whole lifetime,
+      // which is the property that made a stolen refresh token worth months.
+      expect(body.refreshToken).not.toBe(refresh)
       await server.close()
     })
 
-    it('refuses an access token in the place of the refresh token', async () => {
+    it('refuses an access token in the place of the refresh credential', async () => {
       const server = await build()
       const { token } = JSON.parse((await tenantLogin(server)).body)
-      const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', payload: { token, refreshToken: token } })
-      expect(res.statusCode).toBe(403)
+      const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', payload: { refreshToken: token } })
+      expect(res.statusCode).toBe(401)
       await server.close()
     })
 
-    it('refuses a refresh token in the Authorization header', async () => {
+    it('refuses a refresh credential in the Authorization header', async () => {
       const server = await build()
       const { refreshToken: refresh } = JSON.parse((await tenantLogin(server)).body)
       const res = await server.inject({ method: 'GET', url: '/orders', headers: { authorization: `Bearer ${refresh}` } })
@@ -502,11 +579,10 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
       await server.close()
     })
 
-    it('answers 403 instead of 500 for a refresh token that does not verify', async () => {
+    it('answers a refusal, not a 500, for a credential that is not one', async () => {
       const server = await build()
-      const { token } = JSON.parse((await tenantLogin(server)).body)
-      const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', payload: { token, refreshToken: 'not.a.token' } })
-      expect(res.statusCode).toBe(403)
+      const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', payload: { refreshToken: 'not.a.credential' } })
+      expect(res.statusCode).toBe(401)
       await server.close()
     })
   })

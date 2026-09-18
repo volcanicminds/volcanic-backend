@@ -52,6 +52,16 @@ export default {
       // opt-in: in-memory LRU+TTL cache for routes that declare `cache:`.
       // When enabled, ttl (default 3600s) and maxEntries (default 1000) can be set here.
       enabled: false
+    },
+    // Il registro delle sessioni (T-11.13). Acceso quando il data layer c'è: senza registro il
+    // rinnovo non esiste, invece di esistere e non proteggere (F28). Le durate sono in secondi,
+    // e ognuna risponde a una domanda diversa: `idleTtl` chiude una sessione che nessuno usa,
+    // `absoluteTtl` chiude una sessione che si rinnova per sempre, `graceSeconds` è la
+    // tolleranza che evita di scambiare due schede che rinnovano insieme per un furto.
+    sessions: {
+      idleTtl: Number(process.env.SESSION_IDLE_TTL) || 2592000,
+      absoluteTtl: Number(process.env.SESSION_ABSOLUTE_TTL) || 15552000,
+      graceSeconds: Number(process.env.SESSION_GRACE_SECONDS) || 10
     }
   }
 }

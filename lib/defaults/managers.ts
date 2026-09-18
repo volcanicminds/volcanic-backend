@@ -7,7 +7,8 @@ import {
   TenantManagement,
   SystemUserManagement,
   ImpersonationManagement,
-  DestructionManagement
+  DestructionManagement,
+  SessionManagement
 } from '../../types/global.js'
 
 //
@@ -80,6 +81,10 @@ const SYSTEM_USER_METHODS = [
 
 const IMPERSONATION_METHODS = ['openImpersonation', 'getImpersonation', 'revokeImpersonation', 'findQuery'] as const
 
+const SESSION_METHODS = [
+  'openSession', 'findBySecret', 'rotate', 'revokeSession', 'revokeAllOfSubject', 'listOfSubject', 'purgeExpired'
+] as const
+
 const DESTRUCTION_METHODS = ['openRequest', 'findLiveRequest', 'consumeRequest'] as const
 
 const MFA_METHODS = ['generateSetup', 'verify'] as const
@@ -101,5 +106,8 @@ export const defaultDestructionManager = notImplemented<DestructionManagement>(
   'destructionManager',
   DESTRUCTION_METHODS
 )
+// Without this one there is no renewal at all (F28): a refresh that nobody can consume is a
+// credential that never expires, which is worse than not having one.
+export const defaultSessionManager = notImplemented<SessionManagement>('sessionManager', SESSION_METHODS)
 export const defaultMfaManager = notImplemented<MfaManagement>('mfaManager', MFA_METHODS)
 export const defaultTransferManager = notImplemented<TransferManagement>('transferManager', TRANSFER_METHODS)

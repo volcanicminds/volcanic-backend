@@ -361,6 +361,22 @@ export interface GeneralConfig {
     manifest?: {
       enabled: boolean
     }
+    /**
+     * The session registry and the rotation of refresh tokens (T-11.13).
+     *
+     * `enabled: false` gives back the stateless renewal of v4, where a refresh token cannot be
+     * consumed and a logout only clears cookies. It is a decision a deployment can take, not a
+     * default: without the block the registry is on wherever a data layer is injected.
+     */
+    sessions?: {
+      enabled?: boolean
+      /** Seconds without a renewal before the session ends. Default 2592000 (30 days). */
+      idleTtl?: number
+      /** Seconds a session may live however often it renews. Default 15552000 (180 days). */
+      absoluteTtl?: number
+      /** Seconds the just-rotated secret stays acceptable, for tabs renewing together. Default 10. */
+      graceSeconds?: number
+    }
     // In-memory per-route response cache (opt-in per route via `cache`).
     cache?: {
       enabled?: boolean // master switch, opt-in: off unless exactly `true` (lib/util/cache.ts)
@@ -628,6 +644,101 @@ export interface DestructionManagement {
   findLiveRequest(ctx: ControlHandle, tenantId: string, token: string): Promise<DestructionRequest | null>
   /** Spends it, and records the export that had to succeed first. Called before the drop. */
   consumeRequest(ctx: ControlHandle, id: string, exportRef: string): Promise<DestructionRequest | null>
+}
+
+/** Which plane the subject of a session belongs to. */
+export type SessionScope = 'tenant' | 'control'
+
+/**
+ * A live session (T-11.1, decisions F18 to F24 in EVO_FASE_11.md).
+ *
+ * One row per session, not per token: `sid` never changes, and what rotates at every renewal
+ * is the secret, with `generation` counting the rotations. That is what makes "close this
+ * device" and "close the family, a stolen token came back" the same operation.
+ *
+ * The secrets are deliberately absent from this type. Only their SHA-256 is written down, and
+ * nothing outside the manager has any business reading even that.
+ */
+export interface Session {
+  id: string
+  sid: string
+  /** The subject's `externalId`: the same value the access token carries in `sub`. */
+  subjectId: string
+  scope: SessionScope
+  generation: number
+  lastUsedAt: Date | string
+  /** Moves forward at every renewal. */
+  idleExpiresAt: Date | string
+  /** Never moves: without it, a session renewed often enough would never end. */
+  absoluteExpiresAt: Date | string
+  rotatedAt?: Date | string | null
+  revokedAt?: Date | string | null
+  revokedReason?: string | null
+  ip?: string | null
+  userAgent?: string | null
+  impersonationId?: string | null
+  createdAt: Date | string
+}
+
+/**
+ * What a presented refresh secret turned out to be.
+ *
+ * `grace` is the generation just replaced, still inside the tolerance window: two browser tabs
+ * renewing in the same instant present the same secret, and calling that a theft throws out
+ * the user this whole mechanism exists to protect. `reused` is the same situation outside the
+ * window, which nobody can explain innocently.
+ */
+export type SessionLookup =
+  | { outcome: 'current'; session: Session }
+  | { outcome: 'grace'; session: Session }
+  | { outcome: 'reused'; session: Session }
+  | { outcome: 'expired'; session: Session }
+  | { outcome: 'revoked'; session: Session }
+  | { outcome: 'unknown' }
+
+/**
+ * The registry of live sessions (T-11.1 → T-11.5).
+ *
+ * Every method takes a `DataHandle` because the session lives in the container of its subject
+ * (F19): a tenant user's session in the tenant container, a platform identity's in the control
+ * plane. The core never chooses that handle by itself, the caller does, exactly as for users.
+ */
+export interface SessionManagement {
+  isImplemented(): boolean
+  openSession(
+    ctx: DataHandle,
+    data: {
+      subjectId: string
+      scope: SessionScope
+      /** The clear secret. Only its hash is stored. */
+      secret: string
+      idleExpiresAt: Date | string
+      absoluteExpiresAt: Date | string
+      ip?: string | null
+      userAgent?: string | null
+      impersonationId?: string | null
+    }
+  ): Promise<Session>
+  /** Classifies a presented secret. A malformed or unknown secret is an answer, not a throw. */
+  findBySecret(ctx: DataHandle, secret: string, graceSeconds: number): Promise<SessionLookup>
+  /**
+   * Spends the current generation and writes the next one, moving `lastUsedAt` and the idle
+   * clock. Null when the generation is no longer the current one, which is how two renewals
+   * racing each other end with one winner instead of two live secrets.
+   */
+  rotate(
+    ctx: DataHandle,
+    sid: string,
+    generation: number,
+    next: { secret: string; idleExpiresAt: Date | string }
+  ): Promise<Session | null>
+  /** Idempotent: revoking an already revoked session is the same state, not an error. */
+  revokeSession(ctx: DataHandle, sid: string, reason: string): Promise<boolean>
+  /** Returns how many were closed. The blunt instrument that is not `externalId` (F26). */
+  revokeAllOfSubject(ctx: DataHandle, subjectId: string, reason: string): Promise<number>
+  listOfSubject(ctx: DataHandle, subjectId: string): Promise<Session[]>
+  /** Removes rows no renewal can use any more. Called lazily and by the CLI (T-11.12). */
+  purgeExpired(ctx: DataHandle, before?: Date | string): Promise<number>
 }
 
 export interface ImpersonationManagement {

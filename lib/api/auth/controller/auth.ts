@@ -7,16 +7,9 @@ import { httpError } from '../../../util/httpError.js'
 import { dataContext, isTenancyEnabled } from '../../../util/tenancy.js'
 import { uuidv7 } from '../../../util/uuid.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../../config/constants.js'
-import {
-  clearSessionCookies,
-  isCookieMode,
-  issuePreAuth,
-  issueSession,
-  refreshCookieOf,
-  REFRESH_TYP,
-  sessionTokenOf,
-  setAccessCookie
-} from '../../../util/credential.js'
+import { clearSessionCookies, issuePreAuth, issueSession, sessionTokenOf, type SessionOrigin } from '../../../util/credential.js'
+import { renew } from '../../../util/renewal.js'
+import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.js'
 
 // Upper bound for the password accepted at login: a cheap guard against oversized
 // payloads. Complexity is enforced only when a password is set, not at login.
@@ -30,6 +23,34 @@ const DEFAULT_RESET_PASSWORD_TOKEN_TTL = 3600
 /** Reset-token TTL in seconds, applied when /auth/forgot-password mints the token. */
 export function resetPasswordTokenTtl(): number {
   return Number(global.config?.options?.reset_password_token_ttl) || DEFAULT_RESET_PASSWORD_TOKEN_TTL
+}
+
+/**
+ * Where a tenant session is written down, and how a later renewal finds it again (T-11.7).
+ *
+ * The container is the one of the request, because a session belongs where its subject lives
+ * (F19). `routing` is the segment the opaque refresh credential carries: the tenant id when
+ * there are tenants, and `ctl` when there are none, which is not a fallback but the truth —
+ * without tenants the application data lives in the control plane's own container.
+ */
+function tenantOrigin(req: FastifyRequest, subjectId: string): SessionOrigin {
+  return {
+    ctx: dataContext(req),
+    manager: req.server['sessionManager'],
+    subjectId,
+    scope: 'tenant',
+    routing: req.tenantInfo?.id ?? CONTROL_ROUTING,
+    ip: req.ip ?? null,
+    userAgent: (req.headers['user-agent'] as string) ?? null
+  }
+}
+
+/** The session the access token of this request belongs to, when it carries one. */
+function currentSid(req: FastifyRequest): string | undefined {
+  const raw = sessionTokenOf(req, 'tenant')
+  if (!raw) return undefined
+  const claims = req.server.jwt.decode(raw) as { sid?: string } | null
+  return typeof claims?.sid === 'string' ? claims.sid : undefined
 }
 
 /**
@@ -402,7 +423,12 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
 
   // https://www.iana.org/assignments/jwt/jwt.xhtml
   // In cookie mode both come back null: the session is in the cookies.
-  const { token, refreshToken } = await issueSession(reply, 'tenant', { sub: user.externalId, tid: req.tenantInfo?.id })
+  const { token, refreshToken } = await issueSession(
+    reply,
+    'tenant',
+    { sub: user.externalId, tid: req.tenantInfo?.id },
+    tenantOrigin(req, user.externalId)
+  )
 
   return {
     ...user,
@@ -415,144 +441,60 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
-export async function logout(_req: FastifyRequest, reply: FastifyReply) {
+/**
+ * Ends the session, instead of only forgetting it (T-11.10).
+ *
+ * v4 cleared the browser's cookies and called that a logout. Anyone holding a copy of the
+ * refresh cookie kept renewing afterwards, because nothing on the server had changed. The row
+ * is revoked first, and the cookies go after: the user's belief and the server's state now
+ * describe the same thing.
+ */
+export async function logout(req: FastifyRequest, reply: FastifyReply) {
+  const manager = req.server['sessionManager']
+  const sid = currentSid(req)
+  if (sid && sessionRegistryEnabled(manager)) {
+    await manager.revokeSession(dataContext(req), sid, 'logout')
+  }
   clearSessionCookies(reply, 'tenant')
   return { ok: true }
 }
 
+/**
+ * Renewal against the session registry (T-11.8).
+ *
+ * Both modes take the same path now. The credential is opaque, so there is no signature to
+ * verify and no second token to pair it with: what the bearer renewal used to check by
+ * comparing two JWTs — same subject, same tenant, issued not too long ago — is a property of
+ * the row itself, which names one subject, lives in one container and carries two clocks.
+ *
+ * The flow is shared with the control plane (lib/util/renewal.ts) because the two were written
+ * twice and drifted twice.
+ */
 export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
-  if (!req.server['userManager'].isImplemented()) {
+  const users = req.server['userManager']
+  if (!users.isImplemented()) {
     throw new Error('Not implemented')
   }
 
-  // Refresh tokens are optional (JWT_REFRESH). When disabled there is no refresh
-  // verifier registered — answer a clean 404 instead of throwing a 500 later.
-  if (!reply.server.jwt['refreshToken']) {
-    return reply.status(404).send(httpError(404, 'Refresh tokens are disabled', 'NOT_FOUND'))
-  }
-
-  if (isCookieMode()) return renewFromCookie(req, reply)
-
-  const { token, refreshToken } = req.data()
-  if (!token || !refreshToken) {
-    return reply
-      .status(400)
-      .send({ statusCode: 400, error: 'Bad Request', message: 'Missing token or refreshToken' })
-  }
-
-  // Verify the signature of the (possibly expired) access token: `ignoreExpiration`
-  // lets a stale token through — which is the whole point of refresh — but a forged
-  // or tampered token is now rejected (previously `decode` skipped signature checks).
-  let tokenData: { sub: number; iat?: number; tid?: string; typ?: string; imp?: string }
-  try {
-    tokenData = (await reply.server.jwt.verify(token, { ignoreExpiration: true })) as {
-      sub: number
-      iat?: number
-      tid?: string
-      typ?: string
-      imp?: string
+  return renew({
+    req,
+    reply,
+    plane: 'tenant',
+    scope: 'tenant',
+    ctx: dataContext(req),
+    manager: req.server['sessionManager'],
+    // Defect D-19: this is the one route where the credential arrives in the body or in a
+    // cookie scoped to this path, so nothing upstream has decided which container it belongs
+    // to. Renewal must not become the door through which a session of one tenant is exchanged
+    // for a session in another.
+    routing: isTenancyEnabled() ? (req.tenantInfo?.id ?? CONTROL_ROUTING) : null,
+    claims: (user) => ({ sub: user.externalId, tid: req.tenantInfo?.id }),
+    loadSubject: async (subjectId: string) => {
+      const user = await users.retrieveUserByExternalId(dataContext(req), subjectId)
+      const valid = user ? await users.isValidUser(user) : false
+      return { subject: user, valid: Boolean(valid) && !user?.blocked }
     }
-  } catch {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid token' })
-  }
-  // An impersonated session ends with its record and is never renewed into an ordinary one;
-  // and a refresh token in the place of the access token is the pair collapsing into one.
-  if (tokenData.typ === REFRESH_TYP || tokenData.imp) {
-    return reply.status(403).send(httpError(403, 'Invalid token'))
-  }
-
-  // Defect D-19. This is the one route where the token arrives in the BODY, so the tenant
-  // resolution of T-3.2 could not read it: it resolved the container from the header, as it
-  // does for any request without an Authorization token. The comparison therefore has to
-  // happen here, or renewal becomes the single door through which a token issued for one
-  // tenant is exchanged for a token valid in another.
-  if (isTenancyEnabled() && tokenData.tid !== req.tenantInfo?.id) {
-    return reply.status(403).send(httpError(403, 'The token does not belong to this tenant', 'TENANT_MISMATCH'))
-  }
-
-  // Reject refresh of access tokens issued too long ago. Use the real temporal
-  // claim (`iat`), not `sub` (the externalId): the old check compared a user id
-  // against a unix timestamp and was effectively dead code.
-  const minAccettable = Math.floor(Date.now() / 1000) - 2592000 // 30 days
-  if (!tokenData?.iat || tokenData.iat < minAccettable) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Token too old' })
-  }
-
-  // Verified inside a try: an expired or forged refresh token is a refusal, not a 500.
-  let refreshTokenData: { sub?: number; tid?: string; typ?: string }
-  try {
-    refreshTokenData = await reply.server.jwt['refreshToken'].verify(refreshToken)
-  } catch {
-    return reply.status(403).send(httpError(403, 'Invalid refresh token'))
-  }
-  // Without the claim an access token verifies as a refresh token whenever the two secrets
-  // are the same, and a short access token could then renew itself forever.
-  if (refreshTokenData?.typ !== REFRESH_TYP) {
-    return reply.status(403).send(httpError(403, 'Invalid refresh token'))
-  }
-  if (tokenData?.sub && tokenData?.sub !== refreshTokenData?.sub) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Mismatched tokens' })
-  }
-  // The pair must agree on the tenant too: checking only the subject would let an access
-  // token of one tenant be renewed against a refresh token minted in another.
-  if (isTenancyEnabled() && refreshTokenData?.tid !== tokenData.tid) {
-    return reply.status(403).send(httpError(403, 'The token does not belong to this tenant', 'TENANT_MISMATCH'))
-  }
-
-  const user = await req.server['userManager'].retrieveUserByExternalId(dataContext(req), tokenData.sub)
-  const isValid = await req.server['userManager'].isValidUser(user)
-
-  if (!isValid) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong refresh token' })
-  }
-
-  const newToken = await reply.jwtSign({ sub: user.externalId, tid: req.tenantInfo?.id })
-  return {
-    token: newToken
-  }
-}
-
-/**
- * Renewal in cookie mode (T-10.39): the refresh token is the whole credential.
- *
- * The bearer renewal asks for the expired access token too, and binds the pair on subject and
- * tenant. Here the access cookie is gone by the time it is needed, because it lives exactly as
- * long as its token (T-10.38), so the bindings are checked on the refresh token itself: it
- * carries the subject and the tenant it was issued for, and it arrives from a signed httpOnly
- * cookie that only this server writes, restricted to this route.
- */
-async function renewFromCookie(req: FastifyRequest, reply: FastifyReply) {
-  const refreshToken = refreshCookieOf(req, 'tenant')
-  if (!refreshToken) {
-    return reply.status(401).send(httpError(401, 'No refresh cookie on this request', 'REFRESH_REQUIRED'))
-  }
-
-  let data: { sub?: string; tid?: string; typ?: string }
-  try {
-    data = await reply.server.jwt['refreshToken'].verify(refreshToken)
-  } catch {
-    clearSessionCookies(reply, 'tenant')
-    return reply.status(401).send(httpError(401, 'The session has expired', 'REFRESH_REQUIRED'))
-  }
-  if (data?.typ !== REFRESH_TYP || !data.sub) {
-    clearSessionCookies(reply, 'tenant')
-    return reply.status(403).send(httpError(403, 'Invalid refresh token'))
-  }
-  // D-19 again, on the only token there is: renewal must not become the door through which a
-  // session of one tenant is exchanged for a session in another.
-  if (isTenancyEnabled() && data.tid !== req.tenantInfo?.id) {
-    return reply.status(403).send(httpError(403, 'The token does not belong to this tenant', 'TENANT_MISMATCH'))
-  }
-
-  const user = await req.server['userManager'].retrieveUserByExternalId(dataContext(req), data.sub)
-  const isValid = user ? await req.server['userManager'].isValidUser(user) : false
-  if (!isValid || user.blocked) {
-    clearSessionCookies(reply, 'tenant')
-    return reply.status(403).send(httpError(403, 'Wrong refresh token'))
-  }
-
-  setAccessCookie(reply, 'tenant', await reply.jwtSign({ sub: user.externalId, tid: req.tenantInfo?.id }))
-  return { token: null }
+  })
 }
 
 export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply) {
@@ -561,9 +503,83 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User not linked' })
   }
 
+  // Two levels, and they are not the same act (F26). The sessions are closed first, by name, so
+  // the registry says when each one ended and why; then the identity is rotated, which is the
+  // hammer that also kills every access token already signed for the old `externalId`.
+  //
+  // The order matters: after the rotation the rows would be keyed to an `externalId` nobody
+  // carries any more, and they would sit there live until their own expiry.
+  const sessions = req.server['sessionManager']
+  if (req.user.externalId && sessionRegistryEnabled(sessions)) {
+    await sessions.revokeAllOfSubject(dataContext(req), req.user.externalId, 'tokens invalidated by the user')
+  }
+
   const user = await req.server['userManager'].resetExternalId(dataContext(req), req.user.id)
   isValid = await req.server['userManager'].isValidUser(user)
+  clearSessionCookies(reply, 'tenant')
   return { ok: isValid }
+}
+
+/**
+ * The caller's own sessions (T-11.14).
+ *
+ * The registry existed for rotation; once it exists, "where am I logged in" is a question with an
+ * answer, and the honest place to answer it is here rather than in every consuming project. The
+ * rows carry no secret and no hash: the only handle a client needs is the `sid`, which is also
+ * what it sends back to close one.
+ */
+export async function listSessions(req: FastifyRequest, reply: FastifyReply) {
+  const sessions = req.server['sessionManager']
+  if (!sessionRegistryEnabled(sessions)) {
+    return reply.status(404).send(httpError(404, 'This build keeps no session registry', 'NOT_FOUND'))
+  }
+  if (!req.user?.externalId) {
+    return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
+  }
+
+  const sid = currentSid(req)
+  const rows = await sessions.listOfSubject(dataContext(req), req.user.externalId)
+  return rows.map((row) => ({
+    sid: row.sid,
+    // So a console can say "this device" without the client comparing anything it holds.
+    current: row.sid === sid,
+    createdAt: row.createdAt,
+    lastUsedAt: row.lastUsedAt,
+    idleExpiresAt: row.idleExpiresAt,
+    absoluteExpiresAt: row.absoluteExpiresAt,
+    ip: row.ip ?? null,
+    userAgent: row.userAgent ?? null
+  }))
+}
+
+/**
+ * Closes one session of the caller: the scalpel next to the hammer (F26).
+ *
+ * Ownership is checked by looking the session up among the caller's own, never by trusting the
+ * path: a `sid` is a handle, not an authorisation, and a session that belongs to somebody else
+ * answers the same 404 as one that does not exist, because telling the two apart would turn the
+ * identifier into an oracle.
+ */
+export async function revokeSession(req: FastifyRequest, reply: FastifyReply) {
+  const sessions = req.server['sessionManager']
+  if (!sessionRegistryEnabled(sessions)) {
+    return reply.status(404).send(httpError(404, 'This build keeps no session registry', 'NOT_FOUND'))
+  }
+  if (!req.user?.externalId) {
+    return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
+  }
+
+  const { id: sid } = req.params as { id?: string }
+  const ctx = dataContext(req)
+  const mine = await sessions.listOfSubject(ctx, req.user.externalId)
+  if (!sid || !mine.some((row) => row.sid === sid)) {
+    return reply.status(404).send(httpError(404, 'Not found', 'NOT_FOUND'))
+  }
+
+  await sessions.revokeSession(ctx, sid, 'closed by the user')
+  // Closing the session you are speaking from is a logout, so it has to look like one here too.
+  if (sid === currentSid(req)) clearSessionCookies(reply, 'tenant')
+  return { ok: true }
 }
 
 export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
@@ -620,10 +636,12 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     // BUT usually user is already logged in via temp token or full token.
     // If user is setting up from "Forced Setup", they need tokens now.
 
-    const { token: finalToken, refreshToken } = await issueSession(reply, 'tenant', {
-      sub: user.externalId,
-      tid: req.tenantInfo?.id
-    })
+    const { token: finalToken, refreshToken } = await issueSession(
+      reply,
+      'tenant',
+      { sub: user.externalId, tid: req.tenantInfo?.id },
+      tenantOrigin(req, user.externalId)
+    )
 
     return {
       ...user,
@@ -690,10 +708,12 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
     await req.server['userManager'].resetExternalId(dataContext(req), user.id)
   }
 
-  const { token: finalToken, refreshToken } = await issueSession(reply, 'tenant', {
-    sub: user.externalId,
-    tid: req.tenantInfo?.id
-  })
+  const { token: finalToken, refreshToken } = await issueSession(
+    reply,
+    'tenant',
+    { sub: user.externalId, tid: req.tenantInfo?.id },
+    tenantOrigin(req, user.externalId)
+  )
 
   return {
     ...user,

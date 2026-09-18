@@ -148,7 +148,64 @@ export function appTables(schemaName: string) {
     (t) => [uniqueIndex('migration_set_name_uq').on(t.set, t.name)]
   )
 
-  return { user, token, change, migration }
+  //
+  // A live session (T-11.1, decisions F18 to F24 in EVO_FASE_11.md).
+  //
+  // One row per session and not per token: `sid` is stable for the whole life of the session
+  // and what rotates is the secret, so "close this device" and "close the family because a
+  // stolen token came back" are the same lookup. Without it, a rotation would leave a row per
+  // renewal and a user's device list would grow a line every fifteen minutes.
+  //
+  // The secret is never stored, only its SHA-256, exactly as the destruction token does
+  // (../managers/destruction.ts): a container that leaks its tables leaks nothing that can
+  // renew a session.
+  //
+  // `previousSecretHash` is the grace window and not a second credential. Two browser tabs
+  // renewing in the same instant present the same token, and without a few seconds of
+  // tolerance the reuse detection throws out the honest user it exists to protect.
+  //
+  // No `updatedAt`, no `deletedAt`: a session is revoked, with a moment and a reason, and a
+  // revocation that can be undone by clearing a column is not a revocation.
+  //
+  const session = table(
+    'session',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      sid: text('sid').notNull().$defaultFn(uuidv7),
+      // The subject's external_id: the same value the access token carries in `sub`.
+      subjectId: text('subject_id').notNull(),
+      // Whether the subject is a tenant user or a platform identity. Both kinds can sit in
+      // the control container of a deployment that has no tenants, and a control session must
+      // never be renewable as a tenant one.
+      scope: text('scope').notNull().default('tenant'),
+      secretHash: text('secret_hash').notNull(),
+      generation: integer('generation').notNull().default(1),
+      previousSecretHash: text('previous_secret_hash'),
+      rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+      lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
+      // Two clocks. Inactivity moves forward at every renewal; the absolute one never moves,
+      // or a session renewed often enough would never end.
+      idleExpiresAt: timestamp('idle_expires_at', { withTimezone: true }).notNull(),
+      absoluteExpiresAt: timestamp('absolute_expires_at', { withTimezone: true }).notNull(),
+      revokedAt: timestamp('revoked_at', { withTimezone: true }),
+      revokedReason: text('revoked_reason'),
+      ip: text('ip'),
+      userAgent: text('user_agent'),
+      // Set when the session is an impersonation, so ending the impersonation ends the
+      // session it authorised (T-4.2).
+      impersonationId: text('impersonation_id'),
+      createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+    },
+    (t) => [
+      uniqueIndex('session_sid_uq').on(t.sid),
+      index('session_secret_idx').on(t.secretHash),
+      index('session_previous_secret_idx').on(t.previousSecretHash),
+      index('session_subject_idx').on(t.subjectId, t.revokedAt),
+      index('session_absolute_expires_idx').on(t.absoluteExpiresAt)
+    ]
+  )
+
+  return { user, token, change, migration, session }
 }
 
 /** The registry and the platform's own identities. Control plane only, never in a container. */

@@ -13,3 +13,4 @@ export const user = app.user
 export const token = app.token
 export const change = app.change
 export const migration = app.migration
+export const session = app.session

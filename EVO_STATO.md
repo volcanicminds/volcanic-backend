@@ -41,6 +41,14 @@ a usare il risultato. Le tre che hanno trovato difetti veri — un rifiuto irrag
 del data layer che nessun test poteva vedere perché nessuno aveva mai chiesto a SQLite di avere
 uno schema — sono la ragione per cui la fase è stata aperta invece di dichiarare il piano finito.
 
+**Fase 11 aperta il 18 settembre 2026** (`EVO_FASE_11.md`): registro delle sessioni e rotazione del
+refresh token. Chiusi i blocchi A (tabella `session` sui due dialetti, quattro migrazioni), B (port
+`SessionManagement` e manager) e C (credenziale opaca, rotazione con finestra di grazia, rilevamento
+del riuso, logout che revoca davvero), D (rotte `/auth/sessions` sui due piani, purga per predicato
+più comando `npx volcanic sessions --purge`, avviso di boot su `reset_external_id_on_login`) e le
+prove. Resta la verifica del rinnovo sul banco multi-tenant (T-11.11) e la decisione su console e
+sample (T-11.18).
+
 **Cosa resta**, e non è nel piano: il push (`develop` è avanti al remoto, serve una richiesta
 esplicita), la pubblicazione dell'alpha su npm, e il porting del sample committato — oggi è
 lavoro verificato ma non committato, per scelta.

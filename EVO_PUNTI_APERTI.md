@@ -168,7 +168,7 @@ dichiarati e reversibili.
 | F8 | in modalità cookie l'header `Authorization` accetta **solo token di integrazione**; la regola «una fonte per configurazione» diventa «una fonte per tipo di credenziale» (T-10.37) | accendere il cookie spegneva ogni integrazione; accettare anche le sessioni nell'header non aggiunge nulla, perché in modalità cookie nessuna sessione esce mai nel corpo |
 | F9 | quando una richiesta porta sia l'header sia il cookie, vale l'header | l'header è la credenziale esplicita di un programma, il cookie quella ambientale di un browser; rifiutare entrambi romperebbe lo Swagger usato da un browser già loggato |
 | F10 | una coppia di cookie **per piano** (`auth_token`/`refresh_token`, `control_token`/`control_refresh_token`) | con un cookie solo, aprire un'impersonificazione cancellava la sessione di controllo, cioè l'unica che può chiuderla |
-| F11 | in modalità cookie il rinnovo usa **solo** il refresh token, senza il vincolo dei 30 giorni sull'access token del rinnovo bearer; niente rotazione del refresh token | il cookie di accesso muore con il suo token (T-10.38), quindi al rinnovo non c'è più; la sessione dura al massimo `JWT_REFRESH_EXPIRES_IN` e `/auth/invalidate-tokens` la chiude. Rotazione e rilevamento del riuso restano aperti |
+| F11 | in modalità cookie il rinnovo usa **solo** il refresh token, senza il vincolo dei 30 giorni sull'access token del rinnovo bearer; niente rotazione del refresh token | il cookie di accesso muore con il suo token (T-10.38), quindi al rinnovo non c'è più; la sessione dura al massimo `JWT_REFRESH_EXPIRES_IN` e `/auth/invalidate-tokens` la chiude. Rotazione e rilevamento del riuso **sono chiusi dalla fase 11** (`EVO_FASE_11.md`), che sostituisce il refresh JWT con un credenziale opaco e un registro delle sessioni |
 | F12 | i refresh token emessi prima di `typ: 'refresh'` non rinnovano più | accettarli significherebbe accettare un access token come refresh ogni volta che i due segreti coincidono; il costo è un login per utente dopo l'aggiornamento |
 
 ### Blocco C, decisioni del 15 settembre 2026
@@ -182,3 +182,22 @@ Prese su domanda esplicita durante T-10.14, T-10.15 e T-10.16, con le alternativ
 | F15 | con resolver `header` il tenant **si chiede al login** e si ricorda nel browser, o lo fissa la prop `tenant`; `tenancy.switchable` è sempre `false` e il selettore sparisce (T-10.15) | dal login il token lega il tenant (T-3.2) e la lista `/tenants` è una rotta di controllo: un selettore sotto la sessione produrrebbe solo `TENANT_MISMATCH`. Scartate la sola prop e il solo resolver `subdomain` |
 | F16 | `manifest` resta un nome riservato da **entrambi** i cataloghi, uno per piano (`SHARED_CAPABILITIES`) | è l'unico caso in cui la stessa operazione esiste su due piani; un nome nuovo per il piano tenant avrebbe rotto ogni `config/roles.ts` che concede già `manifest` |
 | F17 | la descrizione dell'input di un'azione non-CRUD si **deriva dal body schema** della rotta; un hint `config.manifest.input` aggiunge widget, etichette ed esclusioni (T-10.16) | una fonte sola, la validazione. Scartato l'hint scritto a mano da solo: due descrizioni dello stesso body divergono alla prima modifica |
+
+### Fase 11, decisioni del 18 settembre 2026
+
+Prese in discussione esplicita prima di scrivere codice. La forma lunga, con le alternative
+scartate, sta in `EVO_FASE_11.md` §1; qui la riga che vale.
+
+| | Decisione | Criterio |
+|---|---|---|
+| F18 | esiste un **registro delle sessioni** persistito nel contenitore, dietro il port `SessionManagement` con default no-op | il core non importa il data layer, e un port lascia al consumer la libertà di implementarlo su Redis senza toccare il core |
+| F19 | la sessione vive **sul piano del soggetto**: utente del tenant nel suo contenitore, identità di sistema nel piano di controllo | l'export o la distruzione di un tenant si porta via le sue sessioni, ed è il comportamento corretto |
+| F20 | il refresh token è **opaco e auto-descrittivo** (`vs1.<routing>.<sid>.<segreto>`), in tabella solo il suo SHA-256 | il rinnovo interroga comunque la riga, quindi la firma non aggiungeva nulla e costava un secondo segreto; il prefisso serve a scegliere il contenitore prima di poter leggere qualsiasi cosa |
+| F21 | il `sid` è **stabile per tutta la sessione**, ruota il segreto con un contatore di generazione | un `sid` che cambia a ogni rinnovo toglie sia la chiusura della famiglia sia la lista dei dispositivi |
+| F22 | l'access token resta **stateless**: la riga si legge e si scrive solo al rinnovo | `last_used_at` a ogni richiesta è una riga caldissima e contesa; il prezzo è un ritardo di revoca pari alla vita dell'access token |
+| F23 | **finestra di grazia** di pochi secondi sulla generazione appena ruotata, confrontata in modo stretto | due schede che rinnovano insieme presentano lo stesso segreto; con `<=` una tolleranza di zero non era una tolleranza di zero (difetto trovato dalla prova) |
+| F24 | **due scadenze** per riga: inattività e vita massima assoluta | la sola scadenza che si sposta a ogni rinnovo produce sessioni eterne |
+| F25 | riuso fuori finestra: **revoca dell'intera sessione**, motivo in riga, evento a log, `SESSION_REUSE_DETECTED` | il server non sa quale dei due presentatori sia il ladro, e chiudere è l'unica mossa onesta |
+| F26 | revoca a **tre livelli**: la singola sessione, tutte quelle del soggetto, il cambio di `external_id` come emergenza | l'`external_id` è un identificatore pubblico serializzato nelle risposte: usarlo come sigillo di sessione rompe i riferimenti di chi lo ha salvato |
+| F27 | rotazione su **entrambi i piani e in entrambe le modalità** | non c'è motivo per cui un client bearer debba avere una sessione meno sicura di un browser |
+| F28 | registro **acceso quando il data layer c'è**; senza, il rinnovo non esiste invece di esistere e non proteggere | un refresh che nessuno può consumare è una credenziale che non scade mai |

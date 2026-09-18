@@ -120,7 +120,44 @@ export function appTables() {
     (t) => [uniqueIndex('migration_set_name_uq').on(t.set, t.name)]
   )
 
-  return { user, token, change, migration }
+  // A live session (T-11.1). The logical shape and the reasons are in ./pg.ts: one row per
+  // session, the secret kept only as its SHA-256, a grace window for the tabs that renew
+  // together, and two clocks instead of one.
+  const session = sqliteTable(
+    'session',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      sid: text('sid').notNull().$defaultFn(uuidv7),
+      subjectId: text('subject_id').notNull(),
+      scope: text('scope').notNull().default('tenant'),
+      secretHash: text('secret_hash').notNull(),
+      generation: integer('generation').notNull().default(1),
+      previousSecretHash: text('previous_secret_hash'),
+      rotatedAt: integer('rotated_at', { mode: 'timestamp_ms' }),
+      lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' })
+        .notNull()
+        .default(sql`(unixepoch() * 1000)`),
+      idleExpiresAt: integer('idle_expires_at', { mode: 'timestamp_ms' }).notNull(),
+      absoluteExpiresAt: integer('absolute_expires_at', { mode: 'timestamp_ms' }).notNull(),
+      revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
+      revokedReason: text('revoked_reason'),
+      ip: text('ip'),
+      userAgent: text('user_agent'),
+      impersonationId: text('impersonation_id'),
+      createdAt: integer('created_at', { mode: 'timestamp_ms' })
+        .notNull()
+        .default(sql`(unixepoch() * 1000)`)
+    },
+    (t) => [
+      uniqueIndex('session_sid_uq').on(t.sid),
+      index('session_secret_idx').on(t.secretHash),
+      index('session_previous_secret_idx').on(t.previousSecretHash),
+      index('session_subject_idx').on(t.subjectId, t.revokedAt),
+      index('session_absolute_expires_idx').on(t.absoluteExpiresAt)
+    ]
+  )
+
+  return { user, token, change, migration, session }
 }
 
 export function registryTables() {

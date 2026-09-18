@@ -4,7 +4,7 @@
 > break landed, and not reconstructed at the end (task T-8.3); it was then read through in
 > full, once, with the API stable. Everything below is true of the code on `develop`.
 >
-> Twenty-four sections, in the order a port meets them: the data layer and the configuration
+> Twenty-seven sections, in the order a port meets them: the data layer and the configuration
 > first, because nothing else compiles until they are right; then what changed inside a
 > request; then the routes, the answers and the two core defaults. If you are porting a
 > project, read §1 to §4 before touching anything, and keep §18 open while you test the
@@ -16,7 +16,8 @@
 >
 > §24 came later, with the decision to keep the browser session out of the page (phase 10):
 > it is the break an upgrade meets first, because an instance without `COOKIE_SECRET` no
-> longer starts.
+> longer starts. §27 is later still (phase 11) and is the one break that also hits whoever
+> already runs a 5.0 alpha: the refresh token is no longer a JWT.
 
 v5 is breaking on purpose. There is no compatibility branch, no deprecated alias and no
 automatic translation of a v4 configuration: invariant 9 of `EVO_FRAMEWORK.md` says the
@@ -441,7 +442,7 @@ the checkout's copies — `volcanic-backend-sample/scripts/link-peers.mjs` does 
 | platform session in cookie mode | written into `auth_token`, the tenant cookie, with the refresh token in the body | its own pair, `control_token` and `control_refresh_token` |
 | MFA in cookie mode | `tempToken` in the body, verification read the header by hand: MFA users could not log in | the pre-auth token in the cookie, `tempToken: null` |
 | impersonation in cookie mode | the token in the body | the tenant cookie, `token: null`; ending it clears that cookie |
-| refresh token claims | the same as the access token's | `typ: 'refresh'`; each token is refused in the other's place |
+| refresh token claims | the same as the access token's | none: the refresh token stopped being a JWT, see §27 |
 
 **Why.** A token in `localStorage` is readable by every script of the page, so an XSS takes the session
 with it; an httpOnly cookie is not readable at all. v4 had the cookie mode but made it exclusive, so
@@ -469,19 +470,19 @@ header carries the integration tokens, which are issued to programs.
 - A browser client in cookie mode sends `credentials: 'include'` and stores nothing: `token`,
   `refreshToken` and `tempToken` come back `null`. On a `401` it calls the renewal once and repeats the
   request; `401 REFRESH_REQUIRED` from the renewal means the session is over.
-- A bearer client renews with `{ token, refreshToken }` as before. With `JWT_EXPIRES_IN` at `1h` instead
-  of `15d`, a client that never renewed now meets a `401` within the hour: renewing is no longer
-  optional, and a deployment that wants the old lifetime sets `JWT_EXPIRES_IN=15d` explicitly.
-- **Refresh tokens issued by v4 no longer renew**: they lack `typ: 'refresh'`. Users log in once after
-  the upgrade.
-- An expired or forged refresh token is `403`, not `500`.
+- A bearer client renews with `{ refreshToken }` alone, and stores the new one that comes back: the body
+  of the request changed again in §27. With `JWT_EXPIRES_IN` at `1h` instead of `15d`, a client that never
+  renewed now meets a `401` within the hour: renewing is no longer optional, and a deployment that wants
+  the old lifetime sets `JWT_EXPIRES_IN=15d` explicitly.
+- **Refresh tokens issued by v4 no longer renew.** Users log in once after the upgrade, and §27 says why.
+- An expired or forged refresh token is a refusal with a code, never a `500`.
 
-**Behaviour of the renewal in cookie mode.** The refresh token is the whole credential: the access
-cookie is gone by the time it is needed, because it lives exactly as long as its token. Subject,
-tenant (`TENANT_MISMATCH` otherwise) and account state are checked on the refresh token itself. The
-bearer renewal additionally refuses an access token issued more than thirty days before; the cookie
-renewal has no such idle bound, and the session lasts at most `JWT_REFRESH_EXPIRES_IN` from the login.
-`/auth/invalidate-tokens` ends every session of the user in both modes.
+**Behaviour of the renewal in cookie mode.** The refresh credential is the whole credential: the access
+cookie is gone by the time it is needed, because it lives exactly as long as its token. The tenant is
+checked against the credential's routing segment (`TENANT_MISMATCH` otherwise), and the subject and its
+account state are loaded from the session row. Both deadlines of the session live in that row, so the
+cookie is written with the earlier of the two and a browser never holds a credential the server would
+already refuse. `/auth/invalidate-tokens` ends every session of the user in both modes.
 
 ## 25. One console per plane (T-10.12, T-10.14, T-10.15)
 
@@ -535,3 +536,53 @@ operators a way back by granting `system-users` to whoever answers the support c
 not one of the four now refuses the boot instead of being read as the default, and `MANDATORY` needs
 a build that can actually issue a second factor: without an MFA manager the boot refuses, because
 the alternative is an instance where the first login locks everybody out.
+
+## 27. The refresh token is a session, not a JWT (T-11.6 to T-11.10)
+
+| | v4, and 5.0.0-alpha until T-11.6 | now |
+|---|---|---|
+| what a refresh token is | a second JWT, signed with `JWT_REFRESH_SECRET` or, unset, with `JWT_SECRET` | an opaque credential, `vs1.<routing>.<sid>.<secret>`, whose SHA-256 is a row in the new `session` table |
+| what renewing does to it | nothing: the same string worked until its own expiry | it is spent. Every renewal mints a new secret and increments the generation |
+| presenting a spent one | indistinguishable from a legitimate renewal | inside a few seconds it is two tabs and is served; later it is `401 SESSION_REUSE_DETECTED` and the **whole session is revoked** |
+| `logout` | cleared the browser's cookies | revokes the session row, then clears the cookies |
+| `/auth/invalidate-tokens` | rotated `external_id`, and that was the only revocation | revokes every session of the user **first**, then rotates `external_id` |
+| bearer renewal body | `{ token, refreshToken }` | `{ refreshToken }`, answered with a **new** `refreshToken` every time |
+| where the lifetime is written | `JWT_REFRESH_EXPIRES_IN`, in the token | two columns of the row: inactivity and an absolute maximum (`SESSION_IDLE_TTL`, `SESSION_ABSOLUTE_TTL`) |
+| `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` | required and read | **ignored**, and the boot warns when either is set |
+| renewal without a data layer | worked, and protected nothing | the routes answer `404` |
+| the access token | `sub`, `tid` or `scp`, `roles` | the same, plus `sid`: an action is attributable to a session and not only to a subject |
+
+**Why.** A JWT is verified, not consumed, so "this generation has already been spent" is a fact that
+exists nowhere. Everything else followed from that: a stolen refresh token was invisible until it
+expired, the logout was a belief rather than a state, and the only real revocation was rotating
+`external_id`, a public identifier that is serialised in responses and that integrations store. The
+rotation does not prevent the theft; it makes a stolen copy stop working as soon as the owner renews,
+and it makes the theft an event somebody can count. The full reasoning is `docs/AUTHORIZATION_V5.md` §9.
+
+**What a deployment has to do.**
+
+- **Apply the new migrations.** Four of them, `0001_sessions_control` and `0001_sessions_tenant` for
+  each dialect. The control plane takes both sets, every tenant container takes the tenant one
+  (`npm run db:migrate`, then `npx volcanic migrate --tenants`). Without the table there is no
+  registry, and without a registry there is no renewal at all.
+- **Drop `JWT_REFRESH_SECRET` and `JWT_REFRESH_EXPIRES_IN`** from the environment, and set the
+  lifetimes instead: `SESSION_IDLE_TTL` (30 days by default), `SESSION_ABSOLUTE_TTL` (180 days),
+  `SESSION_GRACE_SECONDS` (10). The same three keys exist as the `sessions` block of
+  `config/general.ts`, where the environment wins over the file.
+- **Check that a data layer is injected**, which is the real switch. A deployment that runs the core
+  alone now has no renewal instead of a renewal that protects nothing (decision F28).
+- Nothing to do to keep renewal off: `JWT_REFRESH=false` still means exactly that.
+
+**What a client has to change.**
+
+- **Every refresh token in circulation stops working**, whether it was issued by v4 or by an earlier
+  5.0 alpha: it is a JWT, and a JWT is not four segments of the new format. Everybody logs in once.
+  There is no window in which both formats are accepted, because accepting the old one would mean
+  accepting a credential nothing can revoke.
+- A bearer client sends `{ refreshToken }` and **must store the `refreshToken` it gets back**. A client
+  that keeps presenting the one from the login gets one grace window and then closes its own session
+  with `SESSION_REUSE_DETECTED`, which is the mechanism working as designed, not a regression.
+- A browser client in cookie mode changes nothing: the cookies are rewritten by the renewal as before.
+- Two tabs renewing at the same instant are fine, and that is what `SESSION_GRACE_SECONDS` is for. A
+  client that renews from several processes with a clock further apart than the window needs a longer
+  one, not a retry.

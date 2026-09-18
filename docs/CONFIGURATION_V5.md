@@ -38,6 +38,14 @@ export default {
         checkOnResolve: true,             // a container behind its version answers with an error
         refuseStartIfControlBehind: true  // the control plane behind its version refuses to boot
       }
+    },
+
+    // The session registry, which is what a refresh credential means (T-11.13). On wherever a
+    // data layer is injected; `enabled: false` gives up renewal altogether.
+    sessions: {
+      idleTtl: 2_592_000,                 // seconds without a renewal before the session ends
+      absoluteTtl: 15_552_000,            // seconds it may live, however often it renews
+      graceSeconds: 10                    // the just-rotated secret still answers, for tabs renewing together
     }
   }
 }
@@ -110,11 +118,15 @@ where it is used without passing through the configuration at all.
 | `VOLCANIC_MAX_PAGE_SIZE` | `100` | Magic Query page-size clamp | no key: read by the query layer |
 | `CORS_ORIGINS` | — | **required in production**: comma-separated allowlist | `origin` of the `cors` entry in `config/plugins.ts` |
 | `HIDE_ERROR_DETAILS` | `true` in production | honoured by every error path, `onError` included | no key |
-| `JWT_SECRET` `JWT_REFRESH_SECRET` `MFA_DB_SECRET` | — | minimum 32 characters; a weak or missing secret refuses the boot | no key |
+| `JWT_SECRET` `MFA_DB_SECRET` | — | minimum 32 characters; a weak or missing secret refuses the boot | no key |
 | `AUTH_MODE` | `COOKIE` | where the session travels: `COOKIE` (httpOnly cookies; the header for integration tokens only) or `BEARER`. Any other value refuses the boot | no key |
 | `COOKIE_SECRET` | — | signs the session cookies; **required in cookie mode**, so required by default, with the same strength rule as the other secrets | `secret` of the `cookie` entry in `config/plugins.ts` |
 | `COOKIE_PATH_PREFIX` | — | the path a prefix-stripping proxy publishes the API under; the refresh cookie's `Path` starts with it | no key |
 | `JWT_EXPIRES_IN` | `1h` | lifetime of the access token, and of its cookie in cookie mode | no key |
+| `JWT_REFRESH` | `true` | `false` turns renewal off: the session ends when the access token does, and the renewal routes answer 404 | no key |
+| `SESSION_IDLE_TTL` | `2592000` | seconds without a renewal before a session ends | `sessions.idleTtl`, and it **wins** over the configured value |
+| `SESSION_ABSOLUTE_TTL` | `15552000` | seconds a session may live, however often it renews | `sessions.absoluteTtl`, same rule |
+| `SESSION_GRACE_SECONDS` | `10` | seconds the just-rotated secret stays acceptable, for tabs renewing together. `0` is a legitimate value and means no tolerance | `sessions.graceSeconds`, same rule |
 | `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
 | `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |
@@ -124,6 +136,29 @@ and the environment is read only when the configuration is silent. That is why t
 **not** fill `containers.maxOpen` and `containers.directory` with defaults: until T-10.9 it did,
 the configuration was never silent, and the two variables were ignored on every boot that
 declared tenants.
+
+**Override, and deliberately the other way round.** The three `SESSION_*` variables win over the
+`sessions` block, unlike the two `TENANT_CONTAINERS_*` above. The lifetime of a session is the one
+setting an incident makes you want to change on a running deployment, without cutting a release of
+the consumer's `config/general.ts`. A value that is not a positive number falls back to the default
+rather than being read as zero, with the single exception of `SESSION_GRACE_SECONDS`, where zero
+means what it says.
+
+**The lifetimes decide when a session stops working, not when its row goes away.** Nothing is
+deleted at the instant it expires: a dead session is refused by comparison, and the rows are
+cleared afterwards. `npx volcanic sessions --purge` clears the ones no renewal can use from the
+control plane, and `npx volcanic sessions --purge --tenants` from every active container too. It
+is a deliberate command, refusing to run without `--purge`, because removing rows is all it does.
+The renewal also purges opportunistically on about one call in fifty, so a deployment that never
+schedules the command still does not grow the table for ever. A revoked session is not removed by
+its revocation: it goes when its own clocks run out, so the reason it ended survives it.
+
+**Two variables that are now read only to be refused.** `JWT_REFRESH_SECRET` and
+`JWT_REFRESH_EXPIRES_IN` do nothing since 5.0: the refresh credential is opaque, so there is no
+second namespace to sign, and its deadlines live in the row rather than in a claim. A deployment
+that still sets either one is describing a mechanism this version does not have, so the boot logs a
+warning instead of staying silent and letting it believe the session lasts what that variable says.
+`JWT_REFRESH=false` kept its meaning through the change and still turns renewal off.
 
 **Two families for one connection.** `DATABASE_URL` and the five discrete `DB_*` variables both
 describe the control plane connection, and only the first passes through the configuration.
@@ -164,6 +199,8 @@ same URL cannot mean two things on two servers).
 | query without context in multi-tenant | falls back to the global connection | throws | invariant 3 (defect D-06) |
 | `_logic` that does not parse | silently becomes `AND` of everything | 400 | defect D-13 |
 | MFA policy | one value for the whole deployment, read only by the tenant routes | three levels (deployment floor, control plane, tenant), enforced on both planes | `MANDATORY` obliged every customer's users and none of the operators who can destroy a customer (T-10.19) |
+| refresh token | a second JWT, verified and never consumed: one string from the login to its expiry | an opaque credential against the `session` registry, rotated at every renewal, with reuse detection | a credential that cannot be spent cannot be revoked: the theft of one was invisible, `logout` cleared cookies while the copy kept renewing, and rotating `external_id` was the only revocation there was (T-11.8) |
+| renewal without a data layer | a refresh token that verified and renewed for ever | the renewal routes answer `404` | a refresh credential nobody can consume never expires; F28 prefers no renewal to one that only looks like a session |
 
 ---
 

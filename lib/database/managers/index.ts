@@ -6,6 +6,7 @@ import { createTenantManager, type TenantProvider } from './tenant.js'
 import { createSystemUserManager } from './systemUser.js'
 import { createImpersonationManager } from './impersonation.js'
 import { createDestructionManager } from './destruction.js'
+import { createSessionManager } from './session.js'
 
 export {
   createUserManager,
@@ -14,7 +15,8 @@ export {
   createTenantManager,
   createSystemUserManager,
   createImpersonationManager,
-  createDestructionManager
+  createDestructionManager,
+  createSessionManager
 }
 export { runtime, control } from './runtime.js'
 
@@ -35,6 +37,9 @@ export function buildManagers(provider: TenantProvider & { control(): ControlHan
     // before the token that allows it exists (T-4.2).
     impersonationManager: createImpersonationManager(),
     // The permission-with-a-fuse that phase 1 of a destruction writes (T-6.3).
-    destructionManager: createDestructionManager()
+    destructionManager: createDestructionManager(),
+    // The live sessions, in the container of their subject (T-11.5). Without this one there is
+    // no renewal at all: a refresh nobody can consume is a credential that never expires.
+    sessionManager: createSessionManager()
   }
 }

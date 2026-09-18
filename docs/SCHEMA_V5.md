@@ -6,7 +6,7 @@
 > implementation, the task is not done. If something here turns out to be wrong **in practice**,
 > stop, report it, and fix this document first.
 
-The framework owns eight tables. Four live **inside every tenant container** (schema, dedicated
+The framework owns nine tables. Five live **inside every tenant container** (schema, dedicated
 database, or file). Four live **only in the control plane**. A consumer adds its own tables to
 either side; the framework never touches them.
 
@@ -15,6 +15,7 @@ either side; the framework never touches them.
 | `user` | tenant container (and control plane when tenancy is `none`) | end users of the application |
 | `token` | tenant container | machine credentials (API tokens) |
 | `change` | tenant container | audit trail of tracked writes |
+| `session` | every container | live login sessions, and the refresh credential that renews them |
 | `migration` | every container | applied migration log (managed by drizzle-kit) |
 | `tenant` | control plane only | the tenant registry |
 | `system_user` | control plane only | people who administer the platform |
@@ -168,6 +169,60 @@ same file has to land in `tenant_acme` one minute and `tenant_globex` the next, 
 `drizzle-kit`'s runtime migrator has no argument for that. The framework's runner puts each
 migration inside its container with `SET LOCAL search_path` in a transaction, which is the one
 use of a search_path T-3.1 sanctions and the reason that door was left open.
+
+### 2.5 `session`
+
+One row per live login, and the only thing that makes a refresh credential worth anything. Added
+in T-11.1; the mechanism it serves is `docs/AUTHORIZATION_V5.md` §9.
+
+It is declared with the application tables, so it exists **in every container**: a tenant user's
+session inside that tenant's container, a platform identity's inside the control plane. A session
+belongs where its subject lives, which is also what makes exporting or destroying a tenant carry
+its sessions with it, and what stops the destruction of a customer from logging out the operator
+who ordered it.
+
+| Column | Type | Null | Default | Notes |
+|---|---|:---:|---|---|
+| `id` | uuid / text | no | generated | |
+| `sid` | text | no | generated | the session's name, **stable for its whole life**, carried by every access token it issues (claim `sid`) and by the refresh credential |
+| `subject_id` | text | no | | the subject's `external_id`: the same value the access token carries in `sub` |
+| `scope` | text | no | `tenant` | `tenant` or `control`. Both kinds of row sit in the same container in a deployment without tenants, and a renewal refuses a session opened on the other plane |
+| `secret_hash` | text | no | | SHA-256 of the current refresh secret. **The secret is never stored**, exactly as for `destruction_request.token_hash` |
+| `generation` | integer | no | `1` | how many times the secret has rotated. It is also the optimistic lock of the rotation: the update names the generation it is spending, so two simultaneous renewals produce one winner instead of two live secrets |
+| `previous_secret_hash` | text | yes | | the generation just replaced. Accepted for a few seconds after `rotated_at`, and presented later it is the signal of a theft |
+| `rotated_at` | timestamp | yes | | when the current generation was written. The grace window is measured from here, strictly |
+| `last_used_at` | timestamp | no | now | moved by a renewal and by nothing else: verifying an access token never reads this row |
+| `idle_expires_at` | timestamp | no | | pushed forward at every renewal, never beyond `absolute_expires_at` |
+| `absolute_expires_at` | timestamp | no | | never moves |
+| `revoked_at` | timestamp | yes | | |
+| `revoked_reason` | text | yes | | why it ended: `logout`, `reuse detected`, `subject is no longer valid`, and so on. A revocation nobody can explain afterwards is half a revocation |
+| `ip` | text | yes | | of the request that opened the session |
+| `user_agent` | text | yes | | what a device list shows |
+| `impersonation_id` | text | yes | | set when the session is an impersonation (§3.3), so ending the impersonation ends the session it authorised |
+| `created_at` | timestamp | no | now | |
+
+**Indexes**: unique on `sid`, index on `secret_hash`, index on `previous_secret_hash`, index on
+`(subject_id, revoked_at)`, index on `absolute_expires_at`. The first two carry the renewal: a
+presented secret is hashed and looked up, once against the current generation and, failing that,
+once against the previous one.
+
+**Why two expiries.** A single deadline pushed forward at every renewal produces sessions that
+never end, because a client that renews on a timer renews for ever; a single fixed deadline
+throws out someone who is working. So inactivity (`idle_expires_at`) closes a session nobody is
+using, the absolute lifetime (`absolute_expires_at`) closes a session that renews for ever, and a
+row is dead as soon as either one is past. Both are set at login from the `sessions` block
+(`docs/CONFIGURATION_V5.md` §4), and the renewal moves only the first.
+
+**Why the hash and not the secret.** The stored value is useless to whoever reads the table: it
+cannot be presented, and it cannot be reversed. A container that leaks its rows leaks the shape of
+a user's sessions, never a credential that renews one.
+
+**No `version`, no `updated_at`, no `deleted_at`.** A session is not edited by a user and is not
+soft-deleted: it is revoked, with a moment and a reason, and a revocation that clearing a column
+could undo is not a revocation. Expiry does not delete anything either: a row goes when
+`purgeExpired` reaches it, and that is once the **first** of its two clocks has run out, whether or
+not it was revoked before then. So "when did this session end, and why" keeps an answer for as long
+as the row would have been usable had nobody closed it, and not one day longer.
 
 ---
 

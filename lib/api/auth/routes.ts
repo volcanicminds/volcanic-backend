@@ -181,7 +181,36 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Invalidate all tokens',
-        description: 'Invalidate all tokens',
+        description: 'Closes every session of the caller and rotates the public identifier',
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/sessions',
+      roles: [],
+      handler: 'auth.listSessions',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'The sessions of the caller',
+        description: 'Where this account is logged in, with the current session marked',
+        response: {
+          200: { $ref: 'authSessionsResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'DELETE',
+      path: '/sessions/:id',
+      roles: [],
+      handler: 'auth.revokeSession',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Close one session',
+        description: 'Closes a session of the caller by its id; a session of somebody else answers 404',
+        params: { $ref: 'onlyIdSchema#' },
         response: {
           200: { $ref: 'defaultResponse#' }
         }

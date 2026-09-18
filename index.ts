@@ -59,7 +59,8 @@ import {
   defaultTenantManager,
   defaultSystemUserManager,
   defaultImpersonationManager,
-  defaultDestructionManager
+  defaultDestructionManager,
+  defaultSessionManager
 } from './lib/defaults/managers.js'
 
 global.log = logger
@@ -200,12 +201,10 @@ const start = async (decorators = {}) => {
   const {
     JWT_SECRET = '',
     JWT_EXPIRES_IN = '1h',
-    JWT_REFRESH = 'true',
     JWT_REFRESH_SECRET = '',
     JWT_REFRESH_EXPIRES_IN = '180d'
   } = process.env
 
-  const loadRefreshJWT = yn(JWT_REFRESH, true)
   // Read before anything is registered: a value that is not a mode stops the boot here, not
   // at the first request (lib/util/credential.ts).
   const cookieMode = isCookieMode()
@@ -299,13 +298,19 @@ const start = async (decorators = {}) => {
     sign: { expiresIn: JWT_EXPIRES_IN }
   })
 
-  if (loadRefreshJWT) {
-    assertSecretStrength('JWT_REFRESH_SECRET', JWT_REFRESH_SECRET || JWT_SECRET, { prod })
-    await server.register(jwtValidator, {
-      namespace: 'refreshToken',
-      secret: JWT_REFRESH_SECRET || JWT_SECRET,
-      sign: { expiresIn: JWT_REFRESH_EXPIRES_IN }
-    })
+  // The refresh token stopped being a JWT in T-11.6: it is an opaque secret whose only meaning
+  // is a row in the session registry, so there is no second namespace to register and no second
+  // signing secret to keep strong. `JWT_REFRESH=false` still turns renewal off, and what decides
+  // whether it is available at all is now the registry itself (F28, lib/util/renewal.ts).
+  //
+  // `JWT_REFRESH_SECRET` and `JWT_REFRESH_EXPIRES_IN` are read here only to refuse them out
+  // loud: a deployment that sets them is describing a mechanism this version no longer has, and
+  // silence would let it believe the session lasts what that variable says.
+  if (JWT_REFRESH_SECRET || JWT_REFRESH_EXPIRES_IN !== '180d') {
+    log.warn(
+      'JWT_REFRESH_SECRET and JWT_REFRESH_EXPIRES_IN are ignored since 5.0: the refresh token is opaque and its ' +
+        'lifetime comes from the `sessions` block (SESSION_IDLE_TTL, SESSION_ABSOLUTE_TTL). See docs/AUTHORIZATION_V5.md.'
+    )
   }
 
   await addFastifySwagger(server)
@@ -325,6 +330,7 @@ const start = async (decorators = {}) => {
     systemUserManager: defaultSystemUserManager,
     impersonationManager: defaultImpersonationManager,
     destructionManager: defaultDestructionManager,
+    sessionManager: defaultSessionManager,
     ...decorators
   }
 
@@ -494,6 +500,19 @@ const start = async (decorators = {}) => {
         log.info(`Security MFA 🔑 set to ${stated}`)
       }
 
+      // T-11.15. `reset_external_id_on_login` rotates the subject's public identifier at every
+      // login, which was the only revocation v4 had. With a session registry it is the hammer
+      // used as a routine: logging in from a phone drops the session on the laptop, and it also
+      // changes an identifier that integrations may have stored. The option stays, because a
+      // deployment may want exactly that, but it stops being a silent default nobody chose.
+      if (log.w && config?.options?.reset_external_id_on_login) {
+        log.warn(
+          'Security 🔑 reset_external_id_on_login is on: every login closes the other sessions of that user ' +
+            'and changes the externalId other systems may hold. With the session registry, /auth/sessions and ' +
+            '/auth/invalidate-tokens do the same job without touching the identity.'
+        )
+      }
+
       if (log.i) {
         log.info(`Server up 🚀 at ${address}`)
 
@@ -525,6 +544,12 @@ export type {
   UserManagement,
   TokenManagement,
   TrackingManagement,
+  // The session registry (T-11.4). A consumer that injects its own store implements this, and
+  // a consumer that lists a user's devices reads `Session` without describing it again.
+  SessionManagement,
+  Session,
+  SessionScope,
+  SessionLookup,
   MfaManagement,
   TransferManagement,
   TransferCallback,

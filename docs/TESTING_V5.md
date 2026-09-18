@@ -61,7 +61,7 @@ against any `DATABASE_URL`, including a database an operator already has.
 | `PORT` | `2241` | |
 | `NODE_ENV` | `test` | not `memory`: that value selects the embedded engine |
 | `LOG_LEVEL` | `silent` | |
-| `JWT_SECRET`, `JWT_REFRESH_SECRET`, `MFA_DB_SECRET` | test values, at least 32 characters | the secret guard refuses to boot otherwise |
+| `JWT_SECRET`, `MFA_DB_SECRET` | test values, at least 32 characters | the secret guard refuses to boot otherwise. `JWT_REFRESH_SECRET` is no longer one of them: the refresh credential is opaque and signs nothing |
 | `AUTH_RATELIMIT_MAX` | `100000` | the rate limit is tested by its own suite |
 | `AUTH_MODE` | `BEARER` | the harness authenticates with a header; cookie mode, the default, would refuse a session there and require `COOKIE_SECRET` |
 
