@@ -471,7 +471,7 @@ const start = async (decorators = {}) => {
       // Close the data-layer connection too, otherwise it keeps the event loop alive
       // and the process never exits. Runtime access only (no data-layer import).
       try {
-        await (global as any).connection?.destroy?.()
+        await (globalThis as typeof globalThis & { connection?: { destroy?: () => Promise<unknown> } }).connection?.destroy?.()
       } catch {
         /* best-effort */
       }

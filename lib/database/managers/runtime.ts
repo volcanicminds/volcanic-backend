@@ -12,11 +12,19 @@ import type { Dialect } from '../query/index.js'
 // a handle throws. In v4 the equivalent call fell back to the global connection, which meant
 // reading whatever container the pool happened to hand over (D-06).
 //
+/**
+ * The Drizzle instance of either dialect. The managers run one query code path over Postgres and
+ * SQLite against tables looked up by name, and the two database classes share no callable
+ * supertype for `select`/`insert`/`update` over a `Table` chosen at runtime.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type CrossDialectDb = any
+
 export interface RuntimeHandle {
   kind: 'control' | 'tenant'
   dialect: Dialect
   tenantId?: string
-  db: any
+  db: CrossDialectDb
   tables: Record<string, Table>
   registry?: Record<string, Table>
 }

@@ -2,7 +2,12 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import type {
   ControlHandle,
   DataProvider,
+  DestructionManagement,
   ImpersonationManagement,
+  MfaManagement,
+  SystemUserManagement,
+  Tenant,
+  TenantHandle,
   TenantManagement,
   UserManagement
 } from '../../../../types/global.js'
@@ -35,6 +40,59 @@ const managerOf = (req: FastifyRequest): TenantManagement => req.server['tenantM
 
 /** The registry lives in the control plane, and nowhere else. */
 const control = (req: FastifyRequest): ControlHandle => req.control as ControlHandle
+
+//
+// What these routes ask of the data layer beyond `DataProvider`. Restated here because the core
+// may not import `lib/database/ports.ts` (dependency-cruiser). A provider written by a consumer
+// may lack any of these, which is why every route still checks before calling.
+//
+interface ContainerRef {
+  tenantId?: string
+  locator: string
+}
+
+interface ExportedContainer {
+  path: string
+  bytes: number
+  schemaVersion: string | null
+}
+
+// A type alias and not an interface: it is stored as `Record<string, unknown>` by the
+// destruction request, and only an alias is assignable to an index signature.
+type ContainerPreview = {
+  locator: string
+  sizeBytes: number
+  rowCounts: Record<string, number>
+  schemaVersion: string | null
+  lastExportAt?: string
+}
+
+interface ContainerProvider extends DataProvider {
+  createContainer(tenant: Tenant): Promise<void>
+  forLocator(locator: string, tenantId: string): Promise<TenantHandle>
+  dropContainer(locator: string): Promise<void>
+  exportContainer(tenant: Tenant, request: { directory?: string; schemaVersion: string | null }): Promise<ExportedContainer>
+  inspectContainer(tenant: Tenant): Promise<ContainerPreview>
+}
+
+interface MigrationPort {
+  apply(container: ContainerRef, target?: string): Promise<string>
+  version(container: ContainerRef): Promise<string | null>
+}
+
+/** The platform identity the destruction routes act for (`req.systemUser`). */
+interface Operator {
+  id: string
+  email?: string
+  mfaEnabled?: boolean
+  mfaLastUsedCounter?: number | null
+}
+
+const providerOf = (req: FastifyRequest): ContainerProvider | undefined =>
+  (req.server as unknown as Record<string, ContainerProvider | undefined>)['provider']
+
+const migrationsOf = (req: FastifyRequest): MigrationPort | undefined =>
+  (req.server as unknown as Record<string, MigrationPort | undefined>)['migrations']
 
 function unavailable(req: FastifyRequest, reply: FastifyReply): boolean {
   const tm = managerOf(req)
@@ -143,8 +201,8 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(409).send(httpError(409, 'A tenant with that slug already exists', 'TENANT_EXISTS'))
   }
 
-  const provider = (req.server as unknown as Record<string, DataProvider & Record<string, any>>)['provider']
-  const migrations = (req.server as unknown as Record<string, any>)['migrations']
+  const provider = providerOf(req)
+  const migrations = migrationsOf(req)
   if (!provider?.createContainer || !migrations?.apply) {
     return reply.status(503).send(httpError(503, 'The data layer cannot provision containers', 'TENANCY_NOT_AVAILABLE'))
   }
@@ -267,8 +325,8 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
   const tenant = await managerOf(req).getTenant(control(req), id)
   if (!tenant) return reply.status(404).send()
 
-  const provider = (req.server as unknown as Record<string, any>)['provider']
-  const migrations = (req.server as unknown as Record<string, any>)['migrations']
+  const provider = providerOf(req)
+  const migrations = migrationsOf(req)
   if (!provider?.exportContainer) {
     return reply.status(503).send(httpError(503, 'This data layer cannot export a container', 'EXPORT_NOT_AVAILABLE'))
   }
@@ -312,13 +370,13 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
 // destruction unusable, and one of a day makes the "one-time, short-lived" part a fiction.
 const DESTRUCTION_TTL_SECONDS = envInt('DESTRUCTION_TOKEN_TTL', 600, { min: 30, max: 3600 })
 
-const destructions = (req: FastifyRequest): any => req.server['destructionManager']
+const destructions = (req: FastifyRequest): DestructionManagement | undefined => req.server['destructionManager']
 
 export async function destructionRequest(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const dm = destructions(req)
-  const provider = (req.server as unknown as Record<string, any>)['provider']
+  const provider = providerOf(req)
   if (!dm?.isImplemented?.() || !provider?.inspectContainer) {
     return reply.status(503).send(httpError(503, 'Destruction is not available in this build', 'DESTRUCTION_NOT_AVAILABLE'))
   }
@@ -361,7 +419,7 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const dm = destructions(req)
-  const provider = (req.server as unknown as Record<string, any>)['provider']
+  const provider = providerOf(req)
   if (!dm?.isImplemented?.() || !provider?.dropContainer || !provider?.exportContainer) {
     return reply.status(503).send(httpError(503, 'Destruction is not available in this build', 'DESTRUCTION_NOT_AVAILABLE'))
   }
@@ -401,9 +459,9 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
 
   // The export happens first, and a failure stops everything. Decision 2 of
   // EVO_PUNTI_APERTI: no export, no destruction.
-  let exported: any
+  let exported: ExportedContainer | undefined
   try {
-    const migrations = (req.server as unknown as Record<string, any>)['migrations']
+    const migrations = migrationsOf(req)
     const schemaVersion = migrations?.version
       ? await migrations.version({ tenantId: tenant.id, locator: tenant.locator })
       : (tenant.schemaVersion ?? null)
@@ -450,9 +508,9 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
  * factor is as strong as an SMTP configuration nobody reviewed. An operator who may destroy a
  * customer's data enrols in MFA first; the refusal says exactly that.
  */
-async function verifySecondFactor(req: FastifyRequest, actor: any, otp: string): Promise<{ ok: boolean; message: string }> {
-  const mfa = req.server['mfaManager'] as any
-  const systemUsers = req.server['systemUserManager'] as any
+async function verifySecondFactor(req: FastifyRequest, actor: Operator, otp: string): Promise<{ ok: boolean; message: string }> {
+  const mfa: MfaManagement | undefined = req.server['mfaManager']
+  const systemUsers: SystemUserManagement = req.server['systemUserManager']
 
   if (!actor.mfaEnabled) {
     return {
@@ -462,7 +520,7 @@ async function verifySecondFactor(req: FastifyRequest, actor: any, otp: string):
   }
   if (!mfa?.verify) return { ok: false, message: 'No MFA manager is available to verify the second factor' }
 
-  const secret = await systemUsers.retrieveMfaSecret(req.control, actor.id)
+  const secret = await systemUsers.retrieveMfaSecret(control(req), actor.id)
   if (!secret) return { ok: false, message: 'This operator has MFA enabled but no secret on file' }
 
   // The third copy of one rule, and the one that made the other two worth fixing: a verifier
@@ -475,7 +533,7 @@ async function verifySecondFactor(req: FastifyRequest, actor: any, otp: string):
   if (isReplay(counter, actor.mfaLastUsedCounter)) {
     return { ok: false, message: 'That code has already been used' }
   }
-  if (counter !== null) await systemUsers.recordMfaCounter(req.control, actor.id, counter)
+  if (counter !== null) await systemUsers.recordMfaCounter(control(req), actor.id, counter)
   return { ok: true, message: '' }
 }
 

@@ -30,7 +30,9 @@ function unavailable(req: FastifyRequest, reply: FastifyReply): boolean {
 }
 
 /** The public shape of a system user: the credential columns never leave the process. */
-export function present(user: any) {
+export function present<T extends { password?: unknown; mfaSecret?: unknown; mfaRecoveryCodes?: unknown }>(
+  user: T | null | undefined
+): Omit<T, 'password' | 'mfaSecret' | 'mfaRecoveryCodes'> | null {
   if (!user) return null
   const { password, mfaSecret, mfaRecoveryCodes, ...rest } = user
   void password
@@ -126,7 +128,7 @@ export async function listSessions(req: FastifyRequest, reply: FastifyReply) {
 
   const sid = currentSid(req)
   const rows = await sessions.listOfSubject(control(req), actor.externalId)
-  return rows.map((row: any) => ({
+  return rows.map((row) => ({
     sid: row.sid,
     current: row.sid === sid,
     createdAt: row.createdAt,
@@ -149,7 +151,7 @@ export async function revokeSession(req: FastifyRequest, reply: FastifyReply) {
 
   const { id: sid } = req.params as { id?: string }
   const mine = await sessions.listOfSubject(control(req), actor.externalId)
-  if (!sid || !mine.some((row: any) => row.sid === sid)) {
+  if (!sid || !mine.some((row) => row.sid === sid)) {
     return reply.status(404).send(httpError(404, 'Not found', 'NOT_FOUND'))
   }
 
@@ -272,7 +274,8 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   const tempToken = isCookieMode() ? sessionTokenOf(req, 'control') : bodyTempToken
   if (!tempToken || !token) return reply.status(400).send(httpError(400, 'tempToken and token are both required'))
 
-  let claims: any
+  // What `login` signs into a pre-auth token. Role and scope are checked below, not assumed.
+  let claims: { role?: string; scp?: string; sub: string }
   try {
     claims = req.server.jwt.verify(String(tempToken))
   } catch {

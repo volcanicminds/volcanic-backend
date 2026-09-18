@@ -23,7 +23,7 @@ const ORDER: MfaPolicy[] = [MfaPolicy.OFF, MfaPolicy.OPTIONAL, MfaPolicy.ONE_WAY
 
 const strength = (policy: MfaPolicy): number => ORDER.indexOf(policy)
 
-const options = (): Record<string, unknown> => ((global as any).config?.options ?? {}) as Record<string, unknown>
+const options = (): Record<string, unknown> => (global.config?.options ?? {}) as Record<string, unknown>
 
 /** A written value that is not one of the four is not a policy: the caller decides what to do. */
 export function parsePolicy(value: unknown): MfaPolicy | undefined {

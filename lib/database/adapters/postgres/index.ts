@@ -159,7 +159,7 @@ export class PostgresProvider {
     // a pooled connection. Statements built from the qualified tables are unaffected, because
     // they already name their schema.
     //
-    const enter = async (tx: any) => {
+    const enter = async (tx: Pick<NodePgDatabase, 'execute'>) => {
       if (locator) await tx.execute(sql.raw(`set local search_path to ${escapeIdentifier(locator)}`))
     }
 
@@ -219,7 +219,7 @@ export class PostgresProvider {
 
     let available: number
     try {
-      const result: any = await this.db.execute(sql.raw('show max_connections'))
+      const result = await this.db.execute(sql.raw('show max_connections'))
       available = Number(result.rows?.[0]?.max_connections ?? 0)
     } catch (e) {
       return fail(`Startup: cannot read max_connections to size the container pools: ${(e as Error)?.message}`)
@@ -448,9 +448,9 @@ export class PostgresProvider {
    */
   async inspectContainer(tenant: Tenant) {
     assertLocator(tenant.locator)
-    const handle: any = await this.forLocator(tenant.locator, tenant.id)
+    const handle = await this.forLocator(tenant.locator, tenant.id)
 
-    const tables: any = await handle.execute(
+    const tables: pg.QueryResult<{ table_name: string }> = await handle.execute(
       sql.raw(
         `select table_name from information_schema.tables ` +
           `where table_schema = '${tenant.locator}' and table_type = 'BASE TABLE' order by table_name`
@@ -459,11 +459,13 @@ export class PostgresProvider {
 
     const rowCounts: Record<string, number> = {}
     for (const row of tables.rows ?? []) {
-      const counted: any = await handle.execute(sql.raw(`select count(*)::int as n from ${escapeIdentifier(row.table_name)}`))
+      const counted: pg.QueryResult<{ n: number }> = await handle.execute(
+        sql.raw(`select count(*)::int as n from ${escapeIdentifier(row.table_name)}`)
+      )
       rowCounts[row.table_name] = Number(counted.rows?.[0]?.n ?? 0)
     }
 
-    const size: any = await this.db.execute(
+    const size = await this.db.execute<{ bytes: string | number }>(
       sql.raw(
         `select coalesce(sum(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))), 0)::bigint as bytes ` +
           `from pg_tables where schemaname = '${tenant.locator}'`

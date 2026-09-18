@@ -51,7 +51,7 @@ export {
  * container. That is invariant 2, and D-04 is what happens without it.
  */
 export async function start(options?: DataLayerOptions) {
-  const resolved = options ?? (global as any).config?.options
+  const resolved = options ?? global.config?.options
   assertSupported(resolved)
 
   const engine = resolved?.control?.engine ?? 'postgres'

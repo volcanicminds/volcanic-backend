@@ -26,9 +26,12 @@ export function createTokenManager(): TokenManagement {
 
   return {
     isImplemented: () => true,
-    isValidToken: (data: any) => !!data?.name,
+    isValidToken: (data: { name?: unknown } | null | undefined) => !!data?.name,
 
-    async createToken(ctx: DataHandle, data: any) {
+    async createToken(
+      ctx: DataHandle,
+      data: { name?: unknown; description?: unknown; roles?: unknown; expiresAt?: string | number | Date | null }
+    ) {
       const { handle, token } = tokens(ctx, 'createToken')
       const rows = await handle.db
         .insert(token)
@@ -42,7 +45,7 @@ export function createTokenManager(): TokenManagement {
       return rows[0]
     },
 
-    async updateTokenById(ctx: DataHandle, id: string, data: any) {
+    async updateTokenById(ctx: DataHandle, id: string, data: Record<string, unknown>) {
       const { handle, token } = tokens(ctx, 'updateTokenById')
       const values: Record<string, unknown> = { ...data, updatedAt: new Date() }
       delete values.id

@@ -3,6 +3,7 @@ import { queryError } from './errors.js'
 import { operatorFor, type Dialect } from './operators.js'
 import { parseLogic, aliasesOf, DEFAULT_LOGIC_LIMITS, type LogicLimits, type LogicNode } from './logic.js'
 import { envInt } from '../env.js'
+import type { RuntimeHandle } from '../managers/runtime.js'
 
 export * from './errors.js'
 export { escapeLike, coerce, OPERATORS } from './operators.js'
@@ -270,7 +271,7 @@ export function headersFor(parsed: ParsedQuery, count: number, total: number): R
  * (D-06) — there is no global connection to fall back to.
  */
 export async function executeFind<T>(
-  handle: { db: any },
+  handle: Pick<RuntimeHandle, 'db'>,
   table: Table,
   params: Record<string, unknown>,
   options: QueryOptions
@@ -287,7 +288,7 @@ export async function executeFind<T>(
 }
 
 export async function executeCount(
-  handle: { db: any },
+  handle: Pick<RuntimeHandle, 'db'>,
   table: Table,
   params: Record<string, unknown>,
   options: QueryOptions

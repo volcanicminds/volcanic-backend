@@ -32,8 +32,8 @@ const TENANTS_DEFAULTS = {
 }
 
 /** Applies the conditional defaults after the merge. Exported so it can be tested directly. */
-export function normalizeOptions<T extends Record<string, any>>(options: T): T {
-  const tenants = (options as any).tenants
+export function normalizeOptions<T extends object>(options: T): T {
+  const tenants = (options as { tenants?: unknown }).tenants
   if (!tenants || typeof tenants !== 'object') return options
   return { ...options, tenants: deepMerge(TENANTS_DEFAULTS, tenants) }
 }

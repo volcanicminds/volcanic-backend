@@ -22,6 +22,9 @@ export type CorsOrigin = boolean | string | string[]
 
 export type CorsCheck = { ok: boolean; fatal: boolean; reason?: string }
 
+/** The @fastify/cors options these helpers read. Every other key passes through untouched. */
+export type CorsOptionsLike = { origin?: unknown; credentials?: unknown; allowedHeaders?: unknown }
+
 /** True for every spelling of "any origin" that @fastify/cors accepts. */
 export function isWildcardOrigin(origin: unknown): boolean {
   if (origin === true || origin === '*') return true
@@ -59,20 +62,20 @@ export function corsOriginFromEnv(raw?: string): CorsOrigin {
  * the effective options, so a project's own `config/plugins.ts` list gets the header too. A list
  * left unset is not touched: @fastify/cors then echoes whatever the preflight asks for.
  */
-export function withTenantHeader(
-  options: any,
+export function withTenantHeader<T extends CorsOptionsLike | null | undefined>(
+  options: T,
   tenants: { strategy?: string; resolver?: string; headerKey?: string } | null
-): any {
+): T {
   if (!options || !tenants?.strategy || (tenants.resolver ?? 'header') !== 'header') return options
   const key = tenants.headerKey || 'x-tenant-id'
   const listed = (list: string[]) => list.some((h) => h.trim().toLowerCase() === key.toLowerCase())
 
   const headers = options.allowedHeaders
   if (typeof headers === 'string') {
-    return listed(headers.split(',')) ? options : { ...options, allowedHeaders: `${headers}, ${key}` }
+    return listed(headers.split(',')) ? options : ({ ...options, allowedHeaders: `${headers}, ${key}` } as T)
   }
   if (!Array.isArray(headers) || listed(headers.map(String))) return options
-  return { ...options, allowedHeaders: [...headers, key] }
+  return { ...options, allowedHeaders: [...headers, key] } as T
 }
 
 /** Whether credentials may be granted for this allowlist. Never against a wildcard. */
@@ -89,7 +92,7 @@ export function corsCredentialsFor(origin: CorsOrigin): boolean {
  * @param opts.configured whether `CORS_ORIGINS` was set (an explicit wildcard is a decision,
  *        an absent variable is an omission)
  */
-export function validateCorsOptions(options: any, opts: { prod: boolean; configured: boolean }): CorsCheck {
+export function validateCorsOptions(options: CorsOptionsLike | null | undefined, opts: { prod: boolean; configured: boolean }): CorsCheck {
   const origin = options?.origin
   const credentials = options?.credentials === true
   const wildcard = isWildcardOrigin(origin)
@@ -120,7 +123,7 @@ export function validateCorsOptions(options: any, opts: { prod: boolean; configu
  * localhost must not be stopped by a variable that only matters once the API is reachable
  * from a browser that is not theirs.
  */
-export function assertCorsOptions(options: any, opts: { prod: boolean }): void {
+export function assertCorsOptions(options: CorsOptionsLike | null | undefined, opts: { prod: boolean }): void {
   const configured = (process.env.CORS_ORIGINS ?? '').trim().length > 0
   const { ok, fatal, reason } = validateCorsOptions(options, { prod: opts.prod, configured })
   if (ok) return

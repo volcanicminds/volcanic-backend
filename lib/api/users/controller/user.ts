@@ -176,7 +176,7 @@ export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply
   }
 
   const incoming = req.data() || {}
-  const userData: any = {}
+  const userData: Record<string, unknown> = {}
   for (const f of SELF_EDITABLE_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(incoming, f)) userData[f] = incoming[f]
   }

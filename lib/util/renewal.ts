@@ -34,7 +34,7 @@ import {
 // token which of the three it is.
 //
 
-export interface RenewalContext {
+export interface RenewalContext<S = unknown> {
   req: FastifyRequest
   reply: FastifyReply
   plane: Plane
@@ -45,9 +45,9 @@ export interface RenewalContext {
   /** The routing segment the credential must carry, or null to accept any. */
   routing: string | null
   /** The claims of the renewed access token, given the subject that was loaded. */
-  claims: (subject: any) => Record<string, unknown>
+  claims: (subject: S) => Record<string, unknown>
   /** Loads the subject and says whether it may still renew. */
-  loadSubject: (subjectId: string) => Promise<{ subject: any; valid: boolean }>
+  loadSubject: (subjectId: string) => Promise<{ subject: S; valid: boolean }>
 }
 
 /** The credential presented on this request: the cookie in cookie mode, the body in bearer mode. */
@@ -63,7 +63,7 @@ function secondsUntil(session: Session, idleExpiresAt: Date): number {
   return Math.max(0, Math.floor((deadline - Date.now()) / 1000))
 }
 
-export async function renew(context: RenewalContext) {
+export async function renew<S>(context: RenewalContext<S>) {
   const { req, reply, plane, scope, ctx, manager, routing } = context
 
   // F28: without a registry there is no renewal. A refresh credential nobody can consume is a

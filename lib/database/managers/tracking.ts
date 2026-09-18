@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import type { TrackingManagement, DataHandle } from '../../../types/global.js'
+import type { TrackingManagement, DataHandle, NewChange } from '../../../types/global.js'
 import { runtime, table, tableIfKnown, column } from './runtime.js'
 
 //
@@ -51,7 +51,7 @@ export function createTrackingManager(): TrackingManagement {
 
     retrieveBy,
 
-    async addChange(ctx: DataHandle, data: any) {
+    async addChange(ctx: DataHandle, data: NewChange) {
       const { handle, change } = changes(ctx, 'addChange')
       const rows = await handle.db
         .insert(change)

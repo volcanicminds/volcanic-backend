@@ -216,8 +216,9 @@ async function one(deps: FleetDeps, tenant: Tenant, options: FleetOptions, dryRu
  */
 export function describeError(error: unknown): string {
   const parts: string[] = []
-  for (let current: any = error; current; current = current.cause) {
-    const message = current?.message ? String(current.message).split('\n')[0].trim() : ''
+  for (let current: unknown = error; current; current = (current as { cause?: unknown }).cause) {
+    const raw = (current as { message?: unknown }).message
+    const message = raw ? String(raw).split('\n')[0].trim() : ''
     if (message && !parts.includes(message)) parts.push(message)
   }
   return parts.join(': ') || String(error)

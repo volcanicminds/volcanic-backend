@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt'
-import { eq, and, isNull, sql } from 'drizzle-orm'
+import { eq, and, isNull, sql, type SQL } from 'drizzle-orm'
 import type { UserManagement, DataHandle, VQuery } from '../../../types/global.js'
 import { executeFind, executeCount } from '../query/index.js'
 import { encrypt, decrypt } from '../crypto.js'
@@ -42,9 +42,10 @@ const EMAIL_TAKEN_CODE = 'EMAIL_ALREADY_REGISTERED'
 // Every engine we support names a unique violation somewhere in the code or the message:
 // Postgres answers 23505, better-sqlite3 and libSQL answer SQLITE_CONSTRAINT_UNIQUE. The test
 // is deliberately loose because it is not what decides: the lookup that follows it is.
-function isUniqueViolation(err: any): boolean {
-  const code = String(err?.code ?? '')
-  const message = String(err?.message ?? '').toLowerCase()
+function isUniqueViolation(err: unknown): boolean {
+  const { code: rawCode, message: rawMessage } = (err ?? {}) as { code?: unknown; message?: unknown }
+  const code = String(rawCode ?? '')
+  const message = String(rawMessage ?? '').toLowerCase()
   return code === '23505' || code.startsWith('SQLITE_CONSTRAINT') || message.includes('unique')
 }
 
@@ -56,7 +57,7 @@ export function createUserManager(): UserManagement {
     return { handle, user: table(handle, 'user') }
   }
 
-  const one = async (ctx: unknown, what: string, where: any) => {
+  const one = async (ctx: unknown, what: string, where: SQL | undefined) => {
     const { handle, user } = users(ctx, what)
     const rows = await handle.db.select().from(user).where(where).limit(1)
     return rows[0] ?? null
@@ -72,7 +73,7 @@ export function createUserManager(): UserManagement {
   return {
     isImplemented: () => true,
 
-    isValidUser(data: any) {
+    isValidUser(data: { email?: unknown; password?: unknown } | null | undefined) {
       return !!data?.email && !!data?.password
     },
 
@@ -87,7 +88,7 @@ export function createUserManager(): UserManagement {
      * Synchronous, unlike everything else here, because it reads a field it was handed: it
      * asks no database anything, and making it async would suggest otherwise.
      */
-    isPasswordToBeChanged(user: any): boolean {
+    isPasswordToBeChanged(user: { passwordChangedAt?: Date | string | number | null } | null | undefined): boolean {
       const declared = process.env.PASSWORD_EXPIRATION_DAYS
       if (declared == null) return false
 
@@ -117,7 +118,7 @@ export function createUserManager(): UserManagement {
      * carrying `EMAIL_ALREADY_REGISTERED`, which the caller turns into the same 200 a real
      * registration gets.
      */
-    async createUser(ctx: DataHandle, data: any) {
+    async createUser(ctx: DataHandle, data: Record<string, unknown>) {
       const { handle, user } = users(ctx, 'createUser')
       const email = String(data.email).trim().toLowerCase()
       const password = await bcrypt.hash(String(data.password), BCRYPT_COST)
@@ -137,7 +138,7 @@ export function createUserManager(): UserManagement {
           })
           .returning()
         return rows[0]
-      } catch (err: any) {
+      } catch (err) {
         // Which constraint fired is spelled differently by every engine, so the answer comes
         // from asking the table rather than from parsing a message: if a row now holds that
         // address, the address is why the insert failed. Anything else is rethrown as it is,
@@ -153,7 +154,7 @@ export function createUserManager(): UserManagement {
       }
     },
 
-    async updateUserById(ctx: DataHandle, id: string, data: any) {
+    async updateUserById(ctx: DataHandle, id: string, data: Record<string, unknown>) {
       const { handle, user } = users(ctx, 'updateUserById')
       const values: Record<string, unknown> = { ...data, updatedAt: new Date() }
       // A password never travels through a generic update: it would land unhashed.
@@ -236,7 +237,7 @@ export function createUserManager(): UserManagement {
       return token
     },
 
-    async resetPassword(ctx: DataHandle, user: any, password: string) {
+    async resetPassword(ctx: DataHandle, user: { id: unknown }, password: string) {
       const { handle, user: t } = users(ctx, 'resetPassword')
       await handle.db
         .update(t)
@@ -251,7 +252,7 @@ export function createUserManager(): UserManagement {
       return true
     },
 
-    async userConfirmation(ctx: DataHandle, user: any) {
+    async userConfirmation(ctx: DataHandle, user: { id: unknown }) {
       const { handle, user: t } = users(ctx, 'userConfirmation')
       await handle.db
         .update(t)

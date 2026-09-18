@@ -68,7 +68,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
      * (build, migrate, seed, and only then record), so the row is written last and means
      * what it says.
      */
-    async createTenant(ctx: ControlHandle, data: any) {
+    async createTenant(ctx: ControlHandle, data: Record<string, unknown>) {
       const { handle, tenant } = registry(ctx, 'createTenant')
 
       const rows = await handle.db
@@ -92,7 +92,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       return rows[0] as Tenant
     },
 
-    async updateTenant(ctx: ControlHandle, id: string, data: any) {
+    async updateTenant(ctx: ControlHandle, id: string, data: Record<string, unknown>) {
       const { handle, tenant } = registry(ctx, 'updateTenant')
       const values: Record<string, unknown> = { ...data, updatedAt: new Date() }
       // What says where the data is cannot be edited in place: moving a container is a

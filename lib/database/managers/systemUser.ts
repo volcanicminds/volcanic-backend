@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt'
-import { eq, and, isNull, sql } from 'drizzle-orm'
+import { eq, and, isNull, sql, type SQL } from 'drizzle-orm'
 import type { SystemUserManagement, ControlHandle, VQuery } from '../../../types/global.js'
 import { executeFind, executeCount } from '../query/index.js'
 import { encrypt, decrypt } from '../crypto.js'
@@ -47,7 +47,7 @@ export function createSystemUserManager(): SystemUserManagement {
     return { handle, user: table(handle, 'systemUser') }
   }
 
-  const one = async (ctx: unknown, what: string, where: any) => {
+  const one = async (ctx: unknown, what: string, where: SQL | undefined) => {
     const { handle, user } = users(ctx, what)
     const rows = await handle.db.select().from(user).where(where).limit(1)
     return rows[0] ?? null
@@ -61,7 +61,7 @@ export function createSystemUserManager(): SystemUserManagement {
   return {
     isImplemented: () => true,
 
-    async createSystemUser(ctx: ControlHandle, data: any) {
+    async createSystemUser(ctx: ControlHandle, data: Record<string, unknown>) {
       const { handle, user } = users(ctx, 'createSystemUser')
       const rows = await handle.db
         .insert(user)
@@ -75,7 +75,7 @@ export function createSystemUserManager(): SystemUserManagement {
       return rows[0]
     },
 
-    async updateSystemUserById(ctx: ControlHandle, id: string, data: any) {
+    async updateSystemUserById(ctx: ControlHandle, id: string, data: Record<string, unknown>) {
       const { handle, user } = users(ctx, 'updateSystemUserById')
       const values: Record<string, unknown> = { ...data, updatedAt: new Date() }
       // A password never travels through a generic update: it would land unhashed.

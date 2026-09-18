@@ -6,6 +6,6 @@ import { generateManifest } from '../../../manifest/generator.js'
 // clients filter capabilities against the declared per-capability roles. With tenants declared
 // the control routes are left out: they belong to `/system/manifest`.
 export function get(req: FastifyRequest, reply: FastifyReply) {
-  const server = (req.server as any) || global.server
+  const server: unknown = req.server || global.server
   return reply.send(generateManifest(server, { plane: 'tenant' }))
 }

@@ -1,6 +1,7 @@
 import path from 'path'
 import fs from 'fs'
 import { sql, type SQLWrapper } from 'drizzle-orm'
+import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core'
 import { eq } from 'drizzle-orm'
 import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestScope } from '../../../../types/global.js'
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/sqlite.js'
@@ -27,6 +28,18 @@ import { envInt, envString } from '../../env.js'
 export type SqliteDriver = 'better-sqlite3' | 'libsql'
 
 /**
+ * Either driver's Drizzle instance: better-sqlite3 is the `sync` kind, libSQL the `async` one.
+ * Named through the dialect base class so the declaration does not pull in either driver's types.
+ */
+export type SqliteDb = BaseSQLiteDatabase<'sync' | 'async', unknown>
+
+/** What a transaction callback receives; see `transactional`. */
+export interface SqliteTransactionScope {
+  execute(query: unknown): Promise<unknown>
+  db: SqliteDb
+}
+
+/**
  * One statement, whatever kind it is.
  *
  * better-sqlite3 splits statements in two and refuses the wrong call for each: `all()` throws
@@ -40,7 +53,7 @@ export type SqliteDriver = 'better-sqlite3' | 'libsql'
  * something to guess with a regular expression: the driver is asked, and its refusal is the
  * answer.
  */
-async function runOrAll(db: any, query: unknown): Promise<any> {
+async function runOrAll(db: SqliteDb, query: unknown): Promise<unknown> {
   try {
     return await db.all(query as never)
   } catch (error) {
@@ -49,16 +62,22 @@ async function runOrAll(db: any, query: unknown): Promise<any> {
   }
 }
 
+/** A select through `execute` answers with its rows; anything else has none to read. */
+function rowsOf(result: unknown): Record<string, unknown>[] {
+  return Array.isArray(result) ? (result as Record<string, unknown>[]) : []
+}
+
 export interface SqliteHandle {
   readonly kind: 'control' | 'tenant'
   readonly dialect: 'sqlite'
   readonly tenantId?: string
-  readonly db: any
+  readonly db: SqliteDb
   readonly tables: AppTables
   readonly registry?: RegistryTables
   readonly file: string
-  execute(query: SQLWrapper | string): Promise<any[]>
-  transaction<T>(fn: (tx: any) => Promise<T>): Promise<T>
+  /** The rows for a statement that returns data, the driver's run result for one that does not. */
+  execute(query: SQLWrapper | string): Promise<unknown>
+  transaction<T>(fn: (tx: SqliteTransactionScope) => Promise<T>): Promise<T>
   close(): Promise<void>
 }
 
@@ -123,7 +142,7 @@ export class SqliteProvider {
     this.replica = options.replica?.url ? createLitestreamReplica(options.replica) : null
   }
 
-  private async openDatabase(file: string): Promise<any> {
+  private async openDatabase(file: string): Promise<{ db: SqliteDb; close: () => Promise<void> }> {
     if (file !== ':memory:') {
       fs.mkdirSync(path.dirname(file), { recursive: true })
     }
@@ -160,7 +179,7 @@ export class SqliteProvider {
         if (globalThis.log?.w) globalThis.log.warn(`SQLite: could not restrict permissions on ${file}`)
       }
     }
-    return { db: drizzle(sqlite), close: async () => sqlite.close() }
+    return { db: drizzle(sqlite), close: async () => void sqlite.close() }
   }
 
   /**
@@ -168,7 +187,7 @@ export class SqliteProvider {
    * connection. A callback that had to switch API mid-flight between drivers would be a
    * contract with a footnote.
    */
-  private transactional(db: any) {
+  private transactional(db: SqliteDb): SqliteTransactionScope {
     return { execute: async (query: unknown) => await runOrAll(db, query), db }
   }
 
@@ -189,9 +208,9 @@ export class SqliteProvider {
    * the driver's own `transaction()` is the only thing that holds, and it accepts an async
    * callback because the client is asynchronous throughout.
    */
-  private async inTransaction<T>(db: any, fn: (tx: any) => Promise<T>): Promise<T> {
+  private async inTransaction<T>(db: SqliteDb, fn: (tx: SqliteTransactionScope) => Promise<T>): Promise<T> {
     if (this.driver === 'libsql') {
-      return await db.transaction(async (tx: any) => await fn(this.transactional(tx)))
+      return await db.transaction(async (tx) => await fn(this.transactional(tx)))
     }
 
     await runOrAll(db, sql.raw('begin'))
@@ -211,7 +230,7 @@ export class SqliteProvider {
     }
   }
 
-  private buildHandle(kind: 'control' | 'tenant', db: any, close: () => Promise<void>, file: string, tenantId?: string): SqliteHandle {
+  private buildHandle(kind: 'control' | 'tenant', db: SqliteDb, close: () => Promise<void>, file: string, tenantId?: string): SqliteHandle {
     return {
       kind,
       dialect: 'sqlite',
@@ -235,7 +254,7 @@ export class SqliteProvider {
   }
 
   async tenant(tenantId: string, scope?: DataRequestScope): Promise<TenantHandle> {
-    const control: any = await this.control()
+    const control = (await this.control()) as unknown as SqliteHandle
     const rows = await control.db.select().from(this.registry.tenant).where(eq(this.registry.tenant.id, tenantId)).limit(1)
     const row = (rows[0] as unknown as Tenant) ?? null
     if (!row) throw new Error(`Tenant '${tenantId}' is not in the registry`)
@@ -359,16 +378,16 @@ export class SqliteProvider {
   /** What is in a container, for the preview of phase 1 (T-6.3). Exact counts, not estimates. */
   async inspectContainer(tenant: Tenant) {
     const file = tenant.locator === ':memory:' ? tenant.locator : resolveContainerFile(this.directory, tenant.locator)
-    const handle: any = await this.forLocator(tenant.locator, tenant.id)
+    const handle = await this.forLocator(tenant.locator, tenant.id)
 
-    const tables: any = await handle.execute(
-      sql.raw("select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by name")
+    const tables = rowsOf(
+      await handle.execute(sql.raw("select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by name"))
     )
 
     const rowCounts: Record<string, number> = {}
-    for (const row of tables ?? []) {
-      const counted: any = await handle.execute(sql.raw(`select count(*) as n from "${String(row.name).replace(/"/g, '')}"`))
-      rowCounts[row.name] = Number(counted?.[0]?.n ?? 0)
+    for (const row of tables) {
+      const counted = rowsOf(await handle.execute(sql.raw(`select count(*) as n from "${String(row.name).replace(/"/g, '')}"`)))
+      rowCounts[String(row.name)] = Number(counted[0]?.n ?? 0)
     }
 
     let sizeBytes = 0
