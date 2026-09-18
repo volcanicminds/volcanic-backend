@@ -224,6 +224,9 @@ export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
   const actor = req.systemUser
   if (!actor) return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
+  // Same reason as the tenant plane: a pre-auth token must not re-enrol an operator who already
+  // has a factor, or the password alone overwrites it and the verify step then accepts the new one.
+  if (actor.mfaEnabled) return reply.status(409).send(httpError(409, 'A second factor is already enabled', 'MFA_ALREADY_ENABLED'))
   if (!allowsEnrolment(controlPolicy())) {
     return reply.status(403).send(httpError(403, 'The platform policy accepts no new second factors', 'MFA_DISABLED'))
   }
@@ -241,6 +244,9 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   const actor = req.systemUser
   const { secret, token } = req.data()
   if (!actor) return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
+  // Same reason as the tenant plane: a pre-auth token must not re-enrol an operator who already
+  // has a factor, or the password alone overwrites it and the verify step then accepts the new one.
+  if (actor.mfaEnabled) return reply.status(409).send(httpError(409, 'A second factor is already enabled', 'MFA_ALREADY_ENABLED'))
   if (!allowsEnrolment(controlPolicy())) {
     return reply.status(403).send(httpError(403, 'The platform policy accepts no new second factors', 'MFA_DISABLED'))
   }

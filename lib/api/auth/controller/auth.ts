@@ -573,9 +573,19 @@ export async function revokeSession(req: FastifyRequest, reply: FastifyReply) {
   return { ok: true }
 }
 
+/**
+ * Enrolment is for a subject without a second factor. The pre-auth token opens these routes so
+ * that a MANDATORY policy can enrol at first login; letting it reach them for a subject that
+ * already has a factor turned the password alone into a session: enrol a secret of one's own,
+ * overwrite the victim's, and come back with it. Replacing a factor goes through disable first.
+ */
+const alreadyEnrolled = (reply: FastifyReply) =>
+  reply.status(409).send(httpError(409, 'A second factor is already enabled', 'MFA_ALREADY_ENABLED'))
+
 export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
   if (!user) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Unauthorized' })
+  if (user.mfaEnabled) return alreadyEnrolled(reply)
   if (!allowsEnrolment(tenantPolicy(req.tenantInfo))) {
     return reply.status(403).send(httpError(403, 'This policy accepts no new second factors', 'MFA_DISABLED'))
   }
@@ -600,6 +610,7 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   const mfa_policy = tenantPolicy(req.tenantInfo)
 
   if (!user || !secret || !token) return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing parameters' })
+  if (user.mfaEnabled) return alreadyEnrolled(reply)
   if (!allowsEnrolment(mfa_policy)) {
     return reply.status(403).send(httpError(403, 'This policy accepts no new second factors', 'MFA_DISABLED'))
   }

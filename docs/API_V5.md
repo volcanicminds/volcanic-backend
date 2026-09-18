@@ -44,8 +44,8 @@ removed with no replacement.
 | POST | `/auth/confirm-email` | public | |
 | POST | `/auth/forgot-password` | public | rate limited. Always 200 |
 | POST | `/auth/reset-password` | public | rate limited |
-| POST | `/auth/mfa/setup` | authenticated | |
-| POST | `/auth/mfa/enable` | authenticated | rate limited 10/60s |
+| POST | `/auth/mfa/setup` | authenticated | 409 `MFA_ALREADY_ENABLED` when a factor is already active: replacing one goes through disable |
+| POST | `/auth/mfa/enable` | authenticated | rate limited 10/60s; 409 `MFA_ALREADY_ENABLED` as above, so a pre-auth token cannot overwrite an enrolled factor |
 | POST | `/auth/mfa/verify` | authenticated | rate limited 10/60s |
 | POST | `/auth/mfa/disable` | authenticated | |
 
@@ -183,7 +183,7 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/auth/logout` | authenticated (control) | revokes the platform session, then clears the control cookies |
 | POST | `/system/auth/refresh-token` | valid control refresh credential | literally the same code as `/auth/refresh-token` (§2.3), with the `control_refresh_token` cookie, the `ctl` routing segment and `scope: 'control'` on the row. A tenant session presented here is `SCOPE_MISMATCH` |
 | POST | `/system/auth/mfa/setup` | any platform identity | starts the operator's own enrolment: every identity enrols itself, and `roles: []` here would have meant the superuser alone |
-| POST | `/system/auth/mfa/enable` | any platform identity | finishes it with a code from the authenticator |
+| POST | `/system/auth/mfa/enable` | any platform identity | finishes it with a code from the authenticator; both answer 409 `MFA_ALREADY_ENABLED` for an operator who already has a factor |
 | POST | `/system/auth/mfa/verify` | authenticated (control) | |
 | GET | `/system/auth/me` | any platform identity (`public` role gate plus `isAuthenticated`) | the operator behind the session with its roles, never the credential columns. A console reads it instead of `/users/me`, which refuses a control token (T-10.14) |
 | GET | `/system/auth/sessions` | any platform identity | the operator's own platform sessions, the twin of §2.4 and with the same shape |
