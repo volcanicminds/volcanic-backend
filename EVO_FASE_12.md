@@ -71,7 +71,7 @@ non è un compito di questa fase.
 
 Ogni voce ha una raccomandazione, il perché e le alternative scartate. Vanno trascritte in
 `EVO_PUNTI_APERTI.md` con la sola riga che vale, come si è fatto per la fase 11. F44 è stata
-decisa dal manutentore nella forma della tabella persistita; F48 resta aperta.
+decisa dal manutentore nella forma della tabella persistita; F48 chiusa con (b), rinviata dopo la 5.0.
 
 **F33. Dove vive la configurazione dei flussi.** Un file nuovo, `src/config/authFlows.ts`,
 scoperto come `roles.ts`: default del framework in `lib/config/authFlows.ts`, file del progetto
@@ -240,7 +240,7 @@ un'identità esterna a un `subjectId` (l'`externalId` del soggetto, come `sessio
 email **solo** se il provider lo dichiara (`linkByEmail: true`), con `email_verified: true` nel
 token e il dominio dell'indirizzo in `emailDomains` del provider, e la creazione da parte di un
 amministratore; si toglie dall'utente o da un amministratore. Il collegamento avviato dall'utente
-già loggato è la decisione aperta F48. Il JIT è **spento** di default, solo sul piano tenant, con
+già loggato è rinviato dopo la 5.0 (F48). Il JIT è **spento** di default, solo sul piano tenant, con
 ruoli dichiarati nel provider che non possono contenere l'admin (la stessa regola di `register`,
 `auth.ts:109-118`); l'utente nasce `confirmed` solo se l'email è verificata, e con una password
 inutilizzabile (hash bcrypt di 32 byte casuali mai mostrati) perché la colonna è `notNull`
@@ -397,7 +397,7 @@ inviato dal browser. Solo codici e identificatori, nessuna etichetta. `GET /auth
 senza stato: elenca gli identificatori del piano e, per il tenant risolto, i provider attivi,
 senza creare righe.
 
-**F48 (aperta). Il collegamento avviato dall'utente già loggato.** È il pulsante «collega il mio
+**F48 (chiusa il 18 settembre 2026: (b), dopo la 5.0). Il collegamento avviato dall'utente già loggato.** È il pulsante «collega il mio
 account Google» nel profilo: l'utente, con una sessione valida, avvia un giro OIDC il cui esito
 si attacca **al soggetto della sessione** invece di aprire un login. La difficoltà non è tecnica,
 è di sicurezza: chi ruba una sessione, anche solo per l'ora di vita di un access token, può
@@ -947,7 +947,7 @@ sé, e che oggi non serve a nessuno:
   prova in `test/fixtures/`, con i casi di firma assente, wrapping, audience sbagliata,
   `InResponseTo` estraneo, risposta rigiocata.
 
-**Il collegamento avviato dall'utente**, se F48 si chiude con (b): insieme a uno step-up che
+**Il collegamento avviato dall'utente** (F48, chiusa con (b)): insieme a uno step-up che
 chieda una riautenticazione fresca.
 
 ---

@@ -55,7 +55,7 @@ dell'account nella console, non una risorsa del manifest, che ne annuncia l'endp
 **Fase 12 aperta il 18 settembre 2026** (`EVO_FASE_12.md`): motore di autenticazione componibile su
 entrambi i piani (password, TOTP, email-otp, OIDC, contratto per SMS e social), `/auth/flow/*` al
 posto delle rotte di login attuali, registro degli accessi `access_log`. SAML rinviato a una fase
-successiva, collegamento self-service degli account ancora da decidere (F48). Chiusa T-12.1, il
+successiva, collegamento self-service degli account rinviato dopo la 5.0 (F48). Chiusa T-12.1, il
 bypass della MFA per reiscrizione (`1b50994`); le versioni 4.x e 3.x pubblicate restano esposte,
 hotfix non richiesto per ora.
 
