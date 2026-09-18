@@ -130,6 +130,14 @@ where it is used without passing through the configuration at all.
 | `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
 | `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |
+| `AUTH_RATELIMIT_MAX` | `10` | requests per window, per address, on the credential routes (login, register, forgot and reset password) | no key: read by `lib/api/auth/routes.ts` |
+| `AUTH_RATELIMIT_WINDOW` | `60000` | that window, in milliseconds | no key: same |
+
+**The two rate limit numbers are measured, not guessed.** 10 requests per 60000 ms is the pair
+`npm run tune` confirmed: the work behind a refused login is a bcrypt verification, so one address
+buys 14,400 attempts a day and 4.7% of one core, and 22 addresses would saturate a core. The
+figures and their provenance are in `docs/TUNING.md`. The 404 handler carries a separate limit of
+30 per 30s, written in `index.ts`, and it guards a `reply.code(404).send()` rather than a hash.
 
 **Fallback, not override.** For the two `TENANT_CONTAINERS_*` variables the configuration wins
 and the environment is read only when the configuration is silent. That is why the loader does

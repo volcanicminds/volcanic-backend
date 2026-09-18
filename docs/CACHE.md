@@ -137,6 +137,22 @@ export default {
 }
 ```
 
+### What `maxEntries` actually costs
+
+The cap counts entries. Memory is spent in bytes, and the two are the same number only when every
+response is the same size, which is never true. Measured with `npm run tune` (the provenance of
+these figures, and what makes them uncertain, is in `docs/TUNING.md`):
+
+| Page shape | Heap per entry | Cost of `maxEntries: 1000` |
+|---|---|---|
+| 25 rows, the default `_pageSize` | 4,485 B | 4.3 MB |
+| 100 rows, the `VOLCANIC_MAX_PAGE_SIZE` clamp | 17,101 B | 16.3 MB |
+
+Reads and writes stay flat as the store grows (0.29 µs per hit at 1,000 entries, 0.53 µs at
+50,000), so the cap is a memory decision rather than a speed one. Raise it when responses are
+small and the traffic is repetitive; lower it when a route returns large pages, because that is
+the case where 1000 entries stops being a handful of megabytes.
+
 ### The default TTL is two numbers, not one
 
 When `ttl` is not declared, the framework picks it from the shape of the deployment it can
@@ -228,8 +244,9 @@ What follows from it:
   the container the request ran in: a write inside one customer's data cannot have staled
   another's. Tenant-scoped routes are skipped when no tenant is resolved. If you add
   cross-tenant routes, make sure the response truly is tenant-independent before caching.
-- **Memory**: bound growth with `maxEntries`. A route with many distinct query-string combinations creates many
-  keys — keep the client's allowed filters small, or lower `maxEntries`.
+- **Memory**: `maxEntries` bounds the number of entries, not the bytes, and section 4 has the measured cost of
+  one. A route with many distinct query-string combinations creates many keys, so keep the client's allowed
+  filters small, or lower `maxEntries`.
 - **Negative caching**: disabled on purpose — non-2xx responses are not cached, so a newly-published record is
   never masked by a stale 404.
 - **Scope correctness is opt-in**: only enable `cache` on routes whose response is fully determined by

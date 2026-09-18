@@ -115,3 +115,33 @@ describe('util/cache · the default TTL follows the deployment (D-26)', () => {
     expect(cacheStats().ttl).toBe(900)
   })
 })
+
+describe('util/cache · the LRU cap is a bound on memory (T-9.4)', () => {
+  afterEach(() => {
+    ;(global as any).config = undefined
+  })
+
+  it('ships the cap the bench confirmed', () => {
+    withTenancy(false)
+    // 1000 entries cost between 4.3 MB and 16.3 MB depending on the page shape (docs/TUNING.md).
+    // The number is asserted here so it cannot drift away from the measurement that justifies it.
+    expect(configureCache({ enabled: true }).maxEntries).toBe(1000)
+  })
+
+  it('evicts the least-recently-used entry, not the one written first', () => {
+    withTenancy(false)
+    configureCache({ enabled: true, maxEntries: 3 })
+    cacheSet('orders::control::u|admin::GET /1', 'one')
+    cacheSet('orders::control::u|admin::GET /2', 'two')
+    cacheSet('orders::control::u|admin::GET /3', 'three')
+
+    // Reading the first entry makes it the most recently used, so the next write must not be
+    // what evicts it: that is the whole difference between an LRU and a queue.
+    expect(cacheGet('orders::control::u|admin::GET /1')).toBe('one')
+    cacheSet('orders::control::u|admin::GET /4', 'four')
+
+    expect(cacheGet('orders::control::u|admin::GET /1')).toBe('one')
+    expect(cacheGet('orders::control::u|admin::GET /2')).toBe(undefined)
+    expect(cacheStats().size).toBe(3)
+  })
+})
