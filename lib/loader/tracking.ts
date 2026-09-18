@@ -27,15 +27,18 @@ export async function load() {
       trackConfig = { ...trackConfig, ...config }
 
       if (enableAll) {
-        changes.forEach((change) => {
+        changes.forEach((change: TrackChanges) => {
           // `enable: true` default must be PERSISTED: the runtime gate
           // (getTrackingConfigIfEnabled) checks `tc.enable`, so a change entry
           // without an explicit `enable` would otherwise never track despite
           // isValid() treating it as enabled.
+          // The default goes AFTER the spread, as a fallback on the entry's own value: written
+          // before it, `enable` was a key the spread could overwrite, which is what the compiler
+          // objects to and which reads as the opposite of what this block means.
           const tc: TrackChanges = {
             primaryKey: primaryKey,
-            enable: true,
-            ...change
+            ...change,
+            enable: change.enable ?? true
           } as TrackChanges
           const code = getCodeBy(tc.method, tc.path)
 
@@ -55,14 +58,14 @@ export async function load() {
   return { tracking: trackChangesList, trackingConfig: trackConfig }
 }
 
-function getCodeBy(method, path) {
+function getCodeBy(method: string, path: string) {
   if (method == null || path == null) {
     throw new Error('Tracking changes: impossible retrieve code by method and path')
   }
   return `${method.toUpperCase()}::${path}` // ex POST::/users
 }
 
-function isValid(tc) {
+function isValid(tc: TrackChanges) {
   const { method: m, path, enable = true, primaryKey, entity } = tc
   const method = m?.toUpperCase()
   const label = `${method} ${path}`

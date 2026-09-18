@@ -15,7 +15,7 @@ export async function load() {
       const module = await import(f)
       const configPlugins = module.default || module
 
-      configPlugins.forEach((plugin) => {
+      configPlugins.forEach((plugin: { name: string; enable?: boolean; options?: unknown }) => {
         plugins[plugin.name] = plugin.enable ? plugin.options : false
         if (log.d) log.debug(`* Plugin ${plugin.name} ${plugin.enable ? 'enabled' : 'disabled'}`)
       })

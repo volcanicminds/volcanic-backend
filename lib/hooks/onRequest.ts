@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getParams, getData, getQueryData, getBodyData } from '../util/common.js'
 import { httpError } from '../util/httpError.js'
-import type { AuthenticatedUser, AuthenticatedToken, Role, TransferManagement } from '../../types/global.js'
+import type { FastifyContextConfig, FastifyReply, FastifyRequest } from 'fastify'
+import type { AuthenticatedUser, AuthenticatedToken, ControlHandle, Role, TransferManagement } from '../../types/global.js'
+
+/** The claims this framework signs, as opposed to whatever else may verify with the same secret. */
+type SessionClaims = { sub?: string; tid?: string; scp?: string; imp?: string; role?: string; typ?: string }
 import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
 import { credentialOf, isCookieMode, REFRESH_TYP } from '../util/credential.js'
 
@@ -35,7 +39,7 @@ const normalizeRoles = (rolesArray: any[] | undefined): string[] => {
   return [roles.public.code]
 }
 
-export default async (req, reply) => {
+export default async (req: FastifyRequest, reply: FastifyReply) => {
   if (log.i) req.startedAt = new Date()
 
   req.data = () => getData(req)
@@ -68,7 +72,9 @@ export default async (req, reply) => {
     req.roles = () => [roles.public.code]
     req.hasRole = (r: Role) => req.roles().includes(r?.code)
 
-    const cfg = req.routeOptions?.config || req.routeConfig || {}
+    // `req.routeConfig` was the v4 spelling and does not exist in Fastify v5: the fallback could
+    // never fire, and the router always sets `routeOptions.config` on the routes it registers.
+    const cfg = req.routeOptions?.config ?? {}
 
     // Whose identity this route answers to (T-4.1).
     //
@@ -88,7 +94,10 @@ export default async (req, reply) => {
 
     if (credential) {
       try {
-        const tokenData = reply.server.jwt.verify(credential.token)
+        // The claims this framework signs (lib/util/credential.ts). `jwt.verify` answers a
+        // `VerifyPayloadType`, which is a string or an unknown object: reading `scp` or `imp` off
+        // it compiled only because the hook's own parameters were untyped.
+        const tokenData = reply.server.jwt.verify(credential.token) as SessionClaims
 
         // A refresh token never authenticates a request. It is signed with the access secret
         // whenever `JWT_REFRESH_SECRET` is unset, so the signature alone cannot tell them apart.
@@ -124,7 +133,7 @@ export default async (req, reply) => {
 
         // MFA Gatekeeper Check
         if (tokenData.role === 'pre-auth-mfa') {
-          const currentUrl = req.routeOptions.url || req.raw.url
+          const currentUrl = req.routeOptions.url || req.raw.url || ''
           const isAllowed = MFA_SETUP_WHITELIST.some((url) => currentUrl.endsWith(url))
 
           if (!isAllowed) {
@@ -154,7 +163,7 @@ export default async (req, reply) => {
           // The lookup costs one control-plane read per impersonated request. That is the
           // price of a session that can actually be stopped, and impersonated traffic is
           // rare by construction.
-          const session = await im.getImpersonation(req.control, tokenData.imp)
+          const session = await im.getImpersonation(req.control as ControlHandle, tokenData.imp)
           if (!session) {
             if (log.w) log.warn(`Impersonation ${tokenData.imp} is revoked or expired: refusing ${req.method} ${req.url}`)
             return reply.status(403).send(httpError(403, 'This impersonation session is over', 'IMPERSONATION_ENDED'))
@@ -177,7 +186,7 @@ export default async (req, reply) => {
             return reply.status(503).send(httpError(503, 'Platform identities are not available in this build', 'SYSTEM_USERS_NOT_AVAILABLE'))
           }
 
-          const systemUser = await sm.retrieveSystemUserByExternalId(req.control, subjectId)
+          const systemUser = await sm.retrieveSystemUserByExternalId(req.control as ControlHandle, subjectId)
           if (!systemUser) {
             return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
           }
@@ -252,10 +261,9 @@ export default async (req, reply) => {
  * subject from a different plane, but the question asked of it, "do your roles intersect
  * what this route requires", must not be a second implementation that can drift.
  */
-function finishRoleGate(req, reply, cfg) {
-  if (!(cfg.requiredRoles?.length > 0)) return
-
-  const { method = '', url = '', requiredRoles } = cfg
+function finishRoleGate(req: FastifyRequest, reply: FastifyReply, cfg: FastifyContextConfig) {
+  const { method = '', url = '', requiredRoles = [] } = cfg
+  if (requiredRoles.length === 0) return
   const authorizedRoles: string[] = req.roles()
   // A route open to `public` is open to EVERY caller: anonymous requests already pass (they
   // carry the `public` role), and an authenticated subject must never rank below anonymous.
@@ -264,8 +272,8 @@ function finishRoleGate(req, reply, cfg) {
   // A control route never carries `public`, so this branch simply never fires there.
   // `public` is plane-neutral: it is not a tenant identity, it is the absence of one, so a
   // control route uses the same code for "answer before anyone is authenticated".
-  const isPublicRoute = requiredRoles.some((r) => r.code === roles.public.code)
-  const hasPermission = isPublicRoute || requiredRoles.some((r) => authorizedRoles.includes(r.code))
+  const isPublicRoute = requiredRoles.some((r: Role) => r.code === roles.public.code)
+  const hasPermission = isPublicRoute || requiredRoles.some((r: Role) => authorizedRoles.includes(r.code))
 
   if (!hasPermission) {
     // 401 when there is no authenticated subject (must log in first); 403 when authenticated

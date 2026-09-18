@@ -39,7 +39,7 @@ export async function apply(server: any): Promise<void> {
         if (allHooks[hookName] == null) {
           allHooks[hookName] = [] as Function[]
         }
-        allHooks[hookName].push((...args) => fn(...args))
+        allHooks[hookName].push((...args: unknown[]) => fn(...args))
       }
     }
   }

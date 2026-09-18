@@ -14,7 +14,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true,
-    "noImplicitAny": false,
+    // On since F7 was closed: the 169 errors it used to produce were mostly one missing
+    // declaration (the injected managers were reached through an untyped index), and what
+    // remained was real. Leaving it off is what let four dead call sites compile.
+    "noImplicitAny": true,
     "strictPropertyInitialization": false,
     "useUnknownInCatchVariables": false,
     "noUnusedLocals": true,

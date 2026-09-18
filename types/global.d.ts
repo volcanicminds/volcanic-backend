@@ -880,6 +880,52 @@ declare module 'fastify' {
   export interface FastifyReply {
     payloadSize?: number
   }
+  /**
+   * What the ROUTER writes onto a route's config, which is not what an author writes in the route
+   * file: `scope: 'control'` becomes `tenantContext: false` (lib/loader/router.ts), and the roles
+   * a route requires are threaded as objects rather than codes.
+   *
+   * The hooks read these on every request and read them off an untyped object until now, so a
+   * renamed field would have been found by a failing request and not by the compiler (F7).
+   */
+  export interface FastifyContextConfig {
+    tenantContext?: boolean
+    requiredRoles?: Role[]
+    /** The route's own method and path, threaded by the router so a refusal can name them. */
+    method?: string
+    url?: string
+    scope?: 'tenant' | 'control'
+    tracking?: { strict?: boolean }
+    cache?: NormalizedRouteCache
+  }
+  /**
+   * The managers a consumer injects through `start(decorators)`, declared where Fastify can see
+   * them (F7, the `noImplicitAny` work).
+   *
+   * They were reached as `req.server['userManager']` and typed as nothing: a string index on an
+   * instance that declares no such property, which is an implicit `any` in the one place where a
+   * wrong call is most expensive. Declaring them here types every call site at once, without
+   * touching a single one of them, and turns a contract that lived in `index.ts` and in the
+   * documentation into something the compiler checks.
+   *
+   * None of them is optional, and that is the honest shape: `start()` decorates every one before
+   * the server accepts a request, with the no-op defaults where a consumer injected nothing. A
+   * build without a data layer therefore has all ten; what it does not have is an implementation,
+   * and asking one of those is an error that says so. Declaring them optional would put a
+   * `possibly undefined` on hundreds of call sites to describe a state that never happens.
+   */
+  export interface FastifyInstance {
+    userManager: UserManagement
+    tokenManager: TokenManagement
+    trackingManager: TrackingManagement
+    tenantManager: TenantManagement
+    systemUserManager: SystemUserManagement
+    impersonationManager: ImpersonationManagement
+    destructionManager: DestructionManagement
+    sessionManager: SessionManagement
+    mfaManager: MfaManagement
+    transferManager: TransferManagement
+  }
 }
 
 export interface FastifyRequest extends FastifyRequest {
@@ -922,6 +968,13 @@ declare global {
   var roles: Roles
   /** The control-scope catalogue. Separate map, separate namespace (T-4.1). */
   var systemRoles: SystemRoles
+  /**
+   * The i18n instance loaded at boot (`lib/loader/translation.ts`).
+   *
+   * It was used as `global.t` in several places and declared nowhere, so every one of those was
+   * an implicit any on a global (F7).
+   */
+  var t: any
   var tracking: TrackChangesList
   var trackingConfig: Data
   // `connection`, `entity` and `repository` were the v4 ambient globals of the data layer.

@@ -9,7 +9,9 @@
 // v5 releases in ONE place, `lib/loader/tenant.ts`, and keeps no session
 // state to undo anyway (T-3.1). Logging a response is this file's whole job.
 //
-export default async (req, reply) => {
+import type { FastifyReply, FastifyRequest } from 'fastify'
+
+export default async (req: FastifyRequest, reply: FastifyReply) => {
   let extraMessage = ''
   if (log.i && req.startedAt) {
     const elapsed: number = new Date().getTime() - req.startedAt.getTime()
@@ -17,7 +19,7 @@ export default async (req, reply) => {
   }
   if (log.t) {
     const reqSize = `req ${req.payloadSize || 0}`
-    const replySize = reply.payloadSize > 0 ? ` res ${reply.payloadSize}` : ''
+    const replySize = (reply.payloadSize ?? 0) > 0 ? ` res ${reply.payloadSize}` : ''
     extraMessage += `[${reqSize}${replySize} bytes]`
   }
 

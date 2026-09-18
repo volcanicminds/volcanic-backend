@@ -337,7 +337,7 @@ const start = async (decorators = {}) => {
   // Register decorators on Server instance (Dependency Injection)
   await Promise.all(
     Object.keys(decorators || {}).map(async (key) => {
-      await server.decorate(key, decorators[key])
+      await server.decorate(key, (decorators as Record<string, unknown>)[key])
     })
   )
 
@@ -420,11 +420,25 @@ const start = async (decorators = {}) => {
       } else {
         if (log.w) log.warn(`Startup: executing FORCE MFA RESET for admin ${resetEmail}`)
         try {
-          if (server['userManager'] && server['userManager'].isImplemented()) {
-            await server['userManager'].forceDisableMfaForAdmin(resetEmail)
-            if (log.w) log.warn(`Startup: MFA RESET SUCCESSFUL for ${resetEmail}`)
+          // `forceDisableMfaForAdmin(email)` was called here and exists on no manager: the
+          // break-glass path threw on every boot that used it and reported a generic failure, so
+          // it had never worked (found by typing the injected managers, F7). What the contract
+          // has is `forceDisableMfa(ctx, userId)`, which needs a container and an id, resolved
+          // the way the genesis resolves them (lib/loader/genesis.ts): the control plane, which
+          // is where the platform's own administrator lives.
+          const provider = (server as unknown as Record<string, { control(): Promise<unknown> } | undefined>)['provider']
+          const users = server['userManager']
+          if (!provider || !users?.isImplemented?.()) {
+            if (log.e) log.error('Startup: no data layer is loaded, cannot reset MFA')
           } else {
-            if (log.e) log.error('Startup: userManager not found or not implemented, cannot reset MFA')
+            const ctx = (await provider.control()) as never
+            const target = await users.retrieveUserByEmail(ctx, resetEmail)
+            if (!target?.id) {
+              if (log.e) log.error(`Startup: MFA RESET FAILED, no user with address ${resetEmail}`)
+            } else {
+              await users.forceDisableMfa(ctx, target.id)
+              if (log.w) log.warn(`Startup: MFA RESET SUCCESSFUL for ${resetEmail}`)
+            }
           }
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e)

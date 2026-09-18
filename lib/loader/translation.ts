@@ -23,14 +23,14 @@ export function load(): any {
     // mustacheConfig: { disable: false },
     // directory: './src/locales',
 
-    logDebugFn: (msg) => log.trace(msg),
-    logWarnFn: (msg) => log.warn(msg),
-    logErrorFn: (msg) => log.error(msg)
+    logDebugFn: (msg: string) => log.trace(msg),
+    logWarnFn: (msg: string) => log.warn(msg),
+    logErrorFn: (msg: string) => log.error(msg)
   })
 
   const basePath = path.join(__dirname, '..', 'locales', '*.json').replaceAll('\\', '/')
 
-  const languages = {}
+  const languages: Record<string, boolean> = {}
   globSync(basePath, { windowsPathsNoEscape: true }).forEach((f: string) => {
     if (log.d) log.debug('* Loading base dictionary %s', path.parse(f).base)
     try {
@@ -56,13 +56,18 @@ export function load(): any {
   })
 
   if (log.i) log.info('Loaded languages: %s', Object.keys(languages).join(', '))
-  i18n.setLocale(i18n.defaultLocale || 'en')
+  // `defaultLocale` is a configured option the instance carries at runtime and the published
+  // types do not describe, so the read is narrowed here instead of being an implicit any.
+  i18n.setLocale((i18n as unknown as { defaultLocale?: string }).defaultLocale || 'en')
   return i18n
 }
 
-function addLocaleFile(i18n, locale, content) {
+function addLocaleFile(i18n: I18n, locale: string, content: Record<string, unknown>) {
   let catalog = i18n && i18n.getCatalog()
   if (catalog && locale && content) {
-    catalog[locale] = catalog[locale] ? { ...catalog[locale], ...content } : content
+    // The catalogue holds nested dictionaries (`objectNotation`), which the published type
+    // describes as its own shape: the merge is the same object either way, so the assignment is
+    // narrowed here rather than loosening the dictionaries everywhere they are read.
+    catalog[locale] = (catalog[locale] ? { ...catalog[locale], ...content } : content) as (typeof catalog)[string]
   }
 }

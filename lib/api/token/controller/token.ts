@@ -18,7 +18,10 @@ export async function count(req: FastifyRequest, _reply: FastifyReply) {
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
   const { headers, records } = await req.server['tokenManager'].findQuery(dataContext(req), req.data())
-  return reply.type('application/json').headers(headers).send(records)
+  // `VHeaders` is a closed shape (`v-count`, `v-total`, …) and Fastify wants a header record, so
+  // the conversion happens here, at the boundary, instead of loosening the type the data layer
+  // returns.
+  return reply.type('application/json').headers({ ...headers }).send(records)
 }
 
 export async function findOne(req: FastifyRequest, reply: FastifyReply) {
@@ -37,7 +40,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
 
   // public is the default
   const publicRole = global.roles?.public?.code || 'public'
-  data.roles = (data.requiredRoles || []).map((r) => global.roles[r]?.code).filter((r) => !!r)
+  data.roles = (data.requiredRoles || []).map((r: string) => global.roles[r]?.code).filter((r?: string) => !!r)
   if (!data.roles.includes(publicRole)) {
     data.roles.push(publicRole)
   }

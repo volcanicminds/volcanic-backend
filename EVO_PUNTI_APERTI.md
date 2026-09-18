@@ -164,12 +164,34 @@ dichiarati e reversibili.
 | F4 | il manifest resta **uguale per tutti** i chiamanti; la documentazione ora lo dice | filtrarlo per ruolo renderebbe il manifest pinnato dell'admin dipendente da chi lo scarica; resta aperto se il costo vale la riduzione di superficie |
 | F5 | le chiavi di configurazione storiche restano in snake_case (`mfa_policy`, `allow_multiple_admin`, `export_directory`, …); i blocchi introdotti in v5 sono camelCase (`control`, `tenants`, `manifest`, `cache`); **nessuna rinomina in 5.0** | rinominare una chiave esistente rompe in silenzio ogni consumer che la imposta (la chiave vecchia diventa ignorata, non un errore); la regola per le chiavi nuove è camelCase, e la convivenza è scritta qui invece di essere scoperta |
 | F6 | `tenants.engine` resta senza variabile d'ambiente | `CONTROL_ENGINE` esiste perché il control plane cambia fra ambienti; il motore dei tenant è una scelta di architettura, non di deployment. Da rivedere se un progetto reale lo chiede |
-| F7 | `noImplicitAny` resta spento: attivarlo produce 167 errori nel codice e 166 nei test (misurati l'11 settembre 2026) | si affronta per file quando il file si tocca, come i warning `no-explicit-any` |
+| F7 | ~~`noImplicitAny` resta spento~~ **acceso il 18 settembre 2026**, `tsconfig.json`, con codice e test a zero errori | i 169 errori erano per due terzi **una dichiarazione mancante**: i manager iniettati si raggiungevano come `req.server['userManager']`, cioè un indice su un tipo che non li dichiara. Dichiarati su `FastifyInstance` (e la configurazione di rotta su `FastifyContextConfig`), ne restavano 55, tutti parametri e indici da annotare. Il resto del lavoro lo ha pagato subito: quattro chiamate che il compilatore non poteva vedere erano **morte o sbagliate** (vedi sotto) |
 | F8 | in modalità cookie l'header `Authorization` accetta **solo token di integrazione**; la regola «una fonte per configurazione» diventa «una fonte per tipo di credenziale» (T-10.37) | accendere il cookie spegneva ogni integrazione; accettare anche le sessioni nell'header non aggiunge nulla, perché in modalità cookie nessuna sessione esce mai nel corpo |
 | F9 | quando una richiesta porta sia l'header sia il cookie, vale l'header | l'header è la credenziale esplicita di un programma, il cookie quella ambientale di un browser; rifiutare entrambi romperebbe lo Swagger usato da un browser già loggato |
 | F10 | una coppia di cookie **per piano** (`auth_token`/`refresh_token`, `control_token`/`control_refresh_token`) | con un cookie solo, aprire un'impersonificazione cancellava la sessione di controllo, cioè l'unica che può chiuderla |
 | F11 | in modalità cookie il rinnovo usa **solo** il refresh token, senza il vincolo dei 30 giorni sull'access token del rinnovo bearer; niente rotazione del refresh token | il cookie di accesso muore con il suo token (T-10.38), quindi al rinnovo non c'è più; la sessione dura al massimo `JWT_REFRESH_EXPIRES_IN` e `/auth/invalidate-tokens` la chiude. Rotazione e rilevamento del riuso **sono chiusi dalla fase 11** (`EVO_FASE_11.md`), che sostituisce il refresh JWT con un credenziale opaco e un registro delle sessioni |
 | F12 | i refresh token emessi prima di `typ: 'refresh'` non rinnovano più | accettarli significherebbe accettare un access token come refresh ogni volta che i due segreti coincidono; il costo è un login per utente dopo l'aggiornamento |
+
+### Che cosa ha trovato `noImplicitAny` (18 settembre 2026)
+
+Cinque difetti che compilavano solo perché il manager iniettato si raggiungeva senza tipo. Non
+sono stati cercati: sono caduti fuori appena la dichiarazione è esistita.
+
+1. **Il reset MFA di emergenza non ha mai funzionato.** `index.ts` chiamava
+   `forceDisableMfaForAdmin(email)`, metodo che non esiste su nessun manager: la chiamata lanciava,
+   il `try` lo trasformava in un «MFA RESET FAILED» generico, e la via di fuga documentata era
+   morta. Ora cerca l'utente per indirizzo nel piano di controllo e chiama `forceDisableMfa`.
+2. **`/auth/unregister` rispondeva sempre 500.** Chiamava `disableUserById`, anch'esso inesistente.
+   Ora blocca l'utente con `blockUserById`, che è l'operazione che il contratto ha e che la rotta
+   intende in un framework che non cancella gli account.
+3. **Il token di reset password non arrivava a nessuno.** `forgotPassword` restituisce il token,
+   non la riga, e il codice leggeva `updated?.resetPasswordToken`: cioè una proprietà di una
+   stringa, sempre `undefined`. Il middleware che deve recapitare il link riceveva il vuoto.
+4. **Il secondo fattore accettava qualunque codice, con un gestore asincrono.** Tre chiamate a
+   `mfaManager.verify()` non erano attese: una Promise non è né un numero né `null`, quindi cadeva
+   nel ramo «gestore vecchio, valido senza passo». Con il gestore sincrono dei tools non si vedeva.
+5. **Il codice del ruolo pubblico non veniva mai letto.** `global.role?.public?.code` usa un
+   globale che non esiste (`role` invece di `roles`): valeva sempre `undefined` e vinceva la
+   stringa di ripiego.
 
 ### Blocco C, decisioni del 15 settembre 2026
 

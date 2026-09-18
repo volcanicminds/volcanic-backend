@@ -25,7 +25,9 @@ export async function count(req: FastifyRequest, _reply: FastifyReply) {
 
 export async function find(req: FastifyRequest, reply: FastifyReply) {
   const { headers, records } = await req.server['userManager'].findQuery(dataContext(req), req.data())
-  return reply.type('application/json').headers(headers).send(records)
+  // As in the token controller: the closed `VHeaders` shape becomes a header record here, at the
+  // boundary, rather than being typed loosely where it is produced.
+  return reply.type('application/json').headers({ ...headers }).send(records)
 }
 
 export async function findOne(req: FastifyRequest, reply: FastifyReply) {

@@ -111,8 +111,8 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   const publicRole = global.roles?.public?.code || 'public'
   const adminRole = global.roles?.admin?.code || 'admin'
   data.roles = (data.requiredRoles || [])
-    .map((r) => global.roles[r]?.code)
-    .filter((r) => !!r && r !== adminRole)
+    .map((r: string) => global.roles[r]?.code)
+    .filter((r?: string) => !!r && r !== adminRole)
   if (!data.roles.includes(publicRole)) {
     data.roles.push(publicRole)
   }
@@ -154,8 +154,8 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
 export async function unregister(req: FastifyRequest, reply: FastifyReply) {
   const { email, password } = req.data()
 
-  let user = await req.server['userManager'].retrieveUserByPassword(dataContext(req), email, password)
-  let isValid = await req.server['userManager'].isValidUser(user)
+  const user = await req.server['userManager'].retrieveUserByPassword(dataContext(req), email, password)
+  const isValid = await req.server['userManager'].isValidUser(user)
 
   if (!isValid) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
@@ -165,10 +165,13 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
-  user = await req.server['userManager'].disableUserById(dataContext(req), user.id)
-  isValid = await req.server['userManager'].isValidUser(user)
-
-  if (!isValid) {
+  // `disableUserById` never existed on any manager, so this route threw on every call and the
+  // error handler turned it into a 500: unregistering has never worked (found by typing the
+  // injected managers, F7). Blocking is the operation the contract actually has, and it is what
+  // this route means in a framework that does not delete accounts: the credentials stop working
+  // and an administrator can undo it.
+  const blocked = await req.server['userManager'].blockUserById(dataContext(req), user.id, 'unregistered by the user')
+  if (!blocked) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not valid' })
   }
 
@@ -259,7 +262,11 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
     // The token never reaches the response — it is handed to the
     // `global.postForgotPassword` middleware, which the consumer implements to
     // deliver it (the core has no mailer and cannot know the frontend URL).
-    req.resetToken = updated?.resetPasswordToken
+    // `forgotPassword` answers with the token itself, not with the row. Reading `.resetPasswordToken`
+    // off a string yielded `undefined` every single time, so the middleware that is supposed to
+    // deliver the reset link received nothing and the whole flow was silently dead (F7: the manager
+    // was reached through an untyped index, so nothing said so).
+    req.resetToken = updated ?? undefined
   }
 
   return { ok: true }
@@ -413,7 +420,10 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
 
   return {
     ...user,
-    roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
+    // `global.role` (singular) is not a global this framework declares: the expression was always
+    // undefined and the string fallback always won, so the configured public role code was never
+    // read. The catalogue is `global.roles` (F7 surfaced it).
+    roles: (user.roles || [global.roles?.public?.code || 'public']).map((r: any) => r?.code || r),
     token,
     refreshToken,
     securityPolicy: {
@@ -599,7 +609,11 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
 
   try {
     // 1. Verify using mfaManager (tools)
-    const { valid, counter } = evaluateMfaResult(req.server['mfaManager'].verify(token, secret))
+    // Awaited: the contract allows a manager whose `verify` is async, and an unawaited Promise is
+    // neither a number nor null, so it fell through to the legacy "valid, no step" branch. With an
+    // async manager this route accepted any code at all. The types said nothing while the manager
+    // was reached through an untyped index (F7).
+    const { valid, counter } = evaluateMfaResult(await req.server['mfaManager'].verify(token, secret))
     if (!valid) {
       return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Invalid token' })
     }
@@ -627,7 +641,10 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     return {
       ...user,
       mfaEnabled: true,
-      roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
+      // `global.role` (singular) is not a global this framework declares: the expression was always
+    // undefined and the string fallback always won, so the configured public role code was never
+    // read. The catalogue is `global.roles` (F7 surfaced it).
+    roles: (user.roles || [global.roles?.public?.code || 'public']).map((r: any) => r?.code || r),
       token: finalToken,
       refreshToken: refreshToken,
       securityPolicy: {
@@ -672,8 +689,10 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
   const secret = await req.server['userManager'].retrieveMfaSecret(dataContext(req), user.id)
   if (!secret) return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA not configured for user' })
 
-  // 2. Verify via mfaManager
-  const { valid, counter } = evaluateMfaResult(req.server['mfaManager'].verify(token, secret))
+  // 2. Verify via mfaManager. Awaited, for the reason written at the other call site: an
+  // unawaited Promise is neither a number nor null, and the legacy branch would have called it
+  // valid. The different indentation is why this one survived the first pass.
+  const { valid, counter } = evaluateMfaResult(await req.server['mfaManager'].verify(token, secret))
   if (!valid) return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid MFA token' })
 
   // 3. Anti-replay: reject a code whose time-step was already consumed (same or earlier than the last).
@@ -698,7 +717,10 @@ export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
 
   return {
     ...user,
-    roles: (user.roles || [global.role?.public?.code || 'public']).map((r) => r?.code || r),
+    // `global.role` (singular) is not a global this framework declares: the expression was always
+    // undefined and the string fallback always won, so the configured public role code was never
+    // read. The catalogue is `global.roles` (F7 surfaced it).
+    roles: (user.roles || [global.roles?.public?.code || 'public']).map((r: any) => r?.code || r),
     token: finalToken,
     refreshToken: refreshToken,
     securityPolicy: {

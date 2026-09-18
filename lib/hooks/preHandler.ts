@@ -1,3 +1,4 @@
+import type { FastifyReply, FastifyRequest } from 'fastify'
 import * as tracking from '../util/tracker.js'
 
 //
@@ -6,6 +7,6 @@ import * as tracking from '../util/tracker.js'
 // overwrite the row while the read was still in flight, and the diff would compare the new
 // value with itself (T-3.5).
 //
-export default async (req, reply) => {
+export default async (req: FastifyRequest, reply: FastifyReply) => {
   await tracking.initialize(req, reply)
 }

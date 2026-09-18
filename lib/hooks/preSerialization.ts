@@ -1,3 +1,4 @@
+import type { FastifyReply, FastifyRequest } from 'fastify'
 import sizeof from 'object-sizeof'
 import * as tracking from '../util/tracker.js'
 
@@ -7,7 +8,7 @@ import * as tracking from '../util/tracker.js'
 // way. Awaiting here is what makes strict mode possible at all (T-3.5): a throw becomes the
 // 500 the caller deserves instead of a log line nobody reads.
 //
-export default async (req, reply, payload) => {
+export default async (req: FastifyRequest, reply: FastifyReply, payload: unknown) => {
   if (log.t) {
     req.payloadSize = sizeof(req.body) + sizeof(req.params) + sizeof(req.query)
     reply.payloadSize = sizeof(payload)

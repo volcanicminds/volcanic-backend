@@ -167,9 +167,11 @@ export function isStrict(req: FastifyRequest): boolean {
   return true
 }
 
-function getTrackingConfigIfEnabled(req) {
+function getTrackingConfigIfEnabled(req: FastifyRequest) {
   try {
-    const code = `${req.method?.toUpperCase()}::${req.routeOptions?.config?.url || req.routeConfig?.url || req.url}`
+    // `req.routeConfig` was the v4 spelling and does not exist in Fastify v5, so that fallback
+    // could never fire: the router writes the route's url into `routeOptions.config`.
+    const code = `${req.method?.toUpperCase()}::${req.routeOptions?.config?.url || req.url}`
     return code in global.tracking && global.tracking[code].enable ? { code, ...global.tracking[code] } : null
   } catch (error) {
     if (log.e) log.error(error)
@@ -177,9 +179,11 @@ function getTrackingConfigIfEnabled(req) {
   }
 }
 
-export function isFieldChanged(oldValue, newValue) {
+export function isFieldChanged(oldValue: unknown, newValue: unknown) {
   if ((oldValue instanceof Date || newValue instanceof Date) && oldValue != null && newValue != undefined) {
-    return !dayjs(oldValue).isSame(dayjs(newValue))
+    // One of the two is a Date and the other is whatever the row held: dayjs accepts both shapes
+    // at runtime, and the narrowing says so instead of leaving the parameters untyped.
+    return !dayjs(oldValue as Date).isSame(dayjs(newValue as Date))
   }
 
   if ((oldValue instanceof Object || newValue instanceof Object) && oldValue != null && newValue != undefined) {
@@ -188,13 +192,13 @@ export function isFieldChanged(oldValue, newValue) {
     // on a string primitive, so reach the string fallback instead of crashing.
     const oldId =
       oldValue != null && typeof oldValue === 'object' && primaryKey in oldValue
-        ? oldValue[primaryKey]
+        ? (oldValue as Record<string, unknown>)[primaryKey]
         : typeof oldValue === 'string'
           ? oldValue
           : undefined
     const newId =
       newValue != null && typeof newValue === 'object' && primaryKey in newValue
-        ? newValue[primaryKey]
+        ? (newValue as Record<string, unknown>)[primaryKey]
         : typeof newValue === 'string'
           ? newValue
           : undefined

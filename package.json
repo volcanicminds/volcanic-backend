@@ -152,6 +152,8 @@
     "@libsql/client": "^0.18.0",
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^9.6.0",
+    "@types/i18n": "^0.13.12",
+    "@types/lodash": "^4.17.25",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.10.4",
     "@types/pg": "^8.11.10",

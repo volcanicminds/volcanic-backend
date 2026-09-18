@@ -6,7 +6,19 @@ export class TranslatedError extends Error {
   translatedMessage: string
   data: any
 
-  constructor({ translationCode, data = {}, locale = 'en', defaultMessage = null, status = 400 }) {
+  constructor({
+    translationCode,
+    data = {},
+    locale = 'en',
+    defaultMessage = null,
+    status = 400
+  }: {
+    translationCode: string
+    data?: any
+    locale?: string
+    defaultMessage?: string | null
+    status?: number
+  }) {
     super()
     this.name = this.constructor?.name || 'TranslatedError'
     this.locale = locale
