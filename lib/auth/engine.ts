@@ -13,6 +13,7 @@ import type {
   Authenticator,
   AuthenticatorRegistry,
   DataHandle,
+  FlowChallenges,
   StageDescriptor,
   StageOption,
   Tenant
@@ -72,6 +73,8 @@ export const REFUSALS = {
   FLOW_EXPIRED: { status: 401, code: 'FLOW_EXPIRED', message: 'The authentication flow has expired' },
   FLOW_METHOD_NOT_ALLOWED: { status: 403, code: 'FLOW_METHOD_NOT_ALLOWED', message: 'That method is not offered here' },
   FLOW_CODE_INVALID: { status: 401, code: 'FLOW_CODE_INVALID', message: 'The code is not valid' },
+  FLOW_CODE_EXPIRED: { status: 401, code: 'FLOW_CODE_EXPIRED', message: 'The code has expired or was already used: ask for a new one' },
+  FLOW_SEND_LIMIT: { status: 429, code: 'FLOW_SEND_LIMIT', message: 'No more codes can be sent for now' },
   FLOW_ATTEMPTS_EXHAUSTED: { status: 401, code: 'FLOW_ATTEMPTS_EXHAUSTED', message: 'Too many attempts: start again' },
   FLOW_ENROLMENT_REFUSED: { status: 403, code: 'FLOW_ENROLMENT_REFUSED', message: 'No second factor can be enrolled here' },
   AUTH_FLOW_NOT_AVAILABLE: { status: 503, code: 'AUTH_FLOW_NOT_AVAILABLE', message: 'This build keeps no authentication flows' },
@@ -84,14 +87,15 @@ type Known = keyof typeof REFUSALS
 export type FlowOutcome =
   | { kind: 'complete'; body: Record<string, unknown> }
   | { kind: 'partial'; credential: FlowCredential; expiresAt: Date; stage: StageDescriptor }
-  | { kind: 'refused'; refusal: Refusal; endsFlow: boolean; remaining?: number }
+  | { kind: 'refused'; refusal: Refusal; endsFlow: boolean; remaining?: number; retryAt?: Date | null }
   | { kind: 'returned'; ok: boolean }
 
-const refuse = (code: string, endsFlow = false, remaining?: number): FlowOutcome => ({
+const refuse = (code: string, endsFlow = false, remaining?: number, retryAt?: Date | string | null): FlowOutcome => ({
   kind: 'refused',
   refusal: REFUSALS[code as Known] ?? { status: 401, code, message: 'Authentication refused' },
   endsFlow,
-  ...(remaining !== undefined ? { remaining } : {})
+  ...(remaining !== undefined ? { remaining } : {}),
+  ...(retryAt ? { retryAt: asDate(retryAt) } : {})
 })
 
 /** Where a flow stands between two requests: who, which flow of the configuration, what is proven. */
@@ -117,14 +121,30 @@ const asDate = (value: Date | string) => (value instanceof Date ? value : new Da
 const storeOf = <R>(p: FlowPlane<R>) => p.managers.authFlowManager
 const storeAvailable = <R>(p: FlowPlane<R>) => storeOf(p)?.isImplemented?.() === true
 
-const context = <R>(p: FlowPlane<R>, subject: AuthSubject | null, flow: AuthFlow | null): AuthContext => ({
+/**
+ * The code operations of one flow, bound to the secret of the credential that reached it. The
+ * authenticator gets the operations and not the secret: the secret keys the HMAC of every code, and
+ * a method written by a consumer has no reason to hold it.
+ */
+function challengesOf<R>(p: FlowPlane<R>, flow: AuthFlow, secret: string): FlowChallenges {
+  const store = storeOf(p)
+  return {
+    record: (data) => store.recordChallenge(p.handle, flow.flowId, { secret, ...data }),
+    consume: (code) => store.consumeChallenge(p.handle, flow.flowId, { secret, code, maxAttempts: p.limits.otpMaxAttempts }),
+    nominate: async (subjectId) => Boolean(await store.advance(p.handle, flow.flowId, flow.version, { candidateSubjectId: subjectId }))
+  }
+}
+
+const context = <R>(p: FlowPlane<R>, subject: AuthSubject | null, flow: AuthFlow | null, secret?: string): AuthContext => ({
   plane: p.plane,
   handle: p.handle,
   tenant: p.tenant,
   subject,
   policy: p.policy,
   managers: p.managers,
-  flow
+  flow,
+  limits: p.limits,
+  challenges: flow && secret && storeAvailable(p) ? challengesOf(p, flow, secret) : null
 })
 
 /** An identifier of this plane that `identify` lists. */
@@ -144,6 +164,11 @@ async function enrolledIn(authenticator: Authenticator | undefined, ctx: AuthCon
 }
 
 const met = (stage: PlannedStage, satisfied: readonly string[]) => stage.anyOf.some((id) => satisfied.includes(id))
+
+/** Every method a plane's configuration names, as an identifier or in a stage. */
+function namedMethods(flows: AuthPlaneFlows): Set<string> {
+  return new Set([...flows.identify, ...flows.flows.flatMap((flow) => flow.stages.flatMap((stage) => stage.anyOf))])
+}
 
 /**
  * The stages this subject owes, recomputed at every step from the configuration and the policy of
@@ -171,9 +196,14 @@ async function planStages<R>(p: FlowPlane<R>, s: Progress<R>): Promise<PlannedSt
   if (demandsEnrolment(p.policy)) {
     const secondFactor = s.satisfied.some((id) => id !== s.identifiedBy) || stages.some((stage) => !met(stage, s.satisfied))
     if (!secondFactor) {
+      // The floor offers the factors this plane's configuration names, and TOTP, the one it can
+      // enrol. Not every registered verifier: a built-in the deployment never listed may have no
+      // port behind it (`email-otp` without a delivery), and the boot only checks what is listed.
+      const named = namedMethods(p.flows)
       const factors: string[] = []
       for (const authenticator of p.registry.list(p.plane)) {
         if (authenticator.id === s.identifiedBy || !authenticator.isEnrolled || !kindsOf(authenticator).includes('verifier')) continue
+        if (authenticator.id !== ENROLMENT_METHOD && !named.has(authenticator.id)) continue
         if (await authenticator.isEnrolled(ctx, s.subject)) factors.push(authenticator.id)
       }
       stages.push(factors.length ? { anyOf: factors, enrolment: false } : { anyOf: [ENROLMENT_METHOD], enrolment: true })
@@ -414,8 +444,34 @@ export async function start<R>(p: FlowPlane<R>, method: unknown, input: AuthInpu
   if (!storeAvailable(p)) return refuse('AUTH_FLOW_NOT_AVAILABLE')
   const opened = await openFlow(p, null, null)
   await p.record({ event: 'flow.started', outcome: 'success', methods: [id], flowId: opened.flow.flowId })
-  const result = await authenticator.initiate(context(p, null, opened.flow), input)
-  return await identified(p, id, result, opened)
+  const result = await authenticator.initiate(context(p, null, opened.flow, opened.credential.secret), input)
+  return await unproven(p, id, result, opened, 'challenge.refused')
+}
+
+/**
+ * The answer of an identifier on a flow whose subject is not proven yet. A recoverable failure (a
+ * wrong code with attempts left, an expired code, a send over a ceiling) leaves the flow alive; a
+ * spent flow ends as exhausted; anything else goes to `identified`, which ends the flow on a failure.
+ */
+async function unproven<R>(
+  p: FlowPlane<R>,
+  method: string,
+  result: AuthResult,
+  located: Located,
+  failure: 'stage.failed' | 'challenge.refused'
+): Promise<FlowOutcome> {
+  const { flow } = located
+  if (result.outcome === 'challenge') {
+    await p.record({ event: 'challenge.sent', outcome: 'success', subjectId: null, methods: [method], flowId: flow.flowId })
+  }
+  if (result.outcome !== 'fail') return await identified(p, method, result, located)
+  if (result.reason === 'FLOW_ATTEMPTS_EXHAUSTED') {
+    await end(p, flow, { event: 'flow.exhausted', outcome: 'failure', code: result.reason, subjectId: flow.candidateSubjectId, methods: [method] })
+    return refuse(result.reason, true)
+  }
+  if (!result.recoverable) return await identified(p, method, result, located)
+  await p.record({ event: failure, outcome: 'failure', code: result.reason, subjectId: null, methods: [method], flowId: flow.flowId })
+  return refuse(result.reason, false, result.remaining, result.retryAt)
 }
 
 export async function step<R>(p: FlowPlane<R>, presented: string | undefined, method: unknown, input: AuthInput, action?: unknown): Promise<FlowOutcome> {
@@ -425,7 +481,8 @@ export async function step<R>(p: FlowPlane<R>, presented: string | undefined, me
   if (!located.flow.subjectId) {
     const authenticator = identifierOf(p, method)
     if (!authenticator) return refuse('FLOW_METHOD_NOT_ALLOWED')
-    return await identified(p, authenticator.id, await authenticator.verify(context(p, null, located.flow), input), located)
+    const result = await authenticator.verify(context(p, null, located.flow, located.credential.secret), input)
+    return await unproven(p, authenticator.id, result, located, 'stage.failed')
   }
 
   const standingNow = await standing(p, located)
@@ -437,7 +494,7 @@ export async function step<R>(p: FlowPlane<R>, presented: string | undefined, me
   const authenticator = option && p.registry.get(p.plane, option.id)
   if (!option || !authenticator) return refuse('FLOW_METHOD_NOT_ALLOWED')
   const flow = located.flow
-  const ctx = context(p, s.subject, flow)
+  const ctx = context(p, s.subject, flow, located.credential.secret)
 
   if (action === 'enrol') {
     if (!option.enrol || !authenticator.enrol) return refuse('FLOW_ENROLMENT_REFUSED')
@@ -462,8 +519,11 @@ export async function step<R>(p: FlowPlane<R>, presented: string | undefined, me
   const result = await authenticator.verify(ctx, input)
   if (result.outcome === 'fail') {
     await p.record({ event: 'stage.failed', outcome: 'failure', code: result.reason, subjectId: s.subject.externalId, methods: [option.id], flowId: flow.flowId })
-    if (result.reason === 'FLOW_ATTEMPTS_EXHAUSTED' || remaining === 0) return await exhausted(p, s, option.id)
-    return refuse(result.reason, false, remaining)
+    // The engine's own count for a method it reserved an attempt for, the method's for one that
+    // counts in the store itself (a sent code).
+    const left = remaining ?? result.remaining
+    if (result.reason === 'FLOW_ATTEMPTS_EXHAUSTED' || left === 0) return await exhausted(p, s, option.id)
+    return refuse(result.reason, false, left, result.retryAt)
   }
   if (result.outcome !== 'success') return partial(located.credential, flow, options.map((o) => (o.id === option.id ? optionAfter(o, result) : o)))
 
@@ -489,7 +549,8 @@ export async function challenge<R>(p: FlowPlane<R>, presented: string | undefine
   if (!located.flow.subjectId) {
     const authenticator = identifierOf(p, method)
     if (!authenticator?.initiate) return refuse('FLOW_METHOD_NOT_ALLOWED')
-    return await identified(p, authenticator.id, await authenticator.initiate(context(p, null, located.flow), input), located)
+    const result = await authenticator.initiate(context(p, null, located.flow, located.credential.secret), input)
+    return await unproven(p, authenticator.id, result, located, 'challenge.refused')
   }
 
   const standingNow = await standing(p, located)
@@ -499,10 +560,13 @@ export async function challenge<R>(p: FlowPlane<R>, presented: string | undefine
   const authenticator = option && p.registry.get(p.plane, option.id)
   if (!option || !authenticator?.initiate) return refuse('FLOW_METHOD_NOT_ALLOWED')
 
-  const result = await authenticator.initiate(context(p, s.subject, located.flow), input)
+  const result = await authenticator.initiate(context(p, s.subject, located.flow, located.credential.secret), input)
   if (result.outcome === 'fail') {
     await p.record({ event: 'challenge.refused', outcome: 'failure', code: result.reason, subjectId: s.subject.externalId, methods: [option.id], flowId: located.flow.flowId })
-    return refuse(result.reason)
+    return refuse(result.reason, false, result.remaining, result.retryAt)
+  }
+  if (result.outcome === 'challenge') {
+    await p.record({ event: 'challenge.sent', outcome: 'success', subjectId: s.subject.externalId, methods: [option.id], flowId: located.flow.flowId })
   }
   return partial(located.credential, located.flow, options.map((o) => (o.id === option.id ? optionAfter(o, result) : o)))
 }

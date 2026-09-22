@@ -861,7 +861,19 @@ export type AuthResult =
   | { outcome: 'redirect'; binding: 'redirect'; url: string }
   | { outcome: 'redirect'; binding: 'post'; url: string; fields: Readonly<Record<string, string>> }
   | { outcome: 'pending' }
-  | { outcome: 'fail'; reason: AuthRefusalCode }
+  | {
+      outcome: 'fail'
+      reason: AuthRefusalCode
+      /**
+       * The flow survives this failure: a wrong code with attempts left, a code that expired, a send
+       * over a ceiling. Without it a failure before the subject is proven ends the flow.
+       */
+      recoverable?: boolean
+      /** Attempts left on the flow, when the method counted this one itself. */
+      remaining?: number
+      /** When a refused send may be asked for again. */
+      retryAt?: Date | string | null
+    }
 
 /** The fields a step carries, as the client sent them. Credentials never leave this object. */
 export type AuthInput = Readonly<Record<string, unknown>>
@@ -882,6 +894,19 @@ export interface AuthManagers {
   readonly accessLogManager: AccessLogManagement
 }
 
+/**
+ * The code operations of the flow of this request, bound by the engine to its credential. An
+ * authenticator sends and checks codes through these, and never sees the flow secret that keys them.
+ */
+export interface FlowChallenges {
+  /** Stores the code as an HMAC keyed by the flow secret, under the flow's and the subject's ceilings. */
+  record(data: { method: string; code: string; expiresAt: Date; limits: ChallengeLimits }): Promise<ChallengeRecord>
+  /** One conditional statement: a right code is good once, a wrong one spends an attempt. */
+  consume(code: string): Promise<ChallengeConsumption>
+  /** Names the subject an unproven flow sends to, so its sends count against that subject (F37). */
+  nominate(subjectId: string): Promise<boolean>
+}
+
 /** Everything an authenticator is told. Nothing implicit: the handle is explicit, as for managers. */
 export interface AuthContext {
   readonly plane: AuthPlane
@@ -894,6 +919,10 @@ export interface AuthContext {
   readonly policy: MfaPolicy
   readonly managers: AuthManagers
   readonly flow: Readonly<AuthFlow> | null
+  /** The limits of the deployment (F37), the environment already applied. */
+  readonly limits: Readonly<AuthFlowLimits>
+  /** Null without a flow row, or where the request presented no credential for it. */
+  readonly challenges: FlowChallenges | null
 }
 
 /**

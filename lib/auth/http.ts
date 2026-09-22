@@ -160,7 +160,11 @@ function answer(reply: FastifyReply, plane: AuthPlane, outcome: FlowOutcome) {
   if (outcome.kind === 'refused') {
     if (outcome.endsFlow) forgetFlow(reply, plane)
     const { status, code, message } = outcome.refusal
-    const body = { ...httpError(status, message, code), ...(outcome.remaining !== undefined ? { remaining: outcome.remaining } : {}) }
+    const body = {
+      ...httpError(status, message, code),
+      ...(outcome.remaining !== undefined ? { remaining: outcome.remaining } : {}),
+      ...(outcome.retryAt ? { retryAt: outcome.retryAt.toISOString() } : {})
+    }
     return reply.status(status).send(body)
   }
   return reply.status(200).send({ ok: outcome.ok })

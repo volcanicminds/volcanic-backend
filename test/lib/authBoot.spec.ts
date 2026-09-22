@@ -74,8 +74,8 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
     ] as const) {
       expect(server[key].isImplemented()).toBe(false)
     }
-    expect(server.authRegistry.list('tenant').map((a) => a.id)).toEqual(['password', 'totp'])
-    expect(server.authRegistry.list('control').map((a) => a.id)).toEqual(['password', 'totp'])
+    expect(server.authRegistry.list('tenant').map((a) => a.id)).toEqual(['password', 'totp', 'email-otp'])
+    expect(server.authRegistry.list('control').map((a) => a.id)).toEqual(['password', 'totp', 'email-otp'])
   })
 
   it('takes `authenticators` from start() into the registry, not as a decorator', async () => {
@@ -101,9 +101,8 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
       ...frozen,
       tenant: { identify: ['password', 'email-otp'], flows: [{ roles: ['*'], stages: [] }] }
     }
-    await expect(start({})).rejects.toThrow(
-      "authFlows.tenant: `identify` names 'email-otp', which is not an authenticator of the tenant plane"
-    )
+    // `email-otp` is a built-in since T-12.22: what this build cannot run is a delivery nobody injected.
+    await expect(start({})).rejects.toThrow("authFlows.tenant: lists 'email-otp' and no challenge delivery is injected")
   })
 
   it('keeps an injected manager over its default', async () => {

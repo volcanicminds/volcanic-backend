@@ -622,6 +622,7 @@ export type {
   AuthFlowExternal,
   AuthFlowManagement,
   ChallengeLimits,
+  FlowChallenges,
   ChallengeRecord,
   ChallengeConsumption,
   ExternalAuthResult,
