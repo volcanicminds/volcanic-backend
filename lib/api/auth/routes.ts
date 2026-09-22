@@ -7,6 +7,10 @@ const authRateLimit = {
   timeWindow: Math.floor(Number(process.env.AUTH_RATELIMIT_WINDOW) || 60000)
 }
 
+// Per IP, on top of the per-flow and per-subject ceilings of the flow store, which are the real
+// gates (F44). `cancel` has none: it can only end the caller's own flow.
+const perMinute = (max: number) => ({ max, timeWindow: 60000 })
+
 export default {
   config: {
     title: 'Authentication functions',
@@ -280,6 +284,95 @@ export default {
         }
       }
     },
-
+    {
+      method: 'GET',
+      path: '/flow/options',
+      roles: [],
+      handler: 'flow.options',
+      rateLimit: perMinute(60),
+      config: {
+        title: 'Login methods',
+        description: 'The identifiers of the tenant plane, without creating anything',
+        response: {
+          200: { $ref: 'authFlowOptionsResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/flow/start',
+      roles: [],
+      handler: 'flow.start',
+      middlewares: ['global.preAuth', 'global.postAuth'],
+      rateLimit: authRateLimit,
+      config: {
+        title: 'Start a login',
+        description: 'Runs the identifier named by `method`: 200 with the session when nothing else is owed, 202 with the next stage otherwise',
+        body: { $ref: 'authFlowStartBodySchema#' },
+        response: {
+          200: { $ref: 'authLoginResponseSchema#' },
+          202: { $ref: 'authFlowPartialResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/flow/step',
+      roles: [],
+      handler: 'flow.step',
+      middlewares: ['global.preAuth', 'global.postAuth'],
+      rateLimit: perMinute(10),
+      config: {
+        title: 'Answer the current stage',
+        description: 'Verifies `method` for the flow of the credential, or starts its enrolment with `action: enrol`',
+        body: { $ref: 'authFlowStepBodySchema#' },
+        response: {
+          200: { $ref: 'authLoginResponseSchema#' },
+          202: { $ref: 'authFlowPartialResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/flow/challenge',
+      roles: [],
+      handler: 'flow.challenge',
+      rateLimit: perMinute(5),
+      config: {
+        title: 'Send a code again',
+        description: 'Sends the code of a method of the current stage, within the ceilings of the flow',
+        body: { $ref: 'authFlowChallengeBodySchema#' },
+        response: {
+          202: { $ref: 'authFlowPartialResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/flow/cancel',
+      roles: [],
+      handler: 'flow.cancel',
+      config: {
+        title: 'Abandon a login',
+        description: 'Ends the flow of the credential, if there is one',
+        body: { $ref: 'authFlowCancelBodySchema#' },
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/flow/return/:method',
+      roles: [],
+      handler: 'flow.returnFrom',
+      rateLimit: perMinute(20),
+      config: {
+        title: 'Return from a provider',
+        description: 'Records the answer of an external provider in the flow its `state` names, then redirects to the console',
+        // The tenant comes from the flow `state`: the navigation carries no token and no header.
+        tenantFrom: 'flow-state'
+      }
+    }
   ]
 }

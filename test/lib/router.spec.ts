@@ -197,6 +197,46 @@ describe('loader/router — processRoute', () => {
     expect(r).toBeNull()
   })
 
+  // T-12.17: reading the tenant from a flow `state` skips the token and the resolver, so only a
+  // route whose handler checks that state against a live flow row may ask for it.
+  it("refuses `tenantFrom` on a project's route and accepts it on the framework's", () => {
+    const errors: string[] = []
+    run({ method: 'GET', path: '/return/:method', handler: 'flow.returnFrom', config: { tenantFrom: 'flow-state' } }, [], errors)
+    expect(errors).toEqual(["GET /return/:method (flow.returnFrom) in users/routes.ts: `tenantFrom` is reserved to the framework's own routes. Remove it."])
+
+    const framework: string[] = []
+    const route: any = processRoute(
+      { method: 'GET', path: '/return/:method', handler: 'flow.returnFrom', config: { tenantFrom: 'flow-state' } } as any,
+      0,
+      'auth/routes.ts',
+      'auth',
+      '/base',
+      {},
+      AUTH_MIDDLEWARES,
+      [],
+      framework,
+      true
+    )
+    expect(framework).toEqual([])
+    expect(route.tenantFrom).toBe('flow-state')
+
+    // A value that is not the one flag the framework has is refused even there.
+    const unknown: string[] = []
+    processRoute(
+      { method: 'GET', path: '/x', handler: 'flow.returnFrom', config: { tenantFrom: 'header' } } as any,
+      0,
+      'auth/routes.ts',
+      'auth',
+      '/base',
+      {},
+      AUTH_MIDDLEWARES,
+      [],
+      unknown,
+      true
+    )
+    expect(unknown.length).toBe(1)
+  })
+
   it('returns null for a malformed handler', () => {
     const r = run({ method: 'GET', path: '/', handler: 'bogus' })
     expect(r).toBeNull()

@@ -144,6 +144,8 @@ export interface RouteConfig {
    * one line and it is in docs/MIGRATION_V4_V5.md.
    */
   scope?: 'tenant' | 'control'
+  /** Reserved to the framework (T-12.17): a consumer's route that declares it stops the boot. */
+  tenantFrom?: 'flow-state'
   /**
    * Audit trail behaviour for this route (T-3.5). WHAT is tracked is declared in
    * `config/tracking.ts`; this says what happens when the change cannot be written.
@@ -447,6 +449,7 @@ export interface ConfiguredRoute {
    * only risk, and this comment is where that confusion ends.
    */
   tenantContext: boolean
+  tenantFrom?: 'flow-state'
   tracking?: { strict?: boolean }
   method: any
   path: string
@@ -836,10 +839,11 @@ export interface StageDescriptor {
  *
  * `satisfied` on a success names the methods it proves besides its own: an OIDC login whose
  * provider is trusted for its second factor also satisfies `idp-mfa`. `pending` is an external
- * round trip that has not come back yet.
+ * round trip that has not come back yet. `external`, on the success of a `complete`, is what the
+ * engine writes into the flow for the next step to cash: a return never issues a session.
  */
 export type AuthResult =
-  | { outcome: 'success'; subject?: AuthSubject; satisfied?: readonly string[] }
+  | { outcome: 'success'; subject?: AuthSubject; satisfied?: readonly string[]; external?: ExternalAuthResult }
   | { outcome: 'challenge'; challenge: ChallengeDescriptor }
   | { outcome: 'redirect'; binding: 'redirect'; url: string }
   | { outcome: 'redirect'; binding: 'post'; url: string; fields: Readonly<Record<string, string>> }
@@ -895,6 +899,8 @@ export interface Authenticator {
   initiate?(ctx: AuthContext, input: AuthInput): Promise<AuthResult>
   verify(ctx: AuthContext, input: AuthInput): Promise<AuthResult>
   complete?(ctx: AuthContext, input: AuthReturnInput): Promise<AuthResult>
+  /** The return parameter that carries the flow `state` (`st1.<routing>.<secret>`). Default `state`. */
+  readonly stateParam?: string
   /** Whether an optional stage applies to this subject. */
   isEnrolled?(ctx: AuthContext, subject: AuthSubject): boolean | Promise<boolean>
   /** Starts an in-flow enrolment; the engine keeps the secret in the flow row, never on the client. */
@@ -1045,6 +1051,9 @@ export type ChallengeRecord =
   | { outcome: 'sent'; sends: number; resendAt: Date | string | null }
   | { outcome: 'limit'; scope: 'flow' | 'subject'; retryAt: Date | string | null }
 
+/** One verification reserved against the flow's ceiling before it runs, so parallel guesses cannot exceed it. */
+export type AttemptRecord = { outcome: 'counted'; remaining: number } | { outcome: 'exhausted' }
+
 export type ChallengeConsumption =
   | { outcome: 'ok' }
   | { outcome: 'invalid'; remaining: number }
@@ -1101,6 +1110,11 @@ export interface AuthFlowManagement {
     flowId: string,
     data: { secret: string; code: string; maxAttempts: number }
   ): Promise<ChallengeConsumption>
+  /**
+   * Counts one verification of a method the store does not check itself (a TOTP code): one
+   * conditional `UPDATE` on the same counter as `consumeChallenge`, run before the code is tested.
+   */
+  recordAttempt(ctx: DataHandle, flowId: string, data: { secret: string; maxAttempts: number }): Promise<AttemptRecord>
   bindExternal(ctx: DataHandle, flowId: string, data: { state?: string | null; external: AuthFlowExternal }): Promise<boolean>
   recordExternalResult(ctx: DataHandle, flowId: string, result: ExternalAuthResult): Promise<boolean>
   completeFlow(ctx: DataHandle, flowId: string): Promise<boolean>
@@ -1390,6 +1404,8 @@ declare module 'fastify' {
    */
   export interface FastifyContextConfig {
     tenantContext?: boolean
+    /** Reserved to the framework's return routes: the tenant is read from the flow `state` (T-12.17). */
+    tenantFrom?: 'flow-state'
     requiredRoles?: Role[]
     /** The route's own method and path, threaded by the router so a refusal can name them. */
     method?: string

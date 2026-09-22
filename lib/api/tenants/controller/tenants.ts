@@ -16,7 +16,7 @@ import { httpError } from '../../../util/httpError.js'
 import { checkTenantPolicy, demandsEnrolment, mfaAvailable, type PolicyVerdict } from '../../../util/mfaPolicy.js'
 import { absoluteStep, isReplay } from '../../../util/mfaCounter.js'
 import { envInt } from '../../../util/env.js'
-import { ENROLMENT_METHOD, floorEnrollable } from '../../../auth/validate.js'
+import { ENROLMENT_METHOD, floorEnrollable, isImplemented } from '../../../auth/validate.js'
 import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
 
 //
@@ -168,6 +168,12 @@ function refusePolicy(req: FastifyRequest, reply: FastifyReply, verdict: PolicyV
     return reply
       .status(503)
       .send(httpError(503, 'This build has no MFA manager: that policy would lock this tenant out', 'MFA_NOT_AVAILABLE'))
+  }
+  // The floor puts a second step in every login of that tenant, and a step needs the flow store (F46).
+  if (verdict.policy && demandsEnrolment(verdict.policy) && !isImplemented(req.server['authFlowManager'])) {
+    return reply
+      .status(503)
+      .send(httpError(503, 'This build keeps no authentication flows: that policy would lock this tenant out', 'AUTH_FLOW_NOT_AVAILABLE'))
   }
   if (verdict.policy && !floorEnrollable(verdict.policy, req.server.authRegistry, 'tenant')) {
     return reply

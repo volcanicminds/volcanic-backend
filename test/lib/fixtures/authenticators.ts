@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import type { AuthContext, AuthInput, AuthResult, AuthReturnInput, AuthSubject, Authenticator } from '../../../types/global.js'
 
 //
@@ -19,28 +20,40 @@ export const FAKE_SUBJECT: AuthSubject = {
   blocked: false
 }
 
-/** SAML-shaped: `initiate` answers a form to post, `complete` receives the posted fields. */
+/**
+ * SAML-shaped: `initiate` binds a `state` to the flow and answers a form to post, `complete`
+ * receives the posted fields under `RelayState`, the name SAML gives the `state`.
+ */
 export const postReturnIdentifier: Authenticator = {
   id: 'fake-saml',
   kind: 'identifier',
   planes: ['tenant'],
+  stateParam: 'RelayState',
   async initiate(ctx: AuthContext): Promise<AuthResult> {
+    const relayState = `st1.${ctx.tenant?.id ?? 'ctl'}.${crypto.randomBytes(16).toString('base64url')}`
+    if (!ctx.flow) return { outcome: 'fail', reason: 'FAKE_NO_FLOW' }
+    await ctx.managers.authFlowManager.bindExternal(ctx.handle, ctx.flow.flowId, { state: relayState, external: { provider: 'fake-saml' } })
     return {
       outcome: 'redirect',
       binding: 'post',
       url: 'https://idp.example.test/sso',
-      fields: { SAMLRequest: 'request', RelayState: `st1.${ctx.tenant?.id ?? 'ctl'}.secret` }
+      fields: { SAMLRequest: 'request', RelayState: relayState }
     }
   },
   async verify(ctx: AuthContext): Promise<AuthResult> {
     // The step after the return cashes what `complete` left in the flow.
     const result = ctx.flow?.externalResult
     if (!result) return { outcome: 'pending' }
-    return { outcome: 'success', subject: FAKE_SUBJECT }
+    return { outcome: 'success', subject: FAKE_SUBJECT, satisfied: ['idp-mfa'] }
   },
   async complete(_ctx: AuthContext, input: AuthReturnInput): Promise<AuthResult> {
     if (input.SAMLResponse !== 'signed') return { outcome: 'fail', reason: 'FAKE_RESPONSE_INVALID' }
-    return { outcome: 'success', subject: FAKE_SUBJECT, satisfied: ['idp-mfa'] }
+    return {
+      outcome: 'success',
+      subject: FAKE_SUBJECT,
+      satisfied: ['idp-mfa'],
+      external: { provider: 'fake-saml', issuer: 'https://idp.example.test', subject: FAKE_SUBJECT.externalId }
+    }
   }
 }
 

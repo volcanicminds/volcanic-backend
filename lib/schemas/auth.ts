@@ -199,3 +199,101 @@ export const authMfaVerifyBodySchema = {
     token: { type: 'string' }
   }
 }
+
+//
+// The flow routes (T-12.15, F47). The bodies name the engine's own fields and let every other
+// field through to the method, which is the one that knows what it reads (`email` and `password`,
+// a `code`). `flow` is the credential in bearer mode; in cookie mode it is in the cookie and a body
+// field is ignored.
+//
+export const authFlowStartBodySchema = {
+  $id: 'authFlowStartBodySchema',
+  type: 'object',
+  required: ['method'],
+  properties: {
+    method: { type: 'string', maxLength: 64 }
+  }
+}
+
+export const authFlowStepBodySchema = {
+  $id: 'authFlowStepBodySchema',
+  type: 'object',
+  required: ['method'],
+  properties: {
+    method: { type: 'string', maxLength: 64 },
+    flow: { type: 'string', maxLength: 512 },
+    action: { type: 'string', enum: ['enrol'] },
+    code: { type: 'string', maxLength: 64 }
+  }
+}
+
+export const authFlowChallengeBodySchema = {
+  $id: 'authFlowChallengeBodySchema',
+  type: 'object',
+  required: ['method'],
+  properties: {
+    method: { type: 'string', maxLength: 64 },
+    flow: { type: 'string', maxLength: 512 }
+  }
+}
+
+export const authFlowCancelBodySchema = {
+  $id: 'authFlowCancelBodySchema',
+  type: 'object',
+  nullable: true,
+  properties: {
+    flow: { type: 'string', maxLength: 512 }
+  }
+}
+
+/** The identifiers of a plane, without state. Codes only: the labels belong to the console. */
+export const authFlowOptionsResponseSchema = {
+  $id: 'authFlowOptionsResponseSchema',
+  type: 'object',
+  properties: {
+    options: {
+      type: 'array',
+      items: { type: 'object', properties: { id: { type: 'string' }, kind: { type: 'string' } } }
+    }
+  }
+}
+
+/**
+ * Every partial authentication answers 202 with this body. Each field is declared because the
+ * serializer drops what a schema does not name; `enrol` (true, or the setup of an enrolment just
+ * started) and `action` (a link, or a form to post) take more than one shape and are left open.
+ */
+export const authFlowPartialResponseSchema = {
+  $id: 'authFlowPartialResponseSchema',
+  type: 'object',
+  properties: {
+    flow: { type: 'string', nullable: true },
+    expiresAt: { type: 'string' },
+    stage: {
+      type: 'object',
+      properties: {
+        options: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              kind: { type: 'string' },
+              challenge: {
+                type: 'object',
+                properties: {
+                  channel: { type: 'string' },
+                  destination: { type: 'string' },
+                  expiresAt: { type: 'string' },
+                  resendAt: { type: 'string', nullable: true }
+                }
+              },
+              enrol: {},
+              action: {}
+            }
+          }
+        }
+      }
+    }
+  }
+}

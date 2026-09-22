@@ -38,6 +38,7 @@ async function build(over: any = {}) {
     createUser: async (_c: any, data: any) => ({ id: 'u1', ...data })
   })
   if (over.mfa) server.decorate('mfaManager', { isImplemented: () => true })
+  server.decorate('authFlowManager', { isImplemented: () => over.noFlowStore !== true })
   if (over.registry) server.decorate('authRegistry', over.registry)
   server.decorate('migrations', { apply: async () => '0001_init', version: async () => '0001_init' })
   server.decorate('provider', {
@@ -100,6 +101,22 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     })
     expect(res.statusCode).toBeLessThan(400)
     expect(created[0].locator).toBe('tenant_acme')
+    await server.close()
+  })
+
+  it('answers 503 AUTH_FLOW_NOT_AVAILABLE to MANDATORY when this build keeps no flows (T-12.7, F46)', async () => {
+    // The floor puts a second step in every login of that tenant, and a step without a row counts
+    // no attempts: written anyway, the policy would lock the customer out at the first login.
+    const { server, created } = await build({ mfa: true, noFlowStore: true })
+    const res = await provision(server, {
+      slug: 'acme',
+      name: 'Acme',
+      config: { mfa_policy: 'MANDATORY' },
+      admin: { email: 'admin@acme.test', password: 'Str0ng-passw0rd!' }
+    })
+    expect(res.statusCode).toBe(503)
+    expect(JSON.parse(res.body).code).toBe('AUTH_FLOW_NOT_AVAILABLE')
+    expect(created.length).toBe(0)
     await server.close()
   })
 

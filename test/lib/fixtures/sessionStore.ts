@@ -27,6 +27,7 @@ export interface FakeSession {
   ip: string | null
   userAgent: string | null
   impersonationId: string | null
+  authMethods: string[] | null
   createdAt: Date
 }
 
@@ -62,6 +63,7 @@ export function fakeSessionStore() {
         ip: data.ip ?? null,
         userAgent: data.userAgent ?? null,
         impersonationId: data.impersonationId ?? null,
+        authMethods: data.authMethods ?? null,
         createdAt: new Date()
       }
       rows.set(row.sid, row)

@@ -30,6 +30,12 @@ volcanic sessions --purge [--tenants]
   --purge            REQUIRED. Removes the session rows no renewal can use any more (T-11.12).
   --tenants          Every active container as well as the control plane, instead of it alone.
 
+volcanic auth-flows --purge [--tenants]
+
+  --purge            REQUIRED. Removes the login flows that are over, once their sends have left
+                     the per-subject window (T-12.18).
+  --tenants          Every active container as well as the control plane, instead of it alone.
+
 volcanic migrate --tenants --snapshot <reference> [options]
 
   --snapshot <ref>   REQUIRED. The backup you would restore from. Recorded in the run log.
@@ -54,10 +60,11 @@ async function load(specifier) {
 
 async function main() {
   const command = argv[0]
-  const known = command === 'migrate' || command === 'sessions'
-  // `sessions` has no default behaviour: the only thing it does is delete rows, so it is asked
-  // for by name or not at all.
-  const asked = command === 'sessions' ? flag('purge') : true
+  const purges = { sessions: 'sessionManager', 'auth-flows': 'authFlowManager' }
+  const known = command === 'migrate' || command in purges
+  // `sessions` and `auth-flows` have no default behaviour: the only thing they do is delete rows,
+  // so it is asked for by name or not at all.
+  const asked = command in purges ? flag('purge') : true
   if (!known || !asked || flag('help')) {
     console.log(USAGE)
     process.exit(known && flag('help') ? 0 : 1)
@@ -76,9 +83,10 @@ async function main() {
     // T-11.12. Rows whose two clocks have run out are rows no renewal can use, and they are the
     // only ones removed: a revoked session stays until its own deadline, because "when did this
     // session end, and why" has to outlive the session itself.
-    if (argv[0] === 'sessions') {
+    if (command in purges) {
+      const manager = layer[purges[command]]
       const control = await layer.provider.control()
-      let removed = await layer.sessionManager.purgeExpired(control)
+      let removed = await manager.purgeExpired(control)
       let containers = 1
 
       if (flag('tenants')) {
@@ -94,14 +102,14 @@ async function main() {
           const records = result?.records ?? []
           for (const tenant of records) {
             const handle = await layer.provider.tenant(tenant.id)
-            removed += await layer.sessionManager.purgeExpired(handle)
+            removed += await manager.purgeExpired(handle)
             containers += 1
           }
           if (records.length < pageSize) break
         }
       }
 
-      console.log(`sessions: ${removed} expired row(s) removed from ${containers} container(s)`)
+      console.log(`${command}: ${removed} expired row(s) removed from ${containers} container(s)`)
       return 0
     }
 

@@ -156,6 +156,21 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       expect(await consume('314159')).toEqual({ outcome: 'exhausted' })
     })
 
+    it('reserves verifications under the ceiling, a burst of them included, on the counter the codes share', async () => {
+      const secret = unique('s')
+      const flow = await openFlow({ secret })
+      const attempt = () => flows.recordAttempt(tenant, flow.flowId, { secret, maxAttempts: 5 })
+
+      expect(await attempt()).toEqual({ outcome: 'counted', remaining: 4 })
+      // Ten guesses in parallel: exactly the four left get through, the rest never reach the code.
+      const burst = await Promise.all(Array.from({ length: 10 }, attempt))
+      expect(burst.filter((r) => r.outcome === 'counted')).toHaveLength(4)
+      expect(burst.filter((r) => r.outcome === 'exhausted')).toHaveLength(6)
+      // Another credential reserves nothing, even on a flow with attempts left.
+      const other = await openFlow({ secret: unique('s') })
+      expect(await flows.recordAttempt(tenant, other.flowId, { secret, maxAttempts: 5 })).toEqual({ outcome: 'exhausted' })
+    })
+
     it('answers an expired code as expired, and a code for another credential as nothing', async () => {
       const secret = unique('s')
       const flow = await openFlow({ secret })

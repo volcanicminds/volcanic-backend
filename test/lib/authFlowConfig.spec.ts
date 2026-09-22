@@ -225,9 +225,20 @@ describe('auth · what refuses the boot (T-12.6)', () => {
   })
 
   it('refuses MANDATORY without an MFA manager, with the message of the policy check it extends', () => {
-    expect(check(null, { policies: { floor: MfaPolicy.MANDATORY, control: MfaPolicy.MANDATORY } })).toEqual([
+    const implemented = { mfa: false, challengeDelivery: false, authFlow: true }
+    expect(check(null, { implemented, policies: { floor: MfaPolicy.MANDATORY, control: MfaPolicy.MANDATORY } })).toEqual([
       'MFA_POLICY=MANDATORY demands a second factor and this build has no MFA manager: inject one through start(decorators), or lower the policy'
     ])
+  })
+
+  it('refuses MANDATORY without a flow store: the floor puts a second step in every login (F46)', () => {
+    // Left open until the engine existed, because until then the second step had no row at all.
+    const implemented = { mfa: true, challengeDelivery: false, authFlow: false }
+    expect(check(null, { implemented, policies: { floor: MfaPolicy.OPTIONAL, control: MfaPolicy.MANDATORY } })).toEqual([
+      'authFlows.control: the control policy is MANDATORY, and no flow store is injected: load the data layer or inject authFlowManager. ' +
+        'Without one, only a password login with optional stages can run'
+    ])
+    expect(check(null, { implemented: { ...implemented, authFlow: true }, policies: { floor: MfaPolicy.OPTIONAL, control: MfaPolicy.MANDATORY } })).toEqual([])
   })
 
   it('refuses MANDATORY on a plane where nobody could enrol, because the enrolment method is not registered there', () => {

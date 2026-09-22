@@ -19,6 +19,7 @@ const authRateLimit = {
   max: Math.floor(Number(process.env.AUTH_RATELIMIT_MAX) || 10),
   timeWindow: Math.floor(Number(process.env.AUTH_RATELIMIT_WINDOW) || 60000)
 }
+const perMinute = (max: number) => ({ max, timeWindow: 60000 })
 
 //
 // The operators are a resource, and they live two segments deep (T-10.20).
@@ -54,6 +55,82 @@ export default {
         title: 'Log a platform administrator in',
         description: 'Returns a token carrying the control scope and no tenant',
         body: { $ref: 'authLoginBodySchema#' }
+      }
+    },
+    // The login flow of the platform (T-12.16): the twins of `/auth/flow/*`, served by the same
+    // engine. The return route needs no tenant flag: the control plane has one container.
+    {
+      method: 'GET',
+      path: '/auth/flow/options',
+      roles: ['public'],
+      handler: 'systemFlow.options',
+      rateLimit: perMinute(60),
+      config: {
+        title: 'Platform login methods',
+        description: 'The identifiers of the control plane',
+        response: { 200: { $ref: 'authFlowOptionsResponseSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/auth/flow/start',
+      roles: ['public'],
+      handler: 'systemFlow.start',
+      rateLimit: authRateLimit,
+      config: {
+        title: 'Start a platform login',
+        description: '200 with a control session when nothing else is owed, 202 with the next stage otherwise',
+        body: { $ref: 'authFlowStartBodySchema#' },
+        response: { 202: { $ref: 'authFlowPartialResponseSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/auth/flow/step',
+      roles: ['public'],
+      handler: 'systemFlow.step',
+      rateLimit: perMinute(10),
+      config: {
+        title: 'Answer the current stage of a platform login',
+        description: 'Verifies `method` for the flow of the credential, or starts its enrolment with `action: enrol`',
+        body: { $ref: 'authFlowStepBodySchema#' },
+        response: { 202: { $ref: 'authFlowPartialResponseSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/auth/flow/challenge',
+      roles: ['public'],
+      handler: 'systemFlow.challenge',
+      rateLimit: perMinute(5),
+      config: {
+        title: 'Send a platform code again',
+        description: 'Sends the code of a method of the current stage',
+        body: { $ref: 'authFlowChallengeBodySchema#' },
+        response: { 202: { $ref: 'authFlowPartialResponseSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/auth/flow/cancel',
+      roles: ['public'],
+      handler: 'systemFlow.cancel',
+      config: {
+        title: 'Abandon a platform login',
+        description: 'Ends the flow of the credential, if there is one',
+        body: { $ref: 'authFlowCancelBodySchema#' },
+        response: { 200: { $ref: 'defaultResponse#' } }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/auth/flow/return/:method',
+      roles: ['public'],
+      handler: 'systemFlow.returnFrom',
+      rateLimit: perMinute(20),
+      config: {
+        title: 'Return from a provider to the platform',
+        description: 'Records the answer of an external provider in the flow its `state` names, then redirects'
       }
     },
     {

@@ -96,7 +96,7 @@ const MFA_METHODS = ['generateSetup', 'verify'] as const
 
 const AUTH_FLOW_METHODS = [
   'openFlow', 'findBySecret', 'findByState', 'advance', 'recordChallenge', 'consumeChallenge',
-  'bindExternal', 'recordExternalResult', 'completeFlow', 'cancelFlow', 'purgeExpired'
+  'recordAttempt', 'bindExternal', 'recordExternalResult', 'completeFlow', 'cancelFlow', 'purgeExpired'
 ] as const
 
 const EXTERNAL_IDENTITY_METHODS = ['findLink', 'createLink', 'listOfSubject', 'removeLink', 'touch'] as const

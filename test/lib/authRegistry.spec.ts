@@ -90,10 +90,16 @@ describe('auth · authenticator contract and registry (T-12.2, T-12.3)', () => {
   })
 
   it('expresses a SAML-shaped identifier: a posted form out, the posted fields back', async () => {
-    const ctx = contextWith({ tenant: { id: 't-1' } as AuthContext['tenant'] })
+    const bound: unknown[] = []
+    const ctx = contextWith({
+      tenant: { id: 't-1' } as AuthContext['tenant'],
+      flow: { flowId: 'f-1' } as AuthContext['flow'],
+      managers: { authFlowManager: { bindExternal: async (...args: unknown[]) => bound.push(args) } } as unknown as AuthContext['managers']
+    })
 
     const out = await postReturnIdentifier.initiate!(ctx, {})
-    expect(out).toMatchObject({ outcome: 'redirect', binding: 'post', fields: { RelayState: 'st1.t-1.secret' } })
+    expect(out).toMatchObject({ outcome: 'redirect', binding: 'post', fields: { RelayState: expect.stringMatching(/^st1\.t-1\.[A-Za-z0-9_-]{22}$/) } })
+    expect(bound).toHaveLength(1)
 
     expect(await postReturnIdentifier.complete!(ctx, { SAMLResponse: 'forged' })).toEqual({ outcome: 'fail', reason: 'FAKE_RESPONSE_INVALID' })
     expect(await postReturnIdentifier.complete!(ctx, { SAMLResponse: 'signed' })).toMatchObject({ outcome: 'success', satisfied: ['idp-mfa'] })
@@ -113,7 +119,7 @@ describe('auth · authenticator contract and registry (T-12.2, T-12.3)', () => {
     expect(challengeVerifier.isEnrolled!(ctx, { ...FAKE_SUBJECT, factors: [] })).toBe(false)
   })
 
-  it('has built-ins that refuse with a code until the engine serves them, and totp enrolment read from the factors', async () => {
+  it('has built-ins that refuse an empty input with a code, and totp enrolment read from the factors', async () => {
     const ctx = contextWith()
     for (const builtin of [passwordAuthenticator, totpAuthenticator]) {
       const result = await builtin.verify(ctx, {})

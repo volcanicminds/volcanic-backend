@@ -154,6 +154,24 @@ export function refreshCookiePath(plane: Plane): string {
   return pathPrefix() + SESSION_COOKIES[plane].refreshRoute
 }
 
+/**
+ * The flow credential's own cookie (F36): a name and a path per plane, so a browser sends it to the
+ * flow routes of that plane and to nothing else, and it is never read as a session.
+ */
+export const FLOW_COOKIES: Record<Plane, { name: string; route: string }> = {
+  tenant: { name: 'auth_flow', route: '/auth/flow' },
+  control: { name: 'control_flow', route: '/system/auth/flow' }
+}
+
+export function flowCookiePath(plane: Plane): string {
+  return pathPrefix() + FLOW_COOKIES[plane].route
+}
+
+/** The flow credential held in the cookie of `plane`, unverified. Cookie mode only. */
+export function flowCookieOf(req: FastifyRequest, plane: Plane): string | undefined {
+  return isCookieMode() ? signedCookie(req, FLOW_COOKIES[plane].name) : undefined
+}
+
 function secondsLeft(reply: FastifyReply, token: string): number {
   const claims = (reply.server as any).jwt.decode(token) as { exp?: number } | null
   if (!claims?.exp) throw new Error('A session cookie must carry a token that expires')
@@ -195,6 +213,14 @@ export function clearRefreshCookie(reply: FastifyReply, plane: Plane) {
   reply.clearCookie(SESSION_COOKIES[plane].refresh, { path: refreshCookiePath(plane) })
 }
 
+export function setFlowCookie(reply: FastifyReply, plane: Plane, credential: string, maxAgeSeconds: number) {
+  write(reply, FLOW_COOKIES[plane].name, credential, flowCookiePath(plane), Math.max(0, Math.floor(maxAgeSeconds)))
+}
+
+export function clearFlowCookie(reply: FastifyReply, plane: Plane) {
+  if (isCookieMode()) reply.clearCookie(FLOW_COOKIES[plane].name, { path: flowCookiePath(plane) })
+}
+
 export function clearSessionCookies(reply: FastifyReply, plane: Plane) {
   if (!isCookieMode()) return
   clearAccessCookie(reply, plane)
@@ -218,6 +244,8 @@ export interface SessionOrigin {
   routing?: string | null
   ip?: string | null
   userAgent?: string | null
+  /** The methods the flow satisfied, kept on the row for a later step-up (F45). */
+  authMethods?: string[] | null
 }
 
 /**
@@ -255,7 +283,8 @@ export async function issueSession(
       idleExpiresAt,
       absoluteExpiresAt,
       ip: origin.ip ?? null,
-      userAgent: origin.userAgent ?? null
+      userAgent: origin.userAgent ?? null,
+      authMethods: origin.authMethods ?? null
     })
     sid = session.sid
     refreshToken = composeRefreshCredential(origin.routing || CONTROL_ROUTING, session.sid, secret).raw

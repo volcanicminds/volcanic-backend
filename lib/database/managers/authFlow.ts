@@ -399,6 +399,25 @@ export function createAuthFlowManager(options: { sendWindowSeconds?: number } = 
       return { outcome: 'expired' }
     },
 
+    /** Reserved before the code is tested, and never refunded: a verification is an attempt, right or wrong. */
+    async recordAttempt(ctx: DataHandle, flowId: string, data) {
+      const { handle, flows } = flowsOf(ctx, 'recordAttempt')
+      const rows = await handle.db
+        .update(flows)
+        .set({ challengeAttempts: sql`${col(flows, 'challengeAttempts')} + 1` })
+        .where(
+          and(
+            eq(col(flows, 'flowId'), String(flowId ?? '') as never),
+            eq(col(flows, 'secretHash'), hashSecret(String(data.secret)) as never),
+            gt(col(flows, 'expiresAt'), new Date() as never),
+            lt(col(flows, 'challengeAttempts'), data.maxAttempts as never)
+          )
+        )
+        .returning()
+      if (!rows[0]) return { outcome: 'exhausted' }
+      return { outcome: 'counted', remaining: data.maxAttempts - Number((rows[0] as FlowRow).challengeAttempts) }
+    },
+
     async bindExternal(ctx: DataHandle, flowId: string, data) {
       const { handle, flows } = flowsOf(ctx, 'bindExternal')
       const set: Record<string, unknown> = { external: await encrypt(JSON.stringify(data.external ?? {})) }

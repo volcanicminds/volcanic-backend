@@ -192,7 +192,8 @@ export function processRoute(
   defaultConfig: any,
   authMiddlewares: string[],
   validRoutes: ConfiguredRoute[],
-  integrityErrors: string[] = []
+  integrityErrors: string[] = [],
+  framework = false
 ): ConfiguredRoute | null {
   const errors: string[] = []
   const {
@@ -275,6 +276,13 @@ export function processRoute(
   if (defaultConfig && Object.prototype.hasOwnProperty.call(defaultConfig, 'tenantContext')) {
     integrityErrors.push(`${file}: \`tenantContext\` in the file-level config is the v4 spelling. Write \`scope\`.`)
   }
+  // Reserved to the framework's own return routes (T-12.17): a route that reads its tenant from a
+  // flow `state` skips the token and the resolver, and only a route whose handler checks that
+  // `state` against a live flow row may do that.
+  const tenantFrom = (config as { tenantFrom?: unknown } | undefined)?.tenantFrom
+  if (tenantFrom !== undefined && (!framework || tenantFrom !== 'flow-state')) {
+    integrityErrors.push(`${where}: \`tenantFrom\` is reserved to the framework's own routes. Remove it.`)
+  }
   if (scope !== 'tenant' && scope !== 'control') {
     integrityErrors.push(`${where}: unknown scope '${scope}'. The two planes are 'tenant' (default) and 'control'.`)
   }
@@ -344,6 +352,7 @@ export function processRoute(
       roles: requiredRoles,
       enable,
       tenantContext,
+      ...(tenantFrom === 'flow-state' && framework ? { tenantFrom: 'flow-state' as const } : {}),
       rawBody,
       rateLimit,
       tracking,
@@ -373,7 +382,9 @@ async function load(): Promise<ConfiguredRoute[]> {
   const patterns = normalizePatterns(['..', 'api', '**', 'routes.{ts,js}'], ['src', 'api', '**', 'routes.{ts,js}'])
   const authMiddlewares = ['global.isAuthenticated', 'global.isAdmin']
 
-  for (const pattern of patterns) {
+  for (const [position, pattern] of patterns.entries()) {
+    // The first pattern is the framework's own `lib/api`, the second the project's `src/api`.
+    const framework = position === 0
     if (log.t) log.trace('Looking for ' + pattern)
     const files = globSync(pattern, { windowsPathsNoEscape: true })
 
@@ -400,7 +411,8 @@ async function load(): Promise<ConfiguredRoute[]> {
           defaultConfig,
           authMiddlewares,
           validRoutes,
-          integrityErrors
+          integrityErrors,
+          framework
         )
         if (configuredRoute) {
           validRoutes.push(configuredRoute)
@@ -431,7 +443,7 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
   let countRoutes = 0
   for (const route of routes) {
     if (route?.enable) {
-      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc, tenantContext, cache, tracking } =
+      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc, tenantContext, tenantFrom, cache, tracking } =
         route
 
       if (log.d) log.debug(`* Add path ${method} ${path} on handle ${handler}`)
@@ -467,6 +479,7 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
           rawBody: rawBody || false,
           rateLimit: rateLimit || undefined,
           tenantContext: tenantContext,
+          tenantFrom: tenantFrom || undefined,
           cache: cache || undefined,
           tracking: tracking || undefined
         },

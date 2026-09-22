@@ -196,7 +196,10 @@ function planeProblems(plane: AuthPlane, block: AuthPlaneFlows, input: AuthFlowC
       ...[...named].filter((id) => typeof registry.get(plane, id)?.initiate === 'function').map((id) => `'${id}' starts a challenge or a redirect`),
       ...block.flows.flatMap((flow, i) =>
         flow.stages.some((s) => !s.optional) ? [`flow ${i + 1} has a stage that is not optional`] : []
-      )
+      ),
+      // The floor adds a second step to every login (F35), and an enrolment inside the flow for
+      // whoever has no factor yet: neither can run without the row.
+      ...(demandsEnrolment(policy) ? [`the ${plane} policy is ${policy}`] : [])
     ]
     if (steps.length) {
       problems.push(

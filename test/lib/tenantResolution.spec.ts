@@ -51,6 +51,12 @@ async function serverWith(tenants: any) {
   await server.register(jwtValidator, { secret: SECRET })
   server.decorate('provider', provider)
   server.decorate('tenantManager', fakeRegistry())
+  // What the router builds from the authenticators: the return route reads its `state` under the
+  // parameter name the method declares (T-12.17), `state` for a method that declares none.
+  server.decorate('authRegistry', {
+    get: (_plane: string, id: string) =>
+      id === 'fake-saml' ? { id, stateParam: 'RelayState' } : id === 'oidc' ? { id } : undefined
+  })
   await apply(server)
 
   // The two shapes the router produces, and one it never produces.
@@ -62,6 +68,11 @@ async function serverWith(tenants: any) {
     tenant: req.tenantInfo?.slug ?? null
   }))
   server.get('/docs', async (req: any) => ({ tenant: req.tenantInfo?.slug ?? null }))
+  server.get(
+    '/auth/flow/return/:method',
+    { config: { tenantContext: true, tenantFrom: 'flow-state' } },
+    async (req: any) => ({ tenant: req.tenantInfo?.slug ?? null, opened: (req.tenant as any)?.tenantId ?? null })
+  )
 
   return { server, provider }
 }
@@ -237,6 +248,79 @@ describe('loader/tenant · resolving which tenant (T-3.2)', () => {
       expect(provider.opened).toEqual([])
       await server.close()
     })
+  })
+})
+
+describe('loader/tenant · a return from a provider, resolved from the flow state (T-12.17)', () => {
+  const HEADERS = { strategy: 'schema', engine: 'postgres', resolver: 'header', headerKey: HEADER }
+  const SUBDOMAIN = { strategy: 'schema', engine: 'postgres', resolver: 'subdomain' }
+  const returnTo = (server: any, method: string, query: string, headers: any = {}) =>
+    server.inject({ method: 'GET', url: `/auth/flow/return/${method}?${query}`, headers })
+
+  afterEach(() => {
+    ;(global as any).config = undefined
+  })
+
+  it('opens the container the state routes to, with no token and no header', async () => {
+    const { server, provider } = await serverWith(HEADERS)
+    const res = await returnTo(server, 'fake-saml', 'RelayState=st1.id-acme.abcdefgh')
+    expect(res.statusCode).toBe(200)
+    expect(body(res)).toEqual({ tenant: 'acme', opened: 'id-acme' })
+    expect(provider.opened).toEqual(['id-acme'])
+    await server.close()
+  })
+
+  it('reads the parameter the method declares, and `state` for a method that declares none', async () => {
+    const { server } = await serverWith(HEADERS)
+    // The name SAML gives it is not the name OIDC gives it, and neither is a second rule.
+    expect((await returnTo(server, 'fake-saml', 'state=st1.id-acme.abcdefgh')).statusCode).toBe(400)
+    expect(body(await returnTo(server, 'oidc', 'state=st1.id-acme.abcdefgh')).tenant).toBe('acme')
+    await server.close()
+  })
+
+  it('refuses a return that carries no usable state, before anything is opened', async () => {
+    const { server, provider } = await serverWith(HEADERS)
+    for (const query of ['', 'state=', 'state=nonsense', 'state=vf1.id-acme.flow.secret']) {
+      const res = await returnTo(server, 'oidc', query)
+      expect(res.statusCode).toBe(400)
+      expect(body(res).code).toBe('FLOW_REQUIRED')
+    }
+    expect(provider.opened).toEqual([])
+    await server.close()
+  })
+
+  it('answers 404 for a routing that names no tenant, and for one that is suspended', async () => {
+    const { server } = await serverWith(HEADERS)
+    for (const routing of ['id-nowhere', 'id-dormant']) {
+      const res = await returnTo(server, 'oidc', `state=st1.${routing}.abcdefgh`)
+      expect(res.statusCode).toBe(404)
+      expect(body(res).code).toBe('TENANT_NOT_FOUND')
+    }
+    await server.close()
+  })
+
+  it('refuses a state that names one tenant while the request names another', async () => {
+    const { server, provider } = await serverWith(HEADERS)
+    const byHeader = await returnTo(server, 'oidc', 'state=st1.id-acme.abcdefgh', { [HEADER]: 'globex' })
+    expect(byHeader.statusCode).toBe(403)
+    expect(body(byHeader).code).toBe('TENANT_MISMATCH')
+
+    const byToken = await returnTo(server, 'oidc', 'state=st1.id-acme.abcdefgh', {
+      authorization: `Bearer ${tokenFor(server, { sub: 'u1', tid: 'id-globex' })}`
+    })
+    expect(byToken.statusCode).toBe(403)
+    expect(body(byToken).code).toBe('TENANT_MISMATCH')
+    expect(provider.opened).toEqual([])
+    await server.close()
+  })
+
+  it('does the same with the subdomain resolver, which is where a browser return actually arrives', async () => {
+    const { server } = await serverWith(SUBDOMAIN)
+    expect(body(await returnTo(server, 'oidc', 'state=st1.id-acme.abcdefgh', { host: 'acme.example.com' })).tenant).toBe('acme')
+    const other = await returnTo(server, 'oidc', 'state=st1.id-acme.abcdefgh', { host: 'globex.example.com' })
+    expect(other.statusCode).toBe(403)
+    expect(body(other).code).toBe('TENANT_MISMATCH')
+    await server.close()
   })
 })
 

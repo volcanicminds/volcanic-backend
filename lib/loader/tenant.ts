@@ -5,6 +5,7 @@ import { isTenancyEnabled, tenantsConfig } from '../util/tenancy.js'
 import { declaredTenant } from '../util/tenantResolution.js'
 import { migrationChecks } from './schemaVersion.js'
 import { credentialOf, REFRESH_TYP } from '../util/credential.js'
+import { parseFlowState } from '../util/flowCredential.js'
 import { httpError } from '../util/httpError.js'
 
 //
@@ -87,7 +88,7 @@ export async function apply(server: FastifyInstance) {
   if (log.i) log.info(`Tenancy: 🟢 ${tenants?.strategy} on ${tenants?.engine}`)
 
   server.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
-    const cfg = (req.routeOptions?.config as { tenantContext?: boolean }) || {}
+    const cfg = (req.routeOptions?.config as { tenantContext?: boolean; tenantFrom?: string }) || {}
     // Only routes the framework's router registered carry this flag. Everything else, the
     // Swagger UI, static mounts, a 404, never reaches the data layer, and refusing it here
     // would be answering a question nobody asked.
@@ -117,7 +118,19 @@ export async function apply(server: FastifyInstance) {
 
     let tenant: Tenant | null = null
 
-    if (claimed) {
+    if (cfg.tenantFrom === 'flow-state') {
+      // A return from a provider (F39, T-12.17): a navigation that carries no token and, with the
+      // header resolver, no header. The container is the one the flow `state` routes to, an address
+      // the handler then checks against a live row; a tenant the request declares or proves may
+      // only agree with it. The query string names a flow here, never a tenant to believe.
+      const routing = stateRouting(req)
+      if (!routing) return reply.code(400).send(httpError(400, 'This return carries no flow state', 'FLOW_REQUIRED'))
+      tenant = await tm.getTenant(req.control, routing)
+      if ((declared && tenant?.slug !== declared) || (claimed && claimed !== routing)) {
+        if (log.w) log.warn(`Tenancy: the flow state and the request name different tenants on ${req.url}`)
+        return reply.code(403).send(httpError(403, 'The flow does not belong to the declared tenant', 'TENANT_MISMATCH'))
+      }
+    } else if (claimed) {
       // The token decides. The header, when present, may only agree with it: the answer is
       // the same whether the declared tenant exists, is another one, or does not exist at
       // all, so a mismatch reveals nothing about the registry.
@@ -192,6 +205,14 @@ async function containerBehind(
     return null
   }
   return { applied, expected }
+}
+
+/** The routing of the `state` a return carries, under the parameter name its method declares. */
+function stateRouting(req: FastifyRequest): string | undefined {
+  const method = (req.params as { method?: unknown } | undefined)?.method
+  const authenticator = typeof method === 'string' ? req.server.authRegistry?.get('tenant', method) : undefined
+  const query = (req.query ?? {}) as Record<string, unknown>
+  return parseFlowState(query[authenticator?.stateParam ?? 'state'])?.routing
 }
 
 /** A control token declares its plane and carries no tenant: it is not a missing `tid`. */
