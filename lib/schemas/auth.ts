@@ -297,3 +297,48 @@ export const authFlowPartialResponseSchema = {
     }
   }
 }
+
+//
+// External identities linked to an account (T-12.27, F40). The account's own `externalId` is not
+// here: it is what the session carries, and it has no business in a listing.
+//
+export const externalIdentitySchema = {
+  $id: 'externalIdentitySchema',
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    provider: { type: 'string' },
+    issuer: { type: 'string' },
+    subject: { type: 'string' },
+    emailAtLink: { type: 'string', nullable: true },
+    createdAt: { type: 'string', format: 'date-time' },
+    lastUsedAt: { type: 'string', format: 'date-time', nullable: true }
+  }
+}
+
+export const externalIdentityListSchema = {
+  $id: 'externalIdentityListSchema',
+  type: 'array',
+  items: { $ref: 'externalIdentitySchema#' }
+}
+
+export const externalIdentityBodySchema = {
+  $id: 'externalIdentityBodySchema',
+  type: 'object',
+  required: ['provider', 'issuer', 'subject'],
+  properties: {
+    provider: { type: 'string', maxLength: 63 },
+    issuer: { type: 'string', maxLength: 2048 },
+    subject: { type: 'string', minLength: 1, maxLength: 255 }
+  }
+}
+
+export const externalIdentityParamsSchema = {
+  $id: 'externalIdentityParamsSchema',
+  type: 'object',
+  required: ['id', 'linkId'],
+  properties: {
+    id: { type: 'string', minLength: 1 },
+    linkId: { type: 'string', minLength: 1 }
+  }
+}

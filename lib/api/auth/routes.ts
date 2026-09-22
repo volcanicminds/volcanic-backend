@@ -373,6 +373,32 @@ export default {
         // The tenant comes from the flow `state`: the navigation carries no token and no header.
         tenantFrom: 'flow-state'
       }
+    },
+    // The caller's own external identities (T-12.27): seen and removed, not added (F48).
+    {
+      method: 'GET',
+      path: '/identities',
+      roles: [],
+      handler: 'identities.list',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'The external identities of the caller',
+        description: 'The provider accounts linked to this account',
+        response: { 200: { $ref: 'externalIdentityListSchema#' } }
+      }
+    },
+    {
+      method: 'DELETE',
+      path: '/identities/:id',
+      roles: [],
+      handler: 'identities.remove',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Remove one external identity',
+        description: 'Unlinks a provider account of the caller; one of somebody else answers 404',
+        params: { $ref: 'onlyIdSchema#' },
+        response: { 200: { $ref: 'defaultResponse#' } }
+      }
     }
   ]
 }

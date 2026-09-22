@@ -257,6 +257,47 @@ export default {
           200: { $ref: 'defaultResponse#' }
         }
       }
+    },
+    // External identities of a user, managed by the administrator (T-12.27).
+    {
+      method: 'GET',
+      path: '/:id/identities',
+      requireCapability: 'users',
+      handler: 'identities.list',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'External identities of a user',
+        description: 'The provider accounts linked to this user',
+        params: { $ref: 'globalParamsSchema#' },
+        response: { 200: { $ref: 'externalIdentityListSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/:id/identities',
+      requireCapability: 'users',
+      handler: 'identities.create',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Link an external identity to a user',
+        description: 'Provider, issuer and subject: never an address alone',
+        params: { $ref: 'globalParamsSchema#' },
+        body: { $ref: 'externalIdentityBodySchema#' },
+        response: { 201: { $ref: 'externalIdentitySchema#' } }
+      }
+    },
+    {
+      method: 'DELETE',
+      path: '/:id/identities/:linkId',
+      requireCapability: 'users',
+      handler: 'identities.remove',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Unlink an external identity from a user',
+        description: 'Removes one link of this user',
+        params: { $ref: 'externalIdentityParamsSchema#' },
+        response: { 200: { $ref: 'defaultResponse#' } }
+      }
     }
   ]
 

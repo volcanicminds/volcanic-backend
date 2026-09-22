@@ -9,6 +9,7 @@ import type {
 import { MfaPolicy } from '../config/constants.js'
 import { demandsEnrolment, mfaAvailable, unavailableMandatory } from '../util/mfaPolicy.js'
 import { kindsOf } from './registry.js'
+import { PROVIDER_KEY, providerShapeProblems } from './providers.js'
 
 //
 // The boot refusal of the flow configuration (T-12.6).
@@ -162,7 +163,14 @@ function planeProblems(plane: AuthPlane, block: AuthPlaneFlows, input: AuthFlowC
     if (provider?.type !== 'oidc') missing.unshift("type: 'oidc'")
     if (missing.length) {
       problems.push(`${where}: provider '${key}' is missing ${missing.join(', ')}`)
-    } else if (!input.env[provider.clientSecretEnv]?.trim()) {
+      continue
+    }
+    if (!PROVIDER_KEY.test(key)) problems.push(`${where}: provider key '${key}' must be lowercase letters, digits, '-' or '_'`)
+    // The same rules a tenant's provider meets at the control routes (T-12.26).
+    for (const problem of providerShapeProblems(provider, { plane, allow: ['type', 'clientSecretEnv'] })) {
+      problems.push(`${where}: provider '${key}': ${problem}`)
+    }
+    if (!input.env[provider.clientSecretEnv]?.trim()) {
       // The name is printed, the value never: there is none, and there must never be one in the file.
       problems.push(`${where}: provider '${key}' reads its client secret from ${provider.clientSecretEnv}, which is empty: set that variable`)
     }

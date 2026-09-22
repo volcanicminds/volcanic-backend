@@ -70,6 +70,7 @@ import {
 } from './lib/defaults/managers.js'
 import { buildAuthenticatorRegistry } from './lib/auth/registry.js'
 import { authFlowProblems, canImport, isImplemented, listsMethod, OIDC, OIDC_LIBRARY } from './lib/auth/validate.js'
+import { captureDeploymentSecrets } from './lib/auth/providers.js'
 
 global.log = logger
 
@@ -383,6 +384,8 @@ const start = async (decorators: StartOptions = {}) => {
     env: process.env
   })
   if (flowProblems.length) throw new Error(flowProblems.join('\n'))
+  // Read once, now that the validation has refused an empty one, and kept out of every global (T-12.25).
+  captureDeploymentSecrets(global.authFlows, process.env)
 
   // Before anything writes: an instance does not serve traffic on a schema its code does not
   // match (T-5.4). It runs BEFORE the genesis reconciliation on purpose, because that one

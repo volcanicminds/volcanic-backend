@@ -126,3 +126,80 @@ export const tenantDestroyBodySchema = {
     otp: { type: 'string', description: 'The second factor of the operator asking' }
   }
 }
+
+//
+// A tenant's own identity providers (T-12.26, F38). The client secret is accepted in a body and
+// named in no response schema: the serializer drops what a schema does not declare, so a secret a
+// controller forgot to strip still does not leave. `config` is closed for the same reason.
+//
+const identityProviderSettings = {
+  type: 'object',
+  properties: {
+    issuer: { type: 'string' },
+    clientId: { type: 'string' },
+    redirectUri: { type: 'string' },
+    scopes: { type: 'array', items: { type: 'string' } },
+    tokenAuthMethod: { type: 'string' },
+    linkByEmail: { type: 'boolean' },
+    emailDomains: { type: 'array', items: { type: 'string' } },
+    jit: { type: 'object', properties: { enabled: { type: 'boolean' }, roles: { type: 'array', items: { type: 'string' } } } },
+    mfa: { type: 'object', properties: { trust: { type: 'string' }, values: { type: 'array', items: { type: 'string' } } } }
+  }
+}
+
+export const identityProviderSchema = {
+  $id: 'identityProviderSchema',
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    tenantId: { type: 'string' },
+    key: { type: 'string' },
+    type: { type: 'string' },
+    status: { type: 'string', enum: ['active', 'disabled'] },
+    config: identityProviderSettings,
+    // Whether a secret is stored, never the secret: a console can say "set" without holding it.
+    hasClientSecret: { type: 'boolean' },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' }
+  }
+}
+
+export const identityProviderListSchema = {
+  $id: 'identityProviderListSchema',
+  type: 'array',
+  items: { $ref: 'identityProviderSchema#' }
+}
+
+export const identityProviderBodySchema = {
+  $id: 'identityProviderBodySchema',
+  type: 'object',
+  required: ['key', 'type', 'config'],
+  properties: {
+    key: { type: 'string', maxLength: 63 },
+    type: { type: 'string', enum: ['oidc'] },
+    status: { type: 'string', enum: ['active', 'disabled'] },
+    config: { type: 'object' },
+    clientSecret: { type: 'string', maxLength: 4096, nullable: true }
+  }
+}
+
+export const identityProviderUpdateBodySchema = {
+  $id: 'identityProviderUpdateBodySchema',
+  type: 'object',
+  properties: {
+    status: { type: 'string', enum: ['active', 'disabled'] },
+    config: { type: 'object' },
+    // Absent keeps the stored secret, null removes it, a string replaces it.
+    clientSecret: { type: 'string', maxLength: 4096, nullable: true }
+  }
+}
+
+export const identityProviderParamsSchema = {
+  $id: 'identityProviderParamsSchema',
+  type: 'object',
+  required: ['id', 'key'],
+  properties: {
+    id: { type: 'string', minLength: 1 },
+    key: { type: 'string', minLength: 1, maxLength: 63 }
+  }
+}

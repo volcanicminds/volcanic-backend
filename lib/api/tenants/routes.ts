@@ -194,6 +194,75 @@ export default {
           200: { $ref: 'defaultResponse#' }
         }
       }
+    },
+    // A tenant's own identity providers (T-12.26). `tenants` for reading too: the rows name the
+    // customer's IdP configuration, which is not what a read-only oversight role needs.
+    {
+      method: 'GET',
+      path: '/:id/identity-providers',
+      requireCapability: 'tenants',
+      handler: 'identityProviders.list',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'List identity providers of a tenant',
+        description: 'The providers a tenant logs in with, never their client secret',
+        params: { $ref: 'globalParamsSchema#' },
+        response: { 200: { $ref: 'identityProviderListSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/:id/identity-providers',
+      requireCapability: 'tenants',
+      handler: 'identityProviders.create',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Add an identity provider to a tenant',
+        description: 'Validated in shape, without calling the provider; the client secret is stored encrypted',
+        params: { $ref: 'globalParamsSchema#' },
+        body: { $ref: 'identityProviderBodySchema#' },
+        response: { 201: { $ref: 'identityProviderSchema#' } }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/:id/identity-providers/:key',
+      requireCapability: 'tenants',
+      handler: 'identityProviders.findOne',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Read one identity provider of a tenant',
+        description: 'With `hasClientSecret`, never the secret',
+        params: { $ref: 'identityProviderParamsSchema#' },
+        response: { 200: { $ref: 'identityProviderSchema#' } }
+      }
+    },
+    {
+      method: 'PUT',
+      path: '/:id/identity-providers/:key',
+      requireCapability: 'tenants',
+      handler: 'identityProviders.update',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Change an identity provider of a tenant',
+        description: '`config` is replaced whole; `clientSecret` absent keeps the stored one, null removes it',
+        params: { $ref: 'identityProviderParamsSchema#' },
+        body: { $ref: 'identityProviderUpdateBodySchema#' },
+        response: { 200: { $ref: 'identityProviderSchema#' } }
+      }
+    },
+    {
+      method: 'DELETE',
+      path: '/:id/identity-providers/:key',
+      requireCapability: 'tenants',
+      handler: 'identityProviders.remove',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Remove an identity provider from a tenant',
+        description: 'Removes the row and its secret',
+        params: { $ref: 'identityProviderParamsSchema#' },
+        response: { 200: { $ref: 'defaultResponse#' } }
+      }
     }
   ]
 }
