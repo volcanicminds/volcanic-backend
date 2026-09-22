@@ -437,8 +437,7 @@ vecchie si tolgono solo quando le nuove passano le prove.
 | A. Correzione urgente | T-12.1, **chiuso** | nulla: già su `v5` |
 | B. Contratti e registro | T-12.2 → T-12.4 | tutto il resto |
 | C. Configurazione e validazione all'avvio | T-12.5 → T-12.7 | il motore |
-| D. Persistenza | T-12.13 → T-12.21 | commit `90609d7`: `lib/util/flowCredential.ts`, `lib/auth/engine.ts`, `lib/auth/http.ts`, `lib/auth/authenticators/{password,totp}.ts`, `lib/auth/subjects.ts`, `lib/util/accessLog.ts`, `lib/api/auth/routes.ts`, `lib/api/system/routes.ts`, i due controller sottili, `lib/schemas/auth.ts`, `lib/loader/tenant.ts`, `lib/loader/router.ts`, `lib/database/managers/authFlow.ts` (`recordAttempt`), `bin/volcanic.mjs`; `test/lib/{flowCredential,authEngine,authFlowRoutes}.spec.ts` più le aggiunte a `tenantResolution`, `router`, `authFlowConfig`, `tenantProvisioning` e `test/db/authFlow.spec.ts`; `npm test` 696 prove e 31 saltate senza `DATABASE_URL`, 754 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi; copertura 86,4% di righe |
-| T-12.8 → T-12.12 | i flussi a più passi e il registro degli accessi |
+| D. Persistenza | T-12.8 → T-12.12 | i flussi a più passi e il registro degli accessi |
 | E. Motore e rotte sui due piani | T-12.13 → T-12.18 | i metodi |
 | F. `password` e `totp` | T-12.19 → T-12.21 | la parità con oggi |
 | G. `email-otp` | T-12.22 → T-12.24 | |
@@ -930,7 +929,7 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## J. Registro degli accessi
 
-- [ ] **T-12.31** Il vocabolario e lo scrittore.
+- [x] **T-12.31** Il vocabolario e lo scrittore.
   **Cosa fare**: il tipo chiuso degli eventi di F44 in `types/global.d.ts`; un solo scrittore nel
   core, `recordAccess(req, entry)`, che sceglie il contenitore con `dataContext` o il piano di
   controllo secondo il piano, chiede `isImplemented()`, attende l'`insert` dentro un `try` e scrive
@@ -942,8 +941,26 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Criterio di chiusura**: prova che un manager che lancia a ogni `record` lascia il login
   riuscito identico nel corpo e nello stato, e prova per ogni evento della lista che il campo
   segreto dell'input (password, codice, token) non compare nella riga.
+  **Evidenza**: commit `01e84e9`. Blocco `accessLog` in `lib/config/general.ts:71` e in
+  `types/global.d.ts` (`GeneralConfig.options.accessLog`), letto dal manager con l'ambiente che
+  vince (`lib/database/managers/accessLog.ts:115`) e passato da `buildManagers(provider, options)`
+  (`db.ts`). Scrittori `recordTenantAccess` e `recordControlAccess` in `lib/util/accessLog.ts`;
+  chiamate in `lib/api/auth/controller/auth.ts:452` (`logout`), `:513` (`tokens.invalidated`),
+  `:578` (`session.revoked`), `:648` (`mfa.enrolled`), `:765` (`mfa.disabled`),
+  `lib/api/users/controller/user.ts:257` (reset dell'admin), `lib/api/system/controller/systemAuth.ts:160`,
+  `:173`, `:273`, `systemUser.ts:56`, `lib/util/renewal.ts:105` (`session.reuse_detected`, con lo
+  scope della riga). `test/lib/accessLogWrites.spec.ts`: ogni evento sul suo contenitore e con il suo
+  soggetto sui due piani, nessuna riga che contenga password, codice, segreto TOTP, token d'accesso
+  o credenziale di rinnovo, e un manager che lancia a ogni `record` lascia identici stato e corpo di
+  sette rotte (provato che la prova fallisce se lo scrittore rilancia). La parità del login riuscito
+  era già in `test/lib/authFlowRoutes.spec.ts:337`.
+  Derive dal piano: `subject_id` è l'`externalId`, che ruota con `invalidate-tokens` e con
+  `reset_external_id_on_login`, quindi le righe di prima restano sull'identificativo ritirato;
+  `tokens.invalidated` si scrive con quello, perché è quello che portano le righe precedenti. Un
+  `logout` senza sessione non scrive nulla, altrimenti chiunque riempirebbe la tabella. Le rotte
+  vecchie (`/auth/login`, `/auth/mfa/verify` e le gemelle di sistema) non scrivono: spariscono in K.
 
-- [ ] **T-12.32** La lettura, sui due piani.
+- [x] **T-12.32** La lettura, sui due piani.
   **Cosa fare**: `GET /access-log` e `/access-log/count` per il ruolo `admin` del tenant,
   `GET /system/access-log` e `/count` con la capability nuova `access-log`, aggiunta al catalogo
   chiuso (`types/global.d.ts:67-75`) e concessa a `system:auditor`; Magic Query sui soli campi di
@@ -952,14 +969,36 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   `lib/schemas/`.
   **Criterio di chiusura**: prova che un utente senza `admin` riceve 403, che un filtro su un campo
   fuori elenco è un rifiuto, e che il manifest di ciascun piano annuncia la sua rotta.
+  **Evidenza**: commit `01e84e9`. `lib/api/access-log/` (rotte e controller), `lib/api/system/routes.ts:205`,
+  `:219` con `systemAccessLog.ts`, `lib/schemas/accessLog.ts`, capability `access-log` in
+  `types/global.d.ts`, `lib/loader/roles.ts:26` e concessa a `system:auditor` in
+  `lib/config/systemRoles.ts:38`. Lo scope passa al manager come `extraWhere`, messo in AND dopo
+  tutto ciò che chiede l'URL. Prove: `test/lib/accessLogWrites.spec.ts` (403 a un utente senza
+  `admin`, 401 anonimo, 403 a `system:operator` e a un token di tenant sulla rotta di sistema, campi
+  in più tolti dallo schema di risposta), `test/db/accessLog.spec.ts` (una query che chiede
+  `scope: 'control'` sul piano tenant trova zero righe, `userAgent` è `QUERY_UNKNOWN_FIELD`),
+  `test/lib/manifestRealRoutes.spec.ts` (risorsa `systemAccessLog` a `system/access-log` per
+  l'auditor e non per l'operatore, risorsa `accessLog` a `/access-log` per `admin`, assente dal
+  manifest di piattaforma). `docs/API_V5.md` e `docs/AUTHORIZATION_V5.md` aggiornati.
+  Derive dal piano: la cartella è `lib/api/access-log/` e non `accessLog/`, perché il router ricava
+  il segmento dell'URL dal nome della cartella. Il contratto cambia: `findQuery`, `countQuery` e
+  `purgeBefore` prendono uno `scope` opzionale.
 
-- [ ] **T-12.33** Conservazione e purga.
+- [x] **T-12.33** Conservazione e purga.
   **Cosa fare**: purga opportunistica per predicato e comando
   `npx volcanic access-log --purge [--tenants]` accanto a `sessions`, con le due soglie per piano.
   **Dove**: `bin/volcanic.mjs`, `lib/util/accessLog.ts`.
   **Criterio di chiusura**: prova che una riga oltre la soglia sparisce e una dentro resta, sui
   due piani con le due soglie distinte; `npx volcanic access-log --purge --tenants` pagina oltre i
   primi mille tenant come fa `sessions`.
+  **Evidenza**: commit `01e84e9`. `purgeExpired` in `lib/database/managers/accessLog.ts:179`, le due
+  soglie in una sola istruzione; purga opportunistica in `lib/util/accessLog.ts:35`; comando in
+  `bin/volcanic.mjs:70`. Il ciclo sulla flotta è uscito dalla CLI in `lib/database/purge.ts`
+  (`purgeContainers`, esportato da `db.ts`) ed è condiviso da `sessions`, `auth-flows` e
+  `access-log`. Prove: `test/db/accessLog.spec.ts`, su SQLite e su Postgres, 90 e 180 giorni nel
+  contenitore del tenant e in quello di controllo, configurazione e ambiente che vince, un valore
+  non positivo che ricade sul default; `test/db/purge.spec.ts`, 1050 tenant visitati tutti, fermata
+  corretta su un confine esatto di pagina. `docs/CONFIGURATION_V5.md` e `README.md` aggiornati.
 
 ## K. Rimozione e gatekeeper
 
@@ -1114,5 +1153,6 @@ chieda una riautenticazione fresca.
 | T-12.1 | commit `1b50994`: `lib/api/auth/controller/auth.ts:576-584`, `lib/api/system/controller/systemAuth.ts:229`, `:249`, quattro prove in `test/lib/mfaEnrolment.spec.ts`, `docs/API_V5.md:47-48`, `:186` |
 | T-12.2 → T-12.4 | commit `d8b6890`: `types/global.d.ts:770-1431`, `lib/auth/registry.ts`, `lib/auth/builtins.ts`, `lib/defaults/managers.ts:134-148`, `test/lib/authRegistry.spec.ts`, `test/lib/authBoot.spec.ts`, `test/lib/defaultManagers.spec.ts` |
 | T-12.5 → T-12.7 | commit `0e2f98b`: `lib/config/authFlows.ts`, `lib/loader/authFlows.ts`, `lib/auth/validate.ts`, `index.ts:366-385`, `lib/api/tenants/controller/tenants.ts:172-181`, `test/lib/authFlowConfig.spec.ts`, `test/lib/tenantProvisioning.spec.ts:122`; `npm test` 616 prove, 30 saltate senza `DATABASE_URL` |
-| T-12.13 → T-12.21 | commit `90609d7`: `lib/util/flowCredential.ts`, `lib/auth/engine.ts`, `lib/auth/http.ts`, `lib/auth/authenticators/{password,totp}.ts`, `lib/auth/subjects.ts`, `lib/util/accessLog.ts`, `lib/api/auth/routes.ts`, `lib/api/system/routes.ts`, i due controller sottili, `lib/schemas/auth.ts`, `lib/loader/tenant.ts`, `lib/loader/router.ts`, `lib/database/managers/authFlow.ts` (`recordAttempt`), `bin/volcanic.mjs`; `test/lib/{flowCredential,authEngine,authFlowRoutes}.spec.ts` più le aggiunte a `tenantResolution`, `router`, `authFlowConfig`, `tenantProvisioning` e `test/db/authFlow.spec.ts`; `npm test` 696 prove e 31 saltate senza `DATABASE_URL`, 754 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi; copertura 86,4% di righe |
 | T-12.8 → T-12.12 | commit `9dc13c6`: `lib/database/schema/pg.ts:199-306`, `:399`, `lib/database/schema/sqlite.ts:147-246`, `:334`, migrazioni `0002_auth_flow_control` e `0002_auth_flow_tenant` nei quattro insiemi, `lib/database/managers/{authFlow,externalIdentity,identityProvider,accessLog}.ts`, `lib/database/managers/index.ts:55-59`, `test/db/authFlow.spec.ts`, `test/db/accessLog.spec.ts`, `test/migrations/authFlowUpgrade.spec.ts`; `npm test` 649 prove e 31 saltate senza `DATABASE_URL`, 706 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi |
+| T-12.13 → T-12.21 | commit `90609d7`: `lib/util/flowCredential.ts`, `lib/auth/engine.ts`, `lib/auth/http.ts`, `lib/auth/authenticators/{password,totp}.ts`, `lib/auth/subjects.ts`, `lib/util/accessLog.ts`, `lib/api/auth/routes.ts`, `lib/api/system/routes.ts`, i due controller sottili, `lib/schemas/auth.ts`, `lib/loader/tenant.ts`, `lib/loader/router.ts`, `lib/database/managers/authFlow.ts` (`recordAttempt`), `bin/volcanic.mjs`; `test/lib/{flowCredential,authEngine,authFlowRoutes}.spec.ts` più le aggiunte a `tenantResolution`, `router`, `authFlowConfig`, `tenantProvisioning` e `test/db/authFlow.spec.ts`; `npm test` 696 prove e 31 saltate senza `DATABASE_URL`, 754 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi; copertura 86,4% di righe |
+| T-12.31 → T-12.33 | commit `01e84e9`: `lib/util/accessLog.ts`, `lib/database/managers/accessLog.ts`, `lib/database/purge.ts`, `lib/api/access-log/`, `lib/api/system/controller/systemAccessLog.ts`, `lib/schemas/accessLog.ts`, `test/lib/accessLogWrites.spec.ts`, `test/db/accessLog.spec.ts`, `test/db/purge.spec.ts`; `npm test` 721 prove (783 con `DATABASE_URL`), banco multi-tenant 14, copertura 86,6% di righe |

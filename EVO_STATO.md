@@ -69,9 +69,14 @@ comportamento di oggi, il pavimento MFA applicato dal motore con l'iscrizione de
 metodi scritti sulla riga della sessione, il tenant dei ritorni letto dallo `state`. Il login della
 piattaforma risponde ora **401 `AUTH_INVALID_CREDENTIALS`** invece di 403 senza codice, e
 `MANDATORY` senza store dei flussi rifiuta l'avvio e la scrittura sul tenant. Le rotte vecchie e il
-token `pre-auth-mfa` restano vive: spariscono nel blocco K. `npm test` 696 prove (754 con
-`DATABASE_URL`), banco multi-tenant 14, copertura 86,4% di righe. Prossimo: il blocco G,
-`email-otp`, oppure J, il registro degli accessi.
+token `pre-auth-mfa` restano vive: spariscono nel blocco K. Chiuso il blocco J (T-12.31 → T-12.33,
+`01e84e9`): il blocco `accessLog` della configurazione con l'ambiente che vince, le scritture di
+logout, revoca, invalidazione, MFA di gestione e riuso sui due piani, la lettura
+`/access-log` per l'`admin` del tenant e `/system/access-log` con la capability `access-log` di
+`system:auditor`, la purga con due soglie (90 e 180 giorni) opportunistica e da
+`npx volcanic access-log --purge [--tenants]`. `npm test` 721 prove (783 con `DATABASE_URL`), banco
+multi-tenant 14, copertura 86,6% di righe. Prossimo: il blocco G, `email-otp`, oppure H, i provider
+di identità.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:
