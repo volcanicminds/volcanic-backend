@@ -62,7 +62,16 @@ hotfix non richiesto per ora. Chiusi i blocchi B e C (T-12.2 → T-12.7, `d8b689
 all'avvio; il login resta quello di oggi. Chiuso il blocco D (T-12.8 → T-12.12, `9dc13c6`):
 tabelle `auth_flow`, `external_identity`, `access_log` e `identity_provider`, migrazioni
 `0002_auth_flow_*` nei quattro insiemi, i quattro manager cablati in `startDataLayer()`; provato
-anche su Postgres. Prossimo: il blocco E, il motore.
+anche su Postgres. Chiusi i blocchi E e F (T-12.13 → T-12.21, `90609d7`): il motore
+(`lib/auth/engine.ts`, uno solo per i due piani), le rotte `/auth/flow/*` e `/system/auth/flow/*`
+con il credenziale opaco in cookie o nel corpo, `password` e `totp` diventati autenticatori con il
+comportamento di oggi, il pavimento MFA applicato dal motore con l'iscrizione dentro il flusso, i
+metodi scritti sulla riga della sessione, il tenant dei ritorni letto dallo `state`. Il login della
+piattaforma risponde ora **401 `AUTH_INVALID_CREDENTIALS`** invece di 403 senza codice, e
+`MANDATORY` senza store dei flussi rifiuta l'avvio e la scrittura sul tenant. Le rotte vecchie e il
+token `pre-auth-mfa` restano vive: spariscono nel blocco K. `npm test` 696 prove (754 con
+`DATABASE_URL`), banco multi-tenant 14, copertura 86,4% di righe. Prossimo: il blocco G,
+`email-otp`, oppure J, il registro degli accessi.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:

@@ -437,7 +437,8 @@ vecchie si tolgono solo quando le nuove passano le prove.
 | A. Correzione urgente | T-12.1, **chiuso** | nulla: già su `v5` |
 | B. Contratti e registro | T-12.2 → T-12.4 | tutto il resto |
 | C. Configurazione e validazione all'avvio | T-12.5 → T-12.7 | il motore |
-| D. Persistenza | T-12.8 → T-12.12 | i flussi a più passi e il registro degli accessi |
+| D. Persistenza | T-12.13 → T-12.21 | commit `90609d7`: `lib/util/flowCredential.ts`, `lib/auth/engine.ts`, `lib/auth/http.ts`, `lib/auth/authenticators/{password,totp}.ts`, `lib/auth/subjects.ts`, `lib/util/accessLog.ts`, `lib/api/auth/routes.ts`, `lib/api/system/routes.ts`, i due controller sottili, `lib/schemas/auth.ts`, `lib/loader/tenant.ts`, `lib/loader/router.ts`, `lib/database/managers/authFlow.ts` (`recordAttempt`), `bin/volcanic.mjs`; `test/lib/{flowCredential,authEngine,authFlowRoutes}.spec.ts` più le aggiunte a `tenantResolution`, `router`, `authFlowConfig`, `tenantProvisioning` e `test/db/authFlow.spec.ts`; `npm test` 696 prove e 31 saltate senza `DATABASE_URL`, 754 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi; copertura 86,4% di righe |
+| T-12.8 → T-12.12 | i flussi a più passi e il registro degli accessi |
 | E. Motore e rotte sui due piani | T-12.13 → T-12.18 | i metodi |
 | F. `password` e `totp` | T-12.19 → T-12.21 | la parità con oggi |
 | G. `email-otp` | T-12.22 → T-12.24 | |
@@ -708,29 +709,38 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## E. Motore e rotte sui due piani
 
-- [ ] **T-12.13** Il credenziale del flusso.
-  **Cosa fare**: composizione e parsing di `vf1.<routing>.<flowId>.<segreto>` e di
-  `st1.<routing>.<segreto>` (F36, F39), riusando le regole di `lib/util/session.ts:41-75`; lettura
-  e scrittura del cookie `auth_flow`/`control_flow` o del campo `flow` del corpo, con i due canali
-  mai scambiabili, come `sessionTokenOf` (`credential.ts:128-130`).
-  **Dove**: `lib/util/flowCredential.ts` (nuovo), `lib/util/credential.ts`.
-  **Criterio di chiusura**: un credenziale malformato è un rifiuto e non un'eccezione, `state` sta
-  sotto gli 80 byte con un `routing` UUID, con prove in `test/lib/flowCredential.spec.ts`.
+- [x] **T-12.13** Il credenziale del flusso.
+  **Cosa è stato fatto**: `lib/util/flowCredential.ts` compone e legge `vf1.<routing>.<flowId>.<segreto>`
+  e `st1.<routing>.<segreto>` con le regole di `parseRefreshCredential`, e sceglie il canale
+  (`presentedFlow`); i cookie `auth_flow` e `control_flow`, con il loro percorso, stanno in
+  `lib/util/credential.ts` accanto a quelli di sessione.
+  **Evidenza**: commit `90609d7`; `lib/util/flowCredential.ts:34` (composizione), `:41` (parsing che
+  risponde `null`), `:52` (`newFlowState`), `:74` (`presentedFlow`); `lib/util/credential.ts:161` (`FLOW_COOKIES`),
+  `:166`, `:171` (percorso e lettura), `:216`, `:220` (scrittura e cancellazione). Quattro
+  prove in `test/lib/flowCredential.spec.ts`: i dieci credenziali malformati che rispondono `null`
+  invece di lanciare, lo `state` di 63 byte con un `routing` UUID (limite 80), e i due canali mai
+  scambiabili, header compreso. Deriva dal piano: il segreto del flusso è lo stesso `newSessionSecret`
+  (32 byte), quello di `state` è di 16 byte per stare nel limite di `RelayState`.
 
-- [ ] **T-12.14** Il motore.
-  **Cosa fare**: macchina a stati pura rispetto all'HTTP: stadio corrente, opzioni applicabili
-  (`anyOf` filtrato da `isEnrolled` e da `optional`), scelta del flusso per ruolo dopo
-  l'identificazione, controllo di `identifiers`, pavimento di F35, iscrizione nel flusso,
-  rivalidazione di `isValidUser`, `confirmed` e `blocked` **a ogni passo** e non solo al primo,
-  completamento con una sola chiamata a `issueSession`, un evento di F44 a ogni transizione. Un
-  solo modulo per i due piani, come `lib/util/renewal.ts`.
-  **Dove**: `lib/auth/engine.ts` (nuovo).
-  **Criterio di chiusura**: prove unitarie con gli autenticatori finti per AND, OR, `optional`,
+- [x] **T-12.14** Il motore.
+  **Cosa è stato fatto**: `lib/auth/engine.ts`, un solo modulo per i due piani, che riceve un
+  `FlowPlane` (contenitore, politica, flussi, come si carica un soggetto, come si apre una sessione)
+  e risponde un esito; l'HTTP resta fuori.
+  **Evidenza**: commit `90609d7`; `lib/auth/engine.ts:154` (`planStages`, `optional` e pavimento F35),
+  `:190` (`stageOptions`, l'iscrizione offerta solo dove la politica la accetta e il soggetto non ha
+  fattori), `:259` (`proceed`), `:281` (`complete`, una sola `issueSession`), `:341` (`locate`,
+  routing e piano), `:421` (`step`, rivalidazione prima e dopo il fattore), `:67` (la tabella dei
+  rifiuti). Quattordici prove in `test/lib/authEngine.spec.ts`: AND, OR, `optional`,
   scelta per ruolo con un soggetto multi-ruolo, identificatore non ammesso dal ruolo, pavimento
-  `MANDATORY` che aggiunge l'iscrizione, soggetto bloccato fra il primo e il secondo passo, ritorno
-  in POST dell'identificatore finto.
+  `MANDATORY` che aggiunge l'iscrizione, soggetto bloccato fra i due passi e soggetto bloccato
+  durante la verifica, tetto dei tentativi, due passi in corsa con un solo vincitore, credenziale di
+  un altro routing o di un altro piano, F46 senza store, sfida di un verificatore in stile SMS,
+  ritorno in POST dell'identificatore finto. Derive dal piano: gli stadi si **ricalcolano** a ogni
+  passo invece di essere fissati all'apertura (la politica per tenant e i fattori del soggetto
+  cambiano dentro il flusso), e il flusso scelto si conserva come indice in `flow_name`; il
+  completamento ritira la riga **prima** di aprire la sessione, così un flusso vale una sessione sola.
 
-- [ ] **T-12.15** Le rotte del piano tenant.
+- [x] **T-12.15** Le rotte del piano tenant.
   **Cosa fare**: `GET /auth/flow/options`, `POST /auth/flow/start`, `POST /auth/flow/step`,
   `POST /auth/flow/challenge`, `POST /auth/flow/cancel`, `GET /auth/flow/return/:method`
   (la variante POST si aggiunge con il primo metodo che la usa, §3); limiti di F44; i middleware
@@ -741,20 +751,32 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   difetto trovato in fase 11 sul rinnovo).
   **Dove**: `lib/api/auth/routes.ts`, `lib/api/auth/controller/flow.ts` (nuovo, sottile),
   `lib/schemas/auth.ts`.
-  **Criterio di chiusura**: prove HTTP che montano le rotte **con** gli schemi veri, in bearer e in
-  cookie.
+  **Evidenza**: commit `90609d7`; `lib/api/auth/routes.ts:286-377` (le sei rotte con i limiti di F44,
+  `preAuth` e `postAuth` su `start` e `step`), `lib/api/auth/controller/flow.ts` (tre righe: nomina il
+  piano), `lib/auth/http.ts:170` (`flowHandlers`), `lib/schemas/auth.ts:209-296` (corpi e risposte 200
+  e 202; `enrol` e `action` restano aperti perché hanno più forme). Dodici prove in bearer e una in
+  cookie in `test/lib/authFlowRoutes.spec.ts`, che montano le rotte dai file veri con i loro schemi e
+  il gancio vero. Deriva dal piano: la variante POST del ritorno non esiste ancora (nessun metodo la
+  usa, §3), e `/auth/flow/challenge` esiste già ma sarà `email-otp` a esercitarla (blocco G).
 
-- [ ] **T-12.16** Le rotte del piano di controllo.
+- [x] **T-12.16** Le rotte del piano di controllo.
   **Cosa fare**: le gemelle sotto `/system/auth/flow/*` con `scope: 'control'`, stesso
   controller parametrizzato per piano, sessione nel piano di controllo con `routing` `ctl`
   (`systemAuth.ts:50-60`). Il login fallito della piattaforma diventa 401
   `AUTH_INVALID_CREDENTIALS`, allineando il codice a `docs/API_V5.md:182`.
   **Dove**: `lib/api/system/routes.ts`, `lib/api/system/controller/systemFlow.ts` o lo stesso
   controller.
-  **Criterio di chiusura**: prova che un credenziale di flusso di un piano presentato sull'altro è
-  rifiutato, e che nessun utente di tenant completa un flusso sul piano di controllo.
+  **Evidenza**: commit `90609d7`; `lib/api/system/routes.ts:61-133` (le gemelle sotto
+  `/system/auth/flow/*`, `scope: 'control'` dal blocco del file), `lib/api/system/controller/systemFlow.ts`,
+  `lib/auth/http.ts:54-95` (il piano di controllo: contenitore `req.control`, sessione con routing
+  `ctl`, 503 `SYSTEM_USERS_NOT_AVAILABLE`). Il login fallito della piattaforma ora è 401
+  `AUTH_INVALID_CREDENTIALS` (`lib/auth/authenticators/password.ts:41-45`), allineato a `docs/API_V5.md:182`.
+  Cinque prove nel terzo `describe` di `test/lib/authFlowRoutes.spec.ts`: il 401 uniforme, la sessione
+  di controllo senza `tid`, un utente di tenant che non completa nulla sul piano di controllo, il
+  credenziale di un piano presentato sull'altro (403 `TENANT_MISMATCH` in un verso, rifiuto nell'altro)
+  e l'iscrizione forzata di un operatore.
 
-- [ ] **T-12.17** Risoluzione del tenant sui passi e sui ritorni.
+- [x] **T-12.17** Risoluzione del tenant sui passi e sui ritorni.
   **Cosa fare**: su `start` il tenant arriva dal resolver come oggi (`tenant.ts:134-137`); su
   `step`, `challenge` e `cancel` il `routing` del credenziale è confrontato con il tenant risolto,
   `TENANT_MISMATCH` se diverge, come il rinnovo (T-11.11). Per i ritorni un flag di rotta
@@ -764,43 +786,70 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   `tenantContext` (`lib/loader/router.ts:261-275`). Il flag legge il parametro dal nome che il
   metodo dichiara, così `RelayState` non richiederà una seconda regola.
   **Dove**: `lib/loader/tenant.ts:89-162`, `lib/loader/router.ts:434-470`.
-  **Criterio di chiusura**: prove in `test/lib/tenantResolution.spec.ts` per `routing` alterato,
-  tenant sospeso, sottodominio discorde; banco multi-tenant in T-12.39.
+  **Evidenza**: commit `90609d7`; `lib/auth/engine.ts:346` (il `routing` confrontato con il contenitore
+  risolto, `TENANT_MISMATCH`), `lib/loader/tenant.ts:121-132` (il ramo `tenantFrom: 'flow-state'`) e
+  `:211` (`stateRouting`, che legge il parametro dal nome dichiarato dal metodo),
+  `lib/loader/router.ts:282-284` (il flag rifiutato sulla rotta di un consumer), `:355` e `:482`.
+  Sei prove nuove in `test/lib/tenantResolution.spec.ts` (ritorno senza token né header, nome del
+  parametro, `state` assente o malformato, routing sconosciuto e tenant sospeso entrambi 404, header
+  o token discordi 403, stessa cosa con il resolver a sottodominio) e una in `test/lib/router.spec.ts`
+  sul flag riservato. Il banco multi-tenant resta a T-12.39 come dice il piano.
 
-- [ ] **T-12.18** Pulizia dei flussi morti.
-  **Cosa fare**: purga opportunistica come quella delle sessioni (`renewal.ts:150-160`) e comando
-  `npx volcanic auth-flows --purge [--tenants]` accanto a `sessions` (`bin/volcanic.mjs:28`,
-  `:57-60`), con la stessa paginazione della flotta.
-  **Criterio di chiusura**: prova che un flusso scaduto sparisce e che le righe tenute per il
-  conteggio degli invii restano fino alla fine della finestra.
+- [x] **T-12.18** Pulizia dei flussi morti.
+  **Cosa è stato fatto**: purga opportunistica su un `start` su cinquanta e comando
+  `npx volcanic auth-flows --purge [--tenants]`, con la stessa paginazione della flotta di `sessions`.
+  **Evidenza**: commit `90609d7`; `lib/auth/engine.ts:248` (`maybePurge`, attesa e dentro un `try`,
+  come quella delle sessioni), `bin/volcanic.mjs:33` (uso), `:63-67` e `:86-113` (un solo ramo per i
+  due comandi, il manager scelto dal nome). La prova del predicato è quella di T-12.12,
+  `test/db/authFlow.spec.ts:274` («purges dead flows by predicate, keeping those whose sends still
+  count»), su SQLite e su Postgres. Deriva dal piano: il comando non ha un test proprio, perché la CLI
+  richiede il pacchetto compilato e non ne ha uno neppure `sessions`.
 
 ## F. `password` e `totp`
 
-- [ ] **T-12.19** `password` come identificatore.
-  **Cosa fare**: sposta la logica di `login` (`auth.ts:336-391`) e di `systemAuth.login`
-  (`systemAuth.ts:70-90`) in un autenticatore per piano, con la risposta uniforme di D-17, la
-  ricerca che distingue le cause solo per il log (`auth.ts:358-367`) e `PASSWORD_TO_BE_CHANGED`
-  distinto dopo la verifica (`auth.ts:386-391`), che si applica solo a chi si identifica con la
-  password.
-  **Criterio di chiusura**: `test/lib/authMessages.spec.ts` passa invariato nel contenuto sulle
-  rotte nuove.
+- [x] **T-12.19** `password` come identificatore.
+  **Cosa è stato fatto**: `lib/auth/authenticators/password.ts`, un autenticatore con i due rami di
+  piano: la risposta uniforme di D-17, la causa vera solo nel log, `PASSWORD_TO_BE_CHANGED` dopo la
+  verifica e solo per chi si identifica con la password.
+  **Evidenza**: commit `90609d7`; `lib/auth/authenticators/password.ts:19` (`refused`, la causa a log),
+  `:24` (piano tenant, l'ordine dei controlli di `auth.ts:358-391`), `:41` (piano di controllo, che
+  adesso risponde come il tenant), `lib/auth/subjects.ts:15` (`toSubject`). La prova «gives every
+  failure before a verified password the one uniform refusal (D-17, T-12.19)» in
+  `test/lib/authFlowRoutes.spec.ts` ripete sulle rotte nuove il contenuto di
+  `test/lib/authMessages.spec.ts`, che resta verde sulle rotte vecchie. Deriva dal piano: un indirizzo
+  malformato risponde 400 `AUTH_INPUT_INVALID` invece del 400 senza codice di `auth.ts:347`, perché il
+  motore porta un codice a ogni rifiuto.
 
-- [ ] **T-12.20** `totp` come verificatore.
-  **Cosa fare**: `verify` sopra `mfaManager.verify` atteso, `absoluteStep` e `isReplay`
-  (`lib/util/mfaCounter.ts:35-45`), contatore scritto con `updateUserById` o `recordMfaCounter`
-  secondo il piano; `isEnrolled` legge `mfaEnabled`.
-  **Criterio di chiusura**: prove di replay e di codice sbagliato che consuma un tentativo del
-  flusso.
+- [x] **T-12.20** `totp` come verificatore.
+  **Cosa è stato fatto**: `lib/auth/authenticators/totp.ts`, con il contatore scritto secondo il piano
+  e il replay indistinguibile da un codice sbagliato.
+  **Evidenza**: commit `90609d7`; `lib/auth/authenticators/totp.ts:19` (i due archivi per piano), `:59`
+  (`verify`: `absoluteStep` atteso, `isReplay`, contatore), `:52` (`isEnrolled` dai fattori del
+  soggetto). Il tentativo si prenota **prima** della verifica (`lib/auth/engine.ts:455-461`,
+  `authFlowManager.recordAttempt`), quindi una raffica di codici in parallelo incontra il tetto invece
+  di superarlo: prova su database reale in `test/db/authFlow.spec.ts` («reserves verifications under
+  the ceiling, a burst of them included»). Prove HTTP in `test/lib/authFlowRoutes.spec.ts`: codice
+  sbagliato con i tentativi rimasti, replay rifiutato come un codice sbagliato, cinque errori che
+  chiudono il flusso. Deriva dal piano: `recordAttempt` è un metodo **nuovo** del port
+  `AuthFlowManagement` (`types/global.d.ts:1117`), perché il contatore dei tentativi esisteva solo per
+  i codici che la riga custodisce; un tentativo è una verifica, giusta o sbagliata che sia.
 
-- [ ] **T-12.21** Iscrizione dentro il flusso.
-  **Cosa fare**: quando F35 lo esige, lo stadio espone `enrol: true`; un primo `step` con
-  `action: 'enrol'` genera il segreto **lato server** con `generateSetup` e lo tiene cifrato nella
-  riga (oggi è il client a mandare il segreto a `enable`, `auth.ts:609`); un secondo `step` con il
-  codice lo conferma, lo salva sull'utente e prosegue. Rifiutata se la politica è `OFF`
-  (`allowsEnrolment`, `mfaPolicy.ts:58`) o se il soggetto ha già un fattore, la stessa regola del
-  409 di T-12.1.
-  **Criterio di chiusura**: prova del percorso `MANDATORY` senza fattore su entrambi i piani, e
-  prova che il segreto non esce mai dalla riga se non nella risposta di iscrizione.
+- [x] **T-12.21** Iscrizione dentro il flusso.
+  **Cosa è stato fatto**: lo stadio espone `enrol: true`, un `step` con `action: 'enrol'` genera il
+  segreto lato server e lo lascia cifrato nella riga, il `step` successivo con il codice lo conferma e
+  prosegue; rifiutata sotto `OFF` e per chi ha già un fattore.
+  **Evidenza**: commit `90609d7`; `lib/auth/engine.ts:442-451` (il ramo `enrol`, il segreto legato alla
+  riga con `bindExternal`), `:190-203` (l'opzione offerta solo se `allowsEnrolment(policy)` e il
+  soggetto non ha fattori), `lib/auth/authenticators/totp.ts:54` (`enrol` con `generateSetup`) e
+  `:75-76` (il codice che sposta il segreto sull'utente). Prove sui due
+  piani in `test/lib/authFlowRoutes.spec.ts` («enrols a subject with no factor inside the flow under
+  MANDATORY, the secret shown once», «enrols an operator with no factor inside the flow under a
+  MANDATORY platform policy», «refuses to enrol a second factor inside the flow for a subject who has
+  one»): il segreto compare nella sola risposta di iscrizione, non nelle successive, e la riga ritirata
+  non lo contiene più. Chiuso qui anche il rinvio del blocco C: `MANDATORY` senza `AuthFlowManagement`
+  rifiuta l'avvio (`lib/auth/validate.ts:200-202`) e la scrittura sul tenant (503
+  `AUTH_FLOW_NOT_AVAILABLE`, `lib/api/tenants/controller/tenants.ts:172-177`), con una prova per
+  ciascuno in `test/lib/authFlowConfig.spec.ts` e `test/lib/tenantProvisioning.spec.ts`.
 
 ## G. `email-otp`
 
@@ -1065,4 +1114,5 @@ chieda una riautenticazione fresca.
 | T-12.1 | commit `1b50994`: `lib/api/auth/controller/auth.ts:576-584`, `lib/api/system/controller/systemAuth.ts:229`, `:249`, quattro prove in `test/lib/mfaEnrolment.spec.ts`, `docs/API_V5.md:47-48`, `:186` |
 | T-12.2 → T-12.4 | commit `d8b6890`: `types/global.d.ts:770-1431`, `lib/auth/registry.ts`, `lib/auth/builtins.ts`, `lib/defaults/managers.ts:134-148`, `test/lib/authRegistry.spec.ts`, `test/lib/authBoot.spec.ts`, `test/lib/defaultManagers.spec.ts` |
 | T-12.5 → T-12.7 | commit `0e2f98b`: `lib/config/authFlows.ts`, `lib/loader/authFlows.ts`, `lib/auth/validate.ts`, `index.ts:366-385`, `lib/api/tenants/controller/tenants.ts:172-181`, `test/lib/authFlowConfig.spec.ts`, `test/lib/tenantProvisioning.spec.ts:122`; `npm test` 616 prove, 30 saltate senza `DATABASE_URL` |
+| T-12.13 → T-12.21 | commit `90609d7`: `lib/util/flowCredential.ts`, `lib/auth/engine.ts`, `lib/auth/http.ts`, `lib/auth/authenticators/{password,totp}.ts`, `lib/auth/subjects.ts`, `lib/util/accessLog.ts`, `lib/api/auth/routes.ts`, `lib/api/system/routes.ts`, i due controller sottili, `lib/schemas/auth.ts`, `lib/loader/tenant.ts`, `lib/loader/router.ts`, `lib/database/managers/authFlow.ts` (`recordAttempt`), `bin/volcanic.mjs`; `test/lib/{flowCredential,authEngine,authFlowRoutes}.spec.ts` più le aggiunte a `tenantResolution`, `router`, `authFlowConfig`, `tenantProvisioning` e `test/db/authFlow.spec.ts`; `npm test` 696 prove e 31 saltate senza `DATABASE_URL`, 754 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi; copertura 86,4% di righe |
 | T-12.8 → T-12.12 | commit `9dc13c6`: `lib/database/schema/pg.ts:199-306`, `:399`, `lib/database/schema/sqlite.ts:147-246`, `:334`, migrazioni `0002_auth_flow_control` e `0002_auth_flow_tenant` nei quattro insiemi, `lib/database/managers/{authFlow,externalIdentity,identityProvider,accessLog}.ts`, `lib/database/managers/index.ts:55-59`, `test/db/authFlow.spec.ts`, `test/db/accessLog.spec.ts`, `test/migrations/authFlowUpgrade.spec.ts`; `npm test` 649 prove e 31 saltate senza `DATABASE_URL`, 706 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi |
