@@ -852,7 +852,7 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## G. `email-otp`
 
-- [ ] **T-12.22** L'autenticatore, nei due ruoli.
+- [x] **T-12.22** L'autenticatore, nei due ruoli.
   **Cosa fare**: come verificatore, destinazione l'email del soggetto, applicabile solo se
   `confirmed`; come identificatore, risposta uniforme di F43 e riga non provata con
   `candidate_subject_id`. Codice dal CSPRNG, lunghezza di F37, conservato come HMAC con il segreto
@@ -860,29 +860,66 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Dove**: `lib/auth/authenticators/emailOtp.ts`.
   **Criterio di chiusura**: prove di codice scaduto, sbagliato, riusato, e di risposta identica
   per indirizzo esistente e inesistente, corpo e stato.
+  **Evidenza**: commit `5221dce`. `lib/auth/authenticators/emailOtp.ts` (`initiate` a `:163`,
+  `verify` a `:185`), registrato fra i built-in in `lib/auth/builtins.ts`. Il codice non passa mai
+  per le mani dell'autenticatore insieme al segreto del flusso: `FlowChallenges`
+  (`types/global.d.ts:901`) sono le tre operazioni che il motore lega al credenziale della richiesta
+  (`lib/auth/engine.ts:129`). Prove su SQLite e su Postgres in `test/db/emailOtp.spec.ts`: otto cifre
+  all'indirizzo in archivio e login con quelle sole, indirizzo inesistente con la stessa risposta,
+  lo stesso conto dei tentativi e nessuna consegna, codice sbagliato che lascia vivo il flusso e
+  quinto errore che lo chiude, codice scaduto (`FLOW_CODE_EXPIRED`, flusso vivo) e nuovo codice che
+  poi passa, codice consumato che lo store non riprende, verificatore a sei cifre verso l'indirizzo
+  in archivio e mai verso quello del corpo.
+  Derive dal piano: il contratto cresce di due campi. `AuthContext` porta `limits` e `challenges`;
+  il fallimento di `AuthResult` porta `recoverable`, `remaining` e `retryAt`, perché prima un codice
+  sbagliato prima della prova del soggetto chiudeva il flusso al primo errore
+  (`lib/auth/engine.ts:456`). Il pavimento MFA ora offre solo i verificatori che la configurazione
+  del piano nomina, più `totp` (`:169`): un `email-otp` registrato ma non elencato non ha un port
+  dietro, e il boot controlla solo ciò che è elencato. Il primo invio come verificatore è chiesto
+  dal client con `/flow/challenge`, come il rinvio: il motore non spedisce un codice a chi sceglierà
+  l'app.
 
-- [ ] **T-12.23** Consegna e rinvio.
+- [x] **T-12.23** Consegna e rinvio.
   **Cosa fare**: `initiate` chiama `ChallengeDeliveryManagement.deliver` dopo la decisione della
   risposta; `POST /auth/flow/challenge` rinvia nei tetti di F37 e risponde il prossimo istante
   utile; `FLOW_SEND_LIMIT` quando un tetto è toccato.
   **Criterio di chiusura**: prova che ricominciare il flusso non azzera il conto per soggetto, e
   che un errore del port finisce a log senza cambiare la risposta.
+  **Evidenza**: commit `5221dce`. Consegna dopo la risposta e mai attesa (`emailOtp.ts:83`), tetti
+  per soggetto in `SUBJECT_SEND_WINDOWS`, rifiuti `FLOW_SEND_LIMIT` (429, con `retryAt`) e
+  `FLOW_CODE_EXPIRED` in `lib/auth/engine.ts:76-77`, evento `challenge.sent`. Prove in
+  `test/db/emailOtp.spec.ts`: tre invii per flusso con `resendAt` nullo sull'ultimo e il quarto
+  rifiutato, sette avvii per lo stesso indirizzo con cinque consegne e sette risposte identiche,
+  lo stesso soggetto come verificatore rifiutato con `retryAt` futuro, un port che lancia finisce a
+  log e la risposta è identica.
+  Deriva dal piano: come identificatore il tetto per soggetto non si dice, si risponde come un invio
+  riuscito e non si spedisce nulla, altrimenti il sesto avvio in un quarto d'ora direbbe che
+  l'indirizzo è di qualcuno. Il tetto per flusso resta detto, perché vale uguale per ogni indirizzo.
 
-- [ ] **T-12.24** Un flusso non provato non sfratta.
+- [x] **T-12.24** Un flusso non provato non sfratta.
   **Cosa fare**: il caso di negazione del servizio: chi conosce solo l'indirizzo non deve poter
   chiudere il flusso in corso della vittima avviandone di nuovi.
   **Criterio di chiusura**: prova con un flusso `password → totp` a metà e dieci `start` di
   `email-otp` sullo stesso indirizzo: il primo flusso si completa.
+  **Evidenza**: commit `5221dce`, `test/db/emailOtp.spec.ts`, sullo store vero su SQLite e Postgres.
 
 ## H. Provider di identità
 
-- [ ] **T-12.25** Provider di deployment.
+- [x] **T-12.25** Provider di deployment.
   **Cosa fare**: lettura dei `providers` di `authFlows.ts` per piano, segreti letti da
   `clientSecretEnv` all'avvio e mai scritti a log; `redirectUri` esplicito e obbligatorio, mai
   ricavato dall'header `Host`.
   **Criterio di chiusura**: prova che una variabile vuota rifiuta l'avvio (T-12.6).
+  **Evidenza**: commit `4f66889`. `lib/auth/providers.ts`: `providerShapeProblems` (`:58`), applicata
+  ai provider di deployment in `lib/auth/validate.ts`; `captureDeploymentSecrets` (`:122`) chiamata
+  all'avvio in `index.ts:388`, dopo la validazione; `resolveProvider` (`:139`). Prove in
+  `test/lib/identityProviders.spec.ts`: variabile vuota e issuer `http` rifiutano l'avvio senza mai
+  stampare il valore, il segreto non compare nei flussi congelati, il provider del tenant attivo vince
+  su quello di deployment e uno disattivato nasconde la chiave.
+  Deriva dal piano: a parità di chiave vince il provider del tenant, e uno disattivato nasconde quello
+  di deployment; il piano non diceva la precedenza.
 
-- [ ] **T-12.26** Provider per tenant e rotte di controllo.
+- [x] **T-12.26** Provider per tenant e rotte di controllo.
   **Cosa fare**: `GET`, `POST`, `PUT`, `DELETE` su `/tenants/:id/identity-providers[/:key]` con
   capability `tenants`, il segreto accettato in scrittura e mai restituito; validazione della
   forma alla scrittura (issuer `https`, `redirectUri` assoluto, `type` noto), senza chiamate di
@@ -890,8 +927,17 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Dove**: `lib/api/tenants/routes.ts`, controller nuovo, schemi in `lib/schemas/tenant.ts`.
   **Criterio di chiusura**: prova che nessuna risposta, lista compresa, contiene `secret`, e che un
   operatore senza `tenants` riceve 403.
+  **Evidenza**: commit `4f66889`. `lib/api/tenants/routes.ts:202` e seguenti,
+  `lib/api/tenants/controller/identityProviders.ts`, schemi in `lib/schemas/tenant.ts`
+  (`hasClientSecret` al posto del segreto). Prove in `test/lib/identityProviders.spec.ts` con un
+  manager che restituisce apposta il segreto in ogni risposta: nessuna risposta lo contiene, né
+  `clientSecret` né `secretEnc`; `system:auditor` riceve 403 su tutte e cinque le rotte; forma
+  sbagliata o segreto dentro `config` è `IDP_CONFIG_INVALID`, chiave doppia `IDP_KEY_TAKEN`, build
+  senza manager `IDENTITY_PROVIDERS_NOT_AVAILABLE`.
+  Deriva dal piano: `config` è un insieme chiuso di chiavi, perché è salvato in chiaro e un segreto
+  messo lì per errore uscirebbe alla prima lista.
 
-- [ ] **T-12.27** Collegamenti e JIT.
+- [x] **T-12.27** Collegamenti e JIT.
   **Cosa fare**: la risoluzione di F40 nel motore dopo un ritorno riuscito: collegamento esistente,
   poi collegamento per email se il provider lo consente con le tre condizioni, poi JIT se acceso,
   altrimenti `IDP_IDENTITY_NOT_LINKED`; `GET /auth/identities` e `DELETE /auth/identities/:id`
@@ -899,6 +945,18 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   sotto `/users/:id/identities`.
   **Criterio di chiusura**: prove per email non verificata, dominio fuori lista, JIT spento, JIT
   che tenta il ruolo admin, stesso `sub` da due issuer diversi.
+  **Evidenza**: commit `4f66889`. `resolveExternal` in `lib/auth/external.ts:59`, pronta per
+  l'autenticatore OIDC del blocco I, che la chiamerà e scriverà l'evento che restituisce. Rotte
+  `lib/api/auth/routes.ts:380` e `lib/api/users/routes.ts:264`, `:277`. Prove su SQLite e Postgres
+  in `test/db/externalIdentity.spec.ts` (i cinque casi del criterio, più l'account bloccato che resta
+  fuori anche con il collegamento e il JIT sul piano di controllo) e via HTTP in
+  `test/lib/externalIdentities.spec.ts` (il collegamento di un altro è 404, `IDP_LINK_TAKEN`,
+  `IDP_UNKNOWN_PROVIDER`, eventi `idp.linked` e `idp.unlinked`).
+  Derive dal piano: la risoluzione non è ancora cablata nel motore, perché nessun metodo produce un
+  ritorno prima del blocco I. Le rotte dei collegamenti esistono solo sul piano tenant: per gli
+  operatori il piano non le chiedeva. Da decidere: il JIT con indirizzo non verificato crea un
+  account non confermato, come dice F40, e quell'account occupa l'indirizzo, così la persona che lo
+  possiede davvero non può più registrarsi finché un amministratore non interviene.
 
 ## I. OIDC
 
@@ -1156,3 +1214,5 @@ chieda una riautenticazione fresca.
 | T-12.8 → T-12.12 | commit `9dc13c6`: `lib/database/schema/pg.ts:199-306`, `:399`, `lib/database/schema/sqlite.ts:147-246`, `:334`, migrazioni `0002_auth_flow_control` e `0002_auth_flow_tenant` nei quattro insiemi, `lib/database/managers/{authFlow,externalIdentity,identityProvider,accessLog}.ts`, `lib/database/managers/index.ts:55-59`, `test/db/authFlow.spec.ts`, `test/db/accessLog.spec.ts`, `test/migrations/authFlowUpgrade.spec.ts`; `npm test` 649 prove e 31 saltate senza `DATABASE_URL`, 706 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi |
 | T-12.13 → T-12.21 | commit `90609d7`: `lib/util/flowCredential.ts`, `lib/auth/engine.ts`, `lib/auth/http.ts`, `lib/auth/authenticators/{password,totp}.ts`, `lib/auth/subjects.ts`, `lib/util/accessLog.ts`, `lib/api/auth/routes.ts`, `lib/api/system/routes.ts`, i due controller sottili, `lib/schemas/auth.ts`, `lib/loader/tenant.ts`, `lib/loader/router.ts`, `lib/database/managers/authFlow.ts` (`recordAttempt`), `bin/volcanic.mjs`; `test/lib/{flowCredential,authEngine,authFlowRoutes}.spec.ts` più le aggiunte a `tenantResolution`, `router`, `authFlowConfig`, `tenantProvisioning` e `test/db/authFlow.spec.ts`; `npm test` 696 prove e 31 saltate senza `DATABASE_URL`, 754 e 2 saltate su un Postgres 14 usa e getta; banco multi-tenant 14 verdi; copertura 86,4% di righe |
 | T-12.31 → T-12.33 | commit `01e84e9`: `lib/util/accessLog.ts`, `lib/database/managers/accessLog.ts`, `lib/database/purge.ts`, `lib/api/access-log/`, `lib/api/system/controller/systemAccessLog.ts`, `lib/schemas/accessLog.ts`, `test/lib/accessLogWrites.spec.ts`, `test/db/accessLog.spec.ts`, `test/db/purge.spec.ts`; `npm test` 721 prove (783 con `DATABASE_URL`), banco multi-tenant 14, copertura 86,6% di righe |
+| T-12.22 → T-12.24 | commit `5221dce`: `lib/auth/authenticators/emailOtp.ts`, `lib/auth/engine.ts`, `types/global.d.ts` (`FlowChallenges`), `test/db/emailOtp.spec.ts` |
+| T-12.25 → T-12.27 | commit `4f66889`: `lib/auth/providers.ts`, `lib/auth/external.ts`, `lib/api/tenants/controller/identityProviders.ts`, `lib/api/auth/controller/identities.ts`, `lib/api/users/controller/identities.ts`, `test/lib/identityProviders.spec.ts`, `test/lib/externalIdentities.spec.ts`, `test/db/externalIdentity.spec.ts`; `npm test` 754 prove (832 con `DATABASE_URL`), banco multi-tenant 14, copertura 86,5% di righe |

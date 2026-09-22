@@ -75,8 +75,14 @@ logout, revoca, invalidazione, MFA di gestione e riuso sui due piani, la lettura
 `/access-log` per l'`admin` del tenant e `/system/access-log` con la capability `access-log` di
 `system:auditor`, la purga con due soglie (90 e 180 giorni) opportunistica e da
 `npx volcanic access-log --purge [--tenants]`. `npm test` 721 prove (783 con `DATABASE_URL`), banco
-multi-tenant 14, copertura 86,6% di righe. Prossimo: il blocco G, `email-otp`, oppure H, i provider
-di identità.
+multi-tenant 14, copertura 86,6% di righe. Chiusi i blocchi G (T-12.22 → T-12.24, `5221dce`):
+`email-otp` come identificatore e come verificatore sui due piani, con la risposta uniforme per
+indirizzo esistente e inesistente, i tetti per flusso e per soggetto, la consegna dopo la risposta; e H
+(T-12.25 → T-12.27, `4f66889`): provider di deployment validati all'avvio con i segreti letti una
+volta, provider per tenant sulle rotte di controllo senza mai restituire il segreto, la risoluzione
+di F40 e le rotte dei collegamenti. `npm test` 754 prove (832 con `DATABASE_URL`), banco
+multi-tenant 14, copertura 86,5% di righe. Aperto per il manutentore: il JIT con indirizzo non
+verificato occupa l'indirizzo (nota in T-12.27). Prossimo: il blocco I, OIDC.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:
