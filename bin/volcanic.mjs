@@ -36,6 +36,13 @@ volcanic auth-flows --purge [--tenants]
                      the per-subject window (T-12.18).
   --tenants          Every active container as well as the control plane, instead of it alone.
 
+volcanic access-log --purge [--tenants]
+
+  --purge            REQUIRED. Removes the access log rows past the retention of their plane:
+                     ACCESS_LOG_RETENTION_DAYS (default 90) for tenant rows,
+                     ACCESS_LOG_CONTROL_RETENTION_DAYS (default 180) for platform rows (T-12.33).
+  --tenants          Every active container as well as the control plane, instead of it alone.
+
 volcanic migrate --tenants --snapshot <reference> [options]
 
   --snapshot <ref>   REQUIRED. The backup you would restore from. Recorded in the run log.
@@ -60,9 +67,9 @@ async function load(specifier) {
 
 async function main() {
   const command = argv[0]
-  const purges = { sessions: 'sessionManager', 'auth-flows': 'authFlowManager' }
+  const purges = { sessions: 'sessionManager', 'auth-flows': 'authFlowManager', 'access-log': 'accessLogManager' }
   const known = command === 'migrate' || command in purges
-  // `sessions` and `auth-flows` have no default behaviour: the only thing they do is delete rows,
+  // `sessions`, `auth-flows` and `access-log` have no default behaviour: the only thing they do is delete rows,
   // so it is asked for by name or not at all.
   const asked = command in purges ? flag('purge') : true
   if (!known || !asked || flag('help')) {
@@ -80,35 +87,13 @@ async function main() {
   const layer = await dataLayer.start(config.options)
 
   try {
-    // T-11.12. Rows whose two clocks have run out are rows no renewal can use, and they are the
-    // only ones removed: a revoked session stays until its own deadline, because "when did this
-    // session end, and why" has to outlive the session itself.
+    // Each manager decides what "expired" means. Sessions (T-11.12): rows whose two clocks have
+    // run out, so a revoked session stays until its own deadline and the reason it ended survives
+    // it. Access log (T-12.33): rows past the retention of their own plane.
     if (command in purges) {
-      const manager = layer[purges[command]]
-      const control = await layer.provider.control()
-      let removed = await manager.purgeExpired(control)
-      let containers = 1
-
-      if (flag('tenants')) {
-        // Paged, and filtered by the registry rather than here: a fleet is not something to read
-        // in one query, and a fixed ceiling would skip the containers past it without saying so.
-        const pageSize = 100
-        for (let page = 1; ; page++) {
-          const result = await layer.tenantManager.listTenants(control, {
-            'status:eq': 'active',
-            _page: page,
-            _pageSize: pageSize
-          })
-          const records = result?.records ?? []
-          for (const tenant of records) {
-            const handle = await layer.provider.tenant(tenant.id)
-            removed += await manager.purgeExpired(handle)
-            containers += 1
-          }
-          if (records.length < pageSize) break
-        }
-      }
-
+      // The paging over the registry lives in `purgeContainers` (lib/database/purge.ts), where
+      // it is tested past the first thousand tenants.
+      const { removed, containers } = await dataLayer.purgeContainers(layer, layer[purges[command]], { tenants: flag('tenants') })
       console.log(`${command}: ${removed} expired row(s) removed from ${containers} container(s)`)
       return 0
     }

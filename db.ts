@@ -33,6 +33,7 @@ export { encrypt, decrypt } from './lib/database/crypto.js'
 export { uuidv7 } from './lib/database/uuid.js'
 export * from './lib/database/migrations/runner.js'
 export * from './lib/database/migrations/fleet.js'
+export { purgeContainers, PURGE_PAGE_SIZE, type PurgeLayer, type PurgeTarget, type PurgeResult } from './lib/database/purge.js'
 export { readMigrations, statementsOf } from './lib/database/migrations/files.js'
 export { PostgresProvider } from './lib/database/adapters/postgres/index.js'
 export { SqliteProvider } from './lib/database/adapters/sqlite/index.js'
@@ -62,7 +63,7 @@ export async function start(options?: DataLayerOptions) {
   const sizing = provider as { assertConnectionBudget?: () => Promise<void> }
   if (sizing.assertConnectionBudget) await sizing.assertConnectionBudget()
 
-  const managers = buildManagers(provider as never)
+  const managers = buildManagers(provider as never, resolved)
   const migrations = buildMigrationRunner(provider, resolved)
 
   return {

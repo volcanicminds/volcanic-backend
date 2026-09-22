@@ -9,6 +9,7 @@ import { uuidv7 } from '../../../util/uuid.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../../config/constants.js'
 import { clearSessionCookies, issuePreAuth, issueSession, sessionTokenOf, type SessionOrigin } from '../../../util/credential.js'
 import { renew } from '../../../util/renewal.js'
+import { recordTenantAccess } from '../../../util/accessLog.js'
 import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.js'
 // The delta-to-step conversion used to live here, and the control plane had its own copy that
 // did not convert at all (T-10.20). One rule, one place.
@@ -446,6 +447,9 @@ export async function logout(req: FastifyRequest, reply: FastifyReply) {
   if (sid && sessionRegistryEnabled(manager)) {
     await manager.revokeSession(dataContext(req), sid, 'logout')
   }
+  // Only a logout that names a session is an access worth a row: an anonymous call to this route
+  // ends nothing, and writing it would let anybody fill the table.
+  if (sid) await recordTenantAccess(req, { event: 'logout', outcome: 'success', subjectId: req.user?.externalId ?? null, sid })
   clearSessionCookies(reply, 'tenant')
   return { ok: true }
 }
@@ -504,6 +508,9 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
   if (req.user.externalId && sessionRegistryEnabled(sessions)) {
     await sessions.revokeAllOfSubject(dataContext(req), req.user.externalId, 'tokens invalidated by the user')
   }
+  // Written under the identifier being retired, which is the one every earlier row of this
+  // subject carries: the next rows will carry the new one.
+  await recordTenantAccess(req, { event: 'tokens.invalidated', outcome: 'success', subjectId: req.user.externalId ?? null })
 
   const user = await req.server['userManager'].resetExternalId(dataContext(req), req.user.id)
   isValid = await req.server['userManager'].isValidUser(user)
@@ -568,6 +575,7 @@ export async function revokeSession(req: FastifyRequest, reply: FastifyReply) {
   }
 
   await sessions.revokeSession(ctx, sid, 'closed by the user')
+  await recordTenantAccess(req, { event: 'session.revoked', outcome: 'success', subjectId: req.user.externalId, sid })
   // Closing the session you are speaking from is a logout, so it has to look like one here too.
   if (sid === currentSid(req)) clearSessionCookies(reply, 'tenant')
   return { ok: true }
@@ -637,6 +645,7 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     if (counter !== null) {
       await req.server['userManager'].updateUserById(dataContext(req), user.id, { mfaLastUsedCounter: counter })
     }
+    await recordTenantAccess(req, { event: 'mfa.enrolled', outcome: 'success', subjectId: user.externalId ?? null, methods: ['totp'] })
 
     // IMPORTANT: Return full tokens upon enablement if user was in pending state
     // BUT usually user is already logged in via temp token or full token.
@@ -753,6 +762,7 @@ export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
 
   try {
     await req.server['userManager'].disableMfa(dataContext(req), user.id)
+    await recordTenantAccess(req, { event: 'mfa.disabled', outcome: 'success', subjectId: user.externalId ?? null, methods: ['totp'] })
     return { ok: true }
   } catch (error: any) {
     req.log.error({ err: error }, 'MFA Disable failed')

@@ -3,6 +3,7 @@ import type { AuthenticatedUser } from '../../../../types/global.js'
 import { tenantPolicy } from '../../../util/mfaPolicy.js'
 import { includesRole, isFounder } from '../../../util/authz.js'
 import { dataContext } from '../../../util/tenancy.js'
+import { recordTenantAccess } from '../../../util/accessLog.js'
 
 const forbidden = (reply: FastifyReply, message: string) =>
   reply.status(403).send({ statusCode: 403, error: 'Forbidden', message })
@@ -251,6 +252,9 @@ export async function resetMfaByAdmin(req: FastifyRequest, reply: FastifyReply) 
 
   try {
     await req.server['userManager'].disableMfa(dataContext(req), id)
+    // The subject is the user whose factor went, not the admin who removed it: the row answers
+    // "when did this account lose its second factor".
+    await recordTenantAccess(req, { event: 'mfa.disabled', outcome: 'success', subjectId: mfaTarget?.externalId ?? null, methods: ['totp'] })
     return { ok: true }
   } catch (error) {
     req.log.error(error)

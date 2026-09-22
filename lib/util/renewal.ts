@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { DataHandle, SessionManagement, SessionScope, Session } from '../../types/global.js'
 import { httpError } from './httpError.js'
+import { recordAccess } from './accessLog.js'
 import {
   clearSessionCookies,
   isCookieMode,
@@ -99,6 +100,16 @@ export async function renew<S>(context: RenewalContext<S>) {
     // session is the only honest move: the legitimate user logs in again, the thief gets
     // nothing, and the event is written down where it can be counted.
     await manager.revokeSession(ctx, lookup.session.sid, 'reuse detected')
+    // The scope of the row, not of the route: a platform credential replayed on the tenant route
+    // is still a platform session that was stolen.
+    await recordAccess(req, ctx, {
+      event: 'session.reuse_detected',
+      outcome: 'failure',
+      code: 'SESSION_REUSE_DETECTED',
+      scope: lookup.session.scope,
+      subjectId: lookup.session.subjectId,
+      sid: lookup.session.sid
+    })
     clearSessionCookies(reply, plane)
     if (log.w) log.warn(`Session ${lookup.session.sid} closed: a spent refresh credential came back`)
     return reply

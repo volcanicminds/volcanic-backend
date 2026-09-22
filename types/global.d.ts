@@ -73,6 +73,7 @@ export type SystemCapability =
   | 'migrations'
   | 'manifest'
   | 'system-users'
+  | 'access-log'
 
 export interface SystemRole {
   /** Always namespaced: the prefix is what keeps the two catalogues from ever merging. */
@@ -378,6 +379,18 @@ export interface GeneralConfig {
       absoluteTtl?: number
       /** Seconds the just-rotated secret stays acceptable, for tabs renewing together. Default 10. */
       graceSeconds?: number
+    }
+    /**
+     * The access log (F44). Each key has an environment variable that wins over it, so a
+     * deployment can tighten retention or drop addresses without a release.
+     */
+    accessLog?: {
+      /** `truncate` keeps an IPv4 /24 or an IPv6 /48, `none` stores no address. `ACCESS_LOG_IP`. */
+      ip?: 'truncate' | 'none'
+      /** Days a tenant-plane row is kept. Default 90. `ACCESS_LOG_RETENTION_DAYS`. */
+      retentionDays?: number
+      /** Days a control-plane row is kept. Default 180. `ACCESS_LOG_CONTROL_RETENTION_DAYS`. */
+      controlRetentionDays?: number
     }
     // In-memory per-route response cache (opt-in per route via `cache`).
     cache?: {
@@ -1266,9 +1279,16 @@ export interface AccessLogManagement {
   isImplemented(): boolean
   /** Refuses an event outside the vocabulary. */
   record(ctx: DataHandle, entry: AccessLogEntry): Promise<AccessLogRecord>
-  findQuery(ctx: DataHandle, query: VQuery): Promise<VFindResult<AccessLogRecord>>
-  countQuery(ctx: DataHandle, query: VQuery): Promise<number>
-  purgeBefore(ctx: DataHandle, before: Date | string): Promise<number>
+  /**
+   * `scope` is a condition the query cannot relax, `_logic` included: without tenants both planes
+   * write into the same container, and each reads only its own rows.
+   */
+  findQuery(ctx: DataHandle, query: VQuery, scope?: SessionScope): Promise<VFindResult<AccessLogRecord>>
+  countQuery(ctx: DataHandle, query: VQuery, scope?: SessionScope): Promise<number>
+  /** Rows older than `before`, of one scope or of both. */
+  purgeBefore(ctx: DataHandle, before: Date | string, scope?: SessionScope): Promise<number>
+  /** Rows past the retention of their own scope (90 and 180 days by default), in one statement. */
+  purgeExpired(ctx: DataHandle, now?: Date): Promise<number>
 }
 
 // Callback type signature: (uploadOrId, req, res) => void

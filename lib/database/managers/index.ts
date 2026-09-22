@@ -1,4 +1,4 @@
-import type { ControlHandle } from '../../../types/global.js'
+import type { ControlHandle, GeneralConfig } from '../../../types/global.js'
 import { createUserManager } from './user.js'
 import { createTokenManager } from './token.js'
 import { createTrackingManager } from './tracking.js'
@@ -27,13 +27,16 @@ export {
   createAccessLogManager
 }
 export { challengeMac } from './authFlow.js'
-export { truncateIp, type AccessLogIpMode } from './accessLog.js'
+export { truncateIp, type AccessLogIpMode, type AccessLogOptions } from './accessLog.js'
 export { runtime, control } from './runtime.js'
 
 //
 // The set a consumer injects through `start(decorators)`.
 //
-export function buildManagers(provider: TenantProvider & { control(): ControlHandle | Promise<ControlHandle> }) {
+export function buildManagers(
+  provider: TenantProvider & { control(): ControlHandle | Promise<ControlHandle> },
+  options?: Partial<GeneralConfig['options']>
+) {
   return {
     userManager: createUserManager(),
     tokenManager: createTokenManager(),
@@ -56,6 +59,7 @@ export function buildManagers(provider: TenantProvider & { control(): ControlHan
     externalIdentityManager: createExternalIdentityManager(),
     // Control plane only: a tenant's IdP secret never sits in the container it serves (F38).
     identityProviderManager: createIdentityProviderManager(),
-    accessLogManager: createAccessLogManager()
+    // Retention and address mode from the `accessLog` block; the environment still wins (F44).
+    accessLogManager: createAccessLogManager(options?.accessLog ?? {})
   }
 }

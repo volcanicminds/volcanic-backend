@@ -8,6 +8,7 @@ import { clearSessionCookies, isCookieMode, issuePreAuth, issueSession, sessionT
 import { renew as renewSession } from '../../../util/renewal.js'
 import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.js'
 import { absoluteStep, isReplay } from '../../../util/mfaCounter.js'
+import { recordControlAccess } from '../../../util/accessLog.js'
 
 //
 // Authentication of the control scope (T-4.1, docs/API_V5.md §5).
@@ -156,6 +157,7 @@ export async function revokeSession(req: FastifyRequest, reply: FastifyReply) {
   }
 
   await sessions.revokeSession(control(req), sid, 'closed by the operator')
+  await recordControlAccess(req, { event: 'session.revoked', outcome: 'success', subjectId: actor.externalId, sid })
   if (sid === currentSid(req)) clearSessionCookies(reply, 'control')
   return { ok: true }
 }
@@ -167,6 +169,8 @@ export async function logout(req: FastifyRequest, reply: FastifyReply) {
   if (sid && req.control && sessionRegistryEnabled(sessions)) {
     await sessions.revokeSession(control(req), sid, 'logout')
   }
+  // As on the tenant plane: only a logout that names a session gets a row.
+  if (sid) await recordControlAccess(req, { event: 'logout', outcome: 'success', subjectId: req.systemUser?.externalId ?? null, sid })
   clearSessionCookies(reply, 'control')
   return { ok: true }
 }
@@ -266,6 +270,7 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   await manager(req).saveMfaSecret(control(req), actor.id, String(secret))
   await manager(req).enableMfa(control(req), actor.id)
   if (counter !== null) await manager(req).recordMfaCounter(control(req), actor.id, counter)
+  await recordControlAccess(req, { event: 'mfa.enrolled', outcome: 'success', subjectId: actor.externalId ?? null, methods: ['totp'] })
 
   if (log.i) log.info(`System MFA enabled for ${actor.email}`)
   return { ok: true }

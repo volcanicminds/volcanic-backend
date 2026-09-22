@@ -1,6 +1,6 @@
-import { lte } from 'drizzle-orm'
+import { and, eq, lte, or, type SQL } from 'drizzle-orm'
 import { isIP } from 'net'
-import type { AccessEvent, AccessLogManagement, AccessLogRecord, DataHandle, VQuery } from '../../../types/global.js'
+import type { AccessEvent, AccessLogManagement, AccessLogRecord, DataHandle, SessionScope, VQuery } from '../../../types/global.js'
 import { executeCount, executeFind } from '../query/index.js'
 import { runtime, table, column } from './runtime.js'
 
@@ -39,6 +39,25 @@ const EVENTS: Record<AccessEvent, true> = {
 }
 
 export type AccessLogIpMode = 'truncate' | 'none'
+
+export interface AccessLogOptions {
+  ip?: AccessLogIpMode
+  retentionDays?: number
+  controlRetentionDays?: number
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const RETENTION_DEFAULTS: Record<SessionScope, number> = { tenant: 90, control: 180 }
+const RETENTION_ENV: Record<SessionScope, string> = {
+  tenant: 'ACCESS_LOG_RETENTION_DAYS',
+  control: 'ACCESS_LOG_CONTROL_RETENTION_DAYS'
+}
+
+const positiveDays = (value: unknown): number | undefined => {
+  if (value === undefined || value === null || value === '') return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
 
 /** The eight groups of an IPv6 address, zero-padded; null when it is not one. */
 function ipv6Groups(address: string): number[] | null {
@@ -80,13 +99,25 @@ export function truncateIp(ip: string | null | undefined, mode: AccessLogIpMode 
   return null
 }
 
-export function createAccessLogManager(options: { ip?: AccessLogIpMode } = {}): AccessLogManagement {
+/**
+ * `options` is the `accessLog` block of the configuration. The environment wins over it and is
+ * read at every call, as `sessions` does, so a variable turned on a running deployment counts.
+ */
+export function createAccessLogManager(options: AccessLogOptions = {}): AccessLogManagement {
   const entries = (ctx: unknown, what: string) => {
     const handle = runtime(ctx, `${NAME}.${what}`)
     return { handle, log: table(handle, 'accessLog') }
   }
-  // Read at every write, so the environment set after the data layer started still counts.
-  const ipMode = (): AccessLogIpMode => options.ip ?? (process.env.ACCESS_LOG_IP === 'none' ? 'none' : 'truncate')
+  const ipMode = (): AccessLogIpMode => {
+    const chosen = process.env.ACCESS_LOG_IP || options.ip
+    return chosen === 'none' ? 'none' : 'truncate'
+  }
+  const retentionDays = (scope: SessionScope): number =>
+    positiveDays(process.env[RETENTION_ENV[scope]]) ??
+    positiveDays(scope === 'control' ? options.controlRetentionDays : options.retentionDays) ??
+    RETENTION_DEFAULTS[scope]
+  const ofScope = (log: unknown, scope?: SessionScope): SQL | undefined =>
+    scope ? (eq(column(log as never, 'scope'), scope) as SQL) : undefined
 
   return {
     isImplemented: () => true,
@@ -119,22 +150,42 @@ export function createAccessLogManager(options: { ip?: AccessLogIpMode } = {}): 
       return rows[0] as AccessLogRecord
     },
 
-    async findQuery(ctx: DataHandle, query: VQuery) {
+    async findQuery(ctx: DataHandle, query: VQuery, scope?: SessionScope) {
       const { handle, log } = entries(ctx, 'findQuery')
-      return (await executeFind(handle, log, query as never, { dialect: handle.dialect })) as never
+      return (await executeFind(handle, log, query as never, { dialect: handle.dialect, extraWhere: ofScope(log, scope) })) as never
     },
 
-    async countQuery(ctx: DataHandle, query: VQuery) {
+    async countQuery(ctx: DataHandle, query: VQuery, scope?: SessionScope) {
       const { handle, log } = entries(ctx, 'countQuery')
-      return await executeCount(handle, log, query as never, { dialect: handle.dialect })
+      return await executeCount(handle, log, query as never, { dialect: handle.dialect, extraWhere: ofScope(log, scope) })
     },
 
     /** One statement on the indexed `occurred_at`, like the purge of sessions. */
-    async purgeBefore(ctx: DataHandle, before: Date | string) {
+    async purgeBefore(ctx: DataHandle, before: Date | string, scope?: SessionScope) {
       const { handle, log } = entries(ctx, 'purgeBefore')
+      const older = lte(column(log, 'occurredAt'), new Date(before as never) as never) as SQL
+      const scoped = ofScope(log, scope)
       const rows = await handle.db
         .delete(log)
-        .where(lte(column(log, 'occurredAt'), new Date(before as never) as never))
+        .where(scoped ? and(older, scoped) : older)
+        .returning({ id: column(log, 'id') })
+      return rows.length
+    },
+
+    /**
+     * Both thresholds in one statement: without tenants the two planes share a container, and a
+     * tenant row and a platform row of the same age have different fates.
+     */
+    async purgeExpired(ctx: DataHandle, now: Date = new Date()) {
+      const { handle, log } = entries(ctx, 'purgeExpired')
+      const threshold = (scope: SessionScope) =>
+        and(
+          ofScope(log, scope),
+          lte(column(log, 'occurredAt'), new Date(now.getTime() - retentionDays(scope) * DAY_MS) as never)
+        ) as SQL
+      const rows = await handle.db
+        .delete(log)
+        .where(or(threshold('tenant'), threshold('control')))
         .returning({ id: column(log, 'id') })
       return rows.length
     }

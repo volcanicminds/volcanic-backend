@@ -127,6 +127,9 @@ where it is used without passing through the configuration at all.
 | `SESSION_IDLE_TTL` | `2592000` | seconds without a renewal before a session ends | `sessions.idleTtl`, and it **wins** over the configured value |
 | `SESSION_ABSOLUTE_TTL` | `15552000` | seconds a session may live, however often it renews | `sessions.absoluteTtl`, same rule |
 | `SESSION_GRACE_SECONDS` | `10` | seconds the just-rotated secret stays acceptable, for tabs renewing together. `0` is a legitimate value and means no tolerance | `sessions.graceSeconds`, same rule |
+| `ACCESS_LOG_IP` | `truncate` | `truncate` keeps an IPv4 /24 or an IPv6 /48 in the access log, `none` stores no address | `accessLog.ip`, and it **wins** over the configured value |
+| `ACCESS_LOG_RETENTION_DAYS` | `90` | days a tenant-plane row of the access log is kept | `accessLog.retentionDays`, same rule |
+| `ACCESS_LOG_CONTROL_RETENTION_DAYS` | `180` | days a platform row of the access log is kept | `accessLog.controlRetentionDays`, same rule |
 | `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
 | `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |
@@ -160,6 +163,16 @@ is a deliberate command, refusing to run without `--purge`, because removing row
 The renewal also purges opportunistically on about one call in fifty, so a deployment that never
 schedules the command still does not grow the table for ever. A revoked session is not removed by
 its revocation: it goes when its own clocks run out, so the reason it ended survives it.
+
+**The access log keeps its rows for a time, then removes them.** A tenant row lives 90 days, a
+platform row 180: the first covers a quarterly review and the usual time an incident takes to be
+noticed, the second follows the Italian DPA's rule on system administrators (27 November 2008),
+which asks for at least six months of their logical accesses. That is a reading for the
+consumer's privacy adviser to confirm, not legal advice. Without tenants both kinds of row share
+one container and each keeps its own threshold. `npx volcanic access-log --purge` removes the rows
+past retention from the control plane, `--tenants` from every active container too; a write purges
+opportunistically on about one in fifty, as the renewal does for sessions. A value that is not a
+positive number falls back to the default rather than meaning "keep nothing".
 
 **Two variables that are now read only to be refused.** `JWT_REFRESH_SECRET` and
 `JWT_REFRESH_EXPIRES_IN` do nothing since 5.0: the refresh credential is opaque, so there is no

@@ -105,7 +105,7 @@ const IDENTITY_PROVIDER_METHODS = ['list', 'get', 'create', 'update', 'remove'] 
 
 const CHALLENGE_DELIVERY_METHODS = ['deliver'] as const
 
-const ACCESS_LOG_METHODS = ['record', 'findQuery', 'countQuery', 'purgeBefore'] as const
+const ACCESS_LOG_METHODS = ['record', 'findQuery', 'countQuery', 'purgeBefore', 'purgeExpired'] as const
 
 const TRANSFER_METHODS = [
   'getPath', 'getServer', 'onUploadCreate', 'onUploadFinish', 'onUploadTerminate', 'handle', 'isValid'

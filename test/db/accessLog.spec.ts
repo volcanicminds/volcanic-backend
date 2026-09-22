@@ -1,6 +1,7 @@
 //
 // T-12.12, the access log manager of F44 on a real migrated container: the closed vocabulary, the
-// truncated address, and the purge by predicate. SQLite always, Postgres with DATABASE_URL.
+// truncated address, and the purge by predicate. T-12.32 and T-12.33: the reading of one plane and
+// the two retentions. SQLite always, Postgres with DATABASE_URL.
 //
 import { expect } from 'expect'
 import { eq } from 'drizzle-orm'
@@ -103,6 +104,72 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       const left = (await db.raw.db.select().from(t)) as Array<{ id: string }>
       expect(left.map((r) => r.id)).toContain(recent.id)
       expect(left.map((r) => r.id)).not.toContain(old.id)
+    })
+
+    it('reads one plane only, whatever the query asks, and refuses a field outside F44 (T-12.32)', async () => {
+      await accessLog.record(db.tenant, { ...entry, scope: 'control', subjectId: 'operator-1' })
+      await accessLog.record(db.tenant, { ...entry, scope: 'tenant', subjectId: 'user-scoped' })
+
+      const tenantRows = await accessLog.findQuery(db.tenant, { _pageSize: 100 }, 'tenant')
+      expect(tenantRows.records.length).toBeGreaterThan(0)
+      expect(tenantRows.records.every((r) => r.scope === 'tenant')).toBe(true)
+      // Asking for the other plane by name finds nothing: the scope is AND-ed after the URL.
+      expect(await accessLog.countQuery(db.tenant, { scope: 'control' }, 'tenant')).toBe(0)
+      expect(await accessLog.countQuery(db.tenant, { 'subjectId:eq': 'operator-1' }, 'tenant')).toBe(0)
+      expect(await accessLog.countQuery(db.tenant, { 'subjectId:eq': 'operator-1' }, 'control')).toBe(1)
+      expect(await codeOf(accessLog.findQuery(db.tenant, { userAgent: 'x' }, 'tenant'))).toBe('QUERY_UNKNOWN_FIELD')
+    })
+
+    describe('retention per plane (T-12.33)', () => {
+      const DAY = 86_400_000
+      const saved: Record<string, string | undefined> = {}
+      const VARS = ['ACCESS_LOG_RETENTION_DAYS', 'ACCESS_LOG_CONTROL_RETENTION_DAYS']
+      beforeEach(() => VARS.forEach((v) => ((saved[v] = process.env[v]), delete process.env[v])))
+      afterEach(() => VARS.forEach((v) => (saved[v] === undefined ? delete process.env[v] : (process.env[v] = saved[v]))))
+
+      // Rows are written now and the purge is asked at a later `now`, so no row has to be aged by hand.
+      const seed = async (ctx: typeof db.tenant) => {
+        await accessLog.purgeBefore(ctx, new Date(Date.now() + DAY))
+        await accessLog.record(ctx, { ...entry, scope: 'tenant', subjectId: 'kept-by-tenant-rule' })
+        await accessLog.record(ctx, { ...entry, scope: 'control', subjectId: 'kept-by-control-rule' })
+      }
+      const scopes = async (ctx: typeof db.tenant) =>
+        [...(await accessLog.findQuery(ctx, { _pageSize: 100 }, 'tenant')).records, ...(await accessLog.findQuery(ctx, { _pageSize: 100 }, 'control')).records]
+          .map((r) => r.scope)
+          .sort()
+
+      for (const plane of ['tenant', 'control'] as const) {
+        it(`keeps 90 days of tenant rows and 180 of platform rows, in the ${plane} container`, async () => {
+          const ctx = plane === 'tenant' ? db.tenant : db.control
+          await seed(ctx)
+          expect(await accessLog.purgeExpired(ctx, new Date(Date.now() + 89 * DAY))).toBe(0)
+          expect(await accessLog.purgeExpired(ctx, new Date(Date.now() + 91 * DAY))).toBe(1)
+          expect(await scopes(ctx)).toEqual(['control'])
+          expect(await accessLog.purgeExpired(ctx, new Date(Date.now() + 179 * DAY))).toBe(0)
+          expect(await accessLog.purgeExpired(ctx, new Date(Date.now() + 181 * DAY))).toBe(1)
+          expect(await scopes(ctx)).toEqual([])
+        })
+      }
+
+      it('takes the thresholds from the configuration, and the environment over it', async () => {
+        const configured = createAccessLogManager({ retentionDays: 10, controlRetentionDays: 20 })
+        await seed(db.tenant)
+        expect(await configured.purgeExpired(db.tenant, new Date(Date.now() + 11 * DAY))).toBe(1)
+        expect(await configured.purgeExpired(db.tenant, new Date(Date.now() + 21 * DAY))).toBe(1)
+
+        await seed(db.tenant)
+        process.env.ACCESS_LOG_RETENTION_DAYS = '2'
+        process.env.ACCESS_LOG_CONTROL_RETENTION_DAYS = '3'
+        expect(await configured.purgeExpired(db.tenant, new Date(Date.now() + 2.5 * DAY))).toBe(1)
+        expect(await configured.purgeExpired(db.tenant, new Date(Date.now() + 3.5 * DAY))).toBe(1)
+
+        // A value that is not a positive number falls back instead of meaning "purge everything".
+        await seed(db.tenant)
+        process.env.ACCESS_LOG_RETENTION_DAYS = '0'
+        process.env.ACCESS_LOG_CONTROL_RETENTION_DAYS = 'soon'
+        expect(await configured.purgeExpired(db.tenant, new Date(Date.now() + 5 * DAY))).toBe(0)
+        expect(await configured.purgeExpired(db.tenant, new Date(Date.now() + 11 * DAY))).toBe(1)
+      })
     })
   })
 }

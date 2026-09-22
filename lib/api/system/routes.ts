@@ -35,6 +35,12 @@ const operators = {
   resource: { prefix: 'system/users', name: 'systemUser', titleField: 'email' }
 }
 
+// The platform's access log, its own resource for the same reason (T-12.32).
+const platformAccessLog = {
+  group: 'system',
+  resource: { prefix: 'system/access-log', name: 'systemAccessLog', titleField: 'event', subtitleField: 'occurredAt' }
+}
+
 export default {
   config: {
     title: 'Platform administration',
@@ -191,6 +197,34 @@ export default {
         response: {
           200: { $ref: 'defaultResponse#' }
         }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/access-log',
+      requireCapability: 'access-log',
+      handler: 'systemAccessLog.find',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Find platform access log entries',
+        description: 'Magic Query over the fields of the access log, control plane only',
+        manifest: platformAccessLog,
+        query: { $ref: 'getQueryParamsSchema' },
+        response: { 200: { type: 'array', items: { $ref: 'accessLogSchema#' } } }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/access-log/count',
+      requireCapability: 'access-log',
+      handler: 'systemAccessLog.count',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Count platform access log entries',
+        description: 'Count',
+        manifest: platformAccessLog,
+        query: { $ref: 'getQueryParamsSchema' },
+        response: { 200: { type: 'number' } }
       }
     },
     {

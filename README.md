@@ -793,6 +793,7 @@ Expiry refuses a session; it does not delete its row. That is housekeeping, and 
 ```sh
 npx volcanic sessions --purge             # the control plane
 npx volcanic sessions --purge --tenants   # and every active container
+npx volcanic access-log --purge --tenants # the access log, past 90 days (tenant) and 180 (platform)
 ```
 
 The command refuses to do anything without `--purge`, since removing rows is all it does, and the renewal

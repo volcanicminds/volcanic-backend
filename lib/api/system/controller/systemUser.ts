@@ -5,6 +5,7 @@ import * as regExp from '../../../util/regexp.js'
 import { isSystemRoleCode } from '../../../loader/roles.js'
 import { present } from './systemAuth.js'
 import { controlPolicy } from '../../../util/mfaPolicy.js'
+import { recordControlAccess } from '../../../util/accessLog.js'
 
 //
 // Platform identities, managed from the control scope (T-4.1).
@@ -52,6 +53,7 @@ export async function resetMfa(req: FastifyRequest, reply: FastifyReply) {
   if (!target) return reply.status(404).send()
 
   await manager(req).disableMfa(control(req), target.id)
+  await recordControlAccess(req, { event: 'mfa.disabled', outcome: 'success', subjectId: target.externalId ?? null, methods: ['totp'] })
   if (log.i) log.info(`System MFA reset for ${target.email}, policy ${controlPolicy()}`)
   return { ok: true }
 }

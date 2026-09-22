@@ -102,6 +102,7 @@ The control catalogue is **new and reserved**:
 | `migrations` | read schema versions, run the fleet migrator through the API | `GET /tenants/migrations` |
 | `manifest` | read the platform console manifest | `GET /system/manifest` |
 | `system-users` | manage platform identities | `/system/users/*` |
+| `access-log` | read the operators' access log, never a tenant's | `GET /system/access-log`, `GET /system/access-log/count` |
 
 `tenants:destroy` is deliberately **not** part of `tenants`: creating a tenant and destroying its
 data are not the same job, and an operator who can do the first must not automatically do the

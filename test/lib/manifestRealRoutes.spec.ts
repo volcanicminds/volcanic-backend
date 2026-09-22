@@ -16,9 +16,10 @@ import { buildManifest } from '../../lib/manifest/generator.js'
 import * as commonSchemas from '../../lib/schemas/common.js'
 import * as systemUserSchemas from '../../lib/schemas/systemUser.js'
 import * as tenantSchemas from '../../lib/schemas/tenant.js'
+import * as accessLogSchemas from '../../lib/schemas/accessLog.js'
 
 const SCHEMAS: Record<string, any> = {}
-for (const mod of [commonSchemas, systemUserSchemas, tenantSchemas]) {
+for (const mod of [commonSchemas, systemUserSchemas, tenantSchemas, accessLogSchemas]) {
   for (const value of Object.values(mod) as any[]) {
     if (value && typeof value === 'object' && value.$id) SCHEMAS[value.$id] = value
   }
@@ -149,6 +150,29 @@ describe('manifest · the framework own routes, through the loader', () => {
       // the URL.
       expect(action('destruction-request').input).toBeUndefined()
       expect(action('export').input).toBeUndefined()
+    })
+  })
+
+  describe('the access log is a read-only resource on each plane (T-12.32)', () => {
+    const F44 = ['id', 'occurredAt', 'scope', 'event', 'outcome', 'code', 'subjectId', 'methods', 'provider', 'flowId', 'sid', 'ip']
+    const kinds = (resource: any) => resource.capabilities.map((c: any) => `${c.kind} ${c.method} ${c.path}`)
+
+    it('is announced by the platform manifest at its own path, readable by the auditor', () => {
+      const log = manifest.resources.find((r: any) => r.name === 'systemAccessLog')
+      expect(log.path).toBe('system/access-log')
+      expect(kinds(log)).toEqual(['list GET /system/access-log'])
+      expect(log.capabilities[0].roles).toEqual(expect.arrayContaining(['system:admin', 'system:auditor']))
+      expect(log.capabilities[0].roles).not.toContain('system:operator')
+      expect(log.fields.map((f: any) => f.name).sort()).toEqual([...F44].sort())
+    })
+
+    it("is announced by the tenant manifest for the tenant's admin, and by the platform one never", async () => {
+      const routes = await routesOf('access-log')
+      const tenant = buildManifest({ routes, schemas: SCHEMAS, options: { plane: 'tenant', splitPlanes: true } })
+      const log = tenant.resources.find((r: any) => r.name === 'accessLog') as any
+      expect(kinds(log)).toEqual(['list GET /access-log'])
+      expect(log.capabilities[0].roles).toEqual(['admin'])
+      expect(control(routes).resources.find((r: any) => r.name === 'accessLog')).toBeUndefined()
     })
   })
 })

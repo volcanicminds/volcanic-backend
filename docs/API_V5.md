@@ -170,6 +170,19 @@ reason the renewal does: there is nothing to list and nothing to close.
 | POST | `/token/:id/block` | capability `tokens` | **path changed**: v4 was `/token/block/:id` |
 | POST | `/token/:id/unblock` | capability `tokens` | **path changed**: v4 was `/token/unblock/:id` |
 
+### `/access-log` (tenant scope, new in v5)
+
+The accesses of this tenant's users (F44): logins, flow steps, second factors, logouts, session
+revocations, reuse of a spent refresh credential. Written by the framework, removed by retention,
+never by a client. Rows carry the fields of the table and nothing else: no user agent, no address
+tried for an unknown subject, never a password, a code or a token; the IP is truncated to /24 or
+/48, or absent with `ACCESS_LOG_IP=none`.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/access-log` | role `admin` | Magic Query over `id`, `occurredAt`, `scope`, `event`, `outcome`, `code`, `subjectId`, `methods`, `provider`, `flowId`, `sid`, `ip`; any other field is `QUERY_UNKNOWN_FIELD`. Only `scope: 'tenant'` rows, a condition the URL cannot relax. 404 `NOT_FOUND` in a build without the table |
+| GET | `/access-log/count` | role `admin` | |
+
 ---
 
 ## 5. `/system/auth` and `/system/users` (control scope, new in v5)
@@ -197,6 +210,8 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/users/:id/block` | capability `system-users` | |
 | POST | `/system/users/:id/unblock` | capability `system-users` | |
 | POST | `/system/users/:id/mfa/reset` | capability `system-users` | |
+| GET | `/system/access-log` | capability `access-log`, granted to `system:auditor` | Magic Query over the access log of the platform (`scope: 'control'` only, a condition the URL cannot relax) |
+| GET | `/system/access-log/count` | capability `access-log` | |
 
 ---
 

@@ -62,6 +62,16 @@ export default {
       idleTtl: Number(process.env.SESSION_IDLE_TTL) || 2592000,
       absoluteTtl: Number(process.env.SESSION_ABSOLUTE_TTL) || 15552000,
       graceSeconds: Number(process.env.SESSION_GRACE_SECONDS) || 10
+    },
+    // The access log (F44). The two retentions differ because they answer to different readers:
+    // 90 days cover a quarterly review and the usual time an incident takes to be noticed, 180
+    // for platform operators follow the Italian DPA's rule on system administrators (27 November
+    // 2008), which asks for at least six months. A reading for the consumer's privacy adviser to
+    // confirm, not legal advice. `ip: 'none'` stores no address at all.
+    accessLog: {
+      ip: process.env.ACCESS_LOG_IP === 'none' ? 'none' : 'truncate',
+      retentionDays: Number(process.env.ACCESS_LOG_RETENTION_DAYS) || 90,
+      controlRetentionDays: Number(process.env.ACCESS_LOG_CONTROL_RETENTION_DAYS) || 180
     }
   }
 }
