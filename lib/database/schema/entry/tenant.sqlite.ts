@@ -18,3 +18,4 @@ export const session = app.session
 export const authFlow = app.authFlow
 export const externalIdentity = app.externalIdentity
 export const accessLog = app.accessLog
+export const setting = app.setting

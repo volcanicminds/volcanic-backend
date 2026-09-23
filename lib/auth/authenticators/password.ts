@@ -1,6 +1,6 @@
 import type { AuthContext, AuthInput, AuthResult, Authenticator, ControlHandle } from '../../../types/global.js'
 import * as regExp from '../../util/regexp.js'
-import { toSubject } from '../subjects.js'
+import { tenantRefusal, toSubject } from '../subjects.js'
 
 //
 // `password` as an identifier (T-12.19): the login of both planes, moved here from the two
@@ -30,10 +30,9 @@ async function verifyTenant(ctx: AuthContext, email: string, password: string): 
     const known = await users.retrieveUserByEmail(ctx.handle, email)
     return refused(known ? 'AUTH_BAD_PASSWORD' : 'AUTH_UNKNOWN_EMAIL', email)
   }
-  if (!(await users.isValidUser(user))) return refused('AUTH_INVALID_USER', email)
-  if (user.confirmed !== true) return refused('AUTH_UNCONFIRMED', email)
-  // Before the expiry, so a blocked account never learns that its password aged out.
-  if (user.blocked) return refused('AUTH_BLOCKED', email)
+  // Before the expiry, so a blocked or waiting account never learns that its password aged out.
+  const cause = await tenantRefusal(users, user)
+  if (cause) return refused(cause, email)
   if (users.isPasswordToBeChanged(user)) return { outcome: 'fail', reason: 'PASSWORD_TO_BE_CHANGED' }
   return { outcome: 'success', subject: toSubject('tenant', user) }
 }

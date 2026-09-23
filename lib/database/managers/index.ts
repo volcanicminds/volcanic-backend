@@ -11,6 +11,7 @@ import { createAuthFlowManager } from './authFlow.js'
 import { createExternalIdentityManager } from './externalIdentity.js'
 import { createIdentityProviderManager } from './identityProvider.js'
 import { createAccessLogManager } from './accessLog.js'
+import { createSettingManager } from './setting.js'
 
 export {
   createUserManager,
@@ -24,7 +25,8 @@ export {
   createAuthFlowManager,
   createExternalIdentityManager,
   createIdentityProviderManager,
-  createAccessLogManager
+  createAccessLogManager,
+  createSettingManager
 }
 export { challengeMac } from './authFlow.js'
 export { truncateIp, type AccessLogIpMode, type AccessLogOptions } from './accessLog.js'
@@ -60,6 +62,9 @@ export function buildManagers(
     // Control plane only: a tenant's IdP secret never sits in the container it serves (F38).
     identityProviderManager: createIdentityProviderManager(),
     // Retention and address mode from the `accessLog` block; the environment still wins (F44).
-    accessLogManager: createAccessLogManager(options?.accessLog ?? {})
+    accessLogManager: createAccessLogManager(options?.accessLog ?? {}),
+    // Container settings, on both planes: the operator's rules in the control container, a
+    // tenant's choices in its own (F49).
+    settingManager: createSettingManager()
   }
 }

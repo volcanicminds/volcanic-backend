@@ -40,7 +40,9 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
         managers: { userManager: users, externalIdentityManager: links, systemUserManager: {} },
         flow: null,
         limits: { flowTtl: 600, otpTtl: 300, otpMaxAttempts: 5, otpMaxSends: 3 },
-        challenges: null
+        challenges: null,
+        // Registration open: the cases here are about F40; F49 has its own in accountCreation.spec.ts.
+        accountCreation: async () => 'open'
       }) as any
 
     const provider = (settings: Record<string, unknown> = {}): ResolvedProvider => ({

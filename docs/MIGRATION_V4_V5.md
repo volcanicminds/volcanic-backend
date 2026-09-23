@@ -4,7 +4,7 @@
 > break landed, and not reconstructed at the end (task T-8.3); it was then read through in
 > full, once, with the API stable. Everything below is true of the code on the `v5` branch.
 >
-> Twenty-seven sections, in the order a port meets them: the data layer and the configuration
+> Twenty-eight sections, in the order a port meets them: the data layer and the configuration
 > first, because nothing else compiles until they are right; then what changed inside a
 > request; then the routes, the answers and the two core defaults. If you are porting a
 > project, read §1 to §4 before touching anything, and keep §18 open while you test the
@@ -17,7 +17,8 @@
 > §24 came later, with the decision to keep the browser session out of the page (phase 10):
 > it is the break an upgrade meets first, because an instance without `COOKIE_SECRET` no
 > longer starts. §27 is later still (phase 11) and is the one break that also hits whoever
-> already runs a 5.0 alpha: the refresh token is no longer a JWT.
+> already runs a 5.0 alpha: the refresh token is no longer a JWT. §28 (phase 12) closes the
+> self-registration by default, on v4 ports and 5.0 alphas alike.
 
 v5 is breaking on purpose. There is no compatibility branch, no deprecated alias and no
 automatic translation of a v4 configuration: invariant 9 of `EVO_FRAMEWORK.md` says the
@@ -586,3 +587,31 @@ and it makes the theft an event somebody can count. The full reasoning is `docs/
 - Two tabs renewing at the same instant are fine, and that is what `SESSION_GRACE_SECONDS` is for. A
   client that renews from several processes with a clock further apart than the window needs a longer
   one, not a retry.
+
+---
+
+## 28. Registration is closed by default (F49)
+
+v4, and the 5.0 alphas up to phase 12, let anybody call `POST /auth/register` on any tenant. v5
+decides who may create an account per tenant, on two levels (docs/API_V5.md §2.5): the platform
+decides the set of modes a tenant may choose from, the tenant's administrator picks one. The
+deployment's own default is **`invite`**: accounts are created by an administrator, and
+`POST /auth/register` answers 403 `REGISTRATION_CLOSED`.
+
+**What a deployment has to do.**
+
+- **Apply the new migrations**, `0003_account_creation_control` and `0003_account_creation_tenant`
+  for each dialect: the `setting` table, and `approved` / `approved_at` on `user`. Existing users
+  come through approved, so nobody is locked out by the upgrade.
+- **To keep the registration open**, say so: `ACCOUNT_CREATION_DEFAULT=open` in the environment, or
+  `accountCreation: { allowed: [...], default: 'open' }` in `config/general.ts`, or at runtime
+  `PUT /system/account-creation`, or let each tenant's administrator choose it with
+  `PUT /settings/account-creation` where the platform allows it.
+- **To review sign-ups before they log in**, use `approval`: the account is created with
+  `approved: false`, the login refuses it with the uniform 401 until `POST /users/:id/approve`, and
+  the access log records `account.pending` and `account.approved`.
+
+**What a client has to change.** Read `accountCreation` from `GET /auth/flow/options` to decide
+whether to show a registration form, and what to say after one: under `approval` the new account
+waits. A console lists the waiting accounts with `GET /users?approved=false`.
+

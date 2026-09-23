@@ -62,9 +62,9 @@ describe('database/adapters/libsql · a container on the libSQL driver (T-9.2)',
   })
 
   it('reads the sqlite set, not a third copy of the same schema', async () => {
-    expect(await runner.expected({ locator: 'control.db' })).toBe('0002_auth_flow_control')
-    expect(await runner.apply({ locator: 'control.db' })).toBe('0002_auth_flow_control')
-    expect(await runner.version({ locator: 'control.db' })).toBe('0002_auth_flow_control')
+    expect(await runner.expected({ locator: 'control.db' })).toBe('0003_account_creation_control')
+    expect(await runner.apply({ locator: 'control.db' })).toBe('0003_account_creation_control')
+    expect(await runner.version({ locator: 'control.db' })).toBe('0003_account_creation_control')
   })
 
   it('runs DDL, inserts and selects through the same escape hatch', async () => {

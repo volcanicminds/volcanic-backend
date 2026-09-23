@@ -25,7 +25,8 @@ import {
   defaultExternalIdentityManager,
   defaultIdentityProviderManager,
   defaultChallengeDeliveryManager,
-  defaultAccessLogManager
+  defaultAccessLogManager,
+  defaultSettingManager
 } from '../../lib/defaults/managers.js'
 
 ;(global as any).log = {}
@@ -45,7 +46,8 @@ const ALL: Array<[string, any]> = [
   ['externalIdentityManager', defaultExternalIdentityManager],
   ['identityProviderManager', defaultIdentityProviderManager],
   ['challengeDeliveryManager', defaultChallengeDeliveryManager],
-  ['accessLogManager', defaultAccessLogManager]
+  ['accessLogManager', defaultAccessLogManager],
+  ['settingManager', defaultSettingManager]
 ]
 
 describe('defaults/managers · booting without a data layer (T-9.5)', () => {
@@ -73,7 +75,8 @@ describe('defaults/managers · booting without a data layer (T-9.5)', () => {
       ['externalIdentityManager', (defaultExternalIdentityManager as any).findLink({}, {})],
       ['identityProviderManager', (defaultIdentityProviderManager as any).get({}, 't', 'k')],
       ['challengeDeliveryManager', (defaultChallengeDeliveryManager as any).deliver({})],
-      ['accessLogManager', (defaultAccessLogManager as any).record({}, {})]
+      ['accessLogManager', (defaultAccessLogManager as any).record({}, {})],
+      ['settingManager', (defaultSettingManager as any).get({}, 'k')]
     ]
 
     for (const [name, call] of calls) {

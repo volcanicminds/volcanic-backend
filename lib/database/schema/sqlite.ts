@@ -38,6 +38,8 @@ export function appTables() {
       password: text('password').notNull(),
       confirmed: integer('confirmed', { mode: 'boolean' }).notNull().default(false),
       confirmedAt: integer('confirmed_at', { mode: 'timestamp_ms' }),
+      approved: integer('approved', { mode: 'boolean' }).notNull().default(true),
+      approvedAt: integer('approved_at', { mode: 'timestamp_ms' }),
       passwordChangedAt: integer('password_changed_at', { mode: 'timestamp_ms' }),
       blocked: integer('blocked', { mode: 'boolean' }).notNull().default(false),
       blockedReason: text('blocked_reason'),
@@ -243,7 +245,16 @@ export function appTables() {
     ]
   )
 
-  return { user, token, change, migration, session, authFlow, externalIdentity, accessLog }
+  const setting = sqliteTable('setting', {
+    key: text('key').primaryKey(),
+    value: text('value', { mode: 'json' }).notNull(),
+    updatedBy: text('updated_by'),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`)
+  })
+
+  return { user, token, change, migration, session, authFlow, externalIdentity, accessLog, setting }
 }
 
 export function registryTables() {

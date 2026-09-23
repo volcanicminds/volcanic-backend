@@ -227,6 +227,45 @@ export default {
         response: { 200: { type: 'number' } }
       }
     },
+    // Who may create an account in a tenant, for every tenant (F49). Reading it is oversight,
+    // writing it changes how every customer's users get in.
+    {
+      method: 'GET',
+      path: '/account-creation',
+      requireCapability: 'tenants:read',
+      handler: 'systemAccountCreation.get',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Read the account creation rule of every tenant',
+        description: 'The modes a tenant may choose from and the one that applies until it chooses',
+        response: { 200: { $ref: 'accountCreationRuleSchema#' } }
+      }
+    },
+    {
+      method: 'PUT',
+      path: '/account-creation',
+      requireCapability: 'tenants',
+      handler: 'systemAccountCreation.update',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Set the account creation rule of every tenant',
+        description: 'Replaces the deployment rule; a tenant with its own set in `config.account_creation` keeps it',
+        body: { $ref: 'accountCreationRuleBodySchema#' },
+        response: { 200: { $ref: 'accountCreationRuleSchema#' } }
+      }
+    },
+    {
+      method: 'DELETE',
+      path: '/account-creation',
+      requireCapability: 'tenants',
+      handler: 'systemAccountCreation.reset',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Go back to the deployment rule',
+        description: 'Removes the rule stored by the platform',
+        response: { 200: { $ref: 'accountCreationRuleSchema#' } }
+      }
+    },
     {
       method: 'GET',
       path: '/manifest',

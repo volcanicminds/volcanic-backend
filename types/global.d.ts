@@ -352,6 +352,11 @@ export interface GeneralConfig {
     reset_password_token_ttl?: number
     /** Seconds an impersonation session lasts (T-4.2). Default 1800, hard maximum 14400. */
     impersonation_ttl?: number
+    /**
+     * Who may create an account in a tenant (F49): `invite`, `approval`, `open`. `allowed` is a list
+     * or a comma-separated string; `default` must be one of them. Refused at boot when it is not.
+     */
+    accountCreation?: { allowed: string[] | string; default: string }
     /** Where container exports are written (T-6.2). Configuration, never a request field. */
     export_directory?: string
     // Where the platform's own data lives: the tenant registry, the system users, and
@@ -552,6 +557,8 @@ export interface UserManagement {
 
   blockUserById(ctx: DataHandle, id: string, reason: string): Promise<any>
   unblockUserById(ctx: DataHandle, id: string): Promise<any>
+  /** Ends the wait of an account under `approval` (F49); false when it was not waiting. */
+  approveUserById(ctx: DataHandle, id: string): Promise<boolean>
 
   countQuery(ctx: DataHandle, data: VQuery): Promise<number>
   findQuery(ctx: DataHandle, data: VQuery): Promise<VFindResult<any>>
@@ -892,6 +899,7 @@ export interface AuthManagers {
   readonly identityProviderManager: IdentityProviderManagement
   readonly challengeDeliveryManager: ChallengeDeliveryManagement
   readonly accessLogManager: AccessLogManagement
+  readonly settingManager: SettingManagement
 }
 
 /**
@@ -923,6 +931,11 @@ export interface AuthContext {
   readonly limits: Readonly<AuthFlowLimits>
   /** Null without a flow row, or where the request presented no credential for it. */
   readonly challenges: FlowChallenges | null
+  /**
+   * Who may create an account here (F49), read when it is needed: the just-in-time provisioning
+   * of a provider asks it. Absent, the most closed mode applies.
+   */
+  readonly accountCreation?: () => Promise<'invite' | 'approval' | 'open'>
 }
 
 /**
@@ -1195,6 +1208,15 @@ export interface ExternalIdentityManagement {
   touch(ctx: DataHandle, id: string): Promise<boolean>
 }
 
+/** Settings of a container, one JSON value per key (F49). Never a secret. */
+export interface SettingManagement {
+  isImplemented(): boolean
+  /** The stored value, or null when the key was never written. */
+  get(ctx: DataHandle, key: string): Promise<unknown>
+  set(ctx: DataHandle, key: string, value: unknown, updatedBy?: string | null): Promise<void>
+  remove(ctx: DataHandle, key: string): Promise<boolean>
+}
+
 export type IdentityProviderType = 'oidc'
 
 /** A tenant's own provider, in the control plane registry (F38). Never in `tenant.config`. */
@@ -1276,6 +1298,8 @@ export type AccessEvent =
   | 'idp.unlinked'
   | 'idp.provisioned'
   | 'idp.rejected'
+  | 'account.pending'
+  | 'account.approved'
   | 'mfa.enrolled'
   | 'mfa.disabled'
   | 'logout'
@@ -1495,6 +1519,7 @@ declare module 'fastify' {
     identityProviderManager: IdentityProviderManagement
     challengeDeliveryManager: ChallengeDeliveryManagement
     accessLogManager: AccessLogManagement
+    settingManager: SettingManagement
     /** Not a manager: the authenticators of both planes, built by `start()` (T-12.3). */
     authRegistry: AuthenticatorRegistry
   }

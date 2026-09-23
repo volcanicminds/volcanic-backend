@@ -207,6 +207,21 @@ export default {
     },
     {
       method: 'POST',
+      path: '/:id/approve',
+      requireCapability: 'users',
+      handler: 'user.approve',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Approve a waiting account by id',
+        description: 'Ends the wait of an account created under the `approval` mode; list them with `approved=false`',
+        params: { $ref: 'onlyIdSchema#' },
+        response: {
+          200: { $ref: 'defaultResponse#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
       path: '/:id/unblock',
       requireCapability: 'users',
       handler: 'user.unblock',

@@ -29,3 +29,4 @@ export const systemUser = registry.systemUser
 export const impersonation = registry.impersonation
 export const destructionRequest = registry.destructionRequest
 export const identityProvider = registry.identityProvider
+export const setting = app.setting

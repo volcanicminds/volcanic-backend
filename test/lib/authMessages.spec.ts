@@ -118,6 +118,10 @@ describe('auth · one refusal for every login failure (D-17)', () => {
 describe('auth · a taken address registers like a free one (D-17, decision A5)', () => {
   const body = { username: 'someone', email: 'Someone@Acme.test', password1: GOOD, password2: GOOD }
 
+  // Registration is closed by default since F49; these cases are about an open one.
+  before(() => ((global as any).config.options.accountCreation = { allowed: ['open'], default: 'open' }))
+  after(() => delete (global as any).config.options.accountCreation)
+
   function registerManager(over: any = {}) {
     return {
       isImplemented: () => true,

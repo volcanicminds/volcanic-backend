@@ -10,7 +10,7 @@ import type {
   ControlHandle
 } from '../../../types/global.js'
 import * as regExp from '../../util/regexp.js'
-import { toSubject } from '../subjects.js'
+import { mayLogIn, toSubject } from '../subjects.js'
 
 //
 // `email-otp` in its two roles (T-12.22, T-12.23).
@@ -58,7 +58,7 @@ export function maskEmail(email: string): string {
   return `${local[0]}***@${host[0] ?? ''}***${tld}`
 }
 
-/** The subject behind an address, when it may receive a code: valid, confirmed, not blocked. */
+/** The subject behind an address, when it may receive a code: when it may log in at all. */
 async function eligibleByEmail(ctx: AuthContext, email: string): Promise<AuthSubject | null> {
   if (ctx.plane === 'control') {
     const user = await ctx.managers.systemUserManager.retrieveSystemUserByEmail(ctx.handle as ControlHandle, email)
@@ -66,7 +66,7 @@ async function eligibleByEmail(ctx: AuthContext, email: string): Promise<AuthSub
   }
   const users = ctx.managers.userManager
   const user = await users.retrieveUserByEmail(ctx.handle, email)
-  if (!user || !(await users.isValidUser(user)) || user.confirmed !== true || user.blocked) return null
+  if (!(await mayLogIn(users, user))) return null
   return toSubject('tenant', user)
 }
 

@@ -13,6 +13,7 @@
 |---|---|---|
 | `/auth/*` | tenant | authentication of application users |
 | `/users/*` | tenant | user management inside a tenant |
+| `/settings/*` | tenant | choices of the tenant's administrator, inside what the platform allows (§2.5) |
 | `/token/*` | tenant | machine credentials inside a tenant |
 | `/health` | control | liveness |
 | `/admin/manifest` | tenant | description of the manageable API, for a customer's console |
@@ -31,7 +32,7 @@ removed with no replacement.
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| POST | `/auth/register` | public | creates `confirmed: false`, always. Rate limited |
+| POST | `/auth/register` | public | follows the tenant's account creation mode (§2.5): 403 `REGISTRATION_CLOSED` under `invite`, a waiting account under `approval`. Creates `confirmed: false`, always. Rate limited |
 | POST | `/auth/unregister` | authenticated | |
 | POST | `/auth/login` | public | rate limited. Returns a tenant token: in cookie mode, the default, it is written into `auth_token` and `refresh_token` and the body carries `token: null`, `refreshToken: null` (MIGRATION §24) |
 | POST | `/auth/logout` | authenticated | **revokes the session row** of the presenting token, then clears the cookies (§2.3) |
@@ -60,11 +61,12 @@ that happens before a successful password verification:
 | wrong password | `Wrong credentials` | `AUTH_INVALID_CREDENTIALS`, 401 |
 | unconfirmed user | `User email unconfirmed` | `AUTH_INVALID_CREDENTIALS`, 401 |
 | blocked user | `User blocked` | `AUTH_INVALID_CREDENTIALS`, 401 |
+| account waiting for approval (§2.5) | did not exist | `AUTH_INVALID_CREDENTIALS`, 401 |
 | email already registered | `Email already registered` | 200 with the same body as a successful registration, and no account created |
 | password expired | `Password is expired` | `PASSWORD_TO_BE_CHANGED`, 403 — **stays distinct**, because it happens *after* the password verified |
 
 The real cause is written to the log with a distinct internal code (`AUTH_UNKNOWN_EMAIL`,
-`AUTH_BAD_PASSWORD`, `AUTH_UNCONFIRMED`, `AUTH_BLOCKED`). Verified that no backoffice of ours
+`AUTH_BAD_PASSWORD`, `AUTH_UNCONFIRMED`, `AUTH_BLOCKED`, `AUTH_PENDING_APPROVAL`). Verified that no backoffice of ours
 depends on the distinct client messages: `volcanic-admin` contains none of those strings.
 
 ### 2.2 Tenant resolution for these routes
@@ -134,6 +136,41 @@ Both routes need an authenticated caller and both answer `404 NOT_FOUND` whereve
 keeps no registry (no data layer, `sessions.enabled: false`, or `JWT_REFRESH=false`), for the same
 reason the renewal does: there is nothing to list and nothing to close.
 
+### 2.5 Who may create an account
+
+Three modes, from the most closed: `invite` (accounts are created by an administrator, or by the
+just-in-time provisioning of a provider that lists `emailDomains`), `approval` (self-registration,
+then an administrator approves the account) and `open` (self-registration). Two levels decide which
+one applies, each writing its own data:
+
+- **the platform decides the set** a tenant may choose from. For every tenant with
+  `PUT /system/account-creation` (§5), or, without a stored rule, the deployment's
+  `accountCreation` (docs/CONFIGURATION_V5.md). For one tenant with `config.account_creation` on
+  its registry row (§6.1), which **replaces** the global set for that tenant;
+- **the tenant's administrator picks one mode** inside the set:
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/settings/account-creation` | role `admin` | `{ allowed, allowedFrom, default, choice, mode }`: the set and who wrote it, the global default, what this tenant chose and what applies |
+| PUT | `/settings/account-creation` | role `admin` | body `{ mode }`. A mode outside the set is 403 `ACCOUNT_CREATION_NOT_ALLOWED`; 503 `SETTINGS_NOT_AVAILABLE` in a build without the settings table |
+
+What applies is the tenant's choice while it is in the set, otherwise the global default while
+that is in the set, otherwise the most closed mode of the set: a set narrowed after the choice
+takes effect at once and never opens more than it allows. `GET /auth/flow/options` carries the
+mode as `accountCreation`, so a client knows whether to show a registration and what to say
+after it.
+
+It governs both doors. `POST /auth/register` answers 403 `REGISTRATION_CLOSED` under `invite`
+(the rule of the tenant, the same for every address); under `approval` it creates the account with
+`approved: false` and writes `account.pending` in the access log. The just-in-time provisioning of
+a provider (F40) under `invite` creates accounts only for an address in the provider's
+`emailDomains`; under `approval` it creates a waiting account, already linked, and the login
+answers `ACCOUNT_PENDING_APPROVAL` until the approval: a distinct code there, because the provider
+has just authenticated the person who owns the account. A password or `email-otp` login of a
+waiting account gets the uniform answer of §2.1. Administrators list the waiting accounts with
+`GET /users?approved=false` and approve them with `POST /users/:id/approve` (§3), which writes
+`account.approved`.
+
 ---
 
 ## 3. `/users` (tenant scope)
@@ -148,6 +185,7 @@ reason the renewal does: there is nothing to list and nothing to close.
 | DELETE | `/users/:id` | capability `users` | soft delete |
 | POST | `/users/:id/block` | capability `users` | |
 | POST | `/users/:id/unblock` | capability `users` | |
+| POST | `/users/:id/approve` | capability `users` | ends the wait of an account created under `approval` (§2.5); 409 `USER_NOT_PENDING` when it was not waiting |
 | POST | `/users/:id/mfa/reset` | capability `users` | |
 | POST | `/users/:id/password/reset` | capability `users` | |
 | GET | `/users/me` | authenticated | |
@@ -212,6 +250,9 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/users/:id/mfa/reset` | capability `system-users` | |
 | GET | `/system/access-log` | capability `access-log`, granted to `system:auditor` | Magic Query over the access log of the platform (`scope: 'control'` only, a condition the URL cannot relax) |
 | GET | `/system/access-log/count` | capability `access-log` | |
+| GET | `/system/account-creation` | capability `tenants:read` | the rule for every tenant (§2.5): `allowed`, `default`, `from` (`control` or `deployment`) and the deployment's own rule |
+| PUT | `/system/account-creation` | capability `tenants` | body `{ allowed, default }`, the default inside the set; otherwise 400 `ACCOUNT_CREATION_INVALID` |
+| DELETE | `/system/account-creation` | capability `tenants` | back to the deployment's rule |
 
 ---
 
@@ -238,6 +279,9 @@ Platform administrators authenticate on their own routes and receive a token car
 
 Body: `{ name, slug, strategy, engine, locator?, config?, admin: { email, password, adminConfirmed? } }`.
 
+- `config.account_creation` is `{ allowed: [...] }` and nothing else: the modes this tenant alone
+  may choose from (§2.5), stored in their order; anything else is 400 `ACCOUNT_CREATION_INVALID`,
+  on creation and on `PUT /tenants/:id` alike.
 - `locator` absent is derived from the slug, then sanitised. If the sanitised value differs from
   a value the caller **did** send, the response is 400 (defect D-20).
 - `admin.adminConfirmed` defaults to **`true`** on this route: a tenant whose administrator

@@ -82,6 +82,8 @@ layer on every update. An update whose `version` does not match responds `409`.
 | `password` | text | no | | bcrypt hash, cost 12. Never selected by default (see §5) |
 | `confirmed` | boolean | no | `false` | `POST /auth/register` always creates `false`; tenant provisioning may create `true` (T-6.1) |
 | `confirmed_at` | timestamp | yes | | |
+| `approved` | boolean | no | `true` | `false` while an account created under the `approval` mode waits for an administrator (F49, docs/API_V5.md §2.5). True by default, so existing rows and accounts an administrator creates wait for nobody |
+| `approved_at` | timestamp | yes | | when an administrator approved it; null for an account that never waited |
 | `password_changed_at` | timestamp | yes | | drives password expiry |
 | `blocked` | boolean | no | `false` | |
 | `blocked_reason` | text | yes | | |
@@ -223,6 +225,19 @@ could undo is not a revocation. Expiry does not delete anything either: a row go
 `purgeExpired` reaches it, and that is once the **first** of its two clocks has run out, whether or
 not it was revoked before then. So "when did this session end, and why" keeps an answer for as long
 as the row would have been usable had nobody closed it, and not one day longer.
+
+### 2.6 `setting`
+
+Settings of the container, one JSON value per key (F49, `SettingManagement` in
+docs/MANAGERS_V5.md §12). In every container, because each plane writes where it owns the data: the
+platform's rules for every tenant in the control container, a tenant's own choices in its container.
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `key` | text | no | | primary key |
+| `value` | jsonb (Postgres) / JSON text (SQLite) | no | | never a secret |
+| `updated_by` | text | yes | | the `externalId` of whoever wrote it |
+| `updated_at` | timestamp | no | now | |
 
 ---
 

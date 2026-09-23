@@ -4,6 +4,7 @@ import { tenantPolicy } from '../../../util/mfaPolicy.js'
 import { includesRole, isFounder } from '../../../util/authz.js'
 import { dataContext } from '../../../util/tenancy.js'
 import { recordTenantAccess } from '../../../util/accessLog.js'
+import { httpError } from '../../../util/httpError.js'
 
 const forbidden = (reply: FastifyReply, message: string) =>
   reply.status(403).send({ statusCode: 403, error: 'Forbidden', message })
@@ -215,6 +216,28 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   let user = await req.server['userManager'].blockUserById(dataContext(req), userId, reason)
   user = await req.server['userManager'].resetExternalId(dataContext(req), user.id)
   return { ok: !!user.id }
+}
+
+/**
+ * Ends the wait of an account created under `approval` (F49). Refused on an account that is not
+ * waiting: approving twice, or approving an account that never waited, is not an approval and must
+ * not write one in the access log.
+ */
+export async function approve(req: FastifyRequest, reply: FastifyReply) {
+  if (!req.server['userManager'].isImplemented()) {
+    throw new Error('Not implemented')
+  }
+
+  const { id: userId } = req.parameters()
+  const target = await req.server['userManager'].retrieveUserById(dataContext(req), userId)
+  if (!target) {
+    return reply.status(404).send(httpError(404, 'User not found', 'NOT_FOUND'))
+  }
+  if (!(await req.server['userManager'].approveUserById(dataContext(req), target.id))) {
+    return reply.status(409).send(httpError(409, 'The account is not waiting for approval', 'USER_NOT_PENDING'))
+  }
+  await recordTenantAccess(req, { event: 'account.approved', outcome: 'success', subjectId: String(target.externalId) })
+  return { ok: true }
 }
 
 export async function unblock(req: FastifyRequest, reply: FastifyReply) {

@@ -46,6 +46,15 @@ export default {
       idleTtl: 2_592_000,                 // seconds without a renewal before the session ends
       absoluteTtl: 15_552_000,            // seconds it may live, however often it renews
       graceSeconds: 10                    // the just-rotated secret still answers, for tabs renewing together
+    },
+
+    // Who may create an account in a tenant (F49, docs/API_V5.md §2.5): the modes a tenant may
+    // choose from, and the one that applies until its administrator chooses. The platform can
+    // replace both at runtime (`PUT /system/account-creation`) and the set of one tenant
+    // (`config.account_creation`). A rule that is not one refuses the boot.
+    accountCreation: {
+      allowed: ['invite', 'approval', 'open'], // or a comma-separated string
+      default: 'invite'                   // closed: accounts are made by an administrator
     }
   }
 }
@@ -130,6 +139,8 @@ where it is used without passing through the configuration at all.
 | `ACCESS_LOG_IP` | `truncate` | `truncate` keeps an IPv4 /24 or an IPv6 /48 in the access log, `none` stores no address | `accessLog.ip`, and it **wins** over the configured value |
 | `ACCESS_LOG_RETENTION_DAYS` | `90` | days a tenant-plane row of the access log is kept | `accessLog.retentionDays`, same rule |
 | `ACCESS_LOG_CONTROL_RETENTION_DAYS` | `180` | days a platform row of the access log is kept | `accessLog.controlRetentionDays`, same rule |
+| `ACCOUNT_CREATION_ALLOWED` | `invite,approval,open` | the modes a tenant may choose from, when neither the platform nor the tenant's registry row says otherwise | `accountCreation.allowed`; a configured value replaces it |
+| `ACCOUNT_CREATION_DEFAULT` | `invite` | the mode that applies until a tenant's administrator chooses; must be among the allowed ones, or the boot is refused | `accountCreation.default`, same rule |
 | `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
 | `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |

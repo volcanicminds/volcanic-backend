@@ -11,6 +11,9 @@ import { clearSessionCookies, issuePreAuth, issueSession, sessionTokenOf, type S
 import { renew } from '../../../util/renewal.js'
 import { recordTenantAccess } from '../../../util/accessLog.js'
 import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.js'
+import { mayLogIn, tenantRefusal } from '../../../auth/subjects.js'
+import { accountCreationOf } from '../../../auth/accountCreation.js'
+import type { ControlHandle } from '../../../../types/global.js'
 // The delta-to-step conversion used to live here, and the control plane had its own copy that
 // did not convert at all (T-10.20). One rule, one place.
 import { absoluteStep as evaluateMfaResult, isReplay } from '../../../util/mfaCounter.js'
@@ -94,6 +97,18 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     throw new Error('Not implemented')
   }
 
+  // F49, before anything about the request is read: under `invite` the answer is the tenant's rule,
+  // the same for every address, so it says nothing about who has an account here.
+  const creation = await accountCreationOf({
+    settings: req.server['settingManager'],
+    control: req.control as ControlHandle,
+    handle: dataContext(req),
+    tenant: req.tenantInfo
+  })
+  if (creation.mode === 'invite') {
+    return reply.status(403).send(httpError(403, 'Accounts here are created by an administrator', 'REGISTRATION_CLOSED'))
+  }
+
   if (!data.username) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Username not valid' })
   }
@@ -123,6 +138,10 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   // after a bcrypt hash: the two are one stopwatch apart, and the uniform body of decision A5
   // would be undone by the latency. Letting the unique index decide means both paths hash,
   // both paths touch the database, and both cost the same.
+  // Whatever the body says: only the mode decides whether the account waits for an administrator.
+  data.approved = creation.mode !== 'approval'
+  delete data.confirmed
+
   let user: any
   try {
     user = await req.server['userManager'].createUser(dataContext(req), { ...data, password: password })
@@ -136,6 +155,11 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     // same v7 shape the database mints so the version nibble does not answer the question
     // either.
     if (log.w) log.warn(`Registration refused (AUTH_EMAIL_TAKEN) for ${data.email}`)
+    // Under `approval` a real registration writes an access row; this one writes its refusal, so
+    // the two paths still touch the database the same number of times.
+    if (data.approved === false) {
+      await recordTenantAccess(req, { event: 'account.pending', outcome: 'failure', code: 'AUTH_EMAIL_TAKEN', methods: ['password'] })
+    }
     return {
       id: uuidv7(),
       externalId: uuidv7(),
@@ -147,6 +171,10 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
 
   if (!user) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not registered' })
+  }
+
+  if (user.approved === false) {
+    await recordTenantAccess(req, { event: 'account.pending', outcome: 'success', subjectId: String(user.externalId), methods: ['password'] })
   }
 
   return user
@@ -367,21 +395,12 @@ export async function login(req: FastifyRequest, reply: FastifyReply) {
     return refuseLogin(reply, known ? 'AUTH_BAD_PASSWORD' : 'AUTH_UNKNOWN_EMAIL', email)
   }
 
-  const isValid = await req.server['userManager'].isValidUser(user)
-
-  if (!isValid) {
-    return refuseLogin(reply, 'AUTH_INVALID_USER', email)
-  }
-
-  if (!(user.confirmed === true)) {
-    return refuseLogin(reply, 'AUTH_UNCONFIRMED', email)
-  }
-
   // Before the expiry check, and not after it as in v4: a blocked account whose password had
   // aged out was answered `PASSWORD_TO_BE_CHANGED`, which is a distinct code handed to
   // someone the deployment has decided to shut out.
-  if (user.blocked) {
-    return refuseLogin(reply, 'AUTH_BLOCKED', email)
+  const refusal = await tenantRefusal(req.server['userManager'], user)
+  if (refusal) {
+    return refuseLogin(reply, refusal, email)
   }
 
   // Stays distinct, and stays 403: it is reached only after the password verified, so it
@@ -486,8 +505,7 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
     claims: (user) => ({ sub: user.externalId, tid: req.tenantInfo?.id }),
     loadSubject: async (subjectId: string) => {
       const user = await users.retrieveUserByExternalId(dataContext(req), subjectId)
-      const valid = user ? await users.isValidUser(user) : false
-      return { subject: user, valid: Boolean(valid) && !user?.blocked }
+      return { subject: user, valid: await mayLogIn(users, user) }
     }
   })
 }

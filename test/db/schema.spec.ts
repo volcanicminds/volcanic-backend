@@ -24,9 +24,10 @@ describe('database/schema · parity between the two dialects', () => {
     // the table is part of the set that defines a container.
     // `session` joined them in T-11.1: the registry of live sessions lives in the container of
     // the subject it belongs to, so it is part of what defines a container too.
-    // `authFlow`, `externalIdentity` and `accessLog` joined them in T-12.8 for the same reason.
+    // `authFlow`, `externalIdentity` and `accessLog` joined them in T-12.8 for the same reason,
+    // `setting` in T-12.46.
     expect(Object.keys(pgApp).sort()).toEqual([
-      'accessLog', 'authFlow', 'change', 'externalIdentity', 'migration', 'session', 'token', 'user'
+      'accessLog', 'authFlow', 'change', 'externalIdentity', 'migration', 'session', 'setting', 'token', 'user'
     ])
     expect(Object.keys(liteApp).sort()).toEqual(Object.keys(pgApp).sort())
     expect(Object.keys(pgReg).sort()).toEqual([

@@ -11,7 +11,8 @@ import { recordAccess } from '../util/accessLog.js'
 import { present } from '../api/system/controller/systemAuth.js'
 import * as engine from './engine.js'
 import type { FlowOutcome, FlowPlane } from './engine.js'
-import { roleCodes, toSubject } from './subjects.js'
+import { mayLogIn, roleCodes, toSubject } from './subjects.js'
+import { accountCreationOf } from './accountCreation.js'
 
 //
 // The HTTP side of the flow routes (T-12.15, T-12.16): one controller, parameterised by plane.
@@ -30,7 +31,8 @@ const MANAGERS: ReadonlyArray<keyof AuthManagers> = [
   'externalIdentityManager',
   'identityProviderManager',
   'challengeDeliveryManager',
-  'accessLogManager'
+  'accessLogManager',
+  'settingManager'
 ]
 
 function managersOf(req: FastifyRequest): AuthManagers {
@@ -106,9 +108,11 @@ function planeOf(req: FastifyRequest, reply: FastifyReply, plane: AuthPlane): Fl
     tenant: req.tenantInfo ?? null,
     routing,
     policy,
+    accountCreation: async () =>
+      (await accountCreationOf({ settings: req.server.settingManager, control: req.control as ControlHandle, handle, tenant: req.tenantInfo })).mode,
     loadSubject: async (externalId) => {
       const user = await users.retrieveUserByExternalId(handle, externalId)
-      if (!user || !(await users.isValidUser(user)) || user.confirmed !== true || user.blocked) return null
+      if (!(await mayLogIn(users, user))) return null
       return { record: user, subject: toSubject('tenant', user) }
     },
     issue: async (user, _subject, methods) => {
@@ -176,7 +180,10 @@ export function flowHandlers(plane: AuthPlane) {
     async options(req: FastifyRequest, reply: FastifyReply) {
       const p = planeOf(req, reply, plane)
       if (!p) return reply
-      return { options: engine.identifierOptions(p) }
+      // The tenant plane also says whether a person may create an account here and how (F49), so a
+      // client knows whether to show the registration and what to say after it.
+      const accountCreation = p.accountCreation ? await p.accountCreation() : undefined
+      return { options: engine.identifierOptions(p), ...(accountCreation ? { accountCreation } : {}) }
     },
 
     async start(req: FastifyRequest, reply: FastifyReply) {

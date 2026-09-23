@@ -3162,7 +3162,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Group | Method & Path | Roles (gate) | Auth required | Backing manager |
 | :--- | :--- | :--- | :--- | :--- |
 | Health | `GET /health` | public | no | — |
-| Auth | `POST /auth/register` · `/unregister` · `/login` | public | no | `userManager` |
+| Auth | `POST /auth/register` · `/unregister` · `/login` | public | no | `userManager`; register follows the tenant's account creation mode (closed by default, see below) |
 | Auth | `POST /auth/validate-password` · `/confirm-email` · `/forgot-password` · `/reset-password` | public | no | `userManager` |
 | Auth | `POST /auth/change-password` · `/invalidate-tokens` | any authenticated | **yes** | `userManager` |
 | Auth | `GET /auth/sessions` · `DELETE /auth/sessions/:id` | any authenticated | **yes** | `sessionManager`⁸ |
@@ -3234,6 +3234,14 @@ handle, never an authorisation.
   a successful registration**, and creates nothing. It is the only way not to reveal that the
   account exists. A form that showed "that email is taken" has nothing to show; the confirmation
   email is the channel that tells the real owner and does not answer to a stranger.
+- **Registration is closed by default** (F49). Three modes: `invite` (403 `REGISTRATION_CLOSED`;
+  accounts made by an administrator), `approval` (account created with `approved: false`, login
+  refused until `POST /users/:id/approve`) and `open`. The platform decides the set a tenant may use
+  (`accountCreation` in `config/general.ts` or `ACCOUNT_CREATION_ALLOWED` / `_DEFAULT`, then
+  `PUT /system/account-creation` for every tenant, `config.account_creation.allowed` on a tenant's
+  registry row for one); the tenant's `admin` picks inside it with `PUT /settings/account-creation`.
+  The same mode governs the just-in-time provisioning of an identity provider. A client reads it as
+  `accountCreation` from `GET /auth/flow/options`. Details: `docs/API_V5.md` §2.5.
 
 ## 11.2 Auth modes (Bearer vs Cookie) and `embedded_auth`
 

@@ -44,7 +44,7 @@ describe('migrations · two sets, not one (T-5.2)', () => {
     // On every dialect: invariant 7 does not hold "on Postgres".
     for (const dialect of DIALECTS) {
       const tenant = tablesOf(sqlOf('tenant', dialect))
-      expect(tenant).toEqual(['access_log', 'auth_flow', 'change', 'external_identity', 'migration', 'session', 'token', 'user'])
+      expect(tenant).toEqual(['access_log', 'auth_flow', 'change', 'external_identity', 'migration', 'session', 'setting', 'token', 'user'])
 
       // Invariant 7 as a file list: outside the customer's container goes only what you could
       // publish, and the registry of every other customer is the clearest example of what you

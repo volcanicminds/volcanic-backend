@@ -42,6 +42,7 @@ import { assertSecretStrength } from './lib/util/secret.js'
 import { assertCorsOptions, withTenantHeader } from './lib/util/cors.js'
 import { tenantsConfig } from './lib/util/tenancy.js'
 import { assertPolicies, controlPolicy, floorPolicy, mfaAvailable } from './lib/util/mfaPolicy.js'
+import { assertAccountCreation } from './lib/auth/accountCreation.js'
 import { configureCache, cache } from './lib/util/cache.js'
 
 import type { Authenticator, TransferManagement } from './types/global.js'
@@ -66,7 +67,8 @@ import {
   defaultExternalIdentityManager,
   defaultIdentityProviderManager,
   defaultChallengeDeliveryManager,
-  defaultAccessLogManager
+  defaultAccessLogManager,
+  defaultSettingManager
 } from './lib/defaults/managers.js'
 import { buildAuthenticatorRegistry } from './lib/auth/registry.js'
 import { authFlowProblems, canImport, isImplemented, listsMethod, OIDC, OIDC_LIBRARY } from './lib/auth/validate.js'
@@ -355,6 +357,7 @@ const start = async (decorators: StartOptions = {}) => {
     identityProviderManager: defaultIdentityProviderManager,
     challengeDeliveryManager: defaultChallengeDeliveryManager,
     accessLogManager: defaultAccessLogManager,
+    settingManager: defaultSettingManager,
     ...injected
   }
 
@@ -537,6 +540,7 @@ const start = async (decorators: StartOptions = {}) => {
       // reading it as "the default" is how a setting comes to mean the opposite of what it says.
       try {
         assertPolicies()
+        assertAccountCreation()
       } catch (error) {
         if (log.f) log.fatal(`Startup Security: ${(error as Error).message}`)
         process.exit(1)
@@ -644,6 +648,7 @@ export type {
   AccessLogEntry,
   AccessLogRecord,
   AccessLogManagement,
+  SettingManagement,
   // What a project's `src/config/authFlows.ts` is typed with (T-12.5).
   AuthFlowsConfig,
   AuthPlaneFlows,

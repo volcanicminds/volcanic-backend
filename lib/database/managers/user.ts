@@ -132,6 +132,8 @@ export function createUserManager(): UserManagement {
             password,
             confirmed: data.confirmed ?? false,
             confirmedAt: data.confirmed ? new Date() : null,
+            // Only a self-created account under `approval` waits (F49); every other path passes nothing.
+            approved: data.approved ?? true,
             roles: data.roles ?? [],
             isFounder: data.isFounder ?? false,
             passwordChangedAt: new Date()
@@ -277,6 +279,17 @@ export function createUserManager(): UserManagement {
         .set({ blocked: false, blockedReason: null, blockedAt: null, updatedAt: new Date() })
         .where(eq(column(user, 'id'), id as never))
       return true
+    },
+
+    /** Ends the wait of F49. False when no row waited: approving twice is not an approval. */
+    async approveUserById(ctx: DataHandle, id: string) {
+      const { handle, user } = users(ctx, 'approveUserById')
+      const rows = await handle.db
+        .update(user)
+        .set({ approved: true, approvedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(column(user, 'id'), id as never), eq(column(user, 'approved'), false as never)))
+        .returning({ id: column(user, 'id') })
+      return rows.length > 0
     },
 
     async countQuery(ctx: DataHandle, data: VQuery) {

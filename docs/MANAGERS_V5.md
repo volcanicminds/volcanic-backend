@@ -121,6 +121,8 @@ export interface UserManagement {
 
   blockUserById(ctx: DataHandle, id: string, reason: string): Promise<boolean>
   unblockUserById(ctx: DataHandle, id: string): Promise<boolean>
+  /** Ends the wait of an account created under `approval` (F49); false when it was not waiting. */
+  approveUserById(ctx: DataHandle, id: string): Promise<boolean>
 
   countQuery(ctx: DataHandle, data: VQuery): Promise<number>
   findQuery(ctx: DataHandle, data: VQuery): Promise<VFindResult<User>>
@@ -456,3 +458,30 @@ consume or revoke. A credential that cannot be spent cannot be revoked either, s
 calling it a session is the worse of the two failures. A consumer that wants the registry elsewhere,
 in Redis for instance, implements this interface and injects it: that is what the port is for.
 | sync `encrypt` / `decrypt` | `await encrypt(...)` / `await decrypt(...)` |
+
+---
+
+## 12. `SettingManagement` (new in v5, phase 12)
+
+```typescript
+interface SettingManagement {
+  isImplemented(): boolean
+  /** The stored value, or null when the key was never written. */
+  get(ctx: DataHandle, key: string): Promise<unknown>
+  set(ctx: DataHandle, key: string, value: unknown, updatedBy?: string | null): Promise<void>
+  remove(ctx: DataHandle, key: string): Promise<boolean>
+}
+```
+
+One JSON value per key, in the `setting` table of a container. **Each plane writes where it owns
+the data**: the platform's rules for every tenant go in the control container, a tenant's choices in
+its own. The first user is the account creation rule of F49 (docs/API_V5.md §2.5): the key
+`account_creation` in the control container holds `{ allowed, default }` for every tenant, the key
+`account_creation.mode` in a tenant's container holds what its administrator chose. `set` is one
+upsert on the key, never a read followed by a write, so two administrators saving at once cannot
+both insert. A value is never a secret: whoever reads a key reads all of it.
+
+**Without this manager** the null-object default answers `isImplemented(): false`, every rule falls
+back to the deployment's configuration, and the routes that write a setting answer 503
+`SETTINGS_NOT_AVAILABLE`.
+

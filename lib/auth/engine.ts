@@ -50,12 +50,14 @@ export interface FlowPlane<R = unknown> {
   readonly managers: AuthManagers
   readonly ip: string | null
   readonly userAgent: string | null
-  /** The subject by its `externalId`, or null when it may not log in: missing, invalid, unconfirmed, blocked. */
+  /** The subject by its `externalId`, or null when it may not log in: missing, invalid, unconfirmed, blocked, waiting. */
   loadSubject(externalId: string): Promise<{ record: R; subject: AuthSubject } | null>
   /** Opens the session, once, and answers the body of the 200 and the subject it was issued to. */
   issue(record: R, subject: AuthSubject, methods: string[]): Promise<{ body: Record<string, unknown>; subjectId: string }>
   /** Best effort: a failed write never fails a login. */
   record(entry: Omit<AccessLogEntry, 'scope'>): Promise<void>
+  /** Who may create an account on this plane (F49); absent on the control plane, which has no registration. */
+  accountCreation?: AuthContext['accountCreation']
 }
 
 export interface Refusal {
@@ -144,7 +146,8 @@ const context = <R>(p: FlowPlane<R>, subject: AuthSubject | null, flow: AuthFlow
   managers: p.managers,
   flow,
   limits: p.limits,
-  challenges: flow && secret && storeAvailable(p) ? challengesOf(p, flow, secret) : null
+  challenges: flow && secret && storeAvailable(p) ? challengesOf(p, flow, secret) : null,
+  accountCreation: p.accountCreation
 })
 
 /** An identifier of this plane that `identify` lists. */

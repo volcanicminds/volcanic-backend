@@ -11,6 +11,7 @@ import {
   SessionManagement,
   AuthFlowManagement,
   ExternalIdentityManagement,
+  SettingManagement,
   IdentityProviderManagement,
   ChallengeDeliveryManagement,
   AccessLogManagement
@@ -58,7 +59,7 @@ const USER_METHODS = [
   'retrieveUserById', 'retrieveUserByExternalId', 'retrieveUserByEmail', 'retrieveUserByUsername',
   'retrieveUserByResetPasswordToken', 'retrieveUserByConfirmationToken', 'retrieveUserByPassword',
   'changePassword', 'forgotPassword', 'resetPassword', 'userConfirmation',
-  'blockUserById', 'unblockUserById', 'countQuery', 'findQuery',
+  'blockUserById', 'unblockUserById', 'approveUserById', 'countQuery', 'findQuery',
   'saveMfaSecret', 'retrieveMfaSecret', 'enableMfa', 'disableMfa', 'forceDisableMfa'
 ] as const
 
@@ -105,6 +106,8 @@ const IDENTITY_PROVIDER_METHODS = ['list', 'get', 'create', 'update', 'remove'] 
 
 const CHALLENGE_DELIVERY_METHODS = ['deliver'] as const
 
+const SETTING_METHODS = ['get', 'set', 'remove'] as const
+
 const ACCESS_LOG_METHODS = ['record', 'findQuery', 'countQuery', 'purgeBefore', 'purgeExpired'] as const
 
 const TRANSFER_METHODS = [
@@ -146,3 +149,6 @@ export const defaultChallengeDeliveryManager = notImplemented<ChallengeDeliveryM
 )
 // Asked with isImplemented() before every write: without it an access is written to the process log only.
 export const defaultAccessLogManager = notImplemented<AccessLogManagement>('accessLogManager', ACCESS_LOG_METHODS)
+// Without a settings store every rule of F49 falls back to the deployment's own values: nothing
+// a tenant or an operator chose at runtime can be read, and nothing can be written.
+export const defaultSettingManager = notImplemented<SettingManagement>('settingManager', SETTING_METHODS)

@@ -171,7 +171,8 @@ describe('auth · the flow routes of both planes (T-12.15, T-12.16, T-12.19 to T
       const { server, flows } = await build()
       const res = await server.inject({ method: 'GET', url: '/auth/flow/options' })
       expect(res.statusCode).toBe(200)
-      expect(json(res)).toEqual({ options: [{ id: 'password', kind: 'identifier' }] })
+      // `invite`: the deployment's default when nobody chose (F49).
+      expect(json(res)).toEqual({ options: [{ id: 'password', kind: 'identifier' }], accountCreation: 'invite' })
       expect(flows.rows.size).toBe(0)
       await server.close()
     })

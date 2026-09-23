@@ -60,8 +60,8 @@ function behaviours(name: string, open: (upTo?: { control?: string; tenant?: str
           migrationSets(),
           db.dialect === 'sqlite' ? { control: 'sqlite', tenant: 'sqlite' } : { control: 'pg', tenant: 'pg' }
         )
-        expect(await runner.apply({ locator: db.schemas?.control ?? 'control.db' })).toBe('0002_auth_flow_control')
-        expect(await runner.apply({ locator: db.schemas?.tenant ?? 'acme.db', tenantId: 'id-acme' })).toBe('0002_auth_flow_tenant')
+        expect(await runner.apply({ locator: db.schemas?.control ?? 'control.db' })).toBe('0003_account_creation_control')
+        expect(await runner.apply({ locator: db.schemas?.tenant ?? 'acme.db', tenantId: 'id-acme' })).toBe('0003_account_creation_tenant')
 
         expect(await tableNames(db.tenant, db.dialect, db.schemas?.tenant)).toEqual(expect.arrayContaining(NEW_APP))
         expect(await tableNames(db.control, db.dialect, db.schemas?.control)).toContain('identity_provider')

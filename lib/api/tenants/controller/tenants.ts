@@ -14,6 +14,7 @@ import type {
 import crypto from 'crypto'
 import { httpError } from '../../../util/httpError.js'
 import { checkTenantPolicy, demandsEnrolment, mfaAvailable, type PolicyVerdict } from '../../../util/mfaPolicy.js'
+import { checkTenantOverride } from '../../../auth/accountCreation.js'
 import { absoluteStep, isReplay } from '../../../util/mfaCounter.js'
 import { envInt } from '../../../util/env.js'
 import { ENROLMENT_METHOD, floorEnrollable, isImplemented } from '../../../auth/validate.js'
@@ -162,6 +163,20 @@ export function locatorFor(slug: string): string {
  * demanding a second factor this build cannot issue or cannot enrol anyone in, which would lock that
  * customer's users out at their next login. Shared by creation and update, so the two cannot drift.
  */
+/**
+ * The set of account creation modes of this tenant alone (F49), which replaces the global one.
+ * Refused when it is written, as the MFA policy is; stored in the order of the modes, so what an
+ * operator reads back is what applies.
+ */
+function refuseAccountCreation(reply: FastifyReply, config: unknown) {
+  if (!config || typeof config !== 'object') return null
+  const bag = config as Record<string, unknown>
+  const verdict = checkTenantOverride(bag.account_creation)
+  if (!verdict.ok) return reply.status(400).send(httpError(400, `account_creation is not valid: ${verdict.message}`, 'ACCOUNT_CREATION_INVALID'))
+  if (verdict.value) bag.account_creation = verdict.value
+  return null
+}
+
 function refusePolicy(req: FastifyRequest, reply: FastifyReply, verdict: PolicyVerdict) {
   if (!verdict.ok) return reply.status(400).send(httpError(400, verdict.message, verdict.code))
   if (verdict.policy && demandsEnrolment(verdict.policy) && !mfaAvailable(req.server['mfaManager'])) {
@@ -201,6 +216,8 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   const policy = checkTenantPolicy((data.config as Record<string, unknown> | undefined)?.mfa_policy)
   const policyRefusal = refusePolicy(req, reply, policy)
   if (policyRefusal) return policyRefusal
+  const creationRefusal = refuseAccountCreation(reply, data.config)
+  if (creationRefusal) return creationRefusal
 
   // Sanitised once, before it is stored, and a value that CHANGES under sanitisation is
   // refused rather than adjusted: v4 saved the raw name and used the sanitised one, so a
@@ -286,6 +303,8 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   const policy = checkTenantPolicy((patch.config as Record<string, unknown> | undefined)?.mfa_policy)
   const policyRefusal = refusePolicy(req, reply, policy)
   if (policyRefusal) return policyRefusal
+  const creationRefusal = refuseAccountCreation(reply, patch.config)
+  if (creationRefusal) return creationRefusal
 
   const tenant = await managerOf(req).updateTenant(control(req), id, patch)
   if (!tenant) return reply.status(404).send()

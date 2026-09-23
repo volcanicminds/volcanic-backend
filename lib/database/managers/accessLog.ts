@@ -30,6 +30,8 @@ const EVENTS: Record<AccessEvent, true> = {
   'idp.unlinked': true,
   'idp.provisioned': true,
   'idp.rejected': true,
+  'account.pending': true,
+  'account.approved': true,
   'mfa.enrolled': true,
   'mfa.disabled': true,
   logout: true,

@@ -68,6 +68,14 @@ export default {
     // for platform operators follow the Italian DPA's rule on system administrators (27 November
     // 2008), which asks for at least six months. A reading for the consumer's privacy adviser to
     // confirm, not legal advice. `ip: 'none'` stores no address at all.
+    // Who may create an account in a tenant (F49): the modes a tenant may choose from, and the one
+    // that applies until its administrator chooses. The control plane may replace both at runtime
+    // for every tenant, and the set for a single tenant; a tenant picks inside the set. Closed by
+    // default: `invite` means accounts are made by an administrator.
+    accountCreation: {
+      allowed: process.env.ACCOUNT_CREATION_ALLOWED || 'invite,approval,open',
+      default: process.env.ACCOUNT_CREATION_DEFAULT || 'invite'
+    },
     accessLog: {
       ip: process.env.ACCESS_LOG_IP === 'none' ? 'none' : 'truncate',
       retentionDays: Number(process.env.ACCESS_LOG_RETENTION_DAYS) || 90,

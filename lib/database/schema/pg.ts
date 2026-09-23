@@ -53,6 +53,10 @@ export function appTables(schemaName: string) {
       password: text('password').notNull(),
       confirmed: boolean('confirmed').notNull().default(false),
       confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+      // False while a self-created account waits for an administrator (F49). True by default:
+      // existing rows and accounts an administrator creates wait for nobody.
+      approved: boolean('approved').notNull().default(true),
+      approvedAt: timestamp('approved_at', { withTimezone: true }),
       passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
       blocked: boolean('blocked').notNull().default(false),
       blockedReason: text('blocked_reason'),
@@ -303,7 +307,16 @@ export function appTables(schemaName: string) {
     ]
   )
 
-  return { user, token, change, migration, session, authFlow, externalIdentity, accessLog }
+  // Settings of the container, one row per key (F49). Written by an administrator of the plane that
+  // owns the container, read on the requests that need them; never a secret.
+  const setting = table('setting', {
+    key: text('key').primaryKey(),
+    value: jsonb('value').notNull(),
+    updatedBy: text('updated_by'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  })
+
+  return { user, token, change, migration, session, authFlow, externalIdentity, accessLog, setting }
 }
 
 /** The registry and the platform's own identities. Control plane only, never in a container. */
