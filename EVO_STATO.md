@@ -109,8 +109,12 @@ con i nomi del piano, allineati a quelli del codice.
 `npm test` 897 prove con `DATABASE_URL`, banco multi-tenant 22, copertura 87,9% di righe. Chiuso il
 blocco M (T-12.41 → T-12.43, `b7a5eae`): `docs/AUTH_FLOW_V5.md` al posto del progetto v4, che è
 rimosso; API, manager, schema, autorizzazione, configurazione, MFA e la guida di migrazione (§29)
-descrivono il flusso; README, `llms.txt` e `CLAUDE.md` allineati. Prossimo: il blocco N, i consumer
-(T-12.44 sample, T-12.45 admin).
+descrivono il flusso; README, `llms.txt` e `CLAUDE.md` allineati. Corretti a margine (`2975bfe`) il
+ritorno dall'IdP fallito, ora risposto dal passo successivo con il suo codice invece di
+`FLOW_REQUIRED`, e il reset MFA d'emergenza, che con i tenant cercava l'amministratore nella tabella
+sbagliata. Chiuso T-12.44 (`volcanic-backend-sample@8c9648b`): il sample entra con il flusso, TOTP e
+codice via email, 13 prove su 13; il porting ha corretto `StartOptions` nel framework (`ae73f14`).
+`npm test` 902 prove con `DATABASE_URL`, banco multi-tenant 22. Prossimo: T-12.45, `volcanic-admin`.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:

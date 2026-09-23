@@ -1308,13 +1308,25 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## N. Consumer
 
-- [ ] **T-12.44** `volcanic-backend-sample`.
+- [x] **T-12.44** `volcanic-backend-sample`.
   **Cosa fare**: l'helper di login dei test passa a `/auth/flow/start` (`test/common/api.ts:9`);
   il bootstrap inietta `mfaManager` da `@volcanicminds/tools/mfa` e un
   `challengeDeliveryManager` su `@volcanicminds/tools/mailer`, con un ripiego a log in sviluppo
   (oggi `startServer(layer)` non inietta alcun MFA, `index.ts:33`, quindi il sample non ha secondo
   fattore); un `src/config/authFlows.ts` d'esempio con `email-otp`.
   **Criterio di chiusura**: la suite del sample verde contro il backend locale.
+  **Evidenza**: `volcanic-backend-sample@8c9648b`: `test/common/api.ts` (login su
+  `/auth/flow/start`), `src/services/auth.ts` (`mfaManager` su `tools/mfa`, `challengeDeliveryManager`
+  su `tools/mailer` con `SMTP_HOST`, casella in memoria e log in sviluppo, nessuna consegna in
+  produzione), iniettati in `index.ts` e `test/common/bootstrap.ts`; `src/config/authFlows.ts` con
+  `email-otp` come identificatore e l'`admin` solo con password; `test/e2e/login.ts`, sei prove
+  (password, rifiuto uniforme, codice via email con tentativo errato contato, indirizzo sconosciuto
+  come uno noto, admin rifiutato senza password, stadio TOTP). Suite del sample 13 su 13 contro il
+  backend locale e Postgres 14; avvio reale con `.env` provato su `/auth/flow/options` e
+  `/auth/flow/start`. Derive: il sample abilita `allow_admin_create_confirmed_users`, perché un codice
+  parte solo verso un indirizzo confermato; il porting ha trovato un difetto del framework, corretto
+  in `ae73f14`: `StartOptions` non accettava i manager in un oggetto letterale, e un manager
+  `undefined` sostituiva il Null Object.
 
 - [ ] **T-12.45** `volcanic-admin`.
   **Cosa fare**: il client di autenticazione diventa un client di flusso: `endpoints.ts:13-32`,
@@ -1447,3 +1459,4 @@ chieda una riautenticazione fresca.
 | T-12.34 → T-12.36 | commit `be23feb`: `lib/hooks/onRequest.ts:94`, `lib/api/auth/controller/auth.ts:535`, `lib/manifest/generator.ts:101-137`, `scripts/check-refusals.mjs:73`, `test/lib/mfaEnrolment.spec.ts`, `test/lib/fixtures/flowLogin.ts`; `npm test` 896 prove con `DATABASE_URL`, banco multi-tenant 17 |
 | T-12.37 → T-12.40 | commit `523d9ae`: `test/e2e-mt-pg/authFlow.e2e.spec.ts`, `test/e2e-mt-pg/fixtures/app/src/config/authFlows.ts`, `test/lib/fixtures/authenticators.ts`, `test/lib/authEngine.spec.ts`, `scripts/no-network.mjs`, `package.json` (`test:oidc:offline`), `.github/workflows/ci.yml`; `npm test` 897 prove con `DATABASE_URL`, banco multi-tenant 22, copertura 87,9% di righe |
 | T-12.41 → T-12.43 | commit `b7a5eae`: `docs/AUTH_FLOW_V5.md` nuovo, `docs/AUTH_COMPOSABLE_EVOLUTION.md` rimosso, `docs/{API,MANAGERS,SCHEMA,AUTHORIZATION,CONFIGURATION}_V5.md`, `docs/SECURITY_MFA.md`, `docs/MIGRATION_V4_V5.md` §29, `README.md`, `llms.txt`, `CLAUDE.md`; `npm run check-all` verde |
+| T-12.44 | `volcanic-backend-sample@8c9648b`, framework `ae73f14` (`StartOptions`); correzioni a margine `2975bfe` (ritorno dall'IdP fallito risposto dal passo successivo, reset MFA d'emergenza sull'identità di piattaforma); sample 13 su 13, backend 902 prove con `DATABASE_URL`, banco multi-tenant 22 |
