@@ -104,7 +104,8 @@ T-12.40, `523d9ae`): il banco multi-tenant del flusso (`authFlow.e2e.spec.ts`, c
 collocazione di flussi, identità esterne e registro, sul credenziale e sul ritorno di un tenant
 presentati come un altro), l'autenticatore finto di forma social accanto a SAML e SMS, e le suite
 OIDC eseguite a rete spenta (`npm run test:oidc:offline`, anche in CI). Derive annotate nelle voci:
-due codici con nomi diversi dal piano, `jose` non aggiunto, il sottodominio provato come header.
+`jose` non aggiunto, il sottodominio provato come header; il criterio di T-12.37 nominava due codici
+con i nomi del piano, allineati a quelli del codice.
 `npm test` 897 prove con `DATABASE_URL`, banco multi-tenant 22, copertura 87,9% di righe. Prossimo:
 il blocco M, la documentazione.
 

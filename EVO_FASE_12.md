@@ -1198,15 +1198,16 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Criterio di chiusura**: `npm test` verde, `npm run check:refusals` con un test per ogni codice
   nuovo: `FLOW_REQUIRED`, `FLOW_EXPIRED`, `FLOW_METHOD_NOT_ALLOWED`, `FLOW_CODE_INVALID`,
   `FLOW_ATTEMPTS_EXHAUSTED`, `FLOW_SEND_LIMIT`, `FLOW_ENROLMENT_REFUSED`,
-  `AUTH_FLOW_NOT_AVAILABLE`, `IDP_NOT_FOUND`, `IDP_RESPONSE_INVALID`, `IDP_IDENTITY_NOT_LINKED`,
+  `AUTH_FLOW_NOT_AVAILABLE`, `IDP_UNKNOWN_PROVIDER`, `IDP_RETURN_INVALID`, `IDP_IDENTITY_NOT_LINKED`,
   più quello di T-12.7.
   **Evidenza**: commit `523d9ae`; `npm test` verde, 897 prove con `DATABASE_URL`; `check:refusals`
   «93 refusals, each named by at least one test». Ogni codice dell'elenco ha la sua prova
   (`test/lib/authEngine.spec.ts`, `authFlowRoutes.spec.ts`, `test/db/emailOtp.spec.ts`,
   `externalIdentity.spec.ts`, `tenantProvisioning.spec.ts` per `AUTH_FLOW_NOT_AVAILABLE` di
-  T-12.7). Deriva sui nomi: `IDP_NOT_FOUND` e `IDP_RESPONSE_INVALID` non esistono, il codice li
-  chiama `IDP_UNKNOWN_PROVIDER` e `IDP_RETURN_INVALID` (T-12.29), provati in `test/db/oidc.spec.ts` e
-  `test/lib/oidcRoutes.spec.ts`. Agli autenticatori finti di forma SAML (ritorno in POST) e SMS si
+  T-12.7). I due codici dei provider sono provati in `test/db/oidc.spec.ts`,
+  `test/lib/oidcRoutes.spec.ts` e `test/lib/externalIdentities.spec.ts`; il criterio li chiamava
+  `IDP_NOT_FOUND` e `IDP_RESPONSE_INVALID`, nomi mai usati altrove, ed è stato allineato a quelli
+  del codice, decisi in T-12.25 e T-12.29. Agli autenticatori finti di forma SAML (ritorno in POST) e SMS si
   aggiunge quello di forma social, OAuth 2 senza OpenID Connect: uscita con redirect, ritorno in GET
   sullo `state` costruito dal motore con `roundTrip.begin`, rifiuto del provider che chiude il flusso
   (`test/lib/fixtures/authenticators.ts`, prova in `authEngine.spec.ts`). Le altre voci erano già
