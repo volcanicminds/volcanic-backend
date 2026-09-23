@@ -81,8 +81,8 @@ indirizzo esistente e inesistente, i tetti per flusso e per soggetto, la consegn
 (T-12.25 → T-12.27, `4f66889`): provider di deployment validati all'avvio con i segreti letti una
 volta, provider per tenant sulle rotte di controllo senza mai restituire il segreto, la risoluzione
 di F40 e le rotte dei collegamenti. `npm test` 754 prove (832 con `DATABASE_URL`), banco
-multi-tenant 14, copertura 86,5% di righe. Aperto per il manutentore: il JIT con indirizzo non
-verificato occupa l'indirizzo (nota in T-12.27). Prossimo: il blocco I, OIDC.
+multi-tenant 14, copertura 86,5% di righe. Il JIT ora rifiuta l'indirizzo non verificato invece di
+creare un account che lo occupa (nota in T-12.27). Prossimo: il blocco I, OIDC.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:

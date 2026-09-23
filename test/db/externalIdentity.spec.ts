@@ -109,7 +109,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       expect((await resolveExternal(ctx(), provider(), identity)).outcome).toBe('refused')
     })
 
-    it('provisions just in time only where it is on, confirmed only on a verified address', async () => {
+    it('provisions just in time only where it is on, and only for a verified address', async () => {
       const email = `new${unique()}@acme.test`
       const off = await resolveExternal(ctx(), provider({ jit: { enabled: false, roles: ['member'] } }), claims({ email, emailVerified: true }))
       expect(off.outcome).toBe('refused')
@@ -123,9 +123,10 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       expect(row.isFounder).toBe(false)
 
       const unverifiedEmail = `pending${unique()}@acme.test`
-      const pending = await resolveExternal(ctx(), provider({ jit: { enabled: true, roles: [] } }), claims({ email: unverifiedEmail, emailVerified: false }))
-      expect(pending.outcome).toBe('refused')
-      expect(((await users.retrieveUserByEmail(db.tenant, unverifiedEmail)) as any).confirmed).toBe(false)
+      const unverified = await resolveExternal(ctx(), provider({ jit: { enabled: true, roles: [] } }), claims({ email: unverifiedEmail, emailVerified: false }))
+      expect(unverified).toMatchObject({ outcome: 'refused', cause: 'just-in-time provisioning needs an address the provider verified' })
+      // Nothing holds the address: its owner can still register or be provisioned later.
+      expect(await users.retrieveUserByEmail(db.tenant, unverifiedEmail)).toBeNull()
     })
 
     it('never provisions an admin, never over an existing account, never on the control plane', async () => {

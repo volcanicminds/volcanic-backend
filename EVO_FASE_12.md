@@ -242,7 +242,8 @@ token e il dominio dell'indirizzo in `emailDomains` del provider, e la creazione
 amministratore; si toglie dall'utente o da un amministratore. Il collegamento avviato dall'utente
 già loggato è rinviato dopo la 5.0 (F48). Il JIT è **spento** di default, solo sul piano tenant, con
 ruoli dichiarati nel provider che non possono contenere l'admin (la stessa regola di `register`,
-`auth.ts:109-118`); l'utente nasce `confirmed` solo se l'email è verificata, e con una password
+`auth.ts:109-118`); il JIT vuole l'email verificata dal provider, e senza non crea nulla (un account
+non confermato occuperebbe l'indirizzo del suo vero titolare); l'utente nasce `confirmed` e con una password
 inutilizzabile (hash bcrypt di 32 byte casuali mai mostrati) perché la colonna è `notNull`
 (`pg.ts:53`). Sul piano di controllo il JIT non esiste: le identità di sistema si provvedono
 (`docs/API_V5.md:178`). Perché la tripla: `sub` è unico solo per issuer, e l'email cambia, si
@@ -954,9 +955,9 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   `IDP_UNKNOWN_PROVIDER`, eventi `idp.linked` e `idp.unlinked`).
   Derive dal piano: la risoluzione non è ancora cablata nel motore, perché nessun metodo produce un
   ritorno prima del blocco I. Le rotte dei collegamenti esistono solo sul piano tenant: per gli
-  operatori il piano non le chiedeva. Da decidere: il JIT con indirizzo non verificato crea un
-  account non confermato, come dice F40, e quell'account occupa l'indirizzo, così la persona che lo
-  possiede davvero non può più registrarsi finché un amministratore non interviene.
+  operatori il piano non le chiedeva. Il JIT con indirizzo non verificato, che il piano faceva
+  nascere non confermato e quindi a occupare l'indirizzo, è stato poi rifiutato del tutto: nessun
+  account senza l'email verificata dal provider.
 
 ## I. OIDC
 

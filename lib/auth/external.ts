@@ -17,10 +17,11 @@ import { toSubject } from './subjects.js'
 // In this order, and nothing else: an existing link on the four keys (plane, provider, issuer,
 // subject), never on the address alone; then a link by email, only where the provider declares it,
 // only for an address the provider says it verified, only in a domain the provider lists; then a
-// user created just in time, only where the provider turns it on, only on the tenant plane, never
-// with the admin role; otherwise `IDP_IDENTITY_NOT_LINKED`. `sub` is unique per issuer only, and an
-// address changes, gets recycled and is unverified on many providers: linking by address is the
-// classic door to an account takeover, which is why each of these steps is opt-in.
+// user created just in time, only where the provider turns it on, only on the tenant plane, only
+// for an address the provider verified, never with the admin role; otherwise
+// `IDP_IDENTITY_NOT_LINKED`. `sub` is unique per issuer only, and an address changes, gets recycled
+// and is unverified on many providers: linking by address is the classic door to an account
+// takeover, which is why each of these steps is opt-in.
 //
 // The answer carries the event for the access log instead of writing it: the caller is the engine,
 // which owns the flow id and the plane the row goes to.
@@ -87,10 +88,15 @@ export async function resolveExternal(ctx: AuthContext, provider: ResolvedProvid
     }
   }
 
-  // 3. Just in time: tenant plane, turned on by the provider, never admin, never over an existing account.
+  // 3. Just in time: tenant plane, turned on by the provider, verified address, never admin, never
+  // over an existing account.
   const jit = settings.jit
   if (ctx.plane === 'tenant' && jit?.enabled) {
     if (!email) return refused('just-in-time provisioning needs an address')
+    // No account on an address the provider did not verify: it would be created unconfirmed and
+    // hold the address, so its real owner could neither register nor be provisioned until an
+    // administrator stepped in.
+    if (!verified) return refused('just-in-time provisioning needs an address the provider verified')
     const admin = global.roles?.admin?.code || 'admin'
     // Checked again here and not only when the provider was written: a row edited by hand, or a
     // deployment file nobody validated, must not mint an administrator from a login.
@@ -101,13 +107,13 @@ export async function resolveExternal(ctx: AuthContext, provider: ResolvedProvid
       email,
       // A password nobody knows and nobody is shown: the column is required, the login is the IdP's.
       password: randomBytes(32).toString('base64url'),
-      // Confirmed only on the provider's word that it verified the address.
-      confirmed: verified,
+      // The provider verified the address, which is what confirming it here would prove.
+      confirmed: true,
       roles: [...(jit.roles ?? [])]
     })
     const subject = await usable(ctx, created)
     await links.createLink(ctx.handle, { ...key, subjectId: String(created.externalId), emailAtLink: email })
-    if (!subject) return refused('the provisioned account awaits the confirmation of its address')
+    if (!subject) return refused('the provisioned account may not log in')
     return { outcome: 'resolved', subject, event: 'idp.provisioned' }
   }
 
