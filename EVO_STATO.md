@@ -106,8 +106,11 @@ presentati come un altro), l'autenticatore finto di forma social accanto a SAML 
 OIDC eseguite a rete spenta (`npm run test:oidc:offline`, anche in CI). Derive annotate nelle voci:
 `jose` non aggiunto, il sottodominio provato come header; il criterio di T-12.37 nominava due codici
 con i nomi del piano, allineati a quelli del codice.
-`npm test` 897 prove con `DATABASE_URL`, banco multi-tenant 22, copertura 87,9% di righe. Prossimo:
-il blocco M, la documentazione.
+`npm test` 897 prove con `DATABASE_URL`, banco multi-tenant 22, copertura 87,9% di righe. Chiuso il
+blocco M (T-12.41 → T-12.43, `b7a5eae`): `docs/AUTH_FLOW_V5.md` al posto del progetto v4, che è
+rimosso; API, manager, schema, autorizzazione, configurazione, MFA e la guida di migrazione (§29)
+descrivono il flusso; README, `llms.txt` e `CLAUDE.md` allineati. Prossimo: il blocco N, i consumer
+(T-12.44 sample, T-12.45 admin).
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:

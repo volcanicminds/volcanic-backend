@@ -1263,14 +1263,19 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## M. Documentazione
 
-- [ ] **T-12.41** `docs/AUTH_FLOW_V5.md` al posto di `docs/AUTH_COMPOSABLE_EVOLUTION.md`.
+- [x] **T-12.41** `docs/AUTH_FLOW_V5.md` al posto di `docs/AUTH_COMPOSABLE_EVOLUTION.md`.
   **Cosa fare**: in inglese: contratto, forma della configurazione, ciclo di vita del flusso,
   credenziali, provider, collegamenti, registro degli accessi, rifiuti, e una sezione su ciò che è
   rinviato (SAML, collegamento self-service). Il documento v4 si cancella o porta un cartello di
   sostituzione, e `EVO_FRAMEWORK.md:50` si aggiorna.
   **Criterio di chiusura**: nessun documento v5 rimanda al documento v4 come guida.
+  **Evidenza**: commit `b7a5eae`. `docs/AUTH_FLOW_V5.md` scritto sul codice (`lib/auth/*`,
+  `types/global.d.ts`), dodici sezioni fino ai rinvii (§12); il documento v4 è **cancellato** e non
+  cartellato, e `docs/AUTHORIZATION_MODEL.md:5`, `EVO_FRAMEWORK.md:50` e `CLAUDE.md` puntano al nuovo.
+  `grep -rn AUTH_COMPOSABLE docs README.md llms.txt CLAUDE.md` trova solo la riga di sostituzione in
+  testa al documento nuovo.
 
-- [ ] **T-12.42** Specifiche esistenti.
+- [x] **T-12.42** Specifiche esistenti.
   **Cosa fare**: `docs/API_V5.md` §2 e §5 (rotte nuove, rotte tolte, limiti, codici, registro
   degli accessi), `docs/MANAGERS_V5.md` (cinque port nuovi), `docs/SCHEMA_V5.md` (quattro tabelle
   e la colonna), `docs/AUTHORIZATION_V5.md` (secondo fattore, SSO, capability `access-log`),
@@ -1280,11 +1285,26 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   forma del 202, `enable` che non emette più sessione, 401 sul login di piattaforma).
   **Criterio di chiusura**: `grep -rn "pre-auth-mfa\|/auth/login\|mfa/verify" docs llms.txt README.md`
   trova solo la guida di migrazione.
+  **Evidenza**: commit `b7a5eae`: `docs/API_V5.md` §2, §2.1, §2.2, §2.6 (nuova, il flusso per il
+  client), §3, §5, §6, §7; `docs/MANAGERS_V5.md` §13 → §17; `docs/SCHEMA_V5.md` §2.5
+  (`auth_methods`), §2.7 → §2.9, §3.5; `docs/AUTHORIZATION_V5.md` §3 (`access-log` di
+  `system:auditor`, mancava), §5, §10 (nuova); `docs/CONFIGURATION_V5.md` (blocco `accessLog`,
+  quattro variabili `AUTH_*`, `MFA_APP_NAME`, `clientSecretEnv`, `openid-client`);
+  `docs/SECURITY_MFA.md` riscritto; `docs/MIGRATION_V4_V5.md` §29. Il grep trova, oltre alla guida,
+  due righe **storiche** lasciate apposta: `docs/AUDIT_TASKS_TODO.md:92` (audit del 17 giugno 2026) e
+  la voce 3.1.0 del changelog in `README.md`, che descrivono versioni in cui quelle rotte esistevano.
+  Derive dal piano: la rottura sta in §29 e non in §28, che F49 aveva già occupato; toccati anche
+  `docs/MAGIC_QUERY_V5.md` e `docs/SCHEMA_OVERRIDING.md`, fuori elenco, che nominavano la rotta tolta.
 
-- [ ] **T-12.43** `README.md`, `llms.txt`, `CLAUDE.md`.
+- [x] **T-12.43** `README.md`, `llms.txt`, `CLAUDE.md`.
   **Cosa fare**: la sezione di autenticazione (`llms.txt:1969` descrive ancora il token
   temporaneo), la riga «MFA pendente» di `CLAUDE.md`, aggiornata a fase chiusa e non durante.
   **Criterio di chiusura**: come T-12.42.
+  **Evidenza**: commit `b7a5eae`: `README.md` (matrice, changelog 5.0.0-alpha, modalità cookie e
+  bearer, variabili, sezione «Login flows and multi-factor authentication»), `llms.txt` §6.2 riscritta,
+  §11.1 e le chiavi dei decoratori (mancavano `sessionManager` e i sette della fase 12), `CLAUDE.md`
+  (riga «Auth» e mappa dei documenti). Stesso grep di T-12.42. `CLAUDE.md` aggiornato ora e non a fase
+  chiusa: la riga descriveva un token che dal blocco K non esiste più.
 
 ## N. Consumer
 
@@ -1426,3 +1446,4 @@ chieda una riautenticazione fresca.
 | T-12.25 → T-12.27 | commit `4f66889`: `lib/auth/providers.ts`, `lib/auth/external.ts`, `lib/api/tenants/controller/identityProviders.ts`, `lib/api/auth/controller/identities.ts`, `lib/api/users/controller/identities.ts`, `test/lib/identityProviders.spec.ts`, `test/lib/externalIdentities.spec.ts`, `test/db/externalIdentity.spec.ts`; `npm test` 754 prove (832 con `DATABASE_URL`), banco multi-tenant 14, copertura 86,5% di righe |
 | T-12.34 → T-12.36 | commit `be23feb`: `lib/hooks/onRequest.ts:94`, `lib/api/auth/controller/auth.ts:535`, `lib/manifest/generator.ts:101-137`, `scripts/check-refusals.mjs:73`, `test/lib/mfaEnrolment.spec.ts`, `test/lib/fixtures/flowLogin.ts`; `npm test` 896 prove con `DATABASE_URL`, banco multi-tenant 17 |
 | T-12.37 → T-12.40 | commit `523d9ae`: `test/e2e-mt-pg/authFlow.e2e.spec.ts`, `test/e2e-mt-pg/fixtures/app/src/config/authFlows.ts`, `test/lib/fixtures/authenticators.ts`, `test/lib/authEngine.spec.ts`, `scripts/no-network.mjs`, `package.json` (`test:oidc:offline`), `.github/workflows/ci.yml`; `npm test` 897 prove con `DATABASE_URL`, banco multi-tenant 22, copertura 87,9% di righe |
+| T-12.41 → T-12.43 | commit `b7a5eae`: `docs/AUTH_FLOW_V5.md` nuovo, `docs/AUTH_COMPOSABLE_EVOLUTION.md` rimosso, `docs/{API,MANAGERS,SCHEMA,AUTHORIZATION,CONFIGURATION}_V5.md`, `docs/SECURITY_MFA.md`, `docs/MIGRATION_V4_V5.md` §29, `README.md`, `llms.txt`, `CLAUDE.md`; `npm run check-all` verde |
