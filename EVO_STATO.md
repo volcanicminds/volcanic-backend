@@ -82,7 +82,14 @@ indirizzo esistente e inesistente, i tetti per flusso e per soggetto, la consegn
 volta, provider per tenant sulle rotte di controllo senza mai restituire il segreto, la risoluzione
 di F40 e le rotte dei collegamenti. `npm test` 754 prove (832 con `DATABASE_URL`), banco
 multi-tenant 14, copertura 86,5% di righe. Il JIT ora rifiuta l'indirizzo non verificato invece di
-creare un account che lo occupa (nota in T-12.27). Prossimo: il blocco I, OIDC.
+creare un account che lo occupa (nota in T-12.27). Decisa F49 e chiuso il blocco O (T-12.46 →
+T-12.49): chi può creare un account in un tenant, `invite`, `approval` o `open`, con l'insieme
+ammesso deciso dal piano di controllo (per tutti o per un tenant) e la scelta del tenant dentro
+l'insieme; registrazione chiusa di fabbrica, tabella `setting`, colonna `approved`, approvazione
+da `/users/:id/approve`, stessa regola per `register` e per il JIT. `npm test` 778 prove (864 con
+`DATABASE_URL`), banco multi-tenant 17, copertura 86,6% di righe. Aperto per il manutentore:
+nessuna rotta scrive `confirmation_token`, quindi chi si registra non può confermare l'indirizzo da
+sé (nota in T-12.48). Prossimo: il blocco I, OIDC.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:

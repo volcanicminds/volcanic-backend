@@ -427,6 +427,49 @@ significa spedire la porta sul retro descritta sopra. Meglio farlo una volta, in
 (che servirà anche a cambiare password e fattore in modo sicuro), che due volte. Nessun compito
 finché il manutentore non decide.
 
+**F49 (decisa il 23 settembre 2026). Chi può creare un account in un tenant.** Tre modalità, dalla
+più chiusa alla più aperta: `invite` (gli account li crea un amministratore, o il JIT di un provider
+ristretto a una directory), `approval` (registrazione libera con l'email verificata, poi
+l'approvazione esplicita di un amministratore del tenant) e `open` (registrazione libera con
+l'email verificata). Due livelli, ciascuno con i propri dati:
+
+- **il piano di controllo decide l'insieme ammesso.** Per tutti i tenant: l'impostazione
+  `account_creation` del contenitore di controllo, scritta da `PUT /system/account-creation` con
+  la capability `tenants`, e in sua assenza `options.account_creation` del deployment
+  (`ACCOUNT_CREATION_ALLOWED`, `ACCOUNT_CREATION_DEFAULT`; di fabbrica tutte e tre ammesse e
+  `invite` come valore iniziale). Per un tenant solo: `config.account_creation.allowed` della sua
+  riga di registro, scritto con `PUT /tenants/:id` e validato come `mfa_policy`, che **sostituisce**
+  l'insieme globale per quel tenant (può restringerlo o allargarlo: lo decide la stessa persona);
+- **il tenant sceglie dentro l'insieme.** L'`admin` del tenant scrive la modalità con
+  `PUT /settings/account-creation`, salvata nel proprio contenitore (tabella `setting`, chiave
+  `account_creation.mode`); una modalità fuori dall'insieme è rifiutata alla scrittura con
+  `ACCOUNT_CREATION_NOT_ALLOWED`.
+
+La modalità effettiva è la scelta del tenant se sta nell'insieme; altrimenti il valore iniziale
+globale se sta nell'insieme; altrimenti la più chiusa dell'insieme. Così un insieme ristretto dopo
+la scelta vale subito, senza toccare i dati del tenant, e non apre mai più di quanto è ammesso.
+Vale per **entrambe** le porte: `/auth/register` (`invite` risponde 403 `REGISTRATION_CLOSED`, che
+dice la regola del tenant e nulla sugli indirizzi) e il JIT di F40 (sotto `invite` solo se il
+provider elenca `emailDomains`, perché chi l'ha configurato ha autorizzato quella directory; sotto
+`approval` l'account nasce in attesa e il collegamento c'è già, così dopo l'approvazione il login
+seguente passa). L'attesa è la colonna `approved` dell'utente (`approved_at` con lei), con default
+`true` perché le righe esistenti e gli account creati da un amministratore non aspettano nessuno;
+un solo controllo, `mayLogIn`, sostituisce i punti che oggi giudicano valido, confermato e non
+bloccato. Il login con password o `email-otp` di un account in attesa riceve la risposta uniforme
+di D-17; il ritorno da un provider riceve invece `ACCOUNT_PENDING_APPROVAL`, perché il provider ha
+appena autenticato la persona a cui l'account appartiene e «non collegato» la manderebbe a
+registrarsi di nuovo. Gli
+amministratori trovano gli account in attesa con `approved=false` su `/users`, li approvano con
+`POST /users/:id/approve`, e il registro degli accessi scrive `account.pending` e
+`account.approved`. `GET /auth/flow/options` dice la modalità effettiva, perché il client sappia se
+mostrare la registrazione e cosa dire dopo. Il piano di controllo non ha registrazione (le identità
+di sistema si provvedono) e la regola non lo riguarda; senza il blocco `tenants` il livello globale
+è solo quello del deployment, perché le rotte `/system/*` non sono montate. Scartati: riusare
+`confirmed` (vuol dire email verificata) o `blocked` (è una sanzione con un motivo) per l'attesa;
+un insieme per tenant intersecato con quello globale (due posti da guardare per capire perché una
+modalità manca); la scelta del tenant scritta sulla riga di registro (un tenant che scrive nel
+piano di controllo, e senza tenant la riga non esiste).
+
 ## 2. Ordine di esecuzione
 
 Per dipendenza: senza contratti non c'è configurazione da validare; senza tabelle non c'è motore a
@@ -449,8 +492,10 @@ vecchie si tolgono solo quando le nuove passano le prove.
 | L. Prove | T-12.37 → T-12.40 | la chiusura della fase |
 | M. Documentazione | T-12.41 → T-12.43 | |
 | N. Consumer | T-12.44 → T-12.45 | la pubblicazione |
+| O. Creazione degli account | T-12.46 → T-12.49 | |
 
-F, G e J possono procedere in parallelo dopo E; H e I dopo E in quest'ordine. J conviene subito
+F, G e J possono procedere in parallelo dopo E; H e I dopo E in quest'ordine; O dopo H, e prima
+di I conviene perché I cabla la risoluzione di F40 che O tocca. J conviene subito
 dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ---
@@ -1162,6 +1207,66 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Criterio di chiusura**: login `password`, `password → totp`, iscrizione forzata ed
   `email-otp` verificati con Playwright contro il backend locale, sui due piani; OIDC verificato
   contro l'issuer finto del blocco L.
+
+## O. Creazione degli account
+
+- [x] **T-12.46** Impostazioni e attesa.
+  **Cosa fare**: tabella `setting` (chiave, valore JSON, autore, data) in `appTables` sui due
+  dialetti con `SettingManagement` (`get`, `set`) e il suo Null Object; colonne `approved` e
+  `approved_at` su `user`; migrazioni `tenant` e `control` generate con drizzle-kit;
+  `mayLogIn` al posto dei controlli sparsi.
+  **Criterio di chiusura**: le righe esistenti risultano approvate dopo la migrazione; un utente
+  in attesa non entra con password, `email-otp`, refresh né collegamento esterno.
+  **Evidenza**: tabella in `lib/database/schema/pg.ts` e `sqlite.ts`, esportata dai quattro file di
+  `schema/entry/`; migrazioni `0003_account_creation_{control,tenant}` per i due dialetti;
+  `lib/database/managers/setting.ts` (`set` è un solo upsert); `approveUserById` in
+  `lib/database/managers/user.ts`; `tenantRefusal` e `mayLogIn` in `lib/auth/subjects.ts`, usati da
+  `password.ts`, `emailOtp.ts`, `external.ts`, `http.ts` e dal login e dal rinnovo di
+  `lib/api/auth/controller/auth.ts`. Prove: `test/migrations/accountCreationUpgrade.spec.ts` (riga
+  scritta a 0002, approvata dopo 0003, su SQLite e Postgres), `test/db/accountCreation.spec.ts`
+  (impostazioni per contenitore, approvazione una volta sola, password ed `email-otp` rifiutati,
+  collegamento in attesa rifiutato). Il rinnovo passa da `mayLogIn` e non ha una prova sua.
+
+- [x] **T-12.47** La regola a due livelli.
+  **Cosa fare**: F49, lettura e validazione dell'insieme (deployment, controllo, tenant) e della
+  scelta; `GET` e `PUT /system/account-creation`, `config.account_creation` su creazione e modifica
+  del tenant, `GET` e `PUT /settings/account-creation` per l'`admin` del tenant.
+  **Criterio di chiusura**: prove per la scelta fuori insieme rifiutata, l'insieme ristretto dopo
+  la scelta che ricade sulla più chiusa, l'override del tenant che sostituisce il globale, un
+  valore non valido rifiutato alla scrittura e all'avvio.
+  **Evidenza**: `lib/auth/accountCreation.ts` (validazione, livelli, modalità effettiva);
+  `accountCreation` in `lib/config/general.ts` con `ACCOUNT_CREATION_ALLOWED` e `_DEFAULT`,
+  `assertAccountCreation` all'avvio in `index.ts`; rotte `/system/account-creation` (GET, PUT,
+  DELETE) in `lib/api/system/routes.ts`, `config.account_creation` validato in
+  `lib/api/tenants/controller/tenants.ts`, `/settings/account-creation` in `lib/api/settings/`.
+  Prove in `test/lib/accountCreation.spec.ts` e, via HTTP su Postgres con due tenant,
+  `test/e2e-mt-pg/accountCreation.e2e.spec.ts`. Derive dal piano: il livello globale ha anche
+  `DELETE`, per tornare alla regola del deployment; un valore salvato che non è più una regola si
+  legge come assente e si scrive nel log, invece di chiudere tutti i tenant.
+
+- [x] **T-12.48** Le due porte.
+  **Cosa fare**: `register` e il JIT di `resolveExternal` secondo la modalità effettiva; eventi
+  `account.pending` e `account.approved`; `POST /users/:id/approve`; `accountCreation` in
+  `GET /auth/flow/options`.
+  **Criterio di chiusura**: prove per `invite` (403 su register, JIT solo con `emailDomains`),
+  `approval` (account in attesa che non entra finché non è approvato, poi entra), `open`.
+  **Evidenza**: `register` in `lib/api/auth/controller/auth.ts` (la modalità decide prima di leggere
+  la richiesta; sotto `approval` anche l'indirizzo già preso scrive una riga, così i due percorsi
+  toccano il database lo stesso numero di volte); passo 3 di `resolveExternal` in
+  `lib/auth/external.ts`, con la modalità letta da `AuthContext.accountCreation` (assente vale
+  `invite`); `POST /users/:id/approve`; `accountCreation` in `GET /auth/flow/options`. Prove nei tre
+  file sopra. Da segnalare, fuori da F49: nessuna rotta scrive `confirmation_token`, quindi un
+  account nato da `register` non può confermare l'indirizzo da sé, e `/auth/confirm-email` non ha
+  mai un codice da ricevere; sotto `open` e `approval` resta non confermato finché un amministratore
+  non interviene. Il banco lo conferma a mano con SQL.
+
+- [x] **T-12.49** Documentazione.
+  **Cosa fare**: `docs/API_V5.md`, `docs/CONFIGURATION_V5.md`, `docs/MANAGERS_V5.md`,
+  `docs/MIGRATION_V4_V5.md` (la registrazione è chiusa di fabbrica), `llms.txt`.
+  **Evidenza**: `docs/API_V5.md` §2.5 e le righe di §2, §2.1, §3, §5, §6.1;
+  `docs/CONFIGURATION_V5.md` (blocco `accountCreation` e le due variabili); `docs/MANAGERS_V5.md`
+  §12 e `approveUserById`; `docs/MIGRATION_V4_V5.md` §28; `docs/SCHEMA_V5.md` (`approved`,
+  `approved_at`, §2.6 `setting`); `llms.txt` §11.1.
 
 ---
 
