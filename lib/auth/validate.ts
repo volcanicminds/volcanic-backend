@@ -10,6 +10,7 @@ import { MfaPolicy } from '../config/constants.js'
 import { demandsEnrolment, mfaAvailable, unavailableMandatory } from '../util/mfaPolicy.js'
 import { kindsOf } from './registry.js'
 import { PROVIDER_KEY, providerShapeProblems } from './providers.js'
+import { IDP_MFA } from './authenticators/oidc.js'
 
 //
 // The boot refusal of the flow configuration (T-12.6).
@@ -149,6 +150,14 @@ function planeProblems(plane: AuthPlane, block: AuthPlaneFlows, input: AuthFlowC
       const stageAt = `${at}, stage ${j + 1}`
       if (!stage.anyOf.length) problems.push(`${where}: ${stageAt} has an empty \`anyOf\`: list at least one verifier`)
       for (const id of stage.anyOf) {
+        // Not a method but a fact a provider's login may bring (F41): it is met or it is not, and it
+        // can only be met where an identity provider logs people in.
+        if (id === IDP_MFA) {
+          if (!block.identify.includes(OIDC)) {
+            problems.push(`${where}: ${stageAt} names '${IDP_MFA}', which only an '${OIDC}' login can satisfy, and \`identify\` does not list '${OIDC}'`)
+          }
+          continue
+        }
         const authenticator = registry.get(plane, id)
         if (!authenticator) problems.push(unknown(id, stageAt))
         else if (!kindsOf(authenticator).includes('verifier')) {

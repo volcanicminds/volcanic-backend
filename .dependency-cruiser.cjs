@@ -13,6 +13,18 @@ module.exports = {
       }
     },
     {
+      name: 'federation-libraries-lazy-only',
+      comment:
+        'Le librerie di federazione (OIDC oggi, SAML domani) sono peer facoltative: si caricano solo con ' +
+        "await import(), mai con un import statico, o l'avvio fallirebbe anche dove nessun piano le usa (F42)",
+      severity: 'error',
+      from: {},
+      to: {
+        path: '(^|/)node_modules/(openid-client|oauth4webapi|@node-saml|samlify)(/|$)',
+        dependencyTypesNot: ['dynamic-import', 'type-only']
+      }
+    },
+    {
       name: 'datalayer-may-use-core-types-only',
       comment: 'Il data layer può importare SOLO tipi dal core (no valori a runtime)',
       severity: 'warn',

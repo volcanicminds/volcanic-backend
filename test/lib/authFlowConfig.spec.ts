@@ -22,6 +22,8 @@ const bag = globalThis as unknown as Record<string, unknown>
 const pending = async (): Promise<AuthResult> => ({ outcome: 'pending' })
 const emailOtp: Authenticator = { id: 'email-otp', kind: ['identifier', 'verifier'], planes: ['tenant', 'control'], initiate: pending, verify: pending }
 const oidc: Authenticator = { id: 'oidc', kind: 'identifier', planes: ['tenant'], initiate: pending, verify: pending }
+// A method of a consumer, registered on one plane only.
+const saml: Authenticator = { id: 'saml', kind: 'identifier', planes: ['tenant'], initiate: pending, verify: pending }
 
 const OPTIONAL_TOTP = [{ anyOf: ['totp'], optional: true }]
 const plane = (over: Partial<AuthPlaneFlows> = {}): AuthPlaneFlows => ({
@@ -34,7 +36,7 @@ const plane = (over: Partial<AuthPlaneFlows> = {}): AuthPlaneFlows => ({
 function check(project: AuthFlowsConfig | null = null, over: Partial<AuthFlowCheck> = {}): string[] {
   return authFlowProblems({
     flows: resolveAuthFlows(frameworkFlows, project),
-    registry: buildAuthenticatorRegistry([emailOtp, oidc]),
+    registry: buildAuthenticatorRegistry([emailOtp, oidc, saml]),
     roles: { tenant: ['public', 'admin'], control: ['system:admin', 'system:operator', 'system:auditor'] },
     implemented: { mfa: false, challengeDelivery: false, authFlow: false },
     policies: { floor: MfaPolicy.OPTIONAL, control: MfaPolicy.OPTIONAL },
@@ -137,13 +139,22 @@ describe('auth · what refuses the boot (T-12.6)', () => {
     expect(problems).toEqual(["authFlows.tenant: flow 1 has roles ['*'] and is not the last: the flows after it can never be chosen, move it to the end"])
   })
 
+  it("accepts `idp-mfa` in a stage only where an OIDC login can satisfy it (F41)", () => {
+    const stages = [{ anyOf: ['totp', 'idp-mfa'] }]
+    const flows = { implemented: { mfa: true, challengeDelivery: false, authFlow: true }, oidcLibrary: true }
+    expect(check({ tenant: plane({ identify: ['password', 'oidc'], flows: [{ roles: ['*'], stages }] }) }, flows)).toEqual([])
+    expect(check({ tenant: plane({ flows: [{ roles: ['*'], stages }] }) }, flows)).toEqual([
+      "authFlows.tenant: flow 1, stage 1 names 'idp-mfa', which only an 'oidc' login can satisfy, and `identify` does not list 'oidc'"
+    ])
+  })
+
   it('refuses a method the registry of that plane does not have, including one registered on the other plane', () => {
     expect(check({ tenant: plane({ identify: ['password', 'magic-link'] }) })).toEqual([
       "authFlows.tenant: `identify` names 'magic-link', which is not an authenticator of the tenant plane: register it through start({ authenticators }) or remove it"
     ])
-    // `oidc` is registered for the tenant plane only.
-    expect(check({ control: plane({ identify: ['password', 'oidc'] }) }, { oidcLibrary: true })).toEqual([
-      "authFlows.control: `identify` names 'oidc', which is not an authenticator of the control plane: register it through start({ authenticators }) or remove it"
+    // `saml` is registered for the tenant plane only.
+    expect(check({ control: plane({ identify: ['password', 'saml'] }) }, { implemented: { mfa: false, challengeDelivery: false, authFlow: true } })).toEqual([
+      "authFlows.control: `identify` names 'saml', which is not an authenticator of the control plane: register it through start({ authenticators }) or remove it"
     ])
     expect(check({ tenant: plane({ flows: [{ roles: ['*'], stages: [{ anyOf: ['sms'], optional: true }] }] }) })).toEqual(
       oneMatching(/flow 1, stage 1 names 'sms', which is not an authenticator of the tenant plane/)

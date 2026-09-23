@@ -13,6 +13,8 @@ import * as engine from './engine.js'
 import type { FlowOutcome, FlowPlane } from './engine.js'
 import { mayLogIn, roleCodes, toSubject } from './subjects.js'
 import { accountCreationOf } from './accountCreation.js'
+import { PROVIDER_KEY, resolveProvider } from './providers.js'
+import { OIDC } from './validate.js'
 
 //
 // The HTTP side of the flow routes (T-12.15, T-12.16): one controller, parameterised by plane.
@@ -42,6 +44,23 @@ function managersOf(req: FastifyRequest): AuthManagers {
 
 const userAgentOf = (req: FastifyRequest) => (req.headers['user-agent'] as string | undefined) ?? null
 
+/** The tenant this request resolved, on the tenant plane of a multi-tenant deployment; null otherwise. */
+const tenantIdOf = (req: FastifyRequest, plane: AuthPlane): string | null =>
+  plane === 'tenant' && isTenancyEnabled() ? (req.tenantInfo?.id ?? null) : null
+
+/** The providers a login may name here, by key: the tenant's own active ones, then the deployment's (F38). */
+async function providerKeys(req: FastifyRequest, plane: AuthPlane): Promise<string[]> {
+  const declared = Object.keys(global.authFlows[plane]?.providers ?? {})
+  const tenantId = tenantIdOf(req, plane)
+  const store = req.server.identityProviderManager
+  if (!tenantId || !req.control || !store?.isImplemented?.()) return declared.sort()
+  const own = await store.list(req.control as ControlHandle, tenantId)
+  // A disabled provider of the tenant hides the deployment's of the same key, as `resolveProvider` does.
+  const hidden = new Set(own.map((p) => p.key))
+  const active = own.filter((p) => p.status === 'active').map((p) => p.key)
+  return [...new Set([...active, ...declared.filter((key) => !hidden.has(key))])].filter((key) => PROVIDER_KEY.test(key)).sort()
+}
+
 /** The plane of this request, or null once a 503 has been sent. */
 function planeOf(req: FastifyRequest, reply: FastifyReply, plane: AuthPlane): FlowPlane<any> | null {
   const common = {
@@ -50,7 +69,16 @@ function planeOf(req: FastifyRequest, reply: FastifyReply, plane: AuthPlane): Fl
     registry: req.server.authRegistry,
     managers: managersOf(req),
     ip: req.ip ?? null,
-    userAgent: userAgentOf(req)
+    userAgent: userAgentOf(req),
+    provider: (key: string) =>
+      resolveProvider({
+        plane,
+        key,
+        flows: global.authFlows,
+        tenantId: tenantIdOf(req, plane),
+        control: (req.control as ControlHandle | undefined) ?? null,
+        identityProviders: req.server.identityProviderManager
+      })
   }
 
   if (plane === 'control') {
@@ -183,7 +211,11 @@ export function flowHandlers(plane: AuthPlane) {
       // The tenant plane also says whether a person may create an account here and how (F49), so a
       // client knows whether to show the registration and what to say after it.
       const accountCreation = p.accountCreation ? await p.accountCreation() : undefined
-      return { options: engine.identifierOptions(p), ...(accountCreation ? { accountCreation } : {}) }
+      // The providers of this plane and tenant, by key only: a client draws its own buttons (F47).
+      const options = await Promise.all(
+        engine.identifierOptions(p).map(async (option) => (option.id === OIDC ? { ...option, providers: await providerKeys(req, plane) } : option))
+      )
+      return { options, ...(accountCreation ? { accountCreation } : {}) }
     },
 
     async start(req: FastifyRequest, reply: FastifyReply) {
@@ -226,8 +258,19 @@ export function flowHandlers(plane: AuthPlane) {
       const query = (req.query && typeof req.query === 'object' ? req.query : {}) as Record<string, unknown>
       const input: AuthReturnInput = Object.fromEntries(Object.entries(query).filter(([, v]) => typeof v === 'string')) as Record<string, string>
       const outcome = await engine.returnFrom(p, String(method ?? ''), input)
-      if (outcome.kind === 'returned' && p.flows.returnUrl) return reply.redirect(p.flows.returnUrl, 303)
+      if (outcome.kind === 'returned' && p.flows.returnUrl) return reply.redirect(landing(p.flows.returnUrl, outcome.returnTo), 303)
       return answer(reply, plane, outcome)
     }
   }
+}
+
+/**
+ * The plane's `returnUrl`, with the path the client asked for when the flow started. Only a path
+ * was ever kept, so the redirect cannot leave the console the deployment configured.
+ */
+function landing(returnUrl: string, returnTo?: string): string {
+  if (!returnTo) return returnUrl
+  const url = new URL(returnUrl)
+  url.searchParams.set('returnTo', returnTo)
+  return url.toString()
 }

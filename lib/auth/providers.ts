@@ -3,7 +3,8 @@ import type {
   ControlHandle,
   IdentityProviderManagement,
   OidcProviderSettings,
-  ResolvedAuthFlows
+  ResolvedAuthFlows,
+  ResolvedIdentityProvider
 } from '../../types/global.js'
 
 //
@@ -103,13 +104,7 @@ export function providerShapeProblems(settings: unknown, options: { plane: AuthP
 }
 
 /** A provider ready for a login: its settings, where they came from, and the secret when it has one. */
-export interface ResolvedProvider {
-  key: string
-  type: 'oidc'
-  source: 'deployment' | 'tenant'
-  settings: OidcProviderSettings
-  clientSecret: string | null
-}
+export type ResolvedProvider = ResolvedIdentityProvider
 
 let deploymentSecrets: ReadonlyMap<string, string> = new Map()
 

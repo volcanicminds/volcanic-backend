@@ -253,7 +253,15 @@ export const authFlowOptionsResponseSchema = {
   properties: {
     options: {
       type: 'array',
-      items: { type: 'object', properties: { id: { type: 'string' }, kind: { type: 'string' } } }
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          kind: { type: 'string' },
+          // On `oidc` only: the keys of the providers of this plane and tenant (F47).
+          providers: { type: 'array', items: { type: 'string' } }
+        }
+      }
     },
     // Tenant plane only (F49): invite, approval or open.
     accountCreation: { type: 'string', enum: ['invite', 'approval', 'open'] }

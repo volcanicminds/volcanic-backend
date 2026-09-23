@@ -14,6 +14,7 @@ import type {
   AuthenticatorRegistry,
   DataHandle,
   FlowChallenges,
+  FlowRoundTrip,
   StageDescriptor,
   StageOption,
   Tenant
@@ -21,7 +22,14 @@ import type {
 import type { MfaPolicy } from '../config/constants.js'
 import { allowsEnrolment, demandsEnrolment } from '../util/mfaPolicy.js'
 import { uuidv7 } from '../util/uuid.js'
-import { composeFlowCredential, newFlowSecret, parseFlowCredential, parseFlowState, type FlowCredential } from '../util/flowCredential.js'
+import {
+  composeFlowCredential,
+  newFlowSecret,
+  newFlowState,
+  parseFlowCredential,
+  parseFlowState,
+  type FlowCredential
+} from '../util/flowCredential.js'
 import { kindsOf } from './registry.js'
 import { ENROLMENT_METHOD } from './validate.js'
 
@@ -58,6 +66,8 @@ export interface FlowPlane<R = unknown> {
   record(entry: Omit<AccessLogEntry, 'scope'>): Promise<void>
   /** Who may create an account on this plane (F49); absent on the control plane, which has no registration. */
   accountCreation?: AuthContext['accountCreation']
+  /** The identity providers of this plane and tenant, by key (F38). */
+  provider?: AuthContext['provider']
 }
 
 export interface Refusal {
@@ -81,7 +91,14 @@ export const REFUSALS = {
   FLOW_ENROLMENT_REFUSED: { status: 403, code: 'FLOW_ENROLMENT_REFUSED', message: 'No second factor can be enrolled here' },
   AUTH_FLOW_NOT_AVAILABLE: { status: 503, code: 'AUTH_FLOW_NOT_AVAILABLE', message: 'This build keeps no authentication flows' },
   MFA_NOT_AVAILABLE: { status: 503, code: 'MFA_NOT_AVAILABLE', message: 'This build has no MFA manager' },
-  TENANT_MISMATCH: { status: 403, code: 'TENANT_MISMATCH', message: 'The flow does not belong to this tenant' }
+  TENANT_MISMATCH: { status: 403, code: 'TENANT_MISMATCH', message: 'The flow does not belong to this tenant' },
+  IDP_UNKNOWN_PROVIDER: { status: 400, code: 'IDP_UNKNOWN_PROVIDER', message: 'No such identity provider here' },
+  IDP_UNAVAILABLE: { status: 502, code: 'IDP_UNAVAILABLE', message: 'The identity provider cannot be reached' },
+  IDP_RETURN_PENDING: { status: 409, code: 'IDP_RETURN_PENDING', message: 'The identity provider has not answered yet' },
+  IDP_RETURN_INVALID: { status: 401, code: 'IDP_RETURN_INVALID', message: 'The answer of the identity provider is not valid' },
+  IDP_DENIED: { status: 401, code: 'IDP_DENIED', message: 'The identity provider did not authenticate' },
+  IDP_IDENTITY_NOT_LINKED: { status: 403, code: 'IDP_IDENTITY_NOT_LINKED', message: 'This identity is not linked to an account here' },
+  ACCOUNT_PENDING_APPROVAL: { status: 403, code: 'ACCOUNT_PENDING_APPROVAL', message: 'The account awaits the approval of an administrator' }
 } as const satisfies Record<string, Refusal>
 
 type Known = keyof typeof REFUSALS
@@ -90,7 +107,7 @@ export type FlowOutcome =
   | { kind: 'complete'; body: Record<string, unknown> }
   | { kind: 'partial'; credential: FlowCredential; expiresAt: Date; stage: StageDescriptor }
   | { kind: 'refused'; refusal: Refusal; endsFlow: boolean; remaining?: number; retryAt?: Date | null }
-  | { kind: 'returned'; ok: boolean }
+  | { kind: 'returned'; ok: boolean; returnTo?: string }
 
 const refuse = (code: string, endsFlow = false, remaining?: number, retryAt?: Date | string | null): FlowOutcome => ({
   kind: 'refused',
@@ -147,8 +164,25 @@ const context = <R>(p: FlowPlane<R>, subject: AuthSubject | null, flow: AuthFlow
   flow,
   limits: p.limits,
   challenges: flow && secret && storeAvailable(p) ? challengesOf(p, flow, secret) : null,
-  accountCreation: p.accountCreation
+  accountCreation: p.accountCreation,
+  provider: p.provider,
+  roundTrip: flow && storeAvailable(p) ? roundTripOf(p, flow) : null,
+  record: (entry) => p.record({ ...entry, flowId: flow?.flowId ?? null })
 })
+
+/**
+ * The round trip of a flow (F39): the `state` carries the routing of this request's container, so
+ * the return, which arrives with no credential and no header, finds its container; only the hash of
+ * the secret part goes in the row, and the verifier and the nonce go in encrypted.
+ */
+function roundTripOf<R>(p: FlowPlane<R>, flow: AuthFlow): FlowRoundTrip {
+  return {
+    begin: async (external) => {
+      const state = newFlowState(p.routing)
+      return (await storeOf(p).bindExternal(p.handle, flow.flowId, { state: state.raw, external })) ? state.raw : null
+    }
+  }
+}
 
 /** An identifier of this plane that `identify` lists. */
 function identifierOf<R>(p: FlowPlane<R>, method: unknown): Authenticator | null {
@@ -600,10 +634,14 @@ export async function returnFrom<R>(p: FlowPlane<R>, method: string, input: Auth
 
   const subject = flow.subjectId ? ((await p.loadSubject(flow.subjectId))?.subject ?? null) : null
   const result = await authenticator.complete(context(p, subject, flow), input)
+  // Where the client asked to land, kept as a path when the flow started; the failure lands there too,
+  // and the next step says what went wrong.
+  const returnTo = flow.external?.returnTo
+  const back = (ok: boolean): FlowOutcome => ({ kind: 'returned', ok, ...(returnTo ? { returnTo } : {}) })
   if (result.outcome === 'success' && result.external && (await storeOf(p).recordExternalResult(p.handle, flow.flowId, result.external))) {
-    return { kind: 'returned', ok: true }
+    return back(true)
   }
   const code = result.outcome === 'fail' ? result.reason : 'FLOW_REQUIRED'
   await end(p, flow, { event: 'stage.failed', outcome: 'failure', code, subjectId: flow.subjectId, methods: [method] })
-  return { kind: 'returned', ok: false }
+  return back(false)
 }

@@ -915,6 +915,24 @@ export interface FlowChallenges {
   nominate(subjectId: string): Promise<boolean>
 }
 
+/**
+ * The round trip of a method that leaves the request (F39), bound by the engine to its flow. The
+ * authenticator hands what the return will need; the engine keeps it encrypted in the row and
+ * answers the `state` to send, built with the routing the authenticator never sees.
+ */
+export interface FlowRoundTrip {
+  begin(external: AuthFlowExternal): Promise<string | null>
+}
+
+/** A provider ready for a login (F38): its settings, where they came from, and its secret if any. */
+export interface ResolvedIdentityProvider {
+  key: string
+  type: IdentityProviderType
+  source: 'deployment' | 'tenant'
+  settings: OidcProviderSettings
+  clientSecret: string | null
+}
+
 /** Everything an authenticator is told. Nothing implicit: the handle is explicit, as for managers. */
 export interface AuthContext {
   readonly plane: AuthPlane
@@ -936,6 +954,12 @@ export interface AuthContext {
    * of a provider asks it. Absent, the most closed mode applies.
    */
   readonly accountCreation?: () => Promise<'invite' | 'approval' | 'open'>
+  /** The provider this plane and tenant log in with under `key`, or null when there is none. */
+  readonly provider?: (key: string) => Promise<ResolvedIdentityProvider | null>
+  /** Null outside a flow row. */
+  readonly roundTrip?: FlowRoundTrip | null
+  /** Writes an access of this flow; best effort, as the engine's own. */
+  readonly record?: (entry: Omit<AccessLogEntry, 'scope' | 'flowId'>) => Promise<void>
 }
 
 /**
@@ -1047,6 +1071,8 @@ export interface AuthFlowExternal {
   provider?: string
   codeVerifier?: string
   nonce?: string
+  /** A path of the client to land on after the return, never a URL: only a path is kept. */
+  returnTo?: string
   /** The TOTP secret of an in-flow enrolment, until the code confirms it. */
   enrolmentSecret?: string
 }

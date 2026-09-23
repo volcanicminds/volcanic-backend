@@ -74,8 +74,8 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
     ] as const) {
       expect(server[key].isImplemented()).toBe(false)
     }
-    expect(server.authRegistry.list('tenant').map((a) => a.id)).toEqual(['password', 'totp', 'email-otp'])
-    expect(server.authRegistry.list('control').map((a) => a.id)).toEqual(['password', 'totp', 'email-otp'])
+    expect(server.authRegistry.list('tenant').map((a) => a.id)).toEqual(['password', 'totp', 'email-otp', 'oidc'])
+    expect(server.authRegistry.list('control').map((a) => a.id)).toEqual(['password', 'totp', 'email-otp', 'oidc'])
   })
 
   it('takes `authenticators` from start() into the registry, not as a decorator', async () => {

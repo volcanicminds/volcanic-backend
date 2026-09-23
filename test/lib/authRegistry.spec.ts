@@ -46,7 +46,7 @@ describe('auth · authenticator contract and registry (T-12.2, T-12.3)', () => {
     for (const plane of ['tenant', 'control'] as const) {
       expect(registry.get(plane, 'password')?.kind).toBe('identifier')
       expect(registry.get(plane, 'totp')?.kind).toBe('verifier')
-      expect(registry.list(plane).map((a) => a.id)).toEqual(['password', 'totp', 'email-otp'])
+      expect(registry.list(plane).map((a) => a.id)).toEqual(['password', 'totp', 'email-otp', 'oidc'])
     }
   })
 
