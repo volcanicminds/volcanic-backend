@@ -1139,27 +1139,55 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## K. Rimozione e gatekeeper
 
-- [ ] **T-12.34** Via le rotte vecchie.
+- [x] **T-12.34** Via le rotte vecchie.
   **Cosa fare**: tolte `POST /auth/login` e `POST /auth/mfa/verify` (`routes.ts:131-146`,
   `:251-268`), `POST /system/auth/login` e `/system/auth/mfa/verify`
   (`lib/api/system/routes.ts:48-59`, `:157-162`), `issuePreAuth` (`credential.ts:285-292`),
   `authMfaChallengeSchema` (`lib/schemas/auth.ts:60`); `unregister` smette di prendere
   `authLoginBodySchema` in prestito (`routes.ts:46`).
   **Criterio di chiusura**: `grep -rn "pre-auth-mfa\|issuePreAuth" lib index.ts` vuoto.
+  **Evidenza**: commit `be23feb`; il grep del criterio non trova nulla. Tolti anche
+  `authMfaVerifyBodySchema` e i controller `login` e `mfaVerify` dei due piani; `/auth/unregister`
+  prende `authUnregisterBodySchema` (`lib/schemas/auth.ts:2`, `lib/api/auth/routes.ts:50`). Le spec
+  che aprivano una sessione con le rotte vecchie passano da `/auth/flow/start`
+  (`test/lib/fixtures/flowLogin.ts`), il banco multi-tenant compreso (`test/e2e-mt-pg/harness.ts`);
+  i casi D-17 di `test/lib/authMessages.spec.ts` girano ora sull'identificatore `password` del
+  flusso, compreso l'account bloccato con la password scaduta. `test/lib/mfaEnrolment.spec.ts`
+  verifica che nessuna delle quattro rotte resti nei file di rotta.
 
-- [ ] **T-12.35** Il gancio di autenticazione.
+- [x] **T-12.35** Il gancio di autenticazione.
   **Cosa fare**: cancellata `MFA_SETUP_WHITELIST` e il ramo che la applica (`onRequest.ts:12-23`,
   `:134-145`); ogni JWT con claim `role` rifiutato con `UNAUTHORIZED` prima di ogni altra cosa
   (F36); `MFA_REQUIRED` esce dal sorgente e `check:refusals` lo registra.
   **Criterio di chiusura**: prova che un token `pre-auth-mfa` firmato con il segreto corrente è
   401 su una rotta autenticata, su `/auth/mfa/setup` e su `/auth/sessions`.
+  **Evidenza**: commit `be23feb`; `lib/hooks/onRequest.ts:94` rifiuta qualunque `role` prima del
+  controllo sul refresh token. `MFA_REQUIRED` è nel nuovo elenco `RETIRED` di
+  `scripts/check-refusals.mjs:73`: se torna a essere emesso, il check fallisce
+  («93 refusals, each named by at least one test; 1 retired, none emitted»). Prove in
+  `test/lib/mfaEnrolment.spec.ts:128`: 401 `UNAUTHORIZED` su `/orders`, `/auth/mfa/setup` e
+  `/auth/sessions`, e sulle gemelle di sistema, sia in cookie sia nell'header in bearer; un claim
+  `role` qualunque è rifiutato allo stesso modo. `test/lib/authRefusals.spec.ts`: su una rotta
+  pubblica lo stesso token vale come nessun token.
 
-- [ ] **T-12.36** Le rotte MFA di gestione.
+- [x] **T-12.36** Le rotte MFA di gestione.
   **Cosa fare**: F45: sessione completa obbligatoria, `enable` senza emissione di sessione
   (`auth.ts:645-664`); il 409 di T-12.1 resta com'è.
   **Criterio di chiusura**: prove sui due piani, accanto a quelle di `test/lib/mfaEnrolment.spec.ts`;
   il manifest non annuncia più `mfaVerify` (`lib/manifest/generator.ts:104-120`) e annuncia le
   rotte del flusso per piano.
+  **Evidenza**: commit `be23feb`; `mfaEnable` del piano tenant risponde `{ ok: true }` senza
+  emettere sessione (`lib/api/auth/controller/auth.ts:535`), con `defaultResponse` come schema,
+  come già faceva il piano di controllo; la sessione completa la garantisce il gancio, perché
+  nessun token temporaneo arriva più alle rotte. `enable` di sistema ha ora lo stesso limite di
+  10 al minuto del tenant (`lib/api/system/routes.ts:292`). Prove in
+  `test/lib/mfaEnrolment.spec.ts:188` e `:239` sui due piani: 401 all'anonimo, 409
+  `MFA_ALREADY_ENABLED` con una sessione completa, `{ ok: true }` senza cookie né token. Manifest:
+  `flowOptions`, `flowStart`, `flowStep`, `flowChallenge` e `flowCancel` per piano
+  (`lib/manifest/generator.ts:101-137`), niente più `login` né `mfaVerify`. Il tipo degli endpoint
+  chiede ora `flowOptions`, `flowStart` e `flowStep` al posto di `login`: è la rottura che
+  `volcanic-admin` assorbe in T-12.45. `npm test` 896 prove con `DATABASE_URL`, banco
+  multi-tenant 17 su 17, copertura 87,3% di righe.
 
 ## L. Prove
 
@@ -1355,3 +1383,4 @@ chieda una riautenticazione fresca.
 | T-12.31 → T-12.33 | commit `01e84e9`: `lib/util/accessLog.ts`, `lib/database/managers/accessLog.ts`, `lib/database/purge.ts`, `lib/api/access-log/`, `lib/api/system/controller/systemAccessLog.ts`, `lib/schemas/accessLog.ts`, `test/lib/accessLogWrites.spec.ts`, `test/db/accessLog.spec.ts`, `test/db/purge.spec.ts`; `npm test` 721 prove (783 con `DATABASE_URL`), banco multi-tenant 14, copertura 86,6% di righe |
 | T-12.22 → T-12.24 | commit `5221dce`: `lib/auth/authenticators/emailOtp.ts`, `lib/auth/engine.ts`, `types/global.d.ts` (`FlowChallenges`), `test/db/emailOtp.spec.ts` |
 | T-12.25 → T-12.27 | commit `4f66889`: `lib/auth/providers.ts`, `lib/auth/external.ts`, `lib/api/tenants/controller/identityProviders.ts`, `lib/api/auth/controller/identities.ts`, `lib/api/users/controller/identities.ts`, `test/lib/identityProviders.spec.ts`, `test/lib/externalIdentities.spec.ts`, `test/db/externalIdentity.spec.ts`; `npm test` 754 prove (832 con `DATABASE_URL`), banco multi-tenant 14, copertura 86,5% di righe |
+| T-12.34 → T-12.36 | commit `be23feb`: `lib/hooks/onRequest.ts:94`, `lib/api/auth/controller/auth.ts:535`, `lib/manifest/generator.ts:101-137`, `scripts/check-refusals.mjs:73`, `test/lib/mfaEnrolment.spec.ts`, `test/lib/fixtures/flowLogin.ts`; `npm test` 896 prove con `DATABASE_URL`, banco multi-tenant 17 |

@@ -93,7 +93,13 @@ sé (nota in T-12.48). Chiuso il blocco I (T-12.28 → T-12.30): OIDC come ident
 entrambi i piani, `openid-client` caricato solo al primo uso e vietato come import statico, PKCE e
 `nonce` sempre, `state` speso al primo ritorno, sessione solo al passo successivo, `idp-mfa` solo
 dove il provider è dichiarato affidabile; IdP finto senza rete per le prove. `npm test` 790 prove
-(884 con `DATABASE_URL`), banco multi-tenant 17. Prossimo: il blocco K, rimozione e gatekeeper.
+(884 con `DATABASE_URL`), banco multi-tenant 17. Chiuso il blocco K (T-12.34 → T-12.36,
+`be23feb`): via `/auth/login`, `/auth/mfa/verify` e le gemelle di sistema con il token
+`pre-auth-mfa`; il gancio rifiuta con 401 ogni JWT con claim `role`, `MFA_REQUIRED` è ritirato e
+`check:refusals` ne impedisce il ritorno; le rotte MFA di gestione vogliono una sessione completa ed
+`enable` non emette più sessione; il manifest annuncia le rotte del flusso per piano al posto di
+`login` e `mfaVerify`, rottura che l'admin assorbe in T-12.45. `npm test` 896 prove con
+`DATABASE_URL`, banco multi-tenant 17, copertura 87,3% di righe. Prossimo: il blocco L, le prove.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:
