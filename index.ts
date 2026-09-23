@@ -45,7 +45,25 @@ import { assertPolicies, controlPolicy, floorPolicy, mfaAvailable } from './lib/
 import { assertAccountCreation } from './lib/auth/accountCreation.js'
 import { configureCache, cache } from './lib/util/cache.js'
 
-import type { Authenticator, TransferManagement } from './types/global.js'
+import type {
+  AccessLogManagement,
+  AuthFlowManagement,
+  Authenticator,
+  ChallengeDeliveryManagement,
+  DestructionManagement,
+  ExternalIdentityManagement,
+  IdentityProviderManagement,
+  ImpersonationManagement,
+  MfaManagement,
+  SessionManagement,
+  SettingManagement,
+  SystemUserManagement,
+  TenantManagement,
+  TokenManagement,
+  TrackingManagement,
+  TransferManagement,
+  UserManagement
+} from './types/global.js'
 // `lib/config/general.js` is deliberately NOT imported here (T-10.4). It is the framework's
 // layer of defaults and `loaderConfig.load()` merges it with the project's; reading it directly
 // skips that merge. A static import is also hoisted above `dotenv.config()`, so the
@@ -187,8 +205,32 @@ const preload = async () => {
   global.authFlows = await loaderAuthFlows.load()
 }
 
-/** The managers to inject, plus the authenticators that feed the registry (T-12.3). */
-type StartOptions = object & { authenticators?: readonly Authenticator[] }
+/**
+ * What `start()` takes: the managers to inject, each optional, plus the authenticators that feed
+ * the registry (T-12.3). A manager left out, or passed as `undefined`, is the Null Object. The
+ * data layer's `start()` result is accepted as it is, with the keys that are not managers
+ * (`provider`, `migrations`, ...), which is why the type stays open.
+ */
+export interface StartOptions {
+  userManager?: UserManagement
+  tokenManager?: TokenManagement
+  trackingManager?: TrackingManagement
+  mfaManager?: MfaManagement
+  transferManager?: TransferManagement
+  tenantManager?: TenantManagement
+  systemUserManager?: SystemUserManagement
+  impersonationManager?: ImpersonationManagement
+  destructionManager?: DestructionManagement
+  sessionManager?: SessionManagement
+  authFlowManager?: AuthFlowManagement
+  externalIdentityManager?: ExternalIdentityManagement
+  identityProviderManager?: IdentityProviderManagement
+  challengeDeliveryManager?: ChallengeDeliveryManagement
+  accessLogManager?: AccessLogManagement
+  settingManager?: SettingManagement
+  authenticators?: readonly Authenticator[]
+  [key: string]: unknown
+}
 
 const start = async (decorators: StartOptions = {}) => {
   if (!global.config) await preload()
@@ -338,7 +380,10 @@ const start = async (decorators: StartOptions = {}) => {
   const schedules = loaderSchedules.load()
 
   // `authenticators` is not a manager and is not decorated: it feeds the registry, which is.
-  const { authenticators, ...injected } = decorators as StartOptions & Record<string, unknown>
+  // An `undefined` value keeps the default: `{ ...layer, challengeDeliveryManager: maybe() }` must not
+  // replace a Null Object with nothing, which every caller asks `isImplemented()` of.
+  const { authenticators, ...given } = decorators
+  const injected = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined))
 
   // Decorators with Defaults (Null Object Pattern)
   const managers: Record<string, unknown> = {
