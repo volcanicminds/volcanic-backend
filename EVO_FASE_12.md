@@ -1006,7 +1006,7 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## I. OIDC
 
-- [ ] **T-12.28** Caricamento pigro e client.
+- [x] **T-12.28** Caricamento pigro e client.
   **Cosa fare**: `await import('openid-client')` alla prima necessità e alla validazione di avvio;
   discovery con cache per provider e scadenza; `client_secret_basic` o `client_secret_post`;
   `private_key_jwt` rinviato.
@@ -1015,8 +1015,19 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Criterio di chiusura**: `npm run depcruise` rifiuta un import statico di prova; `attw` e
   `publint` verdi; l'avvio senza la libreria e con `oidc` in un flusso fallisce con il comando
   `npm i openid-client@^6`.
+  **Evidenza**: `lib/auth/authenticators/oidc.ts` (`load` con `await import`, discovery in cache
+  un'ora per issuer, client e hash del segreto, timeout 10 s, una discovery fallita non resta in
+  cache; `client_secret_basic` di default, `client_secret_post`, e client pubblico con `None()` e
+  PKCE dove il provider del tenant non ha segreto); registrato fra i metodi integrati su entrambi i
+  piani (`lib/auth/builtins.ts`). Regola `federation-libraries-lazy-only` in
+  `.dependency-cruiser.cjs`: un file di prova con `import { discovery } from 'openid-client'` dà
+  `error federation-libraries-lazy-only`, e l'import di `oidc.ts` risulta `dynamic-import`.
+  `openid-client@^6.8.8` peer facoltativa e dipendenza di sviluppo; `publint` «All good», `attw
+  --profile esm-only` senza problemi nuovi. Il messaggio di avvio c'era già da T-12.6
+  (`test/lib/authFlowConfig.spec.ts`). Deriva: `useOidcFetch` sostituisce il `fetch` del client,
+  per le prove e per un deployment dietro proxy; non è esportato da `index.ts`.
 
-- [ ] **T-12.29** Andata e ritorno.
+- [x] **T-12.29** Andata e ritorno.
   **Cosa fare**: `initiate` crea o aggiorna la riga con `state_hash`, verificatore PKCE e `nonce`
   cifrati, `acr_values` se F41 lo chiede, e risponde `action: redirect`; `complete` chiama
   `authorizationCodeGrant` con `expectedState`, verificatore e `expectedNonce`, legge i claim,
@@ -1024,12 +1035,34 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   successivo `step { method: 'oidc' }` riscuote.
   **Criterio di chiusura**: prove per `state` sconosciuto, `nonce` sbagliato, codice riusato,
   ritorno riscosso da un credenziale di flusso diverso, `returnTo` assoluto rifiutato.
+  **Evidenza**: `initiate`, `complete` e `verify` in `oidc.ts`; nel motore
+  (`lib/auth/engine.ts`) il contesto dà all'autenticatore `provider` (la risoluzione di F38),
+  `roundTrip.begin` (il motore costruisce lo `state` con il proprio routing e lega verificatore,
+  `nonce` e `returnTo` cifrati nella riga) e `record` (l'evento di F40 scritto dall'autenticatore);
+  `returnFrom` riporta il `returnTo` e `lib/auth/http.ts` lo aggiunge come parametro al `returnUrl`
+  del 303. `GET /auth/flow/options` elenca sotto `oidc` le chiavi dei provider del piano e del
+  tenant (un provider disattivato del tenant nasconde quello del deployment con la stessa chiave).
+  Codici nuovi con il loro stato: `IDP_UNKNOWN_PROVIDER` 400, `IDP_UNAVAILABLE` 502,
+  `IDP_RETURN_PENDING` 409 (il passo arrivato prima del browser, il flusso resta),
+  `IDP_RETURN_INVALID` 401, `IDP_DENIED` 401, `IDP_IDENTITY_NOT_LINKED` e
+  `ACCOUNT_PENDING_APPROVAL` 403. Prove: `test/db/oidc.spec.ts` con lo store vero su SQLite e
+  Postgres (i cinque casi del criterio, più diniego al provider, provider irraggiungibile,
+  provider sconosciuto), `test/lib/oidcRoutes.spec.ts` via HTTP (303 con `returnTo`, nessun cookie
+  né token sul ritorno, sessione al passo successivo, provider disattivato dal tenant). L'IdP finto
+  senza rete di T-12.40 è anticipato in `test/lib/fixtures/fakeIdp.ts`: chiavi RS256 vere, PKCE
+  verificato allo scambio, codice speso una volta.
 
-- [ ] **T-12.30** `amr` e `acr`.
+- [x] **T-12.30** `amr` e `acr`.
   **Cosa fare**: F41, con `idp-mfa` segnato solo quando il provider dichiara la fiducia e il claim
   la porta.
   **Criterio di chiusura**: prova che lo stesso `amr` con `trust` assente lascia il secondo
   stadio da fare.
+  **Evidenza**: `idpSecondFactor` in `oidc.ts`, `acr_values` nella richiesta quando la fiducia è su
+  `acr`; `idp-mfa` entra in `satisfied` e conta per il pavimento di F35 senza modifiche al motore.
+  La validazione di avvio accetta `idp-mfa` in uno stadio solo dove `identify` elenca `oidc`
+  (`lib/auth/validate.ts`). Prove in `test/db/oidc.spec.ts` (fiducia `amr` soddisfatta, stesso
+  `amr` senza fiducia e valore non elencato che lasciano lo stadio, `acr`) e
+  `test/lib/authFlowConfig.spec.ts`.
 
 ## J. Registro degli accessi
 

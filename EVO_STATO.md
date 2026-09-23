@@ -89,7 +89,11 @@ l'insieme; registrazione chiusa di fabbrica, tabella `setting`, colonna `approve
 da `/users/:id/approve`, stessa regola per `register` e per il JIT. `npm test` 778 prove (864 con
 `DATABASE_URL`), banco multi-tenant 17, copertura 86,6% di righe. Aperto per il manutentore:
 nessuna rotta scrive `confirmation_token`, quindi chi si registra non può confermare l'indirizzo da
-sé (nota in T-12.48). Prossimo: il blocco I, OIDC.
+sé (nota in T-12.48). Chiuso il blocco I (T-12.28 → T-12.30): OIDC come identificatore su
+entrambi i piani, `openid-client` caricato solo al primo uso e vietato come import statico, PKCE e
+`nonce` sempre, `state` speso al primo ritorno, sessione solo al passo successivo, `idp-mfa` solo
+dove il provider è dichiarato affidabile; IdP finto senza rete per le prove. `npm test` 790 prove
+(884 con `DATABASE_URL`), banco multi-tenant 17. Prossimo: il blocco K, rimozione e gatekeeper.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:
