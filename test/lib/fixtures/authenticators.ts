@@ -5,9 +5,10 @@ import type { AuthContext, AuthInput, AuthResult, AuthReturnInput, AuthSubject, 
 // Two authenticators written only against the public contract, with no cast anywhere (T-12.2).
 //
 // Their point is the shapes the framework does not ship yet: an identifier that leaves the site
-// with a posted form and comes back through `complete` (the shape of SAML), and a verifier that
-// sends a code and checks it (the shape of SMS). If the contract could not express them, the
-// methods after this phase would each need a change to it.
+// with a posted form and comes back through `complete` (the shape of SAML), one that leaves with a
+// redirect and comes back on a GET with a `state` the engine built (the shape of a social login
+// over plain OAuth 2), and a verifier that sends a code and checks it (the shape of SMS). If the
+// contract could not express them, the methods after this phase would each need a change to it.
 //
 
 export const FAKE_SUBJECT: AuthSubject = {
@@ -53,6 +54,36 @@ export const postReturnIdentifier: Authenticator = {
       subject: FAKE_SUBJECT,
       satisfied: ['idp-mfa'],
       external: { provider: 'fake-saml', issuer: 'https://idp.example.test', subject: FAKE_SUBJECT.externalId }
+    }
+  }
+}
+
+/**
+ * Social-shaped, an OAuth 2 login without OpenID Connect: no ID token, only the provider's own
+ * account id behind a `code`. `initiate` asks the engine for the round trip, so the `state` carries
+ * the routing of the container and only its hash is stored; `complete` receives `code` and `state`
+ * on a GET return, under the default parameter name.
+ */
+export const redirectReturnIdentifier: Authenticator = {
+  id: 'fake-social',
+  kind: 'identifier',
+  planes: ['tenant', 'control'],
+  async initiate(ctx: AuthContext): Promise<AuthResult> {
+    const state = await ctx.roundTrip?.begin({ provider: 'fake-social', returnTo: '/after' })
+    if (!state) return { outcome: 'fail', reason: 'FAKE_NO_FLOW' }
+    return { outcome: 'redirect', binding: 'redirect', url: `https://social.example.test/authorize?client_id=app&state=${encodeURIComponent(state)}` }
+  },
+  async verify(ctx: AuthContext): Promise<AuthResult> {
+    const result = ctx.flow?.externalResult
+    if (!result) return { outcome: 'pending' }
+    return { outcome: 'success', subject: FAKE_SUBJECT }
+  },
+  async complete(_ctx: AuthContext, input: AuthReturnInput): Promise<AuthResult> {
+    if (input.code !== 'granted') return { outcome: 'fail', reason: 'FAKE_ACCESS_DENIED' }
+    return {
+      outcome: 'success',
+      subject: FAKE_SUBJECT,
+      external: { provider: 'fake-social', issuer: 'https://social.example.test', subject: 'social-42' }
     }
   }
 }

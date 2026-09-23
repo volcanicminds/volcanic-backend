@@ -93,6 +93,9 @@ jobs:
       # the point of these tests is that one unqualified file lands in a different container
       # each time (T-5.1).
       - run: npm run test:migrations
+      # The OIDC suites with every connection off the machine refused (T-12.40): a test that reached
+      # a real provider would fail here instead of passing on what that provider answered.
+      - run: npm run test:oidc:offline
       - run: npm run test:e2e:mt:pg
 
   release:

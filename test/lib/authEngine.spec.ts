@@ -4,7 +4,8 @@
 // Each case is a property of the state machine rather than of a method: the AND of stages, the OR
 // inside one, an optional stage, the choice of a flow by role, an identifier a role does not
 // accept, the MFA floor that adds an enrolment, a subject blocked between two factors, the return
-// in POST of an identifier shaped like SAML, and the store that must exist for a second step.
+// in POST of an identifier shaped like SAML, the return in GET of one shaped like a social login,
+// and the store that must exist for a second step.
 //
 import { expect } from 'expect'
 import type {
@@ -22,7 +23,7 @@ import * as engine from '../../lib/auth/engine.js'
 import type { FlowOutcome, FlowPlane } from '../../lib/auth/engine.js'
 import { composeFlowCredential } from '../../lib/util/flowCredential.js'
 import { fakeFlowStore } from './fixtures/flowStore.js'
-import { challengeVerifier, postReturnIdentifier } from './fixtures/authenticators.js'
+import { challengeVerifier, postReturnIdentifier, redirectReturnIdentifier } from './fixtures/authenticators.js'
 
 ;(globalThis as unknown as { log: object }).log = {}
 
@@ -98,7 +99,7 @@ function world() {
   }
 
   const registry = createAuthenticatorRegistry()
-  for (const a of [password, magic, code('code-a', 'a'), code('code-b', 'b'), code('code-o', 'o', true), totp, postReturnIdentifier, challengeVerifier]) {
+  for (const a of [password, magic, code('code-a', 'a'), code('code-b', 'b'), code('code-o', 'o', true), totp, postReturnIdentifier, redirectReturnIdentifier, challengeVerifier]) {
     registry.register(a)
   }
 
@@ -113,7 +114,7 @@ function world() {
       tenant: { id: 't-1' } as FlowPlane<User>['tenant'],
       routing: 't-1',
       policy: MfaPolicy.OPTIONAL,
-      flows: { identify: ['password', 'magic', 'fake-saml'], flows: [{ roles: ['*'], stages: [] }], ...flows },
+      flows: { identify: ['password', 'magic', 'fake-saml', 'fake-social'], flows: [{ roles: ['*'], stages: [] }], ...flows },
       limits: { flowTtl: 600, otpTtl: 300, otpMaxAttempts: 5, otpMaxSends: 3 },
       registry,
       managers: { authFlowManager: store.manager } as unknown as AuthManagers,
@@ -360,5 +361,30 @@ describe('auth · the flow engine (T-12.14)', () => {
 
     // Only the credential of the browser that started the flow cashes it.
     expect(body(await engine.step(p, again.credential.raw, 'fake-saml', {}))).toMatchObject({ externalId: 'ext-1', methods: ['fake-saml', 'idp-mfa'] })
+  })
+
+  it('carries a social-shaped identifier out with a redirect and back through a GET return, on the state the engine built', async () => {
+    const w = world()
+    const p = w.plane()
+    const out = partial(await engine.start(p, 'fake-social', {}))
+    const action = out.stage.options[0].action
+    expect(action?.type).toBe('redirect')
+    const state = new URL(action?.url ?? 'x:').searchParams.get('state') ?? ''
+    // The engine's own shape: the routing of this container, then a secret the row keeps only hashed.
+    expect(state).toMatch(/^st1\.t-1\./)
+    expect(JSON.stringify([...w.store.rows.values()])).not.toContain(state.split('.').at(-1))
+
+    // The provider said no: the flow ends and nothing is issued, and the console still lands where
+    // it asked to, to read the refusal from its next step.
+    expect(await engine.returnFrom(p, 'fake-social', { error: 'access_denied', state })).toEqual({ kind: 'returned', ok: false, returnTo: '/after' })
+    expect(refusalOf(await engine.step(p, out.credential.raw, 'fake-social', {}))).toBe('FLOW_REQUIRED')
+
+    const again = partial(await engine.start(p, 'fake-social', {}))
+    const next = new URL(again.stage.options[0].action?.url ?? 'x:').searchParams.get('state') ?? ''
+    // The step that arrives before the browser is answered with the same stage: the flow stays.
+    expect(optionIds(await engine.step(p, again.credential.raw, 'fake-social', {}))).toEqual(['fake-social'])
+    expect(await engine.returnFrom(p, 'fake-social', { code: 'granted', state: next })).toEqual({ kind: 'returned', ok: true, returnTo: '/after' })
+    expect(w.issued).toHaveLength(0)
+    expect(body(await engine.step(p, again.credential.raw, 'fake-social', {}))).toMatchObject({ externalId: 'ext-1', methods: ['fake-social'] })
   })
 })
