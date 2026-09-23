@@ -1191,7 +1191,7 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 
 ## L. Prove
 
-- [ ] **T-12.37** Unità e memoria.
+- [x] **T-12.37** Unità e memoria.
   **Cosa fare**: `test/lib/` per credenziali, validazione, motore con gli autenticatori finti (che
   dimostrano il contratto per sms, social e per un ritorno in POST), rotte in bearer e cookie,
   registro degli accessi, rifiuti nuovi.
@@ -1200,12 +1200,31 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   `FLOW_ATTEMPTS_EXHAUSTED`, `FLOW_SEND_LIMIT`, `FLOW_ENROLMENT_REFUSED`,
   `AUTH_FLOW_NOT_AVAILABLE`, `IDP_NOT_FOUND`, `IDP_RESPONSE_INVALID`, `IDP_IDENTITY_NOT_LINKED`,
   più quello di T-12.7.
+  **Evidenza**: commit `523d9ae`; `npm test` verde, 897 prove con `DATABASE_URL`; `check:refusals`
+  «93 refusals, each named by at least one test». Ogni codice dell'elenco ha la sua prova
+  (`test/lib/authEngine.spec.ts`, `authFlowRoutes.spec.ts`, `test/db/emailOtp.spec.ts`,
+  `externalIdentity.spec.ts`, `tenantProvisioning.spec.ts` per `AUTH_FLOW_NOT_AVAILABLE` di
+  T-12.7). Deriva sui nomi: `IDP_NOT_FOUND` e `IDP_RESPONSE_INVALID` non esistono, il codice li
+  chiama `IDP_UNKNOWN_PROVIDER` e `IDP_RETURN_INVALID` (T-12.29), provati in `test/db/oidc.spec.ts` e
+  `test/lib/oidcRoutes.spec.ts`. Agli autenticatori finti di forma SAML (ritorno in POST) e SMS si
+  aggiunge quello di forma social, OAuth 2 senza OpenID Connect: uscita con redirect, ritorno in GET
+  sullo `state` costruito dal motore con `roundTrip.begin`, rifiuto del provider che chiude il flusso
+  (`test/lib/fixtures/authenticators.ts`, prova in `authEngine.spec.ts`). Le altre voci erano già
+  coperte: credenziali (`flowCredential.spec.ts`), validazione (`authFlowConfig.spec.ts`), rotte in
+  bearer e cookie (`authFlowRoutes.spec.ts`, `authChannels.spec.ts`), registro
+  (`accessLogWrites.spec.ts`).
 
-- [ ] **T-12.38** Data layer.
+- [x] **T-12.38** Data layer.
   **Cosa fare**: `test/db/` per i quattro manager sui due dialetti, `test/migrations/` per la 0002.
   **Criterio di chiusura**: `npm run test:db` e `npm run test:migrations` verdi.
+  **Evidenza**: con `DATABASE_URL`, `test:db` 283 prove e `test:migrations` 41, una saltata
+  ciascuna per ragioni estranee alla fase. I quattro manager su SQLite e su Postgres in
+  `test/db/authFlow.spec.ts` (flussi, identità esterne, provider del tenant) e
+  `test/db/accessLog.spec.ts`; la 0002 su un contenitore vuoto e su uno fermo alla 0001 in
+  `test/migrations/authFlowUpgrade.spec.ts`. Nessuna prova nuova: erano state scritte con i blocchi D,
+  H e J.
 
-- [ ] **T-12.39** Banco multi-tenant su Postgres reale.
+- [x] **T-12.39** Banco multi-tenant su Postgres reale.
   **Cosa fare**: `test/e2e-mt-pg/authFlow.e2e.spec.ts`: la riga del flusso e quella del registro
   degli accessi stanno nel contenitore del loro tenant e in nessun altro; il credenziale di flusso
   di A presentato come B è `TENANT_MISMATCH`; il ritorno OIDC con `state` di A e sottodominio di B è
@@ -1213,12 +1232,33 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   accessi di piattaforma vivono solo nel piano di controllo.
   **Criterio di chiusura**: `npm run test:e2e:mt:pg` verde con `DATABASE_URL` impostata (senza,
   le suite saltano e il verde non dice nulla).
+  **Evidenza**: commit `523d9ae`; `test/e2e-mt-pg/authFlow.e2e.spec.ts`, cinque prove, banco a 22 su
+  22. Ogni tenant ha il suo provider scritto da `/tenants/:id/identity-providers` e un issuer in
+  processo; l'app del banco elenca `oidc` sul piano tenant
+  (`test/e2e-mt-pg/fixtures/app/src/config/authFlows.ts`). Osservato da una connessione `pg` esterna:
+  la riga di `auth_flow` nasce nello schema di acme all'avvio del giro OIDC e in nessun altro, così
+  il `login.failed`; il credenziale di acme con l'header di globex è 403 `TENANT_MISMATCH` e il
+  flusso resta vivo per acme fino alla sessione; lo stesso `sub` presso i due provider dà un
+  `external_identity` in ciascuno schema, con il proprio issuer, e nessuno nel piano di controllo;
+  login e rifiuto della piattaforma scrivono solo in `public`. Deriva: il ritorno con lo `state` di A
+  è provato con l'header di B e non con il sottodominio, perché il banco risolve per header; è lo
+  stesso ramo `declared` di `lib/loader/tenant.ts:129`. Il rifiuto arriva prima dello scambio del
+  codice, che resta non speso.
 
-- [ ] **T-12.40** Un IdP OIDC finto, senza rete.
+- [x] **T-12.40** Un IdP OIDC finto, senza rete.
   **Cosa fare**: un issuer in processo servito attraverso `customFetch` di `openid-client`, con
   chiavi generate a ogni esecuzione e ID token firmati con `jose`, che diventa `devDependency`
   esplicita.
   **Criterio di chiusura**: le prove di I girano con la rete disattivata.
+  **Evidenza**: commit `523d9ae`; l'issuer c'era già da T-12.29 (`test/lib/fixtures/fakeIdp.ts`,
+  servito da `useOidcFetch`). `scripts/no-network.mjs` rifiuta ogni connessione fuori dalla macchina
+  e ogni risoluzione di nome, lasciando aperti loopback e socket Unix per il database;
+  `npm run test:oidc:offline` esegue sotto di esso `test/lib/oidcRoutes.spec.ts` e
+  `test/db/oidc.spec.ts`, 23 prove verdi con Postgres, ed è un passo del job `test-pg` della CI. Una
+  prova usa e getta con `fetch('https://example.com')` sotto lo stesso caricamento è rifiutata con
+  «no network in this run». Deriva: niente `jose` come dipendenza di sviluppo, perché gli ID token
+  sono firmati RS256 con `crypto` di Node e la verifica la fa `openid-client` come in produzione; una
+  dipendenza in più non aggiungerebbe nulla alla prova.
 
 ## M. Documentazione
 
@@ -1384,3 +1424,4 @@ chieda una riautenticazione fresca.
 | T-12.22 → T-12.24 | commit `5221dce`: `lib/auth/authenticators/emailOtp.ts`, `lib/auth/engine.ts`, `types/global.d.ts` (`FlowChallenges`), `test/db/emailOtp.spec.ts` |
 | T-12.25 → T-12.27 | commit `4f66889`: `lib/auth/providers.ts`, `lib/auth/external.ts`, `lib/api/tenants/controller/identityProviders.ts`, `lib/api/auth/controller/identities.ts`, `lib/api/users/controller/identities.ts`, `test/lib/identityProviders.spec.ts`, `test/lib/externalIdentities.spec.ts`, `test/db/externalIdentity.spec.ts`; `npm test` 754 prove (832 con `DATABASE_URL`), banco multi-tenant 14, copertura 86,5% di righe |
 | T-12.34 → T-12.36 | commit `be23feb`: `lib/hooks/onRequest.ts:94`, `lib/api/auth/controller/auth.ts:535`, `lib/manifest/generator.ts:101-137`, `scripts/check-refusals.mjs:73`, `test/lib/mfaEnrolment.spec.ts`, `test/lib/fixtures/flowLogin.ts`; `npm test` 896 prove con `DATABASE_URL`, banco multi-tenant 17 |
+| T-12.37 → T-12.40 | commit `523d9ae`: `test/e2e-mt-pg/authFlow.e2e.spec.ts`, `test/e2e-mt-pg/fixtures/app/src/config/authFlows.ts`, `test/lib/fixtures/authenticators.ts`, `test/lib/authEngine.spec.ts`, `scripts/no-network.mjs`, `package.json` (`test:oidc:offline`), `.github/workflows/ci.yml`; `npm test` 897 prove con `DATABASE_URL`, banco multi-tenant 22, copertura 87,9% di righe |

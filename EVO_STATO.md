@@ -99,7 +99,14 @@ dove il provider è dichiarato affidabile; IdP finto senza rete per le prove. `n
 `check:refusals` ne impedisce il ritorno; le rotte MFA di gestione vogliono una sessione completa ed
 `enable` non emette più sessione; il manifest annuncia le rotte del flusso per piano al posto di
 `login` e `mfaVerify`, rottura che l'admin assorbe in T-12.45. `npm test` 896 prove con
-`DATABASE_URL`, banco multi-tenant 17, copertura 87,3% di righe. Prossimo: il blocco L, le prove.
+`DATABASE_URL`, banco multi-tenant 17, copertura 87,3% di righe. Chiuso il blocco L (T-12.37 →
+T-12.40, `523d9ae`): il banco multi-tenant del flusso (`authFlow.e2e.spec.ts`, cinque prove sulla
+collocazione di flussi, identità esterne e registro, sul credenziale e sul ritorno di un tenant
+presentati come un altro), l'autenticatore finto di forma social accanto a SAML e SMS, e le suite
+OIDC eseguite a rete spenta (`npm run test:oidc:offline`, anche in CI). Derive annotate nelle voci:
+due codici con nomi diversi dal piano, `jose` non aggiunto, il sottodominio provato come header.
+`npm test` 897 prove con `DATABASE_URL`, banco multi-tenant 22, copertura 87,9% di righe. Prossimo:
+il blocco M, la documentazione.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:
