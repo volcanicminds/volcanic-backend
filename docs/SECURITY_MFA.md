@@ -88,8 +88,9 @@ MFA_ADMIN_FORCED_RESET_UNTIL=2026-09-24T15:00:00.000Z
 ```
 
 On start, if `UNTIL` is in the future and no more than ten minutes away, the framework disables the
-factor of the user with that address in the **control container** (the `user` table, which is where
-the users of a single-tenant deployment live) and logs it; further away than ten minutes, the boot
-stops; in the past, the variables are ignored. Remove both variables immediately after the
-recovery. A platform operator of a multi-tenant deployment is a `system_user` and is reset by
-another operator holding `system-users`.
+factor of the identity with that address, looked up where the genesis puts the administrator: with
+a `tenants` block, the **platform identity** (`system_user`) of the control plane; without, the
+**user** of the control container. Further away than ten minutes, the boot stops; in the past, or
+not a date, the variables are ignored. Remove both variables immediately after the recovery. A
+tenant's own administrator is not reset this way: another administrator of that tenant resets it
+with `POST /users/:id/mfa/reset`.

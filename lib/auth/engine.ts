@@ -420,6 +420,12 @@ async function locate<R>(p: FlowPlane<R>, presented: string | undefined): Promis
     await p.record({ event: 'flow.expired', outcome: 'failure', code: 'FLOW_EXPIRED', subjectId: lookup.flow.subjectId, flowId: lookup.flow.flowId })
     return refuse('FLOW_EXPIRED', true)
   }
+  // A return that failed left its refusal here, for the first request able to read it: this one.
+  const failure = lookup.flow.externalFailure
+  if (failure) {
+    await end(p, lookup.flow, { event: 'login.failed', outcome: 'failure', code: failure.code, subjectId: lookup.flow.subjectId, methods: [failure.method] })
+    return refuse(failure.code, true)
+  }
   return { flow: lookup.flow, credential }
 }
 
@@ -634,14 +640,19 @@ export async function returnFrom<R>(p: FlowPlane<R>, method: string, input: Auth
 
   const subject = flow.subjectId ? ((await p.loadSubject(flow.subjectId))?.subject ?? null) : null
   const result = await authenticator.complete(context(p, subject, flow), input)
-  // Where the client asked to land, kept as a path when the flow started; the failure lands there too,
-  // and the next step says what went wrong.
+  // Where the client asked to land, kept as a path when the flow started. A failure lands there too:
+  // the navigation cannot carry an answer the console reads, so the refusal waits in the row and the
+  // next step, made with the flow credential, answers it and ends the flow.
   const returnTo = flow.external?.returnTo
   const back = (ok: boolean): FlowOutcome => ({ kind: 'returned', ok, ...(returnTo ? { returnTo } : {}) })
-  if (result.outcome === 'success' && result.external && (await storeOf(p).recordExternalResult(p.handle, flow.flowId, result.external))) {
-    return back(true)
+  if (result.outcome === 'success' && result.external) {
+    if (await storeOf(p).recordExternalResult(p.handle, flow.flowId, result.external)) return back(true)
+    // Another return got there first: the `state` is already spent, and this one changes nothing.
+    return back(false)
   }
-  const code = result.outcome === 'fail' ? result.reason : 'FLOW_REQUIRED'
-  await end(p, flow, { event: 'stage.failed', outcome: 'failure', code, subjectId: flow.subjectId, methods: [method] })
+  const code = result.outcome === 'fail' ? result.reason : 'IDP_RETURN_INVALID'
+  await p.record({ event: 'stage.failed', outcome: 'failure', code, subjectId: flow.subjectId, methods: [method], flowId: flow.flowId })
+  // Written once: if a result is already there, the flow keeps it and this return changes nothing.
+  await storeOf(p).recordExternalFailure(p.handle, flow.flowId, { method, code })
   return back(false)
 }

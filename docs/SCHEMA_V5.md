@@ -271,7 +271,7 @@ identity from a tenant user where both share a container.
 | `last_sent_at` | timestamp | yes | | what the per-subject windows count |
 | `state_hash` | text | yes | | SHA-256 of the `state` of a round trip to a provider |
 | `external` | text | yes | | ciphertext written by the manager: the PKCE verifier, the `nonce`, the provider, the `returnTo` path, the secret of an in-flow enrolment |
-| `external_result` | jsonb / json text | yes | | the validated claims a return left for the next step: provider, issuer, subject, email, `amr`, `acr` |
+| `external_result` | jsonb / json text | yes | | what a return left for the next step: the validated claims (provider, issuer, subject, email, `amr`, `acr`), or `{ failure: { method, code } }` when it failed. Written once, with `state_hash` cleared in the same statement |
 | `version` | integer | no | `1` | every change is conditional on it |
 | `ip` | text | yes | | |
 | `user_agent` | text | yes | | |

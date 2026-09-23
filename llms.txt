@@ -2194,7 +2194,7 @@ In case admin loses MFA device, framework offers a filesystem/env based recovery
     - `MFA_ADMIN_FORCED_RESET_EMAIL=admin@test.volcanicminds.com`
     - `MFA_ADMIN_FORCED_RESET_UNTIL=2025-12-31T15:00:00.000Z` (Must be in near future, max 10 min from startup).
 3.  Restart backend.
-4.  At startup, core `index.ts` detects variables. If timestamp is valid, **disables MFA** and clears secrets for that specific user.
+4.  At startup, the core (`lib/loader/mfaReset.ts`) detects the variables. If the timestamp is valid, it **disables MFA** and clears the secret of that identity: the platform identity (`system_user`) when tenants are declared, the user of the control container otherwise.
 5.  Admin can log in with password only and reconfigure MFA.
 6.  **Cleanup**: Remove variables and restart to close security gap.
 

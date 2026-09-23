@@ -120,12 +120,18 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       expect(refusal(await engine.returnFrom(p, 'oidc', { code: 'x' }))).toBe('FLOW_REQUIRED')
     })
 
-    it('refuses an ID token with another nonce, and ends the flow', async () => {
+    it('refuses an ID token with another nonce: the next step says so, and ends the flow', async () => {
       const { p, accesses } = plane()
       const started = await engine.start(p, 'oidc', { provider: 'acme' })
       const { code, state } = idp.authorize(addressOf(started), { sub: `sub-${unique()}` }, { nonce: 'not-the-one-sent' })
       expect(await engine.returnFrom(p, 'oidc', { code, state })).toEqual({ kind: 'returned', ok: false })
       expect(accesses.at(-1)).toMatchObject({ event: 'stage.failed', code: 'IDP_RETURN_INVALID', methods: ['oidc'] })
+      // The state is spent with the failure, as with a success: the same return again finds nothing.
+      expect(refusal(await engine.returnFrom(p, 'oidc', { code, state }))).toBe('FLOW_REQUIRED')
+      const next = await engine.step(p, raw(started), 'oidc', {})
+      expect(refusal(next)).toBe('IDP_RETURN_INVALID')
+      expect((next as any).endsFlow).toBe(true)
+      expect(accesses.at(-1)).toMatchObject({ event: 'login.failed', code: 'IDP_RETURN_INVALID', methods: ['oidc'] })
       expect(refusal(await engine.step(p, raw(started), 'oidc', {}))).toBe('FLOW_REQUIRED')
     })
 
@@ -137,6 +143,11 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       expect(await engine.returnFrom(p, 'oidc', { error: 'access_denied', state })).toEqual({ kind: 'returned', ok: false })
       expect(accesses.at(-1)).toMatchObject({ event: 'stage.failed', code: 'IDP_DENIED' })
       expect(idp.exchanges.length).toBe(exchanged)
+      // The console tells "you declined at the provider" from "the login expired".
+      const next = await engine.step(p, raw(started), 'oidc', {})
+      expect(refusal(next)).toBe('IDP_DENIED')
+      expect((next as any).refusal.status).toBe(401)
+      expect(refusal(await engine.step(p, raw(started), 'oidc', {}))).toBe('FLOW_REQUIRED')
     })
 
     it('answers IDP_UNAVAILABLE when the provider cannot be discovered, and leaves nothing behind', async () => {

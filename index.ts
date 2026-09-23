@@ -3,7 +3,6 @@
 import dotenv from 'dotenv'
 dotenv.config()
 
-import dayjs from 'dayjs'
 import yn from './lib/util/yn.js'
 import logger from './lib/util/logger.js'
 import * as mark from './lib/util/mark.js'
@@ -18,6 +17,7 @@ import * as loaderTracking from './lib/loader/tracking.js'
 import * as loaderTranslation from './lib/loader/translation.js'
 import * as loaderConfig from './lib/loader/general.js'
 import * as loaderAuthFlows from './lib/loader/authFlows.js'
+import { emergencyMfaReset } from './lib/loader/mfaReset.js'
 import { ensureGenesisAdmin } from './lib/loader/genesis.js'
 import { assertControlSchemaCurrent } from './lib/loader/schemaVersion.js'
 import * as loaderSchedules from './lib/loader/schedules.js'
@@ -437,56 +437,9 @@ const start = async (decorators: StartOptions = {}) => {
   }
   // ------------------------------------
 
-  // --- STARTUP CHECKS (Admin MFA Reset) ---
-  const resetEmail = process.env.MFA_ADMIN_FORCED_RESET_EMAIL
-  const resetUntil = process.env.MFA_ADMIN_FORCED_RESET_UNTIL
-
-  if (resetEmail && resetUntil) {
-    const now = dayjs()
-    const untilDate = dayjs(resetUntil)
-
-    if (untilDate.isValid()) {
-      const diffMinutes = untilDate.diff(now, 'minute')
-
-      if (diffMinutes < 0) {
-        if (log.i) log.info('Startup: MFA Admin Reset window expired. Ignoring.')
-      } else if (diffMinutes > 10) {
-        if (log.f)
-          log.fatal(
-            `Startup Error: MFA_ADMIN_FORCED_RESET_UNTIL is too far in the future (>10 min). Fix configuration.`
-          )
-        process.exit(1)
-      } else {
-        if (log.w) log.warn(`Startup: executing FORCE MFA RESET for admin ${resetEmail}`)
-        try {
-          // `forceDisableMfaForAdmin(email)` was called here and exists on no manager: the
-          // break-glass path threw on every boot that used it and reported a generic failure, so
-          // it had never worked (found by typing the injected managers, F7). What the contract
-          // has is `forceDisableMfa(ctx, userId)`, which needs a container and an id, resolved
-          // the way the genesis resolves them (lib/loader/genesis.ts): the control plane, which
-          // is where the platform's own administrator lives.
-          const provider = (server as unknown as Record<string, { control(): Promise<unknown> } | undefined>)['provider']
-          const users = server['userManager']
-          if (!provider || !users?.isImplemented?.()) {
-            if (log.e) log.error('Startup: no data layer is loaded, cannot reset MFA')
-          } else {
-            const ctx = (await provider.control()) as never
-            const target = await users.retrieveUserByEmail(ctx, resetEmail)
-            if (!target?.id) {
-              if (log.e) log.error(`Startup: MFA RESET FAILED, no user with address ${resetEmail}`)
-            } else {
-              await users.forceDisableMfa(ctx, target.id)
-              if (log.w) log.warn(`Startup: MFA RESET SUCCESSFUL for ${resetEmail}`)
-            }
-          }
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e)
-          if (log.e) log.error(`Startup: MFA RESET FAILED: ${message}`)
-        }
-      }
-    }
-  }
-  // -------------------------------------------------
+  // The emergency reset of the administrator's second factor, where the genesis puts the apex:
+  // a platform identity with tenants, a user of the control container without (docs/SECURITY_MFA.md).
+  await emergencyMfaReset(server)
 
   // --- MANIFEST DUMP (CI snapshot, decoupled from a live BE) ---
   // Opt-in via env: MANIFEST_DUMP=<path> writes the manifest to file. With

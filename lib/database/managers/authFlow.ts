@@ -9,6 +9,7 @@ import type {
   ChallengeLimits,
   ChallengeRecord,
   DataHandle,
+  ExternalAuthFailure,
   ExternalAuthResult,
   SessionScope
 } from '../../../types/global.js'
@@ -56,7 +57,8 @@ interface FlowRow {
   lastSentAt: Date | string | null
   stateHash: string | null
   external: string | null
-  externalResult: ExternalAuthResult | null
+  // A failed return is kept in the same column, as `{ failure }`: one write, one spent `state`.
+  externalResult: ExternalAuthResult | { failure: ExternalAuthFailure } | null
   version: number
   ip: string | null
   userAgent: string | null
@@ -96,7 +98,8 @@ async function toFlow(row: FlowRow): Promise<AuthFlow> {
     challengeSends: row.challengeSends,
     lastSentAt: row.lastSentAt ?? null,
     external: row.external ? (JSON.parse(await decrypt(row.external)) as AuthFlowExternal) : null,
-    externalResult: row.externalResult ?? null,
+    externalResult: row.externalResult && !('failure' in row.externalResult) ? row.externalResult : null,
+    externalFailure: row.externalResult && 'failure' in row.externalResult ? row.externalResult.failure : null,
     version: row.version,
     ip: row.ip ?? null,
     userAgent: row.userAgent ?? null,
@@ -432,19 +435,11 @@ export function createAuthFlowManager(options: { sendWindowSeconds?: number } = 
 
     /** Written once, and `state` is spent with it: a second return with the same `state` finds nothing. */
     async recordExternalResult(ctx: DataHandle, flowId: string, result: ExternalAuthResult) {
-      const { handle, flows } = flowsOf(ctx, 'recordExternalResult')
-      const rows = await handle.db
-        .update(flows)
-        .set({ externalResult: result, stateHash: null })
-        .where(
-          and(
-            eq(col(flows, 'flowId'), String(flowId) as never),
-            gt(col(flows, 'expiresAt'), new Date() as never),
-            isNull(col(flows, 'externalResult'))
-          )
-        )
-        .returning()
-      return rows.length > 0
+      return await recordReturn(ctx, 'recordExternalResult', flowId, result)
+    },
+
+    async recordExternalFailure(ctx: DataHandle, flowId: string, failure: ExternalAuthFailure) {
+      return await recordReturn(ctx, 'recordExternalFailure', flowId, { failure: { method: failure.method, code: failure.code } })
     },
 
     async completeFlow(ctx: DataHandle, flowId: string) {
@@ -480,6 +475,26 @@ export function createAuthFlowManager(options: { sendWindowSeconds?: number } = 
       .set(retirement(flows, new Date()))
       .where(and(eq(col(flows, 'flowId'), String(flowId) as never), ne(col(flows, 'secretHash'), RETIRED as never)))
       .returning({ id: col(flows, 'id') })
+    return rows.length > 0
+  }
+
+  /**
+   * What a return brought, written once, and `state` is spent with it: a second return with the
+   * same `state` finds nothing, whether the first one succeeded or failed.
+   */
+  async function recordReturn(ctx: unknown, what: string, flowId: string, value: FlowRow['externalResult']): Promise<boolean> {
+    const { handle, flows } = flowsOf(ctx, what)
+    const rows = await handle.db
+      .update(flows)
+      .set({ externalResult: value, stateHash: null })
+      .where(
+        and(
+          eq(col(flows, 'flowId'), String(flowId) as never),
+          gt(col(flows, 'expiresAt'), new Date() as never),
+          isNull(col(flows, 'externalResult'))
+        )
+      )
+      .returning()
     return rows.length > 0
   }
 }

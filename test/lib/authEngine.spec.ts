@@ -345,9 +345,11 @@ describe('auth · the flow engine (T-12.14)', () => {
     expect(action).toMatchObject({ type: 'post', url: 'https://idp.example.test/sso' })
     const relayState = action?.type === 'post' ? action.fields.RelayState : ''
 
-    // A forged answer ends the flow; the return itself never opens a session.
+    // A forged answer ends the flow at the next step, which names the refusal; the return itself
+    // never opens a session.
     const forged = await engine.returnFrom(p, 'fake-saml', { SAMLResponse: 'forged', RelayState: relayState })
     expect(forged).toEqual({ kind: 'returned', ok: false })
+    expect(refusalOf(await engine.step(p, out.credential.raw, 'fake-saml', {}))).toBe('FAKE_RESPONSE_INVALID')
     expect(refusalOf(await engine.step(p, out.credential.raw, 'fake-saml', {}))).toBe('FLOW_REQUIRED')
 
     const again = partial(await engine.start(p, 'fake-saml', {}))
@@ -374,9 +376,10 @@ describe('auth · the flow engine (T-12.14)', () => {
     expect(state).toMatch(/^st1\.t-1\./)
     expect(JSON.stringify([...w.store.rows.values()])).not.toContain(state.split('.').at(-1))
 
-    // The provider said no: the flow ends and nothing is issued, and the console still lands where
-    // it asked to, to read the refusal from its next step.
+    // The provider said no: nothing is issued, and the console still lands where it asked to, to read
+    // the refusal from its next step, which ends the flow.
     expect(await engine.returnFrom(p, 'fake-social', { error: 'access_denied', state })).toEqual({ kind: 'returned', ok: false, returnTo: '/after' })
+    expect(refusalOf(await engine.step(p, out.credential.raw, 'fake-social', {}))).toBe('FAKE_ACCESS_DENIED')
     expect(refusalOf(await engine.step(p, out.credential.raw, 'fake-social', {}))).toBe('FLOW_REQUIRED')
 
     const again = partial(await engine.start(p, 'fake-social', {}))

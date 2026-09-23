@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import type { AuthFlow, AuthFlowExternal, AuthFlowManagement, ExternalAuthResult } from '../../../types/global.js'
+import type { AuthFlow, AuthFlowExternal, AuthFlowManagement, ExternalAuthFailure, ExternalAuthResult } from '../../../types/global.js'
 
 //
 // An in-memory flow store with the semantics of the real one (lib/database/managers/authFlow.ts):
@@ -66,6 +66,7 @@ export function fakeFlowStore() {
         lastSentAt: null,
         external: null,
         externalResult: null,
+        externalFailure: null,
         version: 0,
         ip: data.ip ?? null,
         userAgent: data.userAgent ?? null,
@@ -145,8 +146,16 @@ export function fakeFlowStore() {
 
     async recordExternalResult(_ctx, flowId, result: ExternalAuthResult) {
       const row = rows.get(flowId)
-      if (!live(row) || row!.externalResult) return false
+      if (!live(row) || row!.externalResult || row!.externalFailure) return false
       row!.externalResult = structuredClone(result)
+      row!.stateHash = null
+      return true
+    },
+
+    async recordExternalFailure(_ctx, flowId, failure: ExternalAuthFailure) {
+      const row = rows.get(flowId)
+      if (!live(row) || row!.externalResult || row!.externalFailure) return false
+      row!.externalFailure = { method: failure.method, code: failure.code }
       row!.stateHash = null
       return true
     },

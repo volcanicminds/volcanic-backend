@@ -380,10 +380,12 @@ attacker landing their own code on the victim's browser) ends in the attacker's 
 kept as a path only (no scheme, no `//host`, no backslash, no control character), so the redirect
 cannot leave the configured console.
 
-A failed return (the person declined, the provider refused, a claim did not validate) ends the flow
-and still redirects: the next `step` answers `FLOW_REQUIRED`, and the cause is in the access log as
-`stage.failed` with its code (`IDP_DENIED`, `IDP_RETURN_INVALID`). Without a `returnUrl` the return
-answers 200 `{ ok }` instead of redirecting.
+A failed return (the person declined, the provider refused, a claim did not validate) still
+redirects, and spends the `state` as a success does. The navigation cannot carry an answer the
+console reads, so the refusal is written in the row: the next `step` answers it (`IDP_DENIED`,
+`IDP_RETURN_INVALID`, or a consumer method's own code) and ends the flow, and the access log has
+`stage.failed` at the return and `login.failed` at the step. Without a `returnUrl` the return answers
+200 `{ ok }` instead of redirecting.
 
 ---
 
@@ -586,7 +588,7 @@ always the consumer's, because the backend emits data, not presentation.
 | `IDP_UNKNOWN_PROVIDER` | 400 | yes | no active provider with that key here |
 | `IDP_UNAVAILABLE` | 502 | yes | the provider's discovery failed |
 | `IDP_RETURN_PENDING` | 409 | | the step arrived before the browser came back |
-| `IDP_RETURN_INVALID`, `IDP_DENIED` | 401 | yes | written in the access log by a failed return; the client meets `FLOW_REQUIRED` (§5.5) |
+| `IDP_RETURN_INVALID`, `IDP_DENIED` | 401 | yes | the return failed (a claim that does not validate / the person or the provider declined); answered by the next step (§5.5) |
 | `IDP_IDENTITY_NOT_LINKED` | 403 | yes | §7 |
 | `ACCOUNT_PENDING_APPROVAL` | 403 | yes | the account behind a provider login awaits an administrator |
 | `SYSTEM_USERS_NOT_AVAILABLE` | 503 | | a control-plane flow route in a build without platform identities |

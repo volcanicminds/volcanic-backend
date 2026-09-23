@@ -517,6 +517,8 @@ interface AuthFlowManagement {
   recordAttempt(ctx: DataHandle, flowId: string, data: { secret: string; maxAttempts: number }): Promise<AttemptRecord>
   bindExternal(ctx: DataHandle, flowId: string, data: { state?: string | null; external: AuthFlowExternal }): Promise<boolean>
   recordExternalResult(ctx: DataHandle, flowId: string, result: ExternalAuthResult): Promise<boolean>
+  /** What a failed return leaves for the next step: `{ method, code }`. */
+  recordExternalFailure(ctx: DataHandle, flowId: string, failure: ExternalAuthFailure): Promise<boolean>
   completeFlow(ctx: DataHandle, flowId: string): Promise<boolean>
   cancelFlow(ctx: DataHandle, flowId: string): Promise<boolean>
   purgeExpired(ctx: DataHandle, before?: Date | string): Promise<number>
@@ -528,7 +530,9 @@ each other both win: `advance` names the `version` it moves, `consumeChallenge` 
 once and a wrong one costs an attempt in the same `UPDATE`, `recordAttempt` reserves an attempt
 **before** a TOTP code is tested, so a burst of parallel guesses meets the ceiling instead of racing
 past it, and `recordChallenge` applies the per-flow and per-subject ceilings in the statement that
-records the send.
+records the send. `recordExternalResult` and `recordExternalFailure` write once and spend the
+`state` in the same statement, so a return answers once, whether it succeeded or failed; the
+returned `AuthFlow` carries the failure as `externalFailure`.
 
 **No secret is stored in clear.** The flow secret and the `state` are stored as SHA-256, the code as
 an HMAC keyed by the flow secret, which the table does not hold, and `external` (PKCE verifier,

@@ -260,9 +260,9 @@ has an admin or `ADMIN_EMAIL` at boot.
 
 ## Documentation & Guides
 
-**`llms.txt`** is the exhaustive self-contained guide for humans and LLM agents — and it **still describes
-v4**, so read it as the 4.x reference until its rewrite lands (task T-9.6). For v5 the authority is this
-README plus the focused documents below; where they disagree with anything, the package source code wins.
+**`llms.txt`** is the exhaustive self-contained guide for humans and LLM agents, written for v5. The focused
+documents below go deeper on each subject; where anything disagrees with the package source code, the code
+wins.
 
 - **[Tuning](docs/TUNING.md)**: `npm run tune` measures the work factor, the key derivation, the connection budget and the page cost **on the machine that will run them**, and writes the answers down with their provenance.
 - **[Migrating from v4](docs/MIGRATION_V4_V5.md)**: every break, why it exists, and the new form beside the old one. Read §1 to §4 before touching a port, and keep §18 and §29 open while porting the login: the routes and the status code changed.

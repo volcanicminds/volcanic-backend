@@ -1089,6 +1089,16 @@ export interface ExternalAuthResult {
 }
 
 /**
+ * What a failed return left in the flow (F39): the refusal the next step answers with. The return
+ * is a navigation that can carry no answer the console reads, so the answer waits in the row for
+ * the one request that can: the step made with the flow credential.
+ */
+export interface ExternalAuthFailure {
+  method: string
+  code: AuthRefusalCode
+}
+
+/**
  * A flow row (F37). The hashes of the flow secret, of the code and of `state` are deliberately
  * absent, as the secrets are from `Session`.
  */
@@ -1110,6 +1120,8 @@ export interface AuthFlow {
   lastSentAt: Date | string | null
   external: AuthFlowExternal | null
   externalResult: ExternalAuthResult | null
+  /** Set by a failed return; the next step ends the flow with its code. */
+  externalFailure?: ExternalAuthFailure | null
   version: number
   ip?: string | null
   userAgent?: string | null
@@ -1198,6 +1210,8 @@ export interface AuthFlowManagement {
   recordAttempt(ctx: DataHandle, flowId: string, data: { secret: string; maxAttempts: number }): Promise<AttemptRecord>
   bindExternal(ctx: DataHandle, flowId: string, data: { state?: string | null; external: AuthFlowExternal }): Promise<boolean>
   recordExternalResult(ctx: DataHandle, flowId: string, result: ExternalAuthResult): Promise<boolean>
+  /** Written once, like a result, and it spends `state` the same way: a return answers once. */
+  recordExternalFailure(ctx: DataHandle, flowId: string, failure: ExternalAuthFailure): Promise<boolean>
   completeFlow(ctx: DataHandle, flowId: string): Promise<boolean>
   cancelFlow(ctx: DataHandle, flowId: string): Promise<boolean>
   purgeExpired(ctx: DataHandle, before?: Date | string): Promise<number>
