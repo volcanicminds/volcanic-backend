@@ -90,9 +90,9 @@ describe('Account creation on real Postgres (F49)', function () {
     await sql().query(`update "${GLOBEX.locator}"."user" set confirmed = true where email = 'newcomer@globex.test'`)
     const waiting = await inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/auth/flow/start',
       headers: { [HEADER]: GLOBEX.slug },
-      payload: { email: 'newcomer@globex.test', password: 'Visitor-pw-12345' }
+      payload: { method: 'password', email: 'newcomer@globex.test', password: 'Visitor-pw-12345' }
     })
     expect(waiting.statusCode).toBe(401)
     expect(body(waiting).code).toBe('AUTH_INVALID_CREDENTIALS')

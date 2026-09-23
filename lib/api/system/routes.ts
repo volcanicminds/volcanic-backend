@@ -51,18 +51,6 @@ export default {
     scope: 'control'
   },
   routes: [
-    {
-      method: 'POST',
-      path: '/auth/login',
-      roles: ['public'],
-      handler: 'systemAuth.login',
-      rateLimit: authRateLimit,
-      config: {
-        title: 'Log a platform administrator in',
-        description: 'Returns a token carrying the control scope and no tenant',
-        body: { $ref: 'authLoginBodySchema#' }
-      }
-    },
     // The login flow of the platform (T-12.16): the twins of `/auth/flow/*`, served by the same
     // engine. The return route needs no tenant flag: the control plane has one container.
     {
@@ -300,15 +288,9 @@ export default {
       roles: ['public'],
       handler: 'systemAuth.mfaEnable',
       middlewares: ['global.isAuthenticated'],
+      // The code is six digits, as on the tenant plane: throttled against online guessing.
+      rateLimit: { max: 10, timeWindow: 60000 },
       config: { title: 'Finish MFA enrolment', description: 'Body: the code from the authenticator' }
-    },
-    {
-      method: 'POST',
-      path: '/auth/mfa/verify',
-      roles: ['public'],
-      handler: 'systemAuth.mfaVerify',
-      rateLimit: authRateLimit,
-      config: { title: 'Exchange a pre-auth token for a session', description: 'Body: tempToken and the code' }
     },
     {
       method: 'GET',

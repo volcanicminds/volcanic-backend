@@ -11,8 +11,10 @@
 // registration on a taken address is indistinguishable from one on a free address.
 //
 import { expect } from 'expect'
-import { login, register, refreshToken } from '../../lib/api/auth/controller/auth.js'
+import { register, refreshToken } from '../../lib/api/auth/controller/auth.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../lib/config/constants.js'
+import { buildAuthenticatorRegistry } from '../../lib/auth/registry.js'
+import { tenantStart, passwordLogin, useFrameworkFlows } from './fixtures/flowLogin.js'
 
 ;(global as any).log = {}
 ;(global as any).config = { options: {} }
@@ -39,9 +41,13 @@ function fakeReply() {
 function fakeRequest(data: any, userManager: any) {
   return {
     data: () => data,
+    // The flow handlers read the body itself, never the merged `data()`: a method must not be
+    // handed a password from the query string.
+    body: data,
+    headers: {},
     control: { kind: 'control' },
     routeOptions: { config: { tenantContext: false } },
-    server: { userManager }
+    server: { userManager, authRegistry: buildAuthenticatorRegistry() }
   } as any
 }
 
@@ -59,11 +65,16 @@ function loginManager(over: any = {}) {
 
 async function attemptLogin(manager: any) {
   const reply = fakeReply()
-  await login(fakeRequest({ email: 'someone@acme.test', password: GOOD }, manager), reply)
+  await tenantStart(fakeRequest(passwordLogin('someone@acme.test', GOOD), manager), reply)
   return reply.sent
 }
 
+// Through the password identifier of the login flow, which is the only login left (T-12.34).
 describe('auth · one refusal for every login failure (D-17)', () => {
+  let restore: () => void
+  before(() => (restore = useFrameworkFlows()))
+  after(() => restore())
+
   const confirmed = { id: 'u1', externalId: 'x1', email: 'someone@acme.test', confirmed: true, blocked: false }
 
   it('answers the same for an address that has no account', async () => {

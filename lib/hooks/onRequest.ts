@@ -9,19 +9,6 @@ type SessionClaims = { sub?: string; tid?: string; scp?: string; imp?: string; r
 import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
 import { credentialOf, isCookieMode, REFRESH_TYP } from '../util/credential.js'
 
-// The only routes a pre-auth token opens. It names a subject and buys nothing else, so the
-// list is the enrolment and verification pair on each plane, plus the way out.
-const MFA_SETUP_WHITELIST = [
-  '/auth/mfa/setup',
-  '/auth/mfa/enable',
-  '/auth/mfa/verify',
-  '/auth/logout',
-  '/system/auth/mfa/setup',
-  '/system/auth/mfa/enable',
-  '/system/auth/mfa/verify',
-  '/system/auth/logout'
-]
-
 /** A refusal the catch below answers as 401, or tolerates on a public route. */
 const refusal = (message: string, authCode: string) => Object.assign(new Error(message), { authCode })
 
@@ -99,6 +86,15 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         // it compiled only because the hook's own parameters were untyped.
         const tokenData = reply.server.jwt.verify(credential.token) as SessionClaims
 
+        // F36, before anything else: the framework no longer signs a token with a `role` claim.
+        // The last one it did was the five-minute token between the two factors, and without the
+        // list of routes that used to confine it, one still alive across a deploy would pass for a
+        // session.
+        // Whatever else carries the claim is not a token of this framework either.
+        if (tokenData.role !== undefined) {
+          throw refusal('This token does not authenticate a request', 'UNAUTHORIZED')
+        }
+
         // A refresh token never authenticates a request. It is signed with the access secret
         // whenever `JWT_REFRESH_SECRET` is unset, so the signature alone cannot tell them apart.
         if (tokenData.typ === REFRESH_TYP) {
@@ -111,7 +107,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         // below are the ones an integration token never carries; one without them is still
         // looked up in the token registry only, further down.
         const integrationOnly = credential.channel === 'header' && isCookieMode()
-        if (integrationOnly && (controlIdentity || tokenData.scp || tokenData.imp || tokenData.role)) {
+        if (integrationOnly && (controlIdentity || tokenData.scp || tokenData.imp)) {
           throw refusal('Sessions travel in the cookie: the Authorization header accepts integration tokens only', 'CREDENTIAL_CHANNEL')
         }
 
@@ -129,19 +125,6 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         if (controlIdentity && tokenData.scp !== 'control') {
           if (log.w) log.warn(`Security Block: a tenant token was presented on the control route ${req.url}`)
           return reply.status(403).send(httpError(403, 'A tenant token cannot act on the platform', 'SCOPE_MISMATCH'))
-        }
-
-        // MFA Gatekeeper Check
-        if (tokenData.role === 'pre-auth-mfa') {
-          const currentUrl = req.routeOptions.url || req.raw.url || ''
-          const isAllowed = MFA_SETUP_WHITELIST.some((url) => currentUrl.endsWith(url))
-
-          if (!isAllowed) {
-            if (log.w) log.warn(`Security Block: User attempted to access ${currentUrl} with pre-auth MFA token`)
-            return reply
-              .status(403)
-              .send(httpError(403, 'MFA verification or setup required to access this resource', 'MFA_REQUIRED'))
-          }
         }
 
         const subjectId = tokenData?.sub

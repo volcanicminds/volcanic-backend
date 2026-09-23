@@ -84,7 +84,7 @@ export interface Manifest {
   auth: {
     mode: 'cookie' | 'bearer'
     plane: Plane
-    endpoints: { login: string; refresh: string; logout: string; [k: string]: string }
+    endpoints: { flowOptions: string; flowStart: string; flowStep: string; refresh: string; logout: string; [k: string]: string }
   }
   tenancy: { mode: 'single' | 'multi'; switchable?: boolean; header?: string; listEndpoint?: string }
   groups: { name: string; label: string }[]
@@ -97,9 +97,21 @@ export interface Manifest {
 const SENSITIVE_ALWAYS = ['token', 'externalId', 'mfaSecret', 'refreshToken', 'resetPasswordToken', 'confirmationToken']
 const SENSITIVE_WRITE_ONLY = ['password']
 
+/** The login flow of a plane (F31): the routes a console drives, under the plane's prefix. */
+const flowEndpoints = (prefix: string) => ({
+  flowOptions: `${prefix}/flow/options`,
+  flowStart: `${prefix}/flow/start`,
+  flowStep: `${prefix}/flow/step`,
+  flowChallenge: `${prefix}/flow/challenge`,
+  flowCancel: `${prefix}/flow/cancel`
+})
+
 /**
  * The auth routes of each plane. A console that read the tenant ones on the control plane would
- * log an operator in as nobody: `/auth/login` resolves users inside a container.
+ * log an operator in as nobody: `/auth/flow/*` resolves users inside a container.
+ *
+ * There is no login route to name: a login is the flow, and `flowOptions` says which methods it
+ * starts with. The second factor has no route of its own either; it is a stage of the flow.
  */
 export const AUTH_ENDPOINTS: Record<Plane, Manifest['auth']['endpoints']> = {
   // `sessions` is announced rather than left to the console to know (T-11.18). The list of a
@@ -107,16 +119,16 @@ export const AUTH_ENDPOINTS: Record<Plane, Manifest['auth']['endpoints']> = {
   // anybody can query: it is the sessions of whoever is asking. So it travels here, where the
   // console already reads the routes it must not hardcode, and a build without a session
   // registry simply answers 404 on it.
-  tenant: { login: '/auth/login', refresh: '/auth/refresh-token', logout: '/auth/logout', sessions: '/auth/sessions' },
+  tenant: { ...flowEndpoints('/auth'), refresh: '/auth/refresh-token', logout: '/auth/logout', sessions: '/auth/sessions' },
   control: {
-    login: '/system/auth/login',
+    ...flowEndpoints('/system/auth'),
     refresh: '/system/auth/refresh-token',
     logout: '/system/auth/logout',
     sessions: '/system/auth/sessions',
     me: '/system/auth/me',
+    // Account management of an operator already logged in (F45), not a step of the login.
     mfaSetup: '/system/auth/mfa/setup',
-    mfaEnable: '/system/auth/mfa/enable',
-    mfaVerify: '/system/auth/mfa/verify'
+    mfaEnable: '/system/auth/mfa/enable'
   }
 }
 

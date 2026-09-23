@@ -67,6 +67,13 @@ const NOT_A_REFUSAL = new Set([
   'COOKIE'
 ])
 
+// Codes the framework answered with once and must not answer with again. A client written
+// against the old contract still branches on them, so one coming back would revive a path the
+// client believes is gone.
+const RETIRED = new Map([
+  ['MFA_REQUIRED', 'the pre-auth token left with F36 (T-12.35): the second factor is a stage of the login flow']
+])
+
 const emitted = new Map() // code -> Set of files
 for (const file of sourceFiles) {
   const text = readFileSync(file, 'utf8')
@@ -88,6 +95,17 @@ for (const file of testFiles) {
   }
 }
 
+const revived = [...emitted.keys()].filter((code) => RETIRED.has(code)).sort()
+if (revived.length) {
+  console.error(`✖ ${revived.length} retired refusal(s) emitted again:\n`)
+  for (const code of revived) {
+    console.error(`  ${code.padEnd(38)} ${[...emitted.get(code)].join(', ')}`)
+    console.error(`  ${''.padEnd(38)} retired: ${RETIRED.get(code)}`)
+  }
+  console.error('')
+  process.exit(1)
+}
+
 const untested = [...emitted.keys()].filter((code) => !asserted.has(code)).sort()
 
 if (untested.length) {
@@ -100,4 +118,4 @@ if (untested.length) {
   process.exit(1)
 }
 
-console.log(`✔ ${emitted.size} refusals, each named by at least one test`)
+console.log(`✔ ${emitted.size} refusals, each named by at least one test; ${RETIRED.size} retired, none emitted`)

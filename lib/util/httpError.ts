@@ -4,7 +4,7 @@
 //
 //   statusCode : HTTP status
 //   error      : HTTP reason phrase ('Bad Request', 'Unauthorized', ...)
-//   code       : optional machine-readable code ('TENANT_MISMATCH', 'MFA_REQUIRED', ...)
+//   code       : optional machine-readable code ('TENANT_MISMATCH', 'MFA_ALREADY_ENABLED', ...)
 //   message    : optional human-readable message
 //
 // Use this instead of `reply.send(new Error(...))`, which loses the status in

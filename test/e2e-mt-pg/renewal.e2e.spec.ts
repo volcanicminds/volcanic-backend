@@ -20,7 +20,7 @@ const body = (res: any) => JSON.parse(res.body)
 
 /** The whole login body, which the harness helper reduces to the access token. */
 async function session(slug: string, email: string, password: string) {
-  const res = await inject({ method: 'POST', url: '/auth/login', headers: { [HEADER]: slug }, payload: { email, password } })
+  const res = await inject({ method: 'POST', url: '/auth/flow/start', headers: { [HEADER]: slug }, payload: { method: 'password', email, password } })
   if (res.statusCode !== 200) throw new Error(`login ${slug} failed (${res.statusCode}): ${res.body}`)
   return body(res)
 }
@@ -132,8 +132,8 @@ describe('Renewal across containers on real Postgres (T-11.11)', function () {
   it('keeps the platform session in the control plane, renewable there and only there', async () => {
     const res = await inject({
       method: 'POST',
-      url: '/system/auth/login',
-      payload: { email: 'super@system.test', password: 'Super-pw-123456' }
+      url: '/system/auth/flow/start',
+      payload: { method: 'password', email: 'super@system.test', password: 'Super-pw-123456' }
     })
     const opened = body(res)
     expect(typeof opened.refreshToken).toBe('string')

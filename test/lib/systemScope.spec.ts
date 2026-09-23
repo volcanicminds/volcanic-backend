@@ -13,7 +13,9 @@ import jwtValidator from '@fastify/jwt'
 import authHook from '../../lib/hooks/onRequest.js'
 import { loadSystem } from '../../lib/loader/roles.js'
 import { preHandler as isAuthenticated } from '../../lib/middleware/isAuthenticated.js'
-import { login as systemLogin, me } from '../../lib/api/system/controller/systemAuth.js'
+import { me } from '../../lib/api/system/controller/systemAuth.js'
+import { controlStart, decorateAuthRegistry, passwordLogin, useFrameworkFlows } from './fixtures/flowLogin.js'
+import { fakeFlowStore } from './fixtures/flowStore.js'
 
 const SECRET = 'system-scope-test-secret-32-chars!'
 
@@ -69,6 +71,9 @@ function serverWith(opts: any = {}) {
     retrieveSystemUserByPassword: async (_ctx: any, email: string) =>
       [ROOT, AUDITOR, OPERATOR].find((u) => u.email === email) ?? null
   })
+  // `MANDATORY` is a stage of the flow, and a stage needs somewhere to wait (F46).
+  server.decorate('authFlowManager', fakeFlowStore().manager)
+  decorateAuthRegistry(server)
   server.decorate('userManager', {
     isImplemented: () => true,
     isValidUser: async () => true,
@@ -118,7 +123,7 @@ async function build(opts: any = {}) {
     { config: { tenantContext: false, requiredRoles: [{ code: 'public' }] }, preHandler: isAuthenticated },
     me
   )
-  server.post('/system/auth/login', { config: { tenantContext: false, requiredRoles: [{ code: 'public' }] } }, systemLogin)
+  server.post('/system/auth/flow/start', { config: { tenantContext: false, requiredRoles: [{ code: 'public' }] } }, controlStart)
 
   await server.ready()
   return server
@@ -130,6 +135,10 @@ const get = (server: any, url: string, token?: string) =>
 const MULTI = { strategy: 'schema', engine: 'postgres', resolver: 'header', headerKey: 'x-tenant-id' }
 
 describe('control scope · platform identities (T-4.1)', () => {
+  let restoreFlows: () => void
+  before(() => (restoreFlows = useFrameworkFlows()))
+  after(() => restoreFlows())
+
   // Inside the describe, not at the top of the file: a hook at file level is a ROOT hook in
   // mocha and would hold the swap for the whole run, other suites included.
   before(takeCatalogues)
@@ -239,6 +248,10 @@ describe('control scope · platform identities (T-4.1)', () => {
 // never know which roles to draw the screens for.
 //
 describe('control scope · the identity behind a platform session (T-10.14)', () => {
+  let restoreFlows: () => void
+  before(() => (restoreFlows = useFrameworkFlows()))
+  after(() => restoreFlows())
+
   before(takeCatalogues)
   after(giveCataloguesBack)
 
@@ -280,28 +293,19 @@ describe('control scope · the identity behind a platform session (T-10.14)', ()
     // every customer and none of the people who can destroy a customer.
     const server = await build({ tenants: MULTI, options: { system_mfa_policy: 'MANDATORY' } })
 
-    const res = await server.inject({
-      method: 'POST',
-      url: '/system/auth/login',
-      payload: { email: OPERATOR.email, password: 'whatever' }
-    })
+    const res = await server.inject({ method: 'POST', url: '/system/auth/flow/start', payload: passwordLogin(OPERATOR.email, 'whatever') })
 
     expect(res.statusCode).toBe(202)
     const body = JSON.parse(res.body)
     // No factor yet, and the policy requires one: the first factor buys the enrolment, not a session.
-    expect(body.mfaSetupRequired).toBe(true)
-    expect(body.mfaRequired).toBe(false)
+    expect(body.stage).toEqual({ options: [{ id: 'totp', kind: 'verifier', enrol: true }] })
     expect(body.token).toBeUndefined()
     await server.close()
   })
 
   it('leaves the operators alone where the platform asks for no second factor', async () => {
     const server = await build({ tenants: MULTI })
-    const res = await server.inject({
-      method: 'POST',
-      url: '/system/auth/login',
-      payload: { email: OPERATOR.email, password: 'whatever' }
-    })
+    const res = await server.inject({ method: 'POST', url: '/system/auth/flow/start', payload: passwordLogin(OPERATOR.email, 'whatever') })
 
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).securityPolicy).toEqual({ mfaPolicy: 'OPTIONAL' })

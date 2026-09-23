@@ -47,7 +47,7 @@ export default {
       config: {
         title: 'Unregister existing user (actually disables it)',
         description: 'Unregister an existing user (actually disables it)',
-        body: { $ref: 'authLoginBodySchema#' },
+        body: { $ref: 'authUnregisterBodySchema#' },
         response: {
           200: { $ref: 'defaultResponse#' }
         }
@@ -129,22 +129,6 @@ export default {
         body: { $ref: 'resetPasswordBodySchema#' },
         response: {
           200: { $ref: 'defaultResponse#' }
-        }
-      }
-    },
-    {
-      method: 'POST',
-      path: '/login',
-      roles: [],
-      handler: 'auth.login',
-      middlewares: ['global.preAuth', 'global.postAuth'],
-      rateLimit: authRateLimit,
-      config: {
-        title: 'Login',
-        description: 'Login authentication',
-        body: { $ref: 'authLoginBodySchema#' },
-        response: {
-          200: { $ref: 'authLoginResponseSchema#' }
         }
       }
     },
@@ -245,28 +229,10 @@ export default {
       rateLimit: { max: 10, timeWindow: 60000 },
       config: {
         title: 'Enable MFA',
-        description: 'Enable MFA by verifying a token against the generated secret. Returns tokens on success.',
+        description: 'Enable MFA by verifying a code against the generated secret. The session stays the one of the caller.',
         body: { $ref: 'authMfaEnableBodySchema#' },
         response: {
-          200: { $ref: 'authLoginResponseSchema#' }
-        }
-      }
-    },
-    {
-      method: 'POST',
-      path: '/mfa/verify',
-      roles: [],
-      handler: 'auth.mfaVerify',
-      middlewares: [],
-      // Throttle TOTP attempts to curb online brute-force of the 6-digit code (S11).
-      rateLimit: { max: 10, timeWindow: 60000 },
-      config: {
-        title: 'Verify MFA',
-        description: 'Verify MFA token during login to obtain final JWT',
-        body: { $ref: 'authMfaVerifyBodySchema#' },
-        response: {
-          200: { $ref: 'authLoginResponseSchema#' },
-          202: { $ref: 'authMfaChallengeSchema#' }
+          200: { $ref: 'defaultResponse#' }
         }
       }
     },

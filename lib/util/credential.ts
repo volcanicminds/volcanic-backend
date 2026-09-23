@@ -120,9 +120,8 @@ export function accessCookieOf(req: FastifyRequest, plane: Plane): string | unde
 }
 
 /**
- * The session token of a handler that verifies one by itself (the MFA verification): the
- * cookie in cookie mode, the header in bearer mode, never the other channel. Those routes are
- * open to a pre-auth token, so the hook tolerates what it refuses elsewhere, and reading
+ * The session token of a handler that reads it by itself (the `sid` of the current session):
+ * the cookie in cookie mode, the header in bearer mode, never the other channel. Reading
  * `credentialOf` here would let the header carry a session in cookie mode after all.
  */
 export function sessionTokenOf(req: FastifyRequest, plane: Plane): string | undefined {
@@ -301,21 +300,4 @@ export async function issueSession(
   if (refreshToken) setRefreshCookie(reply, plane, refreshToken, refreshMaxAge)
   else clearRefreshCookie(reply, plane)
   return { token: null, refreshToken: null }
-}
-
-/**
- * The five-minute token between the first factor and the second.
- *
- * In cookie mode it sits in the access cookie, where the MFA gate of the authentication hook
- * already confines it to the verification and setup routes, and any refresh cookie left by an
- * earlier session is dropped: a login that has not finished must not be renewable into one
- * that has.
- */
-export async function issuePreAuth(reply: FastifyReply, plane: Plane, claims: Record<string, unknown>): Promise<string | null> {
-  const tempToken = await reply.jwtSign({ ...claims, role: 'pre-auth-mfa' }, { expiresIn: '5m' })
-  if (!isCookieMode()) return tempToken
-
-  setAccessCookie(reply, plane, tempToken)
-  clearRefreshCookie(reply, plane)
-  return null
 }

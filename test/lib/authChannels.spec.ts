@@ -20,12 +20,14 @@ import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import cookie from '@fastify/cookie'
 import authHook from '../../lib/hooks/onRequest.js'
-import { login, logout, refreshToken, mfaVerify } from '../../lib/api/auth/controller/auth.js'
-import { login as systemLogin, renew as systemRenew } from '../../lib/api/system/controller/systemAuth.js'
+import { logout, refreshToken } from '../../lib/api/auth/controller/auth.js'
+import { renew as systemRenew } from '../../lib/api/system/controller/systemAuth.js'
 import { impersonate, endImpersonation } from '../../lib/api/tenants/controller/tenants.js'
 import { authMode, refreshCookiePath } from '../../lib/util/credential.js'
 import { parseRefreshCredential } from '../../lib/util/session.js'
 import { fakeSessionStore } from './fixtures/sessionStore.js'
+import { fakeFlowStore } from './fixtures/flowStore.js'
+import { controlStart, decorateAuthRegistry, passwordLogin, tenantStart, useFrameworkFlows } from './fixtures/flowLogin.js'
 
 const SECRET = 'auth-channels-test-secret-32-chars!!'
 const COOKIE_SECRET = 'auth-channels-cookie-secret-32-chars'
@@ -58,6 +60,8 @@ async function build() {
   const sessions = fakeSessionStore()
   server.decorate('sessionManager', sessions.manager)
   server.decorate('sessionRows', sessions.rows)
+  server.decorate('authFlowManager', fakeFlowStore().manager)
+  decorateAuthRegistry(server)
 
   server.decorate('userManager', {
     isImplemented: () => true,
@@ -119,14 +123,13 @@ async function build() {
   const tenant = (requiredRoles: any[]) => ({ config: { tenantContext: true, requiredRoles } })
   const control = (requiredRoles: any[]) => ({ config: { tenantContext: false, requiredRoles } })
 
-  server.post('/auth/login', tenant(PUBLIC), login)
+  server.post('/auth/flow/start', tenant(PUBLIC), tenantStart)
   server.post('/auth/logout', tenant(PUBLIC), logout)
   server.post('/auth/refresh-token', tenant(PUBLIC), refreshToken)
-  server.post('/auth/mfa/verify', tenant(PUBLIC), mfaVerify)
   server.get('/orders', tenant(ADMIN), async (req: any) => ({ who: req.user?.email ?? req.token?.id, imp: req.impersonation?.id ?? null }))
   server.get('/open', tenant(PUBLIC), async (req: any) => ({ who: req.user?.email ?? null }))
 
-  server.post('/system/auth/login', control(PUBLIC), systemLogin)
+  server.post('/system/auth/flow/start', control(PUBLIC), controlStart)
   server.post('/system/auth/refresh-token', control(PUBLIC), systemRenew)
   server.get('/platform', control(SYSTEM_ADMIN), async (req: any) => ({ who: req.systemUser?.email ?? null }))
   server.post('/tenants/:id/impersonate', control(SYSTEM_ADMIN), impersonate)
@@ -141,17 +144,21 @@ const codeOf = (res: any) => JSON.parse(res.body)?.code
 const unsigned = (server: any, value: string) => server.unsignCookie(value).value as string
 
 async function tenantLogin(server: any, email = USER.email) {
-  return server.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'pw' } })
+  return server.inject({ method: 'POST', url: '/auth/flow/start', payload: passwordLogin(email) })
 }
 
 async function systemSession(server: any) {
-  const res = await server.inject({ method: 'POST', url: '/system/auth/login', payload: { email: OPERATOR.email, password: 'pw' } })
+  const res = await server.inject({ method: 'POST', url: '/system/auth/flow/start', payload: passwordLogin(OPERATOR.email) })
   return cookieOf(res, 'control_token').value as string
 }
 
 let saved: Record<string, string | undefined>
 
 describe('auth channels · the session in a cookie by default (T-10.37, T-10.38, T-10.39)', () => {
+  let restoreFlows: () => void
+  before(() => (restoreFlows = useFrameworkFlows()))
+  after(() => restoreFlows())
+
   before(() => {
     saved = { mode: process.env.AUTH_MODE, prefix: process.env.COOKIE_PATH_PREFIX }
     ;(global as any).savedAuthChannels = { roles: (global as any).roles, config: (global as any).config }
@@ -251,7 +258,7 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
 
     it('keeps the platform session in its own cookie, which a tenant route does not read', async () => {
       const server = await build()
-      const res = await server.inject({ method: 'POST', url: '/system/auth/login', payload: { email: OPERATOR.email, password: 'pw' } })
+      const res = await server.inject({ method: 'POST', url: '/system/auth/flow/start', payload: passwordLogin(OPERATOR.email) })
       expect(res.statusCode).toBe(200)
       expect(JSON.parse(res.body).refreshToken).toBeNull()
       expect(cookieOf(res, 'auth_token')).toBeUndefined()
@@ -296,32 +303,20 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
   })
 
   describe('T-10.37 · MFA and impersonation go through the cookie too', () => {
-    it('carries the pre-auth token in the cookie and completes the second factor from it', async () => {
+    it('writes no session cookie while the second factor is owed, and its credential opens no route (F36)', async () => {
       const server = await build()
       const first = await tenantLogin(server, MFA_USER.email)
       expect(first.statusCode).toBe(202)
-      expect(JSON.parse(first.body).tempToken).toBeNull()
-      const pre = cookieOf(first, 'auth_token')
-      expect(Math.abs(pre.maxAge - 300)).toBeLessThanOrEqual(1)
+      expect(JSON.parse(first.body).flow).toBeNull()
+      // The flow has a cookie of its own, scoped to the flow routes; the session cookies are untouched.
+      const flow = cookieOf(first, 'auth_flow')
+      expect(flow).toMatchObject({ path: '/auth/flow', httpOnly: true })
+      expect(cookieOf(first, 'auth_token')).toBeUndefined()
+      expect(cookieOf(first, 'refresh_token')).toBeUndefined()
 
-      // Five minutes that open the MFA routes and nothing else.
-      const blocked = await server.inject({ method: 'GET', url: '/orders', cookies: { auth_token: pre.value } })
-      expect(blocked.statusCode).toBe(403)
-      expect(codeOf(blocked)).toBe('MFA_REQUIRED')
-
-      const second = await server.inject({
-        method: 'POST',
-        url: '/auth/mfa/verify',
-        cookies: { auth_token: pre.value },
-        payload: { token: '123456' }
-      })
-      expect(second.statusCode).toBe(200)
-      expect(JSON.parse(second.body).token).toBeNull()
-      const session = cookieOf(second, 'auth_token').value
-      expect(cookieOf(second, 'refresh_token')).toBeDefined()
-
-      const res = await server.inject({ method: 'GET', url: '/orders', cookies: { auth_token: session } })
-      expect(res.statusCode).toBe(200)
+      // Planted where a session goes, it is not a JWT and authenticates nobody.
+      const planted = await server.inject({ method: 'GET', url: '/orders', cookies: { auth_token: flow.value } })
+      expect(planted.statusCode).toBe(401)
       await server.close()
     })
 
@@ -492,7 +487,7 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
 
     it('renews the platform session from its own refresh cookie', async () => {
       const server = await build()
-      const login = await server.inject({ method: 'POST', url: '/system/auth/login', payload: { email: OPERATOR.email, password: 'pw' } })
+      const login = await server.inject({ method: 'POST', url: '/system/auth/flow/start', payload: passwordLogin(OPERATOR.email) })
       const refresh = cookieOf(login, 'control_refresh_token').value
 
       const res = await server.inject({ method: 'POST', url: '/system/auth/refresh-token', cookies: { control_refresh_token: refresh } })

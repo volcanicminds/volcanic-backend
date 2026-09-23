@@ -161,8 +161,8 @@ export async function inject(opts: any) {
 export async function systemToken(): Promise<string> {
   const res = await server.inject({
     method: 'POST',
-    url: '/system/auth/login',
-    payload: { email: SYSTEM.email, password: SYSTEM.password }
+    url: '/system/auth/flow/start',
+    payload: { method: 'password', email: SYSTEM.email, password: SYSTEM.password }
   })
   if (res.statusCode !== 200) throw new Error(`system login failed (${res.statusCode}): ${res.body}`)
   return JSON.parse(res.body).token
@@ -192,13 +192,13 @@ export async function createTenant(token: string, t: typeof ACME): Promise<any> 
   return JSON.parse(res.body)
 }
 
-/** Logs a tenant user in through the real route, with the tenant taken from the header. */
+/** Logs a tenant user in through the real login flow, with the tenant taken from the header. */
 export async function login(slug: string, email: string, password: string): Promise<string> {
   const res = await server.inject({
     method: 'POST',
-    url: '/auth/login',
+    url: '/auth/flow/start',
     headers: { [HEADER]: slug },
-    payload: { email, password }
+    payload: { method: 'password', email, password }
   })
   if (res.statusCode !== 200) throw new Error(`login ${slug} failed (${res.statusCode}): ${res.body}`)
   return JSON.parse(res.body).token

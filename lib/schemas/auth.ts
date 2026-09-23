@@ -1,5 +1,6 @@
-export const authLoginBodySchema = {
-  $id: 'authLoginBodySchema',
+/** The credentials `/auth/unregister` asks for again before blocking the account. */
+export const authUnregisterBodySchema = {
+  $id: 'authUnregisterBodySchema',
   type: 'object',
   nullable: true,
   properties: {
@@ -54,17 +55,6 @@ export const authLoginResponseSchema = {
         mfaPolicy: { type: 'string' }
       }
     }
-  }
-}
-
-export const authMfaChallengeSchema = {
-  $id: 'authMfaChallengeSchema',
-  type: 'object',
-  nullable: true,
-  properties: {
-    mfaRequired: { type: 'boolean' },
-    mfaSetupRequired: { type: 'boolean' },
-    tempToken: { type: 'string', nullable: true }
   }
 }
 
@@ -187,16 +177,6 @@ export const authSessionsResponseSchema = {
       ip: { type: 'string', nullable: true },
       userAgent: { type: 'string', nullable: true }
     }
-  }
-}
-
-export const authMfaVerifyBodySchema = {
-  $id: 'authMfaVerifyBodySchema',
-  type: 'object',
-  nullable: true,
-  required: ['token'],
-  properties: {
-    token: { type: 'string' }
   }
 }
 

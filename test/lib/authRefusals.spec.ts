@@ -70,7 +70,7 @@ async function build(opts: any = {}) {
 
   server.get('/orders', { config: { requiredRoles: [{ code: 'admin' }] } }, async () => ({ ok: true }))
   server.get('/open', { config: { requiredRoles: [{ code: 'public' }] } }, async (req: any) => ({ who: req.user?.email ?? null }))
-  server.get('/auth/mfa/setup', { config: { requiredRoles: [{ code: 'public' }] } }, async () => ({ ok: true }))
+  server.get('/public', { config: { requiredRoles: [{ code: 'public' }] } }, async (req: any) => ({ who: req.user?.id ?? null }))
 
   await server.ready()
   return server
@@ -166,21 +166,19 @@ describe('hooks/onRequest · the refusals, each one provoked (T-9.5)', () => {
     await server.close()
   })
 
-  it('lets a pre-auth MFA token reach only the MFA routes, and refuses it everywhere else', async () => {
+  it('refuses a pre-auth MFA token everywhere, the MFA routes included (T-12.35, F36)', async () => {
     const server = await build()
     const halfway = server.jwt.sign({ sub: USER.externalId, role: 'pre-auth-mfa' })
 
-    // The gatekeeper: a token minted between the password and the second factor is not a
-    // session. In v4 the equivalent state was a full token, so a caller who stopped at the
-    // prompt was already in.
+    // The second factor is a stage of the login flow, whose credential is not a JWT. A token of
+    // the old kind still alive across a deploy is therefore nobody: there is no list of routes
+    // it may reach any more, and without one it would pass for a session.
     const refused = await call(server, '/orders', halfway)
-    expect(refused.statusCode).toBe(403)
-    expect(codeOf(refused)).toBe('MFA_REQUIRED')
+    expect([refused.statusCode, codeOf(refused)]).toEqual([401, 'UNAUTHORIZED'])
 
-    // And the whitelist, which is what makes the refusal usable: the routes that FINISH the
-    // second factor must accept it, or MFA can never be completed.
-    const allowed = await call(server, '/auth/mfa/setup', halfway)
-    expect(allowed.statusCode).toBe(200)
+    // A public route answers, as it does to a bad token: to nobody.
+    const open = await call(server, '/public', halfway)
+    expect([open.statusCode, JSON.parse(open.body)]).toEqual([200, { who: null }])
     await server.close()
   })
 

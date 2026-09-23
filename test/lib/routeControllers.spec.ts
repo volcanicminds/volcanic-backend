@@ -111,7 +111,7 @@ describe('api route controllers over HTTP (T-10.27 blind spot)', () => {
       const manifest = res.json()
       expect(manifest.version).toBe(2)
       expect(manifest.auth.plane).toBe('tenant')
-      expect(manifest.auth.endpoints.login).toBe('/auth/login')
+      expect(manifest.auth.endpoints.flowStart).toBe('/auth/flow/start')
       expect(manifest.resources.map((r: any) => r.name)).toEqual(['partners'])
       expect(paths(manifest).every((p: string) => p.startsWith('/partners'))).toBe(true)
       // Multi-tenant on the tenant plane: the console is told which header to send (T-10.15).
@@ -123,7 +123,7 @@ describe('api route controllers over HTTP (T-10.27 blind spot)', () => {
       expect(res.statusCode).toBe(200)
       const manifest = res.json()
       expect(manifest.auth.plane).toBe('control')
-      expect(manifest.auth.endpoints.login).toBe('/system/auth/login')
+      expect(manifest.auth.endpoints.flowStart).toBe('/system/auth/flow/start')
       expect(manifest.resources.map((r: any) => r.name)).toEqual(['tenants'])
       expect(paths(manifest).every((p: string) => p.startsWith('/tenants'))).toBe(true)
       // There is no tenant to declare on the control plane, so no header is named.

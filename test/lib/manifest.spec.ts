@@ -211,10 +211,16 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
   it('reports the auth mode and endpoints it was given', () => {
     const m = build(CRUD, {
       authMode: 'cookie',
-      authEndpoints: { login: '/auth/login', refresh: '/auth/refresh-token', logout: '/auth/logout' }
+      authEndpoints: {
+        flowOptions: '/login/options',
+        flowStart: '/login/start',
+        flowStep: '/login/step',
+        refresh: '/auth/refresh-token',
+        logout: '/auth/logout'
+      }
     })
     expect(m.auth.mode).toBe('cookie')
-    expect(m.auth.endpoints.login).toBe('/auth/login')
+    expect(m.auth.endpoints.flowStart).toBe('/login/start')
   })
 
   it('reports single tenancy by default, and multi when it is told', () => {
@@ -282,7 +288,15 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
       // A customer's users must not receive the platform's route map and role codes.
       expect(names(m)).toEqual(['products'])
       expect(m.auth.plane).toBe('tenant')
-      expect(m.auth.endpoints.login).toBe('/auth/login')
+      // The login is the flow (F31): there is no login route to name, and no MFA verification.
+      expect(m.auth.endpoints).toMatchObject({
+        flowOptions: '/auth/flow/options',
+        flowStart: '/auth/flow/start',
+        flowStep: '/auth/flow/step',
+        flowChallenge: '/auth/flow/challenge',
+        flowCancel: '/auth/flow/cancel'
+      })
+      expect(m.auth.endpoints.login).toBeUndefined()
       // T-11.18: the console reads where its own devices are listed instead of knowing the path.
       expect(m.auth.endpoints.sessions).toBe('/auth/sessions')
     })
@@ -293,15 +307,23 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
       expect(m.auth.plane).toBe('control')
       // The tenant login resolves users inside a container: an operator is not there.
       expect(m.auth.endpoints).toMatchObject({
-        login: '/system/auth/login',
+        flowOptions: '/system/auth/flow/options',
+        flowStart: '/system/auth/flow/start',
+        flowStep: '/system/auth/flow/step',
+        flowChallenge: '/system/auth/flow/challenge',
+        flowCancel: '/system/auth/flow/cancel',
         refresh: '/system/auth/refresh-token',
         logout: '/system/auth/logout',
         me: '/system/auth/me',
-        mfaVerify: '/system/auth/mfa/verify',
+        // Account management of an operator already logged in (F45).
+        mfaSetup: '/system/auth/mfa/setup',
+        mfaEnable: '/system/auth/mfa/enable',
         // The platform sessions are their own list: an operator closing a device must not be
         // pointed at the tenant route, which resolves users inside a container.
         sessions: '/system/auth/sessions'
       })
+      expect(m.auth.endpoints.login).toBeUndefined()
+      expect(m.auth.endpoints.mfaVerify).toBeUndefined()
     })
 
     it('filters nothing where the two planes are one identity space', () => {
@@ -426,7 +448,7 @@ describe('manifest · a resource declared under a longer prefix (T-10.20)', () =
     op({ method: 'POST', path: '/system/users/:id/mfa/reset' })
   ]
   // The rest of the same first segment: no prefix declared, so they group as they always did.
-  const REST = [route({ method: 'POST', path: '/system/auth/login' }), route({ path: '/system/manifest' })]
+  const REST = [route({ method: 'POST', path: '/system/auth/flow/start' }), route({ path: '/system/manifest' })]
   const all = () => build([...OPERATORS, ...REST])
 
   it('groups on the declared prefix and gives the routes the shape of a resource', () => {
@@ -455,7 +477,7 @@ describe('manifest · a resource declared under a longer prefix (T-10.20)', () =
     expect(m.resources.map((r: any) => r.name)).toEqual(['systemUser'])
     expect(resourceOf(m, 'systemUser').capabilities.every((c: any) => c.path.startsWith('/system/users'))).toBe(true)
     // The login and the manifest are no CRUD, so they stay loose capabilities, as before.
-    expect((m.capabilities || []).map((c: any) => c.name).sort()).toEqual(['login', 'manifest'])
+    expect((m.capabilities || []).map((c: any) => c.name).sort()).toEqual(['manifest', 'start'])
   })
 
   it('ignores a prefix the path does not start with, and groups by the URL', () => {

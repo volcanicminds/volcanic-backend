@@ -125,7 +125,7 @@ describe('manifest · the framework own routes, through the loader', () => {
       const paths = operators().capabilities.map((c: any) => c.path)
       expect(paths.every((p: string) => p.startsWith('/system/users'))).toBe(true)
       const loose = (manifest.capabilities || []).map((c: any) => c.path)
-      expect(loose).toEqual(expect.arrayContaining(['/system/auth/login', '/system/manifest']))
+      expect(loose).toEqual(expect.arrayContaining(['/system/auth/flow/start', '/system/manifest']))
     })
   })
 

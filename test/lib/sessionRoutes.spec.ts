@@ -13,7 +13,8 @@ import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import cookie from '@fastify/cookie'
 import authHook from '../../lib/hooks/onRequest.js'
-import { login, listSessions, revokeSession, logout, refreshToken } from '../../lib/api/auth/controller/auth.js'
+import { listSessions, revokeSession, logout, refreshToken } from '../../lib/api/auth/controller/auth.js'
+import { decorateAuthRegistry, passwordLogin, tenantStart, useFrameworkFlows } from './fixtures/flowLogin.js'
 import { authRefreshTokenBodySchema, authRefreshTokenResponseSchema } from '../../lib/schemas/auth.js'
 import { fakeSessionStore } from './fixtures/sessionStore.js'
 
@@ -47,6 +48,7 @@ async function build(extra?: (server: any) => void) {
     updateUserById: async () => ({})
   })
   server.decorate('tokenManager', { isImplemented: () => true, isValidToken: async () => true, retrieveTokenByExternalId: async () => null })
+  decorateAuthRegistry(server)
 
   // Single tenant: the container of the request is the control plane's own, as it is in a
   // deployment without a `tenants` block.
@@ -59,7 +61,7 @@ async function build(extra?: (server: any) => void) {
 
   const route = (requiredRoles: any[]) => ({ config: { tenantContext: true, requiredRoles } })
 
-  server.post('/auth/login', route(PUBLIC), login)
+  server.post('/auth/flow/start', route(PUBLIC), tenantStart)
   server.post('/auth/logout', route(PUBLIC), logout)
   server.get('/auth/sessions', route(PUBLIC), listSessions)
   server.delete('/auth/sessions/:id', route(PUBLIC), revokeSession)
@@ -76,7 +78,7 @@ const cookieOf = (res: any, name: string) => res.cookies.find((c: any) => c.name
 const sessionsOf = (res: any) => JSON.parse(res.body)
 
 async function loginAs(server: any, email: string) {
-  const res = await server.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'pw' } })
+  const res = await server.inject({ method: 'POST', url: '/auth/flow/start', payload: passwordLogin(email) })
   const access = cookieOf(res, 'auth_token')
   // A login that did not set the session says why, instead of failing later on `undefined.value`.
   if (!access) throw new Error(`login did not open a session: ${res.statusCode} ${res.body}`)
@@ -84,6 +86,10 @@ async function loginAs(server: any, email: string) {
 }
 
 describe('auth · the renewal contract survives serialization (T-11.8)', () => {
+  let restoreFlows: () => void
+  before(() => (restoreFlows = useFrameworkFlows()))
+  after(() => restoreFlows())
+
   //
   // Fastify serializes a 200 through the route's response schema and drops, in silence, every
   // field the schema does not declare. That makes a forgotten property in a schema a behaviour
@@ -127,7 +133,7 @@ describe('auth · the renewal contract survives serialization (T-11.8)', () => {
       )
     })
 
-    const first = await server.inject({ method: 'POST', url: '/auth/login', payload: { email: ANNA.email, password: 'pw' } })
+    const first = await server.inject({ method: 'POST', url: '/auth/flow/start', payload: passwordLogin(ANNA.email) })
     const { refreshToken: credential } = JSON.parse(first.body)
 
     const renewed = await server.inject({ method: 'POST', url: '/auth/renew-with-schema', payload: { refreshToken: credential } })
@@ -142,6 +148,10 @@ describe('auth · the renewal contract survives serialization (T-11.8)', () => {
 })
 
 describe('auth · the sessions of the caller (T-11.14)', () => {
+  let restoreFlows: () => void
+  before(() => (restoreFlows = useFrameworkFlows()))
+  after(() => restoreFlows())
+
   let saved: Record<string, any>
 
   before(() => {

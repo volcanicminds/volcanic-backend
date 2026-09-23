@@ -1,52 +1,27 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { FastifyReply, FastifyRequest } from 'fastify'
 import * as regExp from '../../../util/regexp.js'
-import { MfaPolicy } from '../../../config/constants.js'
 import { allowsEnrolment, allowsSelfDisable, mfaAvailable, tenantPolicy } from '../../../util/mfaPolicy.js'
 import { httpError } from '../../../util/httpError.js'
 import { dataContext, isTenancyEnabled } from '../../../util/tenancy.js'
 import { uuidv7 } from '../../../util/uuid.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../../config/constants.js'
-import { clearSessionCookies, issuePreAuth, issueSession, sessionTokenOf, type SessionOrigin } from '../../../util/credential.js'
+import { clearSessionCookies, sessionTokenOf } from '../../../util/credential.js'
 import { renew } from '../../../util/renewal.js'
 import { recordTenantAccess } from '../../../util/accessLog.js'
 import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.js'
-import { mayLogIn, tenantRefusal } from '../../../auth/subjects.js'
+import { mayLogIn } from '../../../auth/subjects.js'
 import { accountCreationOf } from '../../../auth/accountCreation.js'
 import type { ControlHandle } from '../../../../types/global.js'
 // The delta-to-step conversion used to live here, and the control plane had its own copy that
 // did not convert at all (T-10.20). One rule, one place.
-import { absoluteStep as evaluateMfaResult, isReplay } from '../../../util/mfaCounter.js'
-
-// Upper bound for the password accepted at login: a cheap guard against oversized
-// payloads. Complexity is enforced only when a password is set, not at login.
-const MAX_PASSWORD_LENGTH = 256
+import { absoluteStep as evaluateMfaResult } from '../../../util/mfaCounter.js'
 
 const DEFAULT_RESET_PASSWORD_TOKEN_TTL = 3600
 
 /** Reset-token TTL in seconds, applied when /auth/forgot-password mints the token. */
 export function resetPasswordTokenTtl(): number {
   return Number(global.config?.options?.reset_password_token_ttl) || DEFAULT_RESET_PASSWORD_TOKEN_TTL
-}
-
-/**
- * Where a tenant session is written down, and how a later renewal finds it again (T-11.7).
- *
- * The container is the one of the request, because a session belongs where its subject lives
- * (F19). `routing` is the segment the opaque refresh credential carries: the tenant id when
- * there are tenants, and `ctl` when there are none, which is not a fallback but the truth —
- * without tenants the application data lives in the control plane's own container.
- */
-function tenantOrigin(req: FastifyRequest, subjectId: string): SessionOrigin {
-  return {
-    ctx: dataContext(req),
-    manager: req.server['sessionManager'],
-    subjectId,
-    scope: 'tenant',
-    routing: req.tenantInfo?.id ?? CONTROL_ROUTING,
-    ip: req.ip ?? null,
-    userAgent: (req.headers['user-agent'] as string) ?? null
-  }
 }
 
 /** The session the access token of this request belongs to, when it carries one. */
@@ -69,25 +44,6 @@ function isResetTokenExpired(code: string): boolean {
   const expiresAt = Number(String(code ?? '').split('.')[0])
   if (!Number.isFinite(expiresAt)) return true
   return Date.now() / 1000 > expiresAt
-}
-
-/**
- * The single answer every login failure that happens *before* a verified password gets
- * (defect D-17, docs/API_V5.md §2.1).
- *
- * v4 said which of «Wrong credentials», «Invalid user», «User email unconfirmed» and «User
- * blocked» applied. Those four messages are a directory: they tell anyone who asks whether an
- * address has an account here, and whether that account is merely unconfirmed or has been
- * shut off — the two facts a credential-stuffing list is built out of. The caller now gets
- * one code for all four; the cause goes to the log, where the operator answering the support
- * call can read it and the internet cannot.
- *
- * 401 and not 403: the request was not authenticated, which is what 401 means. v4 answered
- * 403 for all of them, and that is one of the breaks written down in the migration guide.
- */
-function refuseLogin(reply: FastifyReply, cause: string, email: string) {
-  if (log.w) log.warn(`Login refused (${cause}) for ${email}`)
-  return reply.status(401).send(httpError(401, 'Invalid credentials', 'AUTH_INVALID_CREDENTIALS'))
 }
 
 export async function register(req: FastifyRequest, reply: FastifyReply) {
@@ -362,96 +318,6 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
   return { ok: isValid, user }
 }
 
-export async function login(req: FastifyRequest, reply: FastifyReply) {
-  const { email, password } = req.data()
-  // The policy of THIS tenant (T-10.19): the deployment value is the floor, a customer may only
-  // tighten it, and its own value rides in the registry row the resolution has already loaded.
-  const mfa_policy = tenantPolicy(req.tenantInfo)
-
-  if (!req.server['userManager'].isImplemented()) {
-    throw new Error('Not implemented')
-  }
-
-  if (!regExp.isEmail(email)) {
-    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Email not valid' })
-  }
-  // At login we do NOT re-validate the password complexity policy: the password
-  // was already validated when it was set (register/change/reset), and bcrypt is
-  // the actual security gate. Re-checking the policy here adds no security and
-  // would lock out existing users whenever the policy changes. We only bound the
-  // input length as a cheap guard against oversized payloads.
-  if (!password || password.length > MAX_PASSWORD_LENGTH) {
-    return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Password not valid' })
-  }
-
-  let user = await req.server['userManager'].retrieveUserByPassword(dataContext(req), email, password)
-  if (!user) {
-    // The manager cannot say which of the two it was: it compares against a dummy hash when
-    // the address is unknown, precisely so the answer costs the same either way. The lookup
-    // that tells them apart therefore runs here, on the failure path only, for the log. It
-    // gives an attacker nothing — the response, its code and its body are identical — and it
-    // gives the operator the one line that makes a support call answerable.
-    const known = await req.server['userManager'].retrieveUserByEmail(dataContext(req), email)
-    return refuseLogin(reply, known ? 'AUTH_BAD_PASSWORD' : 'AUTH_UNKNOWN_EMAIL', email)
-  }
-
-  // Before the expiry check, and not after it as in v4: a blocked account whose password had
-  // aged out was answered `PASSWORD_TO_BE_CHANGED`, which is a distinct code handed to
-  // someone the deployment has decided to shut out.
-  const refusal = await tenantRefusal(req.server['userManager'], user)
-  if (refusal) {
-    return refuseLogin(reply, refusal, email)
-  }
-
-  // Stays distinct, and stays 403: it is reached only after the password verified, so it
-  // tells the caller nothing they did not already prove they knew.
-  const isPasswordToBeChanged = req.server['userManager'].isPasswordToBeChanged(user)
-  if (isPasswordToBeChanged) {
-    return reply.status(403).send(httpError(403, 'Password is expired', 'PASSWORD_TO_BE_CHANGED'))
-  }
-
-  // MFA Logic Interception
-  const isMfaEnabled = user.mfaEnabled
-  const isMandatory = mfa_policy === MfaPolicy.MANDATORY
-
-  if (isMfaEnabled || isMandatory) {
-    // In cookie mode the pre-auth token goes in the cookie and `tempToken` is null.
-    const tempToken = await issuePreAuth(reply, 'tenant', { sub: user.externalId, tid: req.tenantInfo?.id })
-    // Use 202 Accepted to bypass 200 OK strict schema filtering
-    return reply.status(202).send({
-      mfaRequired: isMfaEnabled, // If enabled, verify. If not enabled but mandatory, setup.
-      mfaSetupRequired: isMandatory && !isMfaEnabled,
-      tempToken: tempToken
-    })
-  }
-
-  if (config.options.reset_external_id_on_login) {
-    user = await req.server['userManager'].resetExternalId(dataContext(req), user.id)
-  }
-
-  // https://www.iana.org/assignments/jwt/jwt.xhtml
-  // In cookie mode both come back null: the session is in the cookies.
-  const { token, refreshToken } = await issueSession(
-    reply,
-    'tenant',
-    { sub: user.externalId, tid: req.tenantInfo?.id },
-    tenantOrigin(req, user.externalId)
-  )
-
-  return {
-    ...user,
-    // `global.role` (singular) is not a global this framework declares: the expression was always
-    // undefined and the string fallback always won, so the configured public role code was never
-    // read. The catalogue is `global.roles` (F7 surfaced it).
-    roles: (user.roles || [global.roles?.public?.code || 'public']).map((r: any) => r?.code || r),
-    token,
-    refreshToken,
-    securityPolicy: {
-      mfaPolicy: mfa_policy
-    }
-  }
-}
-
 /**
  * Ends the session, instead of only forgetting it (T-11.10).
  *
@@ -600,10 +466,11 @@ export async function revokeSession(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * Enrolment is for a subject without a second factor. The pre-auth token opens these routes so
- * that a MANDATORY policy can enrol at first login; letting it reach them for a subject that
- * already has a factor turned the password alone into a session: enrol a secret of one's own,
- * overwrite the victim's, and come back with it. Replacing a factor goes through disable first.
+ * Enrolment is for a subject without a second factor. When the pre-auth token still opened these
+ * routes, enrolling over an existing factor turned the password alone into a session: enrol a
+ * secret of one's own, overwrite the victim's, and come back with it (T-12.1). Only a complete
+ * session reaches them now, and the rule stays: replacing a factor goes through disable first,
+ * so a stolen session cannot swap the factor that stands behind the next login.
  */
 const alreadyEnrolled = (reply: FastifyReply) =>
   reply.status(409).send(httpError(409, 'A second factor is already enabled', 'MFA_ALREADY_ENABLED'))
@@ -659,111 +526,18 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     await req.server['userManager'].saveMfaSecret(dataContext(req), user.id, secret)
     await req.server['userManager'].enableMfa(dataContext(req), user.id)
 
-    // Record the consumed time-step so the same code cannot be replayed on the first /mfa/verify.
+    // Record the consumed time-step so the same code cannot be replayed on the next login.
     if (counter !== null) {
       await req.server['userManager'].updateUserById(dataContext(req), user.id, { mfaLastUsedCounter: counter })
     }
     await recordTenantAccess(req, { event: 'mfa.enrolled', outcome: 'success', subjectId: user.externalId ?? null, methods: ['totp'] })
 
-    // IMPORTANT: Return full tokens upon enablement if user was in pending state
-    // BUT usually user is already logged in via temp token or full token.
-    // If user is setting up from "Forced Setup", they need tokens now.
-
-    const { token: finalToken, refreshToken } = await issueSession(
-      reply,
-      'tenant',
-      { sub: user.externalId, tid: req.tenantInfo?.id },
-      tenantOrigin(req, user.externalId)
-    )
-
-    return {
-      ...user,
-      mfaEnabled: true,
-      // `global.role` (singular) is not a global this framework declares: the expression was always
-    // undefined and the string fallback always won, so the configured public role code was never
-    // read. The catalogue is `global.roles` (F7 surfaced it).
-    roles: (user.roles || [global.roles?.public?.code || 'public']).map((r: any) => r?.code || r),
-      token: finalToken,
-      refreshToken: refreshToken,
-      securityPolicy: {
-        mfaPolicy: mfa_policy
-      }
-    }
+    // No session is issued here any more (F45): the caller already holds a complete one, and the
+    // enrolment forced by `MANDATORY` happens inside the login flow, which issues its own.
+    return { ok: true }
   } catch (error: any) {
     req.log.error({ err: error }, 'MFA Enable failed')
     return reply.status(500).send({ statusCode: 500, error: 'Internal Server Error', message: 'Failed to enable MFA' })
-  }
-}
-
-export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
-  // In cookie mode the pre-auth token is in the access cookie, and reading the header by hand
-  // here made MFA unusable in that mode.
-  const tokenStr = sessionTokenOf(req, 'tenant')
-  // Verifying is allowed under every policy, `OFF` included: a factor already enrolled keeps
-  // working, and it is only enrolment that the policy closes.
-  const mfa_policy = tenantPolicy(req.tenantInfo)
-
-  if (!tokenStr) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Missing authorization' })
-
-  let decoded: any
-  try {
-    decoded = req.server.jwt.verify(tokenStr)
-  } catch (_e) {
-    return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Invalid token' })
-  }
-
-  if (decoded.role !== 'pre-auth-mfa' && (!req.user || !req.user.id)) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid token scope' })
-  }
-
-  const subjectId = decoded.sub
-  const { token } = req.data()
-  if (!token) return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Missing token' })
-
-  // 1. Retrieve secret via userManager
-  const user = await req.server['userManager'].retrieveUserByExternalId(dataContext(req), subjectId)
-  if (!user) return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'User not found' })
-
-  const secret = await req.server['userManager'].retrieveMfaSecret(dataContext(req), user.id)
-  if (!secret) return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA not configured for user' })
-
-  // 2. Verify via mfaManager. Awaited, for the reason written at the other call site: an
-  // unawaited Promise is neither a number nor null, and the legacy branch would have called it
-  // valid. The different indentation is why this one survived the first pass.
-  const { valid, counter } = evaluateMfaResult(await req.server['mfaManager'].verify(token, secret))
-  if (!valid) return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Invalid MFA token' })
-
-  // 3. Anti-replay: reject a code whose time-step was already consumed (same or earlier than the last).
-  const lastCounter = user.mfaLastUsedCounter
-  if (isReplay(counter, lastCounter)) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA token already used' })
-  }
-  if (counter !== null) {
-    await req.server['userManager'].updateUserById(dataContext(req), user.id, { mfaLastUsedCounter: counter })
-  }
-
-  if (config.options.reset_external_id_on_login) {
-    await req.server['userManager'].resetExternalId(dataContext(req), user.id)
-  }
-
-  const { token: finalToken, refreshToken } = await issueSession(
-    reply,
-    'tenant',
-    { sub: user.externalId, tid: req.tenantInfo?.id },
-    tenantOrigin(req, user.externalId)
-  )
-
-  return {
-    ...user,
-    // `global.role` (singular) is not a global this framework declares: the expression was always
-    // undefined and the string fallback always won, so the configured public role code was never
-    // read. The catalogue is `global.roles` (F7 surfaced it).
-    roles: (user.roles || [global.roles?.public?.code || 'public']).map((r: any) => r?.code || r),
-    token: finalToken,
-    refreshToken: refreshToken,
-    securityPolicy: {
-      mfaPolicy: mfa_policy
-    }
   }
 }
 

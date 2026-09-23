@@ -2,25 +2,22 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import type { ControlHandle, SystemUserManagement } from '../../../../types/global.js'
 import { httpError } from '../../../util/httpError.js'
 import { allowsEnrolment, controlPolicy, mfaAvailable } from '../../../util/mfaPolicy.js'
-import { MfaPolicy } from '../../../config/constants.js'
-import * as regExp from '../../../util/regexp.js'
-import { clearSessionCookies, isCookieMode, issuePreAuth, issueSession, sessionTokenOf, type SessionOrigin } from '../../../util/credential.js'
+import { clearSessionCookies, sessionTokenOf } from '../../../util/credential.js'
 import { renew as renewSession } from '../../../util/renewal.js'
 import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.js'
-import { absoluteStep, isReplay } from '../../../util/mfaCounter.js'
+import { absoluteStep } from '../../../util/mfaCounter.js'
 import { recordControlAccess } from '../../../util/accessLog.js'
 
 //
-// Authentication of the control scope (T-4.1, docs/API_V5.md §5).
+// The account side of the control scope (T-4.1, docs/API_V5.md §5): sessions, renewal and the
+// second factor of an operator already logged in. The login itself is `/system/auth/flow/*`.
 //
-// The token minted here carries `scp: 'control'` and **no** `tid`. That is not a label: the
-// tenant resolution of T-3.2 refuses a token with `scp: 'control'` inside a container, and
-// the authentication hook refuses a token without it on a platform route. A system user
-// therefore has no silent way into a customer's data; the only way in is impersonation,
-// which leaves a record (T-4.2).
+// A platform token carries `scp: 'control'` and **no** `tid`. That is not a label: the tenant
+// resolution of T-3.2 refuses a token with `scp: 'control'` inside a container, and the
+// authentication hook refuses a token without it on a platform route. A system user therefore
+// has no silent way into a customer's data; the only way in is impersonation, which leaves a
+// record (T-4.2).
 //
-const MAX_PASSWORD_LENGTH = 128
-
 const manager = (req: FastifyRequest): SystemUserManagement => req.server['systemUserManager']
 const control = (req: FastifyRequest): ControlHandle => req.control as ControlHandle
 
@@ -42,80 +39,12 @@ export function present<T extends { password?: unknown; mfaSecret?: unknown; mfa
   return rest
 }
 
-/**
- * Where a platform session is written down (T-11.7, F19): the control plane, always.
- *
- * A system user has no container of its own to be renewed from, and putting its session inside
- * a customer's container would mean that destroying that customer logs the operator out.
- */
-function controlOrigin(req: FastifyRequest, subjectId: string): SessionOrigin {
-  return {
-    ctx: control(req),
-    manager: req.server['sessionManager'],
-    subjectId,
-    scope: 'control',
-    routing: CONTROL_ROUTING,
-    ip: req.ip ?? null,
-    userAgent: (req.headers['user-agent'] as string) ?? null
-  }
-}
-
 /** The platform session this request's token belongs to, when it carries one. */
 function currentSid(req: FastifyRequest): string | undefined {
   const raw = sessionTokenOf(req, 'control')
   if (!raw) return undefined
   const claims = req.server.jwt.decode(raw) as { sid?: string } | null
   return typeof claims?.sid === 'string' ? claims.sid : undefined
-}
-
-export async function login(req: FastifyRequest, reply: FastifyReply) {
-  if (unavailable(req, reply)) return
-
-  const { email, password } = req.data()
-
-  if (!email || !regExp.email.test(String(email))) {
-    return reply.status(400).send(httpError(400, 'Email not valid'))
-  }
-  if (!password || String(password).length > MAX_PASSWORD_LENGTH) {
-    return reply.status(400).send(httpError(400, 'Password not valid'))
-  }
-
-  const user = await manager(req).retrieveSystemUserByPassword(control(req), String(email), String(password))
-
-  // One message for every cause, as in the tenant scope (docs/API_V5.md §2.1). On the
-  // platform's own door the reason matters even less: the set of valid addresses is small
-  // and enumerating it is half the work of attacking it.
-  if (!user || user.blocked) {
-    if (log.w) log.warn(`System login refused for ${String(email)}`)
-    return reply.status(403).send(httpError(403, 'Wrong credentials'))
-  }
-
-  // The second factor, when this operator has one (T-6.3) or when the platform requires it of
-  // everyone (T-10.19): until now the policy was read only by the tenant routes, so `MANDATORY`
-  // obliged the users of every customer and none of the people who can destroy a customer. The
-  // first factor alone buys a five-minute pre-auth token and nothing else: it names the subject
-  // and opens no route.
-  const policy = controlPolicy()
-  const mandatory = policy === MfaPolicy.MANDATORY
-  if (user.mfaEnabled || mandatory) {
-    // In cookie mode the pre-auth token goes in the control cookie and `tempToken` is null.
-    const tempToken = await issuePreAuth(reply, 'control', { sub: user.externalId, scp: 'control' })
-    return reply.status(202).send({
-      mfaRequired: Boolean(user.mfaEnabled),
-      mfaSetupRequired: mandatory && !user.mfaEnabled,
-      tempToken
-    })
-  }
-
-  // The control plane has its own cookies: v4 wrote the platform session into `auth_token`,
-  // the tenant one, and returned the refresh token in the body even in cookie mode.
-  const { token, refreshToken } = await issueSession(
-    reply,
-    'control',
-    { sub: user.externalId, scp: 'control' },
-    controlOrigin(req, user.externalId)
-  )
-  return { ...present(user), token, refreshToken, securityPolicy: { mfaPolicy: policy } }
 }
 
 /** The operator's own platform sessions (T-11.14), the twin of the tenant listing. */
@@ -228,8 +157,8 @@ export async function mfaSetup(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
   const actor = req.systemUser
   if (!actor) return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
-  // Same reason as the tenant plane: a pre-auth token must not re-enrol an operator who already
-  // has a factor, or the password alone overwrites it and the verify step then accepts the new one.
+  // Same reason as the tenant plane: enrolling over an existing factor would let the session
+  // alone replace the second factor it was supposed to stand behind.
   if (actor.mfaEnabled) return reply.status(409).send(httpError(409, 'A second factor is already enabled', 'MFA_ALREADY_ENABLED'))
   if (!allowsEnrolment(controlPolicy())) {
     return reply.status(403).send(httpError(403, 'The platform policy accepts no new second factors', 'MFA_DISABLED'))
@@ -248,8 +177,8 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   const actor = req.systemUser
   const { secret, token } = req.data()
   if (!actor) return reply.status(401).send(httpError(401, 'Unauthorized', 'UNAUTHORIZED'))
-  // Same reason as the tenant plane: a pre-auth token must not re-enrol an operator who already
-  // has a factor, or the password alone overwrites it and the verify step then accepts the new one.
+  // Same reason as the tenant plane: enrolling over an existing factor would let the session
+  // alone replace the second factor it was supposed to stand behind.
   if (actor.mfaEnabled) return reply.status(409).send(httpError(409, 'A second factor is already enabled', 'MFA_ALREADY_ENABLED'))
   if (!allowsEnrolment(controlPolicy())) {
     return reply.status(403).send(httpError(403, 'The platform policy accepts no new second factors', 'MFA_DISABLED'))
@@ -274,51 +203,4 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
 
   if (log.i) log.info(`System MFA enabled for ${actor.email}`)
   return { ok: true }
-}
-
-export async function mfaVerify(req: FastifyRequest, reply: FastifyReply) {
-  if (unavailable(req, reply)) return
-
-  // The pre-auth token comes in the body in bearer mode and in the control cookie in cookie
-  // mode, where the body carries none (`login` answered `tempToken: null`).
-  const { tempToken: bodyTempToken, token } = req.data()
-  const tempToken = isCookieMode() ? sessionTokenOf(req, 'control') : bodyTempToken
-  if (!tempToken || !token) return reply.status(400).send(httpError(400, 'tempToken and token are both required'))
-
-  // What `login` signs into a pre-auth token. Role and scope are checked below, not assumed.
-  let claims: { role?: string; scp?: string; sub: string }
-  try {
-    claims = req.server.jwt.verify(String(tempToken))
-  } catch {
-    return reply.status(401).send(httpError(401, 'Invalid or expired token', 'UNAUTHORIZED'))
-  }
-  // Only a pre-auth token buys a session here, and only a control one: this route must not
-  // become a way to upgrade any token that happens to verify.
-  if (claims?.role !== 'pre-auth-mfa' || claims?.scp !== 'control') {
-    return reply.status(403).send(httpError(403, 'Invalid token scope', 'SCOPE_MISMATCH'))
-  }
-
-  const user = await manager(req).retrieveSystemUserByExternalId(control(req), claims.sub)
-  if (!user || user.blocked) return reply.status(403).send(httpError(403, 'Wrong credentials'))
-
-  const secret = await manager(req).retrieveMfaSecret(control(req), user.id)
-  if (!secret) return reply.status(403).send(httpError(403, 'Wrong credentials'))
-
-  const { valid, counter } = absoluteStep(await req.server['mfaManager'].verify(String(token), secret))
-  if (!valid) return reply.status(403).send(httpError(403, 'The code is not valid'))
-  if (isReplay(counter, user.mfaLastUsedCounter)) {
-    // A replayed step is a stolen code being used a second time.
-    return reply.status(403).send(httpError(403, 'That code has already been used'))
-  }
-  if (counter !== null) await manager(req).recordMfaCounter(control(req), user.id, counter)
-
-  // The whole session, as `login` issues it: v4 returned the access token alone, so an
-  // operator with MFA could never renew, and in cookie mode got a token in the body.
-  const session = await issueSession(
-    reply,
-    'control',
-    { sub: user.externalId, scp: 'control' },
-    controlOrigin(req, user.externalId)
-  )
-  return { ...present(user), ...session }
 }

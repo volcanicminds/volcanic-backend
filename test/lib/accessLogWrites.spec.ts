@@ -20,6 +20,7 @@ import * as systemUser from '../../lib/api/system/controller/systemUser.js'
 import { resetMfaByAdmin } from '../../lib/api/users/controller/user.js'
 import { recordAccess } from '../../lib/util/accessLog.js'
 import { fakeSessionStore } from './fixtures/sessionStore.js'
+import { controlStart, decorateAuthRegistry, passwordLogin, tenantStart, useFrameworkFlows } from './fixtures/flowLogin.js'
 import { processRoute } from '../../lib/loader/router.js'
 import { loadSystem } from '../../lib/loader/roles.js'
 import { accessLogSchema } from '../../lib/schemas/accessLog.js'
@@ -92,6 +93,7 @@ async function build(accessLog?: any) {
   })
   server.decorate('tokenManager', { isImplemented: () => false })
   server.decorate('sessionManager', sessions.manager)
+  decorateAuthRegistry(server)
   server.decorate(
     'accessLogManager',
     accessLog ?? {
@@ -113,7 +115,7 @@ async function build(accessLog?: any) {
   const tenant = (requiredRoles: any[]) => ({ config: { tenantContext: true, requiredRoles } })
   const control = (requiredRoles: any[]) => ({ config: { tenantContext: false, requiredRoles } })
 
-  server.post('/auth/login', tenant(PUBLIC), tenantAuth.login)
+  server.post('/auth/flow/start', tenant(PUBLIC), tenantStart)
   server.post('/auth/logout', tenant(PUBLIC), tenantAuth.logout)
   server.post('/auth/refresh-token', tenant(PUBLIC), tenantAuth.refreshToken)
   server.post('/auth/invalidate-tokens', tenant(PUBLIC), tenantAuth.invalidateTokens)
@@ -122,13 +124,16 @@ async function build(accessLog?: any) {
   server.post('/auth/mfa/disable', tenant(PUBLIC), tenantAuth.mfaDisable)
   server.post('/users/:id/mfa/reset', tenant(ADMIN), resetMfaByAdmin)
 
-  server.post('/system/auth/login', control(PUBLIC), systemAuth.login)
+  server.post('/system/auth/flow/start', control(PUBLIC), controlStart)
   server.post('/system/auth/logout', control(PUBLIC), systemAuth.logout)
   server.post('/system/auth/refresh-token', control(PUBLIC), systemAuth.renew)
   server.delete('/system/auth/sessions/:id', control(PUBLIC), systemAuth.revokeSession)
   server.post('/system/auth/mfa/enable', control(PUBLIC), systemAuth.mfaEnable)
   server.post('/system/users/:id/mfa/reset', control(SYSTEM_ADMIN), systemUser.resetMfa)
 
+  // The rows the login leaves are dropped by `loginAs`: its own events are proven with the flow
+  // (authFlowRoutes), and these tests count what the routes after it write.
+  server.decorate('loginRows', rows)
   await server.ready()
   return { server, rows, sessions, users, operators }
 }
@@ -137,8 +142,10 @@ const json = (res: any) => JSON.parse(res.body)
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` })
 
 async function loginAs(server: any, email: string, prefix = '/auth') {
-  const res = await server.inject({ method: 'POST', url: `${prefix}/login`, payload: { email, password: PASSWORD } })
+  const before = server.loginRows.length
+  const res = await server.inject({ method: 'POST', url: `${prefix}/flow/start`, payload: passwordLogin(email, PASSWORD) })
   if (res.statusCode !== 200) throw new Error(`login failed: ${res.statusCode} ${res.body}`)
+  server.loginRows.splice(before)
   const body = json(res)
   return { token: body.token as string, refresh: body.refreshToken as string, sid: (server.jwt.decode(body.token) as any).sid as string }
 }
@@ -150,6 +157,10 @@ function assertNoSecret(rows: any[], secrets: string[]) {
 }
 
 describe('access log · the writes of the session and factor routes (T-12.31)', () => {
+  let restoreFlows: () => void
+  before(() => (restoreFlows = useFrameworkFlows()))
+  after(() => restoreFlows())
+
   let saved: any
   before(() => {
     saved = { config: bag.config, roles: bag.roles, systemRoles: bag.systemRoles, mode: process.env.AUTH_MODE, grace: process.env.SESSION_GRACE_SECONDS }
@@ -230,7 +241,7 @@ describe('access log · the writes of the session and factor routes (T-12.31)', 
         ['mfa.enrolled', 'tenant', 'x-anna', ['totp']],
         ['mfa.disabled', 'tenant', 'x-anna', ['totp']]
       ])
-      assertNoSecret(rows, [PASSWORD, token, 'TOTP-SECRET-ANNA', json(enabled).token, json(enabled).refreshToken])
+      assertNoSecret(rows, [PASSWORD, token, 'TOTP-SECRET-ANNA'])
       await server.close()
     })
 
@@ -339,6 +350,10 @@ describe('access log · the writes of the session and factor routes (T-12.31)', 
 })
 
 describe('access log · the writer (T-12.31, T-12.33)', () => {
+  let restoreFlows: () => void
+  before(() => (restoreFlows = useFrameworkFlows()))
+  after(() => restoreFlows())
+
   const req = (manager: any) => ({ ip: '203.0.113.9', server: { accessLogManager: manager } }) as any
   const entry = { event: 'logout', outcome: 'success', scope: 'tenant', subjectId: 'x-anna' } as const
   let random: () => number
@@ -388,6 +403,10 @@ describe('access log · the writer (T-12.31, T-12.33)', () => {
 })
 
 describe('access log · the read routes of both planes (T-12.32)', () => {
+  let restoreFlows: () => void
+  before(() => (restoreFlows = useFrameworkFlows()))
+  after(() => restoreFlows())
+
   let saved: any
   before(async () => {
     saved = { config: bag.config, roles: bag.roles, systemRoles: bag.systemRoles, mode: process.env.AUTH_MODE }
