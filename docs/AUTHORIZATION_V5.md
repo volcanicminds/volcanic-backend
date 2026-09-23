@@ -72,7 +72,7 @@ their code or capabilities):
 |---|---|---|
 | `system:admin` | superuser of the control scope. Appended to every control route, exactly as `admin` is appended in the tenant scope | all, implicitly |
 | `system:operator` | day-to-day operations: read the registry, create and suspend tenants, impersonate, open the platform console | `tenants`, `tenants:read`, `tenants:impersonate`, `manifest` |
-| `system:auditor` | read-only oversight | `tenants:read`, `manifest` |
+| `system:auditor` | read-only oversight | `tenants:read`, `manifest`, `access-log` |
 
 A consumer may define further control roles in its own configuration and grant them capabilities
 from the control catalogue. It cannot invent a capability the framework does not honour on a
@@ -125,6 +125,12 @@ second.
 (task T-3.2). The header or the subdomain resolves the tenant only for requests that have no
 token: login and public routes. If a token carries `tid` and the header names another tenant,
 the request is **refused**, not resolved to the more likely one.
+
+**No token carries a `role` claim, and one that does is refused** on every route with 401. v4 signed
+a five-minute token carrying a `role` claim between the password and the second factor, and kept
+it confined with a list of routes; the login is now a flow whose state lives in a table and whose
+credential is not a JWT (docs/AUTH_FLOW_V5.md §5.4), so the framework signs no such token, and one
+still alive across the upgrade would otherwise pass for a session.
 
 ---
 
@@ -311,3 +317,35 @@ What is removed is what no renewal could use any more, which means a clock has r
 a session does not delete it**: the row keeps its moment and its reason and goes only when it
 expires on its own, so "when did this session end, and why" outlives the ending itself rather than
 disappearing with it.
+
+---
+
+## 10. Second factor and single sign-on
+
+How a subject proves who it is is the business of the login flow (docs/AUTH_FLOW_V5.md); four of
+its rules are authorization rules and are stated here.
+
+**The MFA policy is a floor the configuration cannot lower.** Under `MANDATORY` the flow engine
+demands a second factor of every login on that plane, whatever `authFlows.ts` says, and enrols a
+subject that has none inside the login (docs/AUTH_FLOW_V5.md §8.2). The policy of each plane and
+tenant is the one of docs/SECURITY_MFA.md. The methods a login satisfied are written on the session
+row (`auth_methods`), so "this session was opened without a second factor" stays a fact that can be
+read later.
+
+**A provider's second factor counts only where the deployment trusts it.** An OIDC login satisfies
+the pseudo-method `idp-mfa` only when its provider is declared with `mfa: { trust: 'amr' | 'acr',
+values }` and the ID token carries one of the values. By default it does not count: `amr` and `acr`
+are a third party's claims, and a misconfigured provider must not lower the floor.
+
+**A provider login never mints an administrator.** Just-in-time provisioning exists on the tenant
+plane only, its roles can never include `admin` (checked when the provider is written and again at
+the login), and it obeys the tenant's account creation mode (docs/API_V5.md §2.5). On the control
+plane there is none: platform identities are provisioned. Linking by address is opt-in per provider
+and limited to its `emailDomains` (docs/AUTH_FLOW_V5.md §7).
+
+**A tenant's identity providers belong to the platform.** They are rows of the control plane,
+written with the `tenants` capability (reading them too: they describe the customer's IdP, which a
+read-only oversight role does not need), with the client secret encrypted and never returned. A
+tenant's administrator cannot add a provider to its own tenant: an SSO configuration that lets
+people in is a decision of whoever runs the platform.
+

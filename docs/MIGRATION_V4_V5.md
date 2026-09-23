@@ -4,7 +4,7 @@
 > break landed, and not reconstructed at the end (task T-8.3); it was then read through in
 > full, once, with the API stable. Everything below is true of the code on the `v5` branch.
 >
-> Twenty-eight sections, in the order a port meets them: the data layer and the configuration
+> Twenty-nine sections, in the order a port meets them: the data layer and the configuration
 > first, because nothing else compiles until they are right; then what changed inside a
 > request; then the routes, the answers and the two core defaults. If you are porting a
 > project, read §1 to §4 before touching anything, and keep §18 open while you test the
@@ -18,7 +18,8 @@
 > it is the break an upgrade meets first, because an instance without `COOKIE_SECRET` no
 > longer starts. §27 is later still (phase 11) and is the one break that also hits whoever
 > already runs a 5.0 alpha: the refresh token is no longer a JWT. §28 (phase 12) closes the
-> self-registration by default, on v4 ports and 5.0 alphas alike.
+> self-registration by default, on v4 ports and 5.0 alphas alike, and §29 (phase 12) replaces the
+> login routes with a flow: every client that logs anybody in changes.
 
 v5 is breaking on purpose. There is no compatibility branch, no deprecated alias and no
 automatic translation of a v4 configuration: invariant 9 of `EVO_FRAMEWORK.md` says the
@@ -614,4 +615,67 @@ deployment's own default is **`invite`**: accounts are created by an administrat
 **What a client has to change.** Read `accountCreation` from `GET /auth/flow/options` to decide
 whether to show a registration form, and what to say after one: under `approval` the new account
 waits. A console lists the waiting accounts with `GET /users?approved=false`.
+
+---
+
+## 29. The login is a flow (phase 12)
+
+The login routes of v4 and of the 5.0 alphas are gone, on both planes, together with the temporary
+token between the password and the second factor. The login is a flow of stages, specified in
+docs/AUTH_FLOW_V5.md, and a second factor, an email code or a provider login are stages of it.
+
+| | v4, and 5.0.0-alpha until phase 12 | now |
+|---|---|---|
+| the login | `POST /auth/login { email, password }` | `POST /auth/flow/start { method: 'password', email, password }` |
+| the platform login | `POST /system/auth/login` | `POST /system/auth/flow/start`, same body |
+| a second factor owed | 202 `{ mfaRequired, mfaSetupRequired, tempToken }`, a JWT with `role: 'pre-auth-mfa'` valid 5 minutes | 202 `{ flow, expiresAt, stage: { options } }`: an opaque flow credential, in the `auth_flow` cookie (cookie mode) or in the body (bearer mode) |
+| verifying the code | `POST /auth/mfa/verify { token }` with `Authorization: Bearer <tempToken>` (the platform read it from the body) | `POST /auth/flow/step { method: 'totp', code }`, the credential never in `Authorization` |
+| enrolment forced by `MANDATORY` | `/auth/mfa/setup` and `/auth/mfa/enable` with the temporary token; `enable` returned the session | inside the flow: `step { method: 'totp', action: 'enrol' }`, then `step { method: 'totp', code }` completes the login |
+| `/auth/mfa/setup`, `/auth/mfa/enable` | reachable with the temporary token | need a complete session; `enable` answers `defaultResponse` and **issues no session** |
+| a failed platform login | 403 `Wrong credentials`, no code | **401** `AUTH_INVALID_CREDENTIALS`, as the tenant plane |
+| a JWT with a `role` claim | the temporary token, confined by a list of eight routes | refused on every route with 401 |
+| wrong TOTP codes | limited per IP only | five per flow, then `FLOW_ATTEMPTS_EXHAUSTED`; the account is never locked |
+| the manifest's `auth.endpoints` | `login`, `mfaVerify` | `flowOptions`, `flowStart`, `flowStep`, `flowChallenge`, `flowCancel` |
+| what a session records | nothing about how it was opened | `auth_methods` on the `session` row, e.g. `{password,totp}` |
+
+**Why.** The two-step login was written twice, once per plane, with differences nobody chose, and
+held together by a list of routes the temporary token could reach. That list already produced one
+defect: the token opened the enrolment routes to someone who had only the password, and let them
+replace the victim's factor (closed before this phase, commit `1b50994`, with 409
+`MFA_ALREADY_ENABLED`). Every new method (an email code, a provider login) would have meant a third
+copy and a longer list. The flow keeps its state in a table, counts attempts there, and has no token
+for a hook to confine.
+
+**What a deployment has to do.**
+
+- **Apply the new migrations**, `0002_auth_flow_control` and `0002_auth_flow_tenant` for each
+  dialect: the tables `auth_flow`, `external_identity`, `access_log` and, in the control plane,
+  `identity_provider`, plus `auth_methods` on `session`. Without the flow store a login that needs a
+  second step cannot run, and the boot refuses a configuration that needs one.
+- **Nothing else to keep the v4 behaviour**: the framework's default flows are a password and, for
+  whoever has one, a TOTP code, on both planes.
+- **To use more**, write `src/config/authFlows.ts` (docs/AUTH_FLOW_V5.md §2). A plane that lists
+  `email-otp` needs a `challengeDeliveryManager` injected into `start()`, one that lists `oidc`
+  needs `npm i openid-client@^6`; both are checked at boot.
+- **Deploy with a short pause in mind**: a temporary token issued by the old version in the five
+  minutes before the deploy is refused by the new one, and that person logs in again.
+
+**What a client has to change.**
+
+- Call `POST /auth/flow/start` with `method: 'password'` instead of the login route, and treat 202
+  as "a stage is owed", reading `stage.options` rather than `mfaRequired` / `mfaSetupRequired`.
+- Answer the stage with `POST /auth/flow/step`. In bearer mode store `flow` from each 202 and send it
+  back as the `flow` field of the body; in cookie mode send nothing, the cookie does it, and the
+  requests must carry credentials.
+- Draw the login screen from `GET /auth/flow/options` (the methods and the provider keys) and the
+  labels from the console's own translations: the backend sends codes and identifiers only.
+- Branch on `code` for the refusals (docs/API_V5.md §2.6), including `FLOW_CODE_INVALID` with
+  `remaining` and `FLOW_ATTEMPTS_EXHAUSTED`, which ends the flow and sends the person back to the
+  first step.
+- A platform console: the failed login is now 401. An HTTP layer that reads 401 as "session expired,
+  go to the login" must not do so on the flow routes, or a wrong password becomes a redirect loop
+  (the same trap as §18).
+- A console that enrolled a forced factor through `/auth/mfa/enable` and expected a session from it
+  does the enrolment inside the flow instead; `enable` is for a subject already logged in.
+- Read the login routes from the manifest's `auth.endpoints`, not from constants.
 

@@ -55,10 +55,23 @@ export default {
     accountCreation: {
       allowed: ['invite', 'approval', 'open'], // or a comma-separated string
       default: 'invite'                   // closed: accounts are made by an administrator
+    },
+
+    // The access log (docs/AUTH_FLOW_V5.md §9). The environment wins over each key.
+    accessLog: {
+      ip: 'truncate',                     // 'truncate' (/24, /48) or 'none'
+      retentionDays: 90,                  // tenant-plane rows
+      controlRetentionDays: 180           // platform rows
     }
   }
 }
 ```
+
+**The login flows are not in this file.** They live in `config/authFlows.ts`, a file of their own
+whose plane blocks **replace** the framework's instead of merging with them, because a list of
+stages merged with another is the quietest way to lose a factor. Its shape, its limits and the
+checks that refuse the boot are in docs/AUTH_FLOW_V5.md §2; the authenticators of a project arrive
+through `start({ authenticators })`, next to the managers.
 
 **Absent means `none`.** No `tenants` block, no tenancy: the application data lives in the
 control plane and `req.tenant` is never set.
@@ -144,8 +157,14 @@ where it is used without passing through the configuration at all.
 | `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
 | `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |
-| `AUTH_RATELIMIT_MAX` | `10` | requests per window, per address, on the credential routes (login, register, forgot and reset password) | no key: read by `lib/api/auth/routes.ts` |
+| `AUTH_RATELIMIT_MAX` | `10` | requests per window, per address, on the credential routes (the start of a login on both planes, register, forgot and reset password) | no key: read by `lib/api/auth/routes.ts` and `lib/api/system/routes.ts` |
 | `AUTH_RATELIMIT_WINDOW` | `60000` | that window, in milliseconds | no key: same |
+| `AUTH_FLOW_TTL` | `600` | seconds a login in progress lives, never extended | `limits.flowTtl` of `config/authFlows.ts`, and it **wins** over the file |
+| `AUTH_OTP_TTL` | `300` | seconds a sent code stays valid | `limits.otpTtl`, same rule |
+| `AUTH_OTP_MAX_ATTEMPTS` | `5` | wrong codes before a login ends; the account is never locked by it | `limits.otpMaxAttempts`, same rule |
+| `AUTH_OTP_MAX_SENDS` | `3` | codes sent within one login | `limits.otpMaxSends`, same rule |
+| `MFA_APP_NAME` | `VolcanicApp` | the issuer an authenticator app shows for a TOTP enrolment | no key |
+| the variable named by a provider's `clientSecretEnv` | — | the client secret of an identity provider declared in `config/authFlows.ts`; read once at boot, and an empty one refuses it | no key: the file holds the name, never the value |
 
 **The two rate limit numbers are measured, not guessed.** 10 requests per 60000 ms is the pair
 `npm run tune` confirmed: the work behind a refused login is a bcrypt verification, so one address
@@ -246,5 +265,6 @@ Declared optional; install only what the chosen engines need.
 | the same with SQLite | `drizzle-orm`, `better-sqlite3`, `bcrypt` |
 | the same with libSQL | `drizzle-orm`, `@libsql/client`, `bcrypt` |
 | development | `drizzle-kit` |
+| a plane that lists `oidc` in `config/authFlows.ts` | `openid-client` `^6`: loaded on first use, and its absence refuses the boot |
 
 `typeorm`, `reflect-metadata` and `pluralize` are no longer peer dependencies of anything.

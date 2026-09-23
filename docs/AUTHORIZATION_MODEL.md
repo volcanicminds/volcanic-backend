@@ -2,7 +2,7 @@
 
 > **Status: IMPLEMENTED (v4.0.1).** This document is the authoritative specification of the
 > authorization model in `@volcanicminds/backend`. It supersedes the ad-hoc `backoffice` role.
-> Complements `AUTH_COMPOSABLE_EVOLUTION.md` (login *flows*); this doc is about *authorization*.
+> Complements `AUTH_FLOW_V5.md` (login *flows*); this doc is about *authorization*.
 >
 > **Released in `4.0.1`** — a major, matching the breaking changes in §9.
 

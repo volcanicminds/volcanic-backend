@@ -6,9 +6,10 @@
 > implementation, the task is not done. If something here turns out to be wrong **in practice**,
 > stop, report it, and fix this document first.
 
-The framework owns nine tables. Five live **inside every tenant container** (schema, dedicated
-database, or file). Four live **only in the control plane**. A consumer adds its own tables to
-either side; the framework never touches them.
+The framework owns fourteen tables. Nine live **inside every tenant container** (schema, dedicated
+database, or file), and the control plane carries them too, for its own identities. Five live
+**only in the control plane**. A consumer adds its own tables to either side; the framework never
+touches them.
 
 | Table | Lives in | Purpose |
 |---|---|---|
@@ -17,10 +18,15 @@ either side; the framework never touches them.
 | `change` | tenant container | audit trail of tracked writes |
 | `session` | every container | live login sessions, and the refresh credential that renews them |
 | `migration` | every container | applied migration log (managed by drizzle-kit) |
+| `setting` | every container | settings of the container, one JSON value per key |
+| `auth_flow` | every container | logins in progress (docs/AUTH_FLOW_V5.md) |
+| `external_identity` | every container | identities at a provider linked to a subject |
+| `access_log` | every container | the access log: logins, factors, logouts, revocations |
 | `tenant` | control plane only | the tenant registry |
 | `system_user` | control plane only | people who administer the platform |
 | `impersonation` | control plane only | audit of impersonation sessions |
 | `destruction_request` | control plane only | two-phase tenant data destruction |
+| `identity_provider` | control plane only | a tenant's own identity providers, with the client secret encrypted |
 
 **Rule that decides where a table goes** (invariant 7): outside the customer's container sits
 only what you could publish. The control plane holds identifiers, counters, status and
@@ -201,6 +207,7 @@ who ordered it.
 | `ip` | text | yes | | of the request that opened the session |
 | `user_agent` | text | yes | | what a device list shows |
 | `impersonation_id` | text | yes | | set when the session is an impersonation (§3.3), so ending the impersonation ends the session it authorised |
+| `auth_methods` | text[] / json text | yes | | the methods the login satisfied, e.g. `{password,totp}` or `{oidc,idp-mfa}`. Null on sessions opened before the flow engine: what is not known is not written as an empty list. Whether a session was born without a second factor cannot be reconstructed later, and a step-up will ask it |
 | `created_at` | timestamp | no | now | |
 
 **Indexes**: unique on `sid`, index on `secret_hash`, index on `previous_secret_hash`, index on
@@ -238,6 +245,90 @@ platform's rules for every tenant in the control container, a tenant's own choic
 | `value` | jsonb (Postgres) / JSON text (SQLite) | no | | never a secret |
 | `updated_by` | text | yes | | the `externalId` of whoever wrote it |
 | `updated_at` | timestamp | no | now | |
+
+### 2.7 `auth_flow`
+
+A login in progress (docs/AUTH_FLOW_V5.md §5), added by the `0002_auth_flow_*` migrations. In every
+container, like `session`, because a flow lives where its subject lives; `scope` tells a platform
+identity from a tenant user where both share a container.
+
+| Column | Type | Null | Default | Notes |
+|---|---|:---:|---|---|
+| `id` | uuid / text | no | generated | |
+| `flow_id` | text | no | | the name the flow credential carries (`vf1.<routing>.<flow_id>.<secret>`) |
+| `scope` | text | no | `tenant` | `tenant` or `control` |
+| `subject_id` | text | yes | | the subject's `external_id`, set once the first stage passed. Only then does the flow hold the subject's slot |
+| `candidate_subject_id` | text | yes | | the subject an unproven `email-otp` flow sends codes to, so its sends count against that subject |
+| `secret_hash` | text | no | | SHA-256 of the flow secret. Emptied when the flow is retired, so no credential finds it again |
+| `flow_name` | text | yes | | the index of the configured flow chosen for the subject |
+| `stage_index` | integer | no | `0` | |
+| `satisfied` | jsonb / json text | no | `[]` | the methods proven so far |
+| `challenge_method` | text | yes | | the method of the code last sent |
+| `challenge_hash` | text | yes | | the code as `HMAC-SHA256(flow secret, code)`: the key is not in this table, so a copy of it does not let anyone try the codes offline |
+| `challenge_expires_at` | timestamp | yes | | |
+| `challenge_attempts` | integer | no | `0` | wrong codes, TOTP included |
+| `challenge_sends` | integer | no | `0` | codes sent by this flow |
+| `last_sent_at` | timestamp | yes | | what the per-subject windows count |
+| `state_hash` | text | yes | | SHA-256 of the `state` of a round trip to a provider |
+| `external` | text | yes | | ciphertext written by the manager: the PKCE verifier, the `nonce`, the provider, the `returnTo` path, the secret of an in-flow enrolment |
+| `external_result` | jsonb / json text | yes | | the validated claims a return left for the next step: provider, issuer, subject, email, `amr`, `acr` |
+| `version` | integer | no | `1` | every change is conditional on it |
+| `ip` | text | yes | | |
+| `user_agent` | text | yes | | |
+| `created_at` | timestamp | no | now | |
+| `expires_at` | timestamp | no | | absolute, never extended |
+
+**Indexes**: unique on `flow_id`; unique on `(subject_id, scope)` where `subject_id` is not null,
+which is what makes a new proven flow evict the previous one; index on `state_hash`, on
+`(candidate_subject_id, last_sent_at)` and on `expires_at`.
+
+**A retired flow keeps its row** (completed, cancelled or evicted), with every secret cleared and
+its subject slot released, until its sends leave the 24-hour window: deleting it would reset the
+count a restart of the login must not reset. `purgeExpired` removes it after that.
+
+### 2.8 `external_identity`
+
+An identity at a provider linked to a subject (docs/AUTH_FLOW_V5.md §7). `sub` is unique per issuer
+only, and an address is never a key.
+
+| Column | Type | Null | Default | Notes |
+|---|---|:---:|---|---|
+| `id` | uuid / text | no | generated | |
+| `scope` | text | no | `tenant` | |
+| `subject_id` | text | no | | the subject's `external_id` |
+| `provider` | text | no | | the provider key |
+| `issuer` | text | no | | the `iss` of the ID token |
+| `subject` | text | no | | the `sub` of the ID token |
+| `email_at_link` | text | yes | | the address when the link was made, for a person reading the list |
+| `created_at` | timestamp | no | now | |
+| `last_used_at` | timestamp | yes | | moved by each login through the link |
+
+**Indexes**: unique on `(scope, provider, issuer, subject)`, index on `(subject_id, scope)`.
+
+### 2.9 `access_log`
+
+The access log (docs/AUTH_FLOW_V5.md §9). Append-only like `change`: no `updated_at`, no
+`deleted_at`; rows leave by retention only.
+
+| Column | Type | Null | Default | Notes |
+|---|---|:---:|---|---|
+| `id` | uuid / text | no | generated | UUID v7, so time-ordered |
+| `occurred_at` | timestamp | no | now | |
+| `scope` | text | no | `tenant` | |
+| `event` | text | no | | one of a closed list, enforced by the manager |
+| `outcome` | text | no | | `success` or `failure` |
+| `code` | text | yes | | the refusal or outcome code, e.g. `AUTH_INVALID_CREDENTIALS` |
+| `subject_id` | text | yes | | the `external_id`; null when the subject is not known. The address tried is never written |
+| `methods` | text[] / json text | yes | | the methods involved |
+| `provider` | text | yes | | the provider key, if any |
+| `flow_id` | text | yes | | |
+| `sid` | text | yes | | the session, if any |
+| `ip` | text | yes | | truncated to /24 or /48 before it gets here, or absent with `ACCESS_LOG_IP=none` |
+
+**Indexes**: `occurred_at`, `(subject_id, occurred_at)`.
+
+Never a password, a code, a secret, a token or a claim, and no user agent: the `session` row keeps
+that for the sessions that are alive.
 
 ---
 
@@ -316,6 +407,27 @@ The first phase of T-6.3. A row is single-use.
 | `export_ref` | text | yes | reference to the mandatory export that preceded destruction |
 
 **Indexes**: `tenant_id`, `expires_at`.
+
+### 3.5 `identity_provider`
+
+A tenant's own identity provider (docs/AUTH_FLOW_V5.md §6.1), written by a platform operator with
+the `tenants` capability. **Never in `tenant.config`**, which is serialised to whoever reads the
+tenant.
+
+| Column | Type | Null | Default | Notes |
+|---|---|:---:|---|---|
+| `id` | uuid / text | no | generated | |
+| `tenant_id` | text | no | | |
+| `key` | text | no | | lowercase letters, digits, `-`, `_`; what a login names |
+| `type` | text | no | `oidc` | the only value today; ready for `saml` |
+| `status` | text | no | `active` | `active` or `disabled`. A disabled row also hides the deployment's provider of the same key for that tenant |
+| `config` | jsonb / json text | no | `{}` | the settings that are not secret: issuer, client id, redirect URI, scopes, linking, JIT, MFA trust |
+| `secret_enc` | text | yes | | the client secret, encrypted with `MFA_DB_SECRET` (falling back to `JWT_SECRET`) |
+| `created_at` | timestamp | no | now | |
+| `updated_at` | timestamp | no | now | |
+
+**Indexes**: unique on `(tenant_id, key)`. Deleted for real, not soft-deleted: a key must be reusable
+after a removal.
 
 ---
 

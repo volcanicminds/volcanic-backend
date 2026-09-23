@@ -1,106 +1,95 @@
-# Security: Multi-Factor Authentication (MFA)
+# Security: multi-factor authentication (v5)
 
-`@volcanicminds/backend` includes a robust, native implementation of Multi-Factor Authentication (TOTP based), designed to secure access without requiring external identity providers.
+`@volcanicminds/backend` ships a native second factor, TOTP, on both planes, and a code sent by email
+(`email-otp`) that can serve as a second factor too. Both are methods of the login flow: how a
+login asks for them, and how a consumer adds its own, is in docs/AUTH_FLOW_V5.md. This document is
+about the **policy** that decides when a second factor is owed, and about the recovery paths.
 
-## Configuration
+## The policy
 
-MFA behavior is controlled globally via environment variables (`MFA_POLICY`) or the configuration file `src/config/general.ts`.
+Four values, from the most permissive:
 
-```typescript
-// src/config/general.ts
-export default {
-  name: 'general',
-  options: {
-    // ...
-    mfa_policy: process.env.MFA_POLICY || 'OPTIONAL'
-  }
-}
+| Value | Enrolling a factor | Removing one's own factor | A login |
+|---|---|---|---|
+| `OFF` | refused, in the login and outside it | refused: an administrator resets it | whoever already has a factor is still asked for it |
+| `OPTIONAL` (default) | allowed | allowed | asks for the factor of whoever has one |
+| `ONE_WAY` | allowed | refused: an administrator resets it | as `OPTIONAL` |
+| `MANDATORY` | allowed, and imposed | refused | **every** login needs a second factor; a subject with none enrols inside the login |
+
+Three levels, and the first is a floor the others may only tighten (docs/CONFIGURATION_V5.md §4):
+
+- `MFA_POLICY` (or `mfa_policy` in `config/general.ts`) for the deployment, which is the tenant
+  plane's policy unless a tenant tightens it;
+- `SYSTEM_MFA_POLICY` for the control plane, the platform's own operators; it defaults to
+  `MFA_POLICY`;
+- `config.mfa_policy` on a tenant's registry row, written by a platform operator with `PUT
+  /tenants/:id`. A value weaker than the floor is refused with `MFA_POLICY_WEAKER`, an unknown one
+  with `MFA_POLICY_INVALID`.
+
+The effective policy of the caller travels back in `securityPolicy.mfaPolicy` of `/users/me`,
+`/system/auth/me` and the body of a completed login, which is where a console decides what to offer.
+
+**`MANDATORY` is applied by the flow engine, not by the flow configuration.** A project's
+`config/authFlows.ts` cannot write a login without a second factor on a plane whose policy demands
+one: the engine adds the stage, offering the factors the subject has enrolled or, with none, an
+enrolment in TOTP (docs/AUTH_FLOW_V5.md §8.2). An OIDC login counts as having a second factor only
+when its provider is declared trusted for it (`idp-mfa`).
+
+**A policy nothing can honour refuses the boot.** `MANDATORY` with no `mfaManager` injected stops
+the start, and so does `MANDATORY` on a plane where the `totp` method is not registered, because
+the first login would lock everybody out. A tenant that asks for `MANDATORY` in such a build is
+refused with `MFA_NOT_AVAILABLE`.
+
+## The login
+
+There is no second login step outside the flow and no temporary token. A login that owes a second
+factor answers **202** with the stage it waits on, and the client answers it on the same flow:
+
+```text
+POST /auth/flow/start  { method: 'password', email, password }  -> 202, stage: [{ id: 'totp', kind: 'verifier' }]
+POST /auth/flow/step   { method: 'totp', code: '123456' }        -> 200, the session
 ```
 
-### Policies
+The flow credential travels in the `auth_flow` cookie (cookie mode) or in the `flow` field of the
+body (bearer mode), never in `Authorization`. Five wrong codes end the flow with
+`FLOW_ATTEMPTS_EXHAUSTED`; the account is never locked by them. A replayed TOTP code answers as a
+wrong one.
 
-- **`OPTIONAL`** (Default): Users can choose to enable or disable MFA from their profile settings.
-- **`MANDATORY`**: MFA is enforced for all users.
-  - If a user logs in and MFA is not configured, they are forced to set it up immediately.
-  - Users cannot disable MFA once enabled.
-- **`ONE_WAY`**: Users are not forced to enable it, but once they do, they cannot disable it themselves. Only an administrator can reset it.
+**Forced enrolment.** Under `MANDATORY`, a subject with no factor is offered
+`{ id: 'totp', kind: 'verifier', enrol: true }`. `step { method: 'totp', action: 'enrol' }` answers
+202 with `{ secret, uri, qrCode }`; the first right code enrols the factor and completes the login.
+The secret is generated on the server and kept encrypted in the flow row until then: the client
+never sends one. An enrolment inside a login is offered only to a subject with no factor at all, so
+a stolen password can never replace a victim's factor.
 
-## The "Gatekeeper" Architecture
+## Managing one's own factor
 
-The framework uses a **Two-Stage Login** process to ensure security. When MFA is required (due to policy or user preference), the login endpoint does _not_ return a valid access token immediately.
+With a complete session, and never during a login:
 
-### 1. Login Attempt
+| Tenant plane | Control plane | |
+|---|---|---|
+| `POST /auth/mfa/setup` | `POST /system/auth/mfa/setup` | generates a secret and a QR code; 409 `MFA_ALREADY_ENABLED` when a factor is active |
+| `POST /auth/mfa/enable` | `POST /system/auth/mfa/enable` | `{ secret, token }`: confirms with a code. Issues no session |
+| `POST /auth/mfa/disable` | | only under `OPTIONAL` |
 
-**POST** `/auth/login`
-If credentials are valid but MFA is pending:
+Replacing a factor goes through disable, or through a reset by an administrator.
 
-- **Status**: `202 Accepted`
-- **Body**:
-  ```json
-  {
-    "mfaRequired": true,
-    "mfaSetupRequired": false,
-    "tempToken": "eyJhbGci..."
-  }
-  ```
-- **Temp Token**: This JWT has a special role `pre-auth-mfa`. It has a short lifespan (e.g., 5 minutes) and extremely limited privileges.
+## Recovery
 
-### 2. The Guard Middleware
+**An administrator resets a user's factor**: `POST /users/:id/mfa/reset` with the `users`
+capability on the tenant plane, `POST /system/users/:id/mfa/reset` with `system-users` on the
+control plane. Grant that capability to whoever answers the support call.
 
-The global `onRequest` hook inspects the JWT. If the role is `pre-auth-mfa`, it blocks access to **all** endpoints except the MFA whitelist:
+**Emergency reset at boot.** For a deployment whose only administrator lost the device:
 
-- `/auth/mfa/setup`
-- `/auth/mfa/enable`
-- `/auth/mfa/verify`
-- `/auth/logout`
+```bash
+MFA_ADMIN_FORCED_RESET_EMAIL=admin@example.com
+MFA_ADMIN_FORCED_RESET_UNTIL=2026-09-24T15:00:00.000Z
+```
 
-Trying to access `/users` or `/orders` with a temp token results in a `403 Forbidden`.
-
-### 3. Verification
-
-**POST** `/auth/mfa/verify`
-
-- **Headers**: `Authorization: Bearer <tempToken>`
-- **Body**: `{ "token": "123456" }` (The TOTP code)
-
-If valid, the server returns `200 OK` with the **Final Access Token** and Refresh Token. The user is now fully logged in.
-
-## Setup Flow
-
-If `mfaSetupRequired` is true:
-
-1.  Call **POST** `/auth/mfa/setup` (using `tempToken`).
-    - Returns: `secret`, `qrCode` (Data URL), `uri`.
-2.  Frontend displays QR Code.
-3.  User scans QR and enters a code.
-4.  Call **POST** `/auth/mfa/enable` (using `tempToken`).
-    - Body: `{ "secret": "...", "token": "..." }`
-    - Returns: **Final Access Token** (User is logged in immediately).
-
-## Admin & Recovery
-
-### Admin Reset
-
-An administrator can disable MFA for a specific user (e.g., lost device) via API:
-**POST** `/users/:id/mfa/reset` (Requires Admin privileges).
-
-### Emergency Admin Lockout
-
-If the administrator themselves loses access to their MFA device, the framework provides a filesystem/environment-based "Backdoor" designed for emergency recovery.
-
-1.  **Set Environment Variables**:
-    Set these in your server environment (e.g., `docker-compose.yml` or `.env`):
-
-    ```bash
-    MFA_ADMIN_FORCED_RESET_EMAIL=admin@example.com
-    MFA_ADMIN_FORCED_RESET_UNTIL=2025-12-31T15:00:00.000Z
-    ```
-
-    - `EMAIL`: The email of the admin user to reset.
-    - `UNTIL`: A timestamp in the near future (must be within 10 minutes of server startup for security).
-
-2.  **Restart Server**:
-    On startup (`index.ts`), the framework checks these variables. If valid, it **forcibly disables MFA** for that user.
-
-3.  **Login & Cleanup**:
-    The admin can now log in with just the password. **Important:** Remove these variables immediately after recovery to seal the security hole.
+On start, if `UNTIL` is in the future and no more than ten minutes away, the framework disables the
+factor of the user with that address in the **control container** (the `user` table, which is where
+the users of a single-tenant deployment live) and logs it; further away than ten minutes, the boot
+stops; in the past, the variables are ignored. Remove both variables immediately after the
+recovery. A platform operator of a multi-tenant deployment is a `system_user` and is reset by
+another operator holding `system-users`.

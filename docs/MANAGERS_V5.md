@@ -485,3 +485,168 @@ both insert. A value is never a secret: whoever reads a key reads all of it.
 back to the deployment's configuration, and the routes that write a setting answer 503
 `SETTINGS_NOT_AVAILABLE`.
 
+
+---
+
+## 13. `AuthFlowManagement` (new in v5, phase 12)
+
+The store of the logins in progress (docs/AUTH_FLOW_V5.md §5, table `auth_flow` in
+docs/SCHEMA_V5.md §2.7). The flow engine is its only caller.
+
+```typescript
+interface AuthFlowManagement {
+  isImplemented(): boolean
+  /** A proven subject evicts its previous flow in the same statement. The clear secret is hashed. */
+  openFlow(ctx: DataHandle, data: {
+    flowId: string; scope: SessionScope; secret: string
+    subjectId?: string | null; candidateSubjectId?: string | null; flowName?: string | null
+    expiresAt: Date | string; ip?: string | null; userAgent?: string | null
+  }): Promise<AuthFlow>
+  /** A malformed or unknown secret is an answer, not a throw. */
+  findBySecret(ctx: DataHandle, flowId: string, secret: string): Promise<AuthFlowLookup> // current | expired | unknown
+  findByState(ctx: DataHandle, state: string): Promise<AuthFlow | null>
+  /** Optimistic on `version`: null when another step moved the flow first. */
+  advance(ctx: DataHandle, flowId: string, version: number, patch: {
+    subjectId?: string | null; candidateSubjectId?: string | null; flowName?: string | null
+    stageIndex?: number; satisfied?: string[]
+  }): Promise<AuthFlow | null>
+  recordChallenge(ctx: DataHandle, flowId: string, data: {
+    secret: string; method: string; code: string; expiresAt: Date | string; limits: ChallengeLimits
+  }): Promise<ChallengeRecord>      // sent | limit (flow or subject)
+  consumeChallenge(ctx: DataHandle, flowId: string, data: { secret: string; code: string; maxAttempts: number }): Promise<ChallengeConsumption>
+  recordAttempt(ctx: DataHandle, flowId: string, data: { secret: string; maxAttempts: number }): Promise<AttemptRecord>
+  bindExternal(ctx: DataHandle, flowId: string, data: { state?: string | null; external: AuthFlowExternal }): Promise<boolean>
+  recordExternalResult(ctx: DataHandle, flowId: string, result: ExternalAuthResult): Promise<boolean>
+  completeFlow(ctx: DataHandle, flowId: string): Promise<boolean>
+  cancelFlow(ctx: DataHandle, flowId: string): Promise<boolean>
+  purgeExpired(ctx: DataHandle, before?: Date | string): Promise<number>
+}
+```
+
+**Every change is one conditional statement.** A read followed by a write would let two steps racing
+each other both win: `advance` names the `version` it moves, `consumeChallenge` spends the right code
+once and a wrong one costs an attempt in the same `UPDATE`, `recordAttempt` reserves an attempt
+**before** a TOTP code is tested, so a burst of parallel guesses meets the ceiling instead of racing
+past it, and `recordChallenge` applies the per-flow and per-subject ceilings in the statement that
+records the send.
+
+**No secret is stored in clear.** The flow secret and the `state` are stored as SHA-256, the code as
+an HMAC keyed by the flow secret, which the table does not hold, and `external` (PKCE verifier,
+`nonce`, enrolment secret) is encrypted by the manager with `MFA_DB_SECRET`. The manager hands
+`external` back decrypted; the returned `AuthFlow` carries none of the hashes.
+
+**Retiring is not deleting.** `completeFlow`, `cancelFlow` and an eviction clear every secret and
+release the subject slot; the row stays until its sends leave the per-subject window, and
+`purgeExpired` removes it after that. The engine purges opportunistically on one start in fifty.
+
+**Without this manager** only a login that closes in one request works (docs/AUTH_FLOW_V5.md §10),
+and the boot refuses a configuration that needs more.
+
+## 14. `ExternalIdentityManagement` (new in v5, phase 12)
+
+The links between an identity at a provider and a subject (docs/SCHEMA_V5.md §2.8).
+
+```typescript
+interface ExternalIdentityManagement {
+  isImplemented(): boolean
+  findLink(ctx: DataHandle, key: ExternalIdentityKey): Promise<ExternalIdentity | null> // { scope, provider, issuer, subject }
+  createLink(ctx: DataHandle, data: ExternalIdentityKey & { subjectId: string; emailAtLink?: string | null }): Promise<ExternalIdentity>
+  listOfSubject(ctx: DataHandle, subjectId: string, scope: SessionScope): Promise<ExternalIdentity[]>
+  /** Removes the link only when it belongs to `subjectId`. */
+  removeLink(ctx: DataHandle, id: string, subjectId: string): Promise<boolean>
+  touch(ctx: DataHandle, id: string): Promise<boolean>
+}
+```
+
+A link is found on the four keys and never on an address. `removeLink` takes the owner, so a route
+that removes "one of mine" cannot remove somebody else's by guessing an id. Without this manager a
+provider login resolves nobody and answers `IDP_IDENTITY_NOT_LINKED`.
+
+## 15. `IdentityProviderManagement` (new in v5, phase 12)
+
+A tenant's own identity providers, in the control plane (docs/SCHEMA_V5.md §3.5). Every method
+takes a `ControlHandle`: the registry is the platform's.
+
+```typescript
+interface IdentityProviderManagement {
+  isImplemented(): boolean
+  list(ctx: ControlHandle, tenantId: string): Promise<IdentityProvider[]>
+  /** The only method that answers the client secret, decrypted. */
+  get(ctx: ControlHandle, tenantId: string, key: string): Promise<IdentityProviderWithSecret | null>
+  create(ctx: ControlHandle, data: {
+    tenantId: string; key: string; type: 'oidc'; status?: 'active' | 'disabled'
+    config: OidcProviderSettings; clientSecret?: string | null
+  }): Promise<IdentityProvider>
+  update(ctx: ControlHandle, tenantId: string, key: string, patch: {
+    status?: 'active' | 'disabled'; config?: OidcProviderSettings; clientSecret?: string | null
+  }): Promise<IdentityProvider | null>
+  remove(ctx: ControlHandle, tenantId: string, key: string): Promise<boolean>
+}
+```
+
+**The encryption is the data layer's.** The core cannot import the data layer's crypto
+(`core-no-datalayer-import`), so the manager encrypts on write and decrypts in `get`, with the key of
+the MFA secrets. `list` never carries the secret. In `update`, a `clientSecret` absent keeps the
+stored one and `null` removes it. Without this manager only the deployment's providers exist.
+
+## 16. `ChallengeDeliveryManagement` (new in v5, phase 12, injected by the consumer)
+
+How a code reaches a person. The framework ships no implementation: the backend emits data, not
+presentation, so the consumer composes the subject and the text, in its own language.
+
+```typescript
+interface ChallengeDeliveryManagement {
+  isImplemented(): boolean
+  deliver(message: {
+    channel: 'email' | 'sms'
+    to: string                // always the address on file, never one taken from a request
+    code: string
+    purpose: 'identify' | 'verify'
+    expiresAt: Date | string
+    plane: 'tenant' | 'control'
+    tenantId: string | null
+    subjectId: string         // the external id
+    locale?: string | null
+  }): Promise<void>
+}
+```
+
+A consumer wires it to `Mailer` of `@volcanicminds/tools/mailer`, or to anything else:
+
+```typescript
+const challengeDeliveryManager = {
+  isImplemented: () => true,
+  deliver: async ({ to, code, expiresAt }) => {
+    await mailer.send({ to, subject: 'Your sign-in code', html: `<p>${code}</p>` })
+  }
+}
+await startServer({ ...layer, challengeDeliveryManager })
+```
+
+`deliver` is called after the response is decided and never awaited by the request, because the
+latency of a mail server would tell an observer whether an address has an account; a failure is a
+log line. `sms` is in the type for the method that will use it; no built-in method sends one yet.
+**Without it**, a plane that lists `email-otp` refuses the boot.
+
+## 17. `AccessLogManagement` (new in v5, phase 12)
+
+The access log (docs/SCHEMA_V5.md §2.9, docs/AUTH_FLOW_V5.md §9).
+
+```typescript
+interface AccessLogManagement {
+  isImplemented(): boolean
+  /** Refuses an event outside the vocabulary; truncates the IP or drops it (`ACCESS_LOG_IP`). */
+  record(ctx: DataHandle, entry: AccessLogEntry): Promise<AccessLogRecord>
+  /** `scope` is a condition the query cannot relax, `_logic` included. */
+  findQuery(ctx: DataHandle, query: VQuery, scope?: SessionScope): Promise<VFindResult<AccessLogRecord>>
+  countQuery(ctx: DataHandle, query: VQuery, scope?: SessionScope): Promise<number>
+  purgeBefore(ctx: DataHandle, before: Date | string, scope?: SessionScope): Promise<number>
+  /** Rows past the retention of their own scope (90 and 180 days by default), in one statement. */
+  purgeExpired(ctx: DataHandle, now?: Date): Promise<number>
+}
+```
+
+The core asks `isImplemented()` before writing, and a failed write is logged and never fails the
+request it describes. Without tenants both planes write into one container, which is why `scope` is
+a parameter of every read rather than a filter the caller may forget. **Without this manager** the
+accesses reach the process log only, and `/access-log` answers 404.

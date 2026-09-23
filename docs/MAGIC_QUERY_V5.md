@@ -292,8 +292,8 @@ checked against `volcanic-admin` during T-8.4.
 
 `req.data()` returns the **merge of query string and body**, with the **body winning** on a
 duplicate key. In v4 it returned one **or** the other (`lib/util/common.ts:9`): if the query
-string had a single non-null value, the body was discarded entirely, so
-`POST /auth/login?x=1` with credentials in the body failed with "Email not valid" (defect D-29).
+string had a single non-null value, the body was discarded entirely, so a v4 login posted to a URL
+ending in `?x=1`, with the credentials in the body, failed with "Email not valid" (defect D-29).
 
 Two explicit accessors exist for code that must not guess: `req.queryData()` and
 `req.bodyData()`. `req.data()` stays the default for controllers.

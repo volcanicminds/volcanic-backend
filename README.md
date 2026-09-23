@@ -42,7 +42,7 @@ always the same — could this row be published without harming the customer it 
 `@volcanicminds/backend` ships a **DB-agnostic HTTP core** and an **optional data layer**, cleanly separated:
 
 - **HTTP Core** (`@volcanicminds/backend`) — Fastify wrapper: routing autodiscovery, JSON-Schema validation,
-  JWT/cookie auth, RBAC, MFA gatekeeper, scheduler, and a native API (`/auth`, `/users`, `/token`, `/tenants`,
+  JWT/cookie auth, a composable login flow, RBAC, scheduler, and a native API (`/auth`, `/users`, `/token`, `/tenants`,
   `/system/*`, `/health`). **Runs with no database.**
 - **Data Layer** (subpath `@volcanicminds/backend/db`) — Drizzle underneath, and that is an implementation
   detail rather than a promise: Magic Query, the framework schema, per-tenant containers, migrations and the
@@ -91,7 +91,10 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 | **Multi-tenant** | ✅ | — | — | Header or subdomain resolver, and the **token decides** whenever there is one. Enabled by declaring the `tenants` block; a schema, a database or a file per customer |
 | **Data layer (Magic Query)** | ✅ | — | — | Drizzle + query builder via subpath `/db`. Optional peer deps (`drizzle-orm`, `pg` or `better-sqlite3`/`@libsql/client`, `bcrypt`) |
 | **Schema migrations** | ✅ | — | ✅ | Committed SQL applied in order, versioned **inside each container**. The instance refuses to boot behind its own schema |
-| **MFA / TOTP** | (gatekeeper) | ✅ | — | Core gatekeeper (`202` + `tempToken`, `/auth/mfa/*`); TOTP implementation via injected `mfaManager`. Policy via `MFA_POLICY` |
+| **Login flow** | ✅ | — | ✅ | `/auth/flow/*` and `/system/auth/flow/*`: password, TOTP, email code and OIDC as composable stages, configured per plane in `config/authFlows.ts` ([docs](docs/AUTH_FLOW_V5.md)). Flow state and access log need the data layer |
+| **MFA / TOTP** | (policy and flow) | ✅ | — | Enforced by the flow engine, `202` + stage; TOTP implementation via injected `mfaManager`. Policy via `MFA_POLICY`, `SYSTEM_MFA_POLICY` and per tenant |
+| **Email sign-in codes** | (flow) | ✅ | — | `email-otp` as identifier or second factor; the code is delivered by an injected `challengeDeliveryManager`, typically on the tools mailer |
+| **OIDC single sign-on** | ✅ | — | — | per deployment or per tenant, PKCE and `nonce` always, optional peer `openid-client` |
 | **Resumable uploads (TUS)** | (mount) | ✅ | — | TUS route mounted from injected `transferManager` |
 | **Mailer** | — | ✅ | — | Email sending via tools |
 | **Object storage** | — | ✅ | — | S3 / MinIO storage via tools |
@@ -149,6 +152,15 @@ old one, is in [docs/MIGRATION_V4_V5.md](docs/MIGRATION_V4_V5.md).
   window closes the whole session (`401 SESSION_REUSE_DETECTED`); `logout` revokes the row instead of clearing
   a cookie; `JWT_REFRESH_SECRET` and `JWT_REFRESH_EXPIRES_IN` are ignored, and the lifetimes are the
   `sessions` block. Refresh tokens issued by v4, or by an earlier 5.0 alpha, no longer renew.
+- **The login is a flow.** The one-shot login route, the separate MFA verification route, their `/system`
+  twins and the five-minute temporary token are gone: `/auth/flow/*` runs an identify stage and then the stages the subject's roles
+  owe, with password, TOTP, an email code and OIDC as built-in methods and a contract for a project's own. The
+  MFA policy is a floor the flow engine applies, the platform login answers `401` like the tenant one, and a
+  JWT carrying a `role` claim is refused everywhere. Identity providers per deployment or per tenant, links
+  on issuer and subject and never on the address alone, and an access log per container
+  ([docs/AUTH_FLOW_V5.md](docs/AUTH_FLOW_V5.md), MIGRATION §29).
+- **Registration is closed by default.** Who may create an account is decided per tenant inside a set the
+  platform allows: `invite` (the default), `approval` or `open` (MIGRATION §28).
 - **Defaults that changed on purpose.** CORS reads an allowlist and refuses the insecure pair at boot;
   `HIDE_ERROR_DETAILS` is honoured by every error path; a failed audit write fails the request;
   `req.data()` merges the query string and the body instead of discarding one.
@@ -253,7 +265,8 @@ v4**, so read it as the 4.x reference until its rewrite lands (task T-9.6). For 
 README plus the focused documents below; where they disagree with anything, the package source code wins.
 
 - **[Tuning](docs/TUNING.md)**: `npm run tune` measures the work factor, the key derivation, the connection budget and the page cost **on the machine that will run them**, and writes the answers down with their provenance.
-- **[Migrating from v4](docs/MIGRATION_V4_V5.md)**: every break, why it exists, and the new form beside the old one. Read §1 to §4 before touching a port, and keep §18 open while testing the login: the status code changed.
+- **[Migrating from v4](docs/MIGRATION_V4_V5.md)**: every break, why it exists, and the new form beside the old one. Read §1 to §4 before touching a port, and keep §18 and §29 open while porting the login: the routes and the status code changed.
+- **[Authentication flows](docs/AUTH_FLOW_V5.md)**: the login as a flow of stages on both planes, the authenticator contract, identity providers, linking, the access log and every refusal code.
 - **[Magic Query](docs/MAGIC_QUERY_V5.md)**: the URL-to-SQL grammar, the operator catalogue, and the v4 → v5 correspondence table.
 - **[Schema](docs/SCHEMA_V5.md)**: the framework's own tables, what a consuming project must declare, and the one thing it must never redefine.
 - **[Configuration](docs/CONFIGURATION_V5.md)**: the `control` and `tenants` blocks, the four supported combinations, and the defaults that changed on purpose.
@@ -261,7 +274,7 @@ README plus the focused documents below; where they disagree with anything, the 
 - **[Advanced Architecture](docs/ADVANCED_ARCHITECTURE.md)**: Service Layer pattern, BaseService abstraction, and dependency injection.
 - **[Per-route Cache](docs/CACHE.md)**: Opt-in in-memory response cache (LRU + TTL) with a `cache` route prop, scope-safe keys (tenant/subject/roles), and key-group invalidation (`invalidates` + `invalidateCache`).
 - **[Schema Customization](docs/SCHEMA_OVERRIDING.md)**: How to extend core schemas (like Login Response) without forking the framework.
-- **[Security & MFA](docs/SECURITY_MFA.md)**: Deep dive into Multi-Factor Authentication policies, Gatekeeper flow, and emergency resets.
+- **[Security & MFA](docs/SECURITY_MFA.md)**: the second factor's policy on three levels, how the login asks for it, and the recovery paths.
 - **[TypeScript Guide](docs/TYPESCRIPT_GUIDE.md)**: How to properly extend Request types, global scopes, and inject User Contexts.
 
 ## Based on
@@ -572,6 +585,10 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `SESSION_IDLE_TTL`             | Seconds without a renewal before a session ends.                        |    No    | `2592000` (30 d)    |
 | `SESSION_ABSOLUTE_TTL`         | Seconds a session may live, however often it renews.                    |    No    | `15552000` (180 d)  |
 | `SESSION_GRACE_SECONDS`        | Seconds the just-rotated credential stays acceptable, for tabs that renew together. `0` means no tolerance. |    No    | `10`                |
+| `AUTH_FLOW_TTL`                | Seconds a login in progress lives, never extended. Wins over `limits` of `config/authFlows.ts`, as do the three below. |    No    | `600`               |
+| `AUTH_OTP_TTL`                 | Seconds a sent sign-in code stays valid.                                |    No    | `300`               |
+| `AUTH_OTP_MAX_ATTEMPTS`        | Wrong codes before a login ends. The account is never locked by them.   |    No    | `5`                 |
+| `AUTH_OTP_MAX_SENDS`           | Codes sent within one login.                                            |    No    | `3`                 |
 | `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent`). Unset or unknown falls back to the default, which follows `NODE_ENV`. |    No    | `info` in production, `debug` otherwise |
 | `LOG_COLORIZE`                 | Enable colorized log output.                                            |    No    | `true`              |
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
@@ -745,8 +762,9 @@ COOKIE_SECRET=super_secret_cookie_key_change_me
 - The two planes have separate cookies: `auth_token` and `refresh_token` for the tenant plane,
   `control_token` and `control_refresh_token` for the platform (`/system/auth/*`). An operator who
   impersonates a user keeps the platform session that can end the impersonation.
-- The MFA pre-auth token and the impersonation token travel in the cookie as well (`tempToken: null`,
-  `token: null` in the body).
+- A login in progress has its own cookie, `auth_flow` (or `control_flow`), signed, `SameSite=Strict` and
+  limited to the flow routes, and the 202 body answers `flow: null`. The impersonation token travels in the
+  cookie as well (`token: null` in the body).
 - The `Authorization` header is read, and accepts **integration tokens only**: a session token presented
   there is refused with `401 CREDENTIAL_CHANNEL`. When a request carries both, the header is the credential.
 - **Deployment constraint.** `SameSite=Strict` means the admin and the API must be on the same site, that is
@@ -759,6 +777,8 @@ COOKIE_SECRET=super_secret_cookie_key_change_me
 ### 2. Bearer mode (`AUTH_MODE=BEARER`)
 
 - Login returns `token` and `refreshToken` in the body; every request sends `Authorization: Bearer <token>`.
+  A login that owes a further stage answers 202 with `flow`, the flow credential, which the client sends back
+  as the `flow` field of the next step's body and never in `Authorization`.
 - Renewal sends the refresh credential alone: `{ refreshToken }`. The answer carries a new `token` **and a new
   `refreshToken`**, which the client must store in place of the old one.
 - **Best for:** clients that cannot hold a cookie, such as mobile apps and server-to-server sessions. A
@@ -1834,23 +1854,34 @@ export default {
 }
 ```
 
-## Multi-Factor Authentication (MFA)
+## Login flows and multi-factor authentication
 
-The framework provides a robust, built-in Multi-Factor Authentication system based on TOTP (Time-Based One-Time Password).
+A login is a flow: one identify stage (`password`, `email-otp`, `oidc`, or a project's method), then the stages
+the subject's roles owe, then the session. The framework's default, on both planes, is the password and, for
+whoever has one, a TOTP code:
 
-For detailed configuration, security policies, and setup flows, please refer to the **[Security & MFA Guide](docs/SECURITY_MFA.md)**.
+```text
+POST /auth/flow/start { method: 'password', email, password }  -> 200 session, or 202 { flow, stage }
+POST /auth/flow/step  { method: 'totp', code }                  -> 200 session
+```
 
-MFA behavior is controlled globally via environment variables (`MFA_POLICY`) or the configuration file `src/config/general.ts`.
+A project changes the stages in `src/config/authFlows.ts`, whose plane blocks replace the framework's instead
+of merging with them, and adds its own methods with `start({ authenticators })`. Everything a flow needs that
+the build lacks (a delivery for email codes, the `openid-client` library, a flow store) refuses the boot. The
+full specification is **[docs/AUTH_FLOW_V5.md](docs/AUTH_FLOW_V5.md)**.
 
-### MFA Policies
+The second factor is governed by a policy on three levels, `MFA_POLICY` for the deployment (the floor),
+`SYSTEM_MFA_POLICY` for the platform's operators and `config.mfa_policy` per tenant, each allowed only to
+tighten the one below:
 
-- **OPTIONAL** (Default): Users can choose to enable or disable MFA from their profile.
-- **MANDATORY**: MFA is enforced for all users.
-  - If a user has not set up MFA yet, upon login, they receive a `202 Accepted` response with a temporary token and must complete the setup to proceed.
-  - Users cannot disable MFA.
-- **ONE_WAY**: MFA is optional to start with, but once enabled, the user cannot disable it themselves. Only an admin can reset it.
+- **`OFF`**: no new enrolments; whoever already has a factor keeps being asked for it.
+- **`OPTIONAL`** (default): users enable and disable their factor themselves.
+- **`ONE_WAY`**: optional to start with; once enabled, only an administrator can remove it.
+- **`MANDATORY`**: every login needs a second factor. The flow engine applies it whatever the flow
+  configuration says, and a user without a factor enrols inside the login.
 
-**_Note_**: In all cases, an administrator **can** force an MFA reset for a user.
+An administrator can always reset a user's factor. Policies, enrolment and recovery are in the
+**[Security & MFA Guide](docs/SECURITY_MFA.md)**.
 
 ## Disable embedded authorization
 

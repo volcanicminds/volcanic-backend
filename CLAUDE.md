@@ -102,8 +102,12 @@ quella variabile non dice quello che sembra. Il comando Docker per il Postgres d
 - **Niente stato di sessione su Postgres**: `set search_path` fuori transazione è vietato due
   volte (`scripts/check-session-state.mjs` e guardia sul driver).
 - **Auth**: `AUTH_MODE` di default `COOKIE` (richiede il plugin `cookie`), `BEARER` in
-  alternativa. Revoca via `externalId`. MFA pendente: token `pre-auth-mfa` da 5 minuti. Login
-  fallito sempre `401 AUTH_INVALID_CREDENTIALS` (in v4 era 403).
+  alternativa. Revoca via `externalId`. Il login è un flusso (`/auth/flow/*` e
+  `/system/auth/flow/*`, `lib/auth/engine.ts`): stadi da `config/authFlows.ts`, che sostituisce e
+  non fonde; secondo passo con risposta 202 e credenziale opaca `vf1.` (cookie `auth_flow` o campo
+  `flow`, mai `Authorization`); il pavimento MFA lo applica il motore. Nessun JWT con claim `role`.
+  Login fallito sempre `401 AUTH_INVALID_CREDENTIALS` (in v4 era 403). Spec in
+  `docs/AUTH_FLOW_V5.md`.
 - **Identità di sistema** separate da quelle dei tenant (`global.systemRoles`, capability a
   catalogo chiuso, rotte `/system/*`). Il fondatore è la colonna `is_founder` nel contenitore;
   `ADMIN_EMAIL` serve solo alla genesi.
@@ -122,11 +126,12 @@ quella variabile non dice quello che sembra. Il comando Docker per il Postgres d
 ## Documentazione: cosa è v5 e cosa no
 
 - **v5**: `README.md`, `llms.txt`, `docs/*_V5.md` (SCHEMA, MAGIC_QUERY, MANAGERS, AUTHORIZATION,
-  API, CONFIGURATION, TESTING), `docs/MIGRATION_V4_V5.md`, `docs/CACHE.md`, `docs/TUNING.md`,
-  `docs/ADVANCED_ARCHITECTURE.md` e `docs/TYPESCRIPT_GUIDE.md` (riscritti sulla v5).
+  AUTH_FLOW, API, CONFIGURATION, TESTING), `docs/MIGRATION_V4_V5.md`, `docs/SECURITY_MFA.md`,
+  `docs/CACHE.md`, `docs/TUNING.md`, `docs/ADVANCED_ARCHITECTURE.md` e `docs/TYPESCRIPT_GUIDE.md`
+  (riscritti sulla v5).
 - **v4, con cartello di sostituzione**: `docs/DATA_LAYER_MAGIC.md`, `docs/CONFIGURATION.md`,
-  `docs/PGLITE.md`. `docs/AUTH_COMPOSABLE_EVOLUTION.md` è il progetto v4 del motore di
-  autenticazione, riallineato alla v5 in `EVO_FASE_12.md`, che prevale.
+  `docs/PGLITE.md`. Il progetto v4 del motore di autenticazione è stato rimosso: lo sostituisce
+  `docs/AUTH_FLOW_V5.md`.
 - In caso di conflitto **vince il codice**.
 
 ## Maturità

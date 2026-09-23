@@ -47,8 +47,9 @@ quest'ordine e non ha bisogno di altro.
 
 **Documenti della v4 che restano, e non vanno usati come guida.** Portano un cartello in testa:
 `docs/DATA_LAYER_MAGIC.md` (sostituito da `MAGIC_QUERY_V5.md`), `docs/CONFIGURATION.md`
-(sostituito da `CONFIGURATION_V5.md`), `docs/AUTH_COMPOSABLE_EVOLUTION.md` (progetto rinviato,
-fuori dalla v5). `docs/AUTHORIZATION_MODEL.md` invece **resta valido**: `AUTHORIZATION_V5.md` lo
+(sostituito da `CONFIGURATION_V5.md`). `docs/AUTH_COMPOSABLE_EVOLUTION.md`, il progetto v4 del
+motore di autenticazione, è stato rimosso in T-12.41: lo sostituisce `docs/AUTH_FLOW_V5.md`, scritto
+sul codice della fase 12. `docs/AUTHORIZATION_MODEL.md` invece **resta valido**: `AUTHORIZATION_V5.md` lo
 estende, non lo sostituisce.
 
 **Regola di precedenza, per non avere due verità.** Sull'**ordine dei lavori** e sul **perché**

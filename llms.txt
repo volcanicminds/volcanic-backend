@@ -201,9 +201,9 @@ your own table objects must be built for.
     - **Session management**: `GET /auth/sessions` lists where the caller is logged in (`sid`, `current`, the two clocks, `ip`, `userAgent`, and no secret of any kind), `DELETE /auth/sessions/:id` closes one; a session of somebody else answers **404**, exactly as one that does not exist, so a `sid` is never an oracle. Closing the current one is a logout. The platform twins are `GET`/`DELETE /system/auth/sessions[/:id]`. Without a registry both answer `404`. Expired rows are cleared by `npx volcanic sessions --purge [--tenants]` and, opportunistically, by about one renewal in fifty.
     - The refresh credential is **opaque** (`vs1.<routing>.<sid>.<secret>`) and means a row in the `session` table: it is consumed and rotated at every renewal, a spent one presented outside `SESSION_GRACE_SECONDS` is `401 SESSION_REUSE_DETECTED` and closes the session, and without a data layer the renewal routes answer `404`. The access token lasts `1h` by default (`JWT_EXPIRES_IN`) and carries `sid`.
 
-    - **6.2 Multi-Factor Authentication (MFA)**
-      - Policy and "Gatekeeper" Flow (Pre-Auth Token)
-      - Adapters and Tools
+    - **6.2 The login flow and multi-factor authentication**
+      - Methods, `authFlows.ts`, the 202/200 exchange, the MFA policy as a floor
+      - Email codes, OIDC single sign-on, the access log
     - **6.3 Role Based Access Control (RBAC)**
       - Role Definition and Route Gatekeepers
     - **6.4 Context Injection & TypeScript**
@@ -277,7 +277,7 @@ The framework is an **opinionated** system composed of three modular packages wo
 1.  **`@volcanicminds/backend` (Server Core)**
     - **Fastify** wrapper.
     - Manages the HTTP lifecycle, automatic route loading (`Auto-Discovery`), JSON Schema validation, and the Global Hooks system.
-    - Natively integrates the Authentication system (JWT access tokens, rotating sessions) and Security (MFA Gatekeeper).
+    - Natively integrates the Authentication system (JWT access tokens, rotating sessions, a composable login flow) and Security (the MFA policy applied by the flow engine).
     - **The container of a request**: hands every request `req.control`, and `req.tenant` where tenancy is declared. Two distinct types, no ambient fallback, and a call with neither throws.
 2.  **`@volcanicminds/backend/db` (Data Layer)**
     - Drizzle underneath, and the subpath says so nowhere on purpose: in v4 it was `/typeorm`, so the ORM was
@@ -1891,7 +1891,7 @@ The framework does not delegate authentication to external providers (like Auth0
 Security pillars are:
 
 1.  **Hybrid JWT**: Stateless token for performance, but with server-side invalidation mechanism.
-2.  **MFA Gatekeeper**: A two-stage login flow for two-factor authentication.
+2.  **Login flow**: A login is a sequence of stages (password, TOTP, email code, OIDC), with the MFA policy applied as a floor.
 3.  **Context Injection**: Transformation of raw token into typed `UserContext` object for business logic.
 
 ---
@@ -1937,50 +1937,98 @@ a spent credential comes back. The mechanism in full: `docs/AUTHORIZATION_V5.md`
 
 ---
 
-## 6.2 Multi-Factor Authentication (MFA)
+## 6.2 The login flow and multi-factor authentication
 
-Framework implements TOTP (Time-based One-Time Password) system compatible with Google Authenticator/Microsoft Authenticator.
+A login is a **flow** (full specification: `docs/AUTH_FLOW_V5.md`): one identify stage that says who the subject
+is, then the stages the subject's roles owe, then a session. The same engine runs both planes, `/auth/flow/*` for
+a tenant's users and `/system/auth/flow/*` for the platform's operators. There is no other login route and no
+temporary token between the two factors: a JWT carrying a `role` claim is refused everywhere with 401.
 
-### Security Policy
+### Methods
 
-Configurable in `src/config/general.ts` (or via ENV `MFA_POLICY`):
+| `id` | Kind | Input | Needs |
+| :--- | :--- | :--- | :--- |
+| `password` | identifier | `email`, `password` | `userManager` / `systemUserManager` |
+| `totp` | verifier | `code` | `mfaManager` |
+| `email-otp` | identifier or verifier | `email` on start, then `code` | an injected `challengeDeliveryManager` |
+| `oidc` | identifier | `provider` key, optional `returnTo` path | the optional peer `openid-client@^6` |
 
-- **`OPTIONAL`**: User can enable it from profile.
-- **`MANDATORY`**: User is forced to configure it at next login. Cannot browse without.
-- **`ONE_WAY`**: Once enabled, user cannot disable it alone (only admin can).
+A project adds its own through `start({ ...layer, authenticators: [myMethod] })` (the `Authenticator`
+contract is exported); an `id` registered twice replaces the first.
 
-### The "Gatekeeper" Flow (Two-Stage Login)
+### Configuration (`src/config/authFlows.ts`)
 
-To ensure security, login never releases valid token if MFA is pending.
+```typescript
+import type { AuthFlowsConfig } from '@volcanicminds/backend'
 
-**Phase 1: Login Credentials**
-
-- **Request**: `POST /auth/login` `{ email, password }`
-- **Check**: Valid credentials. MFA is active for user.
-- **Response**: `202 Accepted` (not 200).
-- **Payload**:
-  ```json
-  {
-    "mfaRequired": true,
-    "mfaSetupRequired": false,
-    "tempToken": "eyJ..." // Temporary token
+export default {
+  tenant: {
+    identify: ['password', 'email-otp'],
+    flows: [
+      { roles: ['admin'], stages: [{ anyOf: ['totp'] }] },                    // admins always owe a TOTP code
+      { roles: ['*'], stages: [{ anyOf: ['totp', 'email-otp'], optional: true }] } // others: only if enrolled
+    ]
   }
-  ```
-- **Security**: `tempToken` has role `pre-auth-mfa` and lasts 5 minutes.
+} satisfies AuthFlowsConfig
+```
 
-**Phase 2: The Guard (Middleware)**
-Global middleware `hooks/onRequest.ts` inspects every request. If token has role `pre-auth-mfa`, blocks access to all routes except:
+A plane block **replaces** the framework's, never merges with it; the framework's default is `identify:
+['password']` with an optional `totp` stage, on both planes. The flow is chosen **after** identification: the first
+whose `roles` meet the subject's, `'*'` last. An `optional` stage applies only to a subject enrolled in one of its
+methods. Everything the build cannot serve (an unknown method, `email-otp` without a delivery, `oidc` without its
+library, a second step without a flow store) **refuses the boot**.
 
-- `/auth/mfa/verify`
-- `/auth/mfa/setup`
-- `/auth/mfa/enable`
+### The exchange
 
-**Phase 3: TOTP Verification**
+```text
+POST /auth/flow/start { method: 'password', email, password }
+  -> 200 { ...user, token, refreshToken, securityPolicy }                      nothing else owed
+  -> 202 { flow, expiresAt, stage: { options: [{ id: 'totp', kind: 'verifier' }] } }
+POST /auth/flow/step  { method: 'totp', code: '123456' }  (+ flow in bearer mode)
+  -> 200 session  |  401 FLOW_CODE_INVALID { remaining }  |  401 FLOW_ATTEMPTS_EXHAUSTED (flow ended)
+```
 
-- **Request**: `POST /auth/mfa/verify`
-  - Header: `Authorization: Bearer <tempToken>`
-  - Body: `{ token: "123456" }`
-- **Response**: `200 OK` with real `token` and `refreshToken` (`user/admin` role).
+- **The flow credential** (`vf1.<routing>.<flowId>.<secret>`) travels in the `auth_flow` cookie (`control_flow` on
+  the platform) in cookie mode, where the 202 answers `flow: null`, or as the `flow` field of the body in bearer
+  mode. **Never** in `Authorization`.
+- **An option** may carry `challenge` (a code was sent: channel, masked destination, expiry, next send),
+  `enrol` (`true`, then `{ secret, uri, qrCode }` after `step { method, action: 'enrol' }`) or `action`
+  (`{ type: 'redirect', url }` for a provider). Codes only: the console owns the labels.
+- **Limits**: a flow lives 600 s (`AUTH_FLOW_TTL`), a code 300 s, 5 wrong codes end the flow (never lock the
+  account), 3 sends per flow and 5 per 15 minutes / 20 per day per subject across flows.
+- `GET /auth/flow/options` lists the identifiers, the provider keys of `oidc` and the account creation mode, and
+  writes nothing. `POST /auth/flow/challenge` sends a code again; `POST /auth/flow/cancel` ends the flow.
+
+### Security policy
+
+`MFA_POLICY` (deployment floor), `SYSTEM_MFA_POLICY` (the platform's operators) and `config.mfa_policy` on a
+tenant's registry row, each allowed only to tighten the level below:
+
+- **`OFF`**: no new enrolments; whoever has a factor keeps being asked for it.
+- **`OPTIONAL`** (default): the user enables and disables it.
+- **`ONE_WAY`**: once enabled, only an administrator removes it.
+- **`MANDATORY`**: every login needs a second factor. **The flow engine applies it**, whatever `authFlows.ts`
+  says; a subject with no factor enrols in TOTP inside the login (`action: 'enrol'`).
+
+`/auth/mfa/setup`, `/enable` and `/disable` (and `/system/auth/mfa/setup`, `/enable`) are account management and
+need a complete session; `enable` issues no session.
+
+### Email codes and single sign-on
+
+- **`email-otp`** needs a `challengeDeliveryManager` with `deliver({ channel, to, code, purpose, expiresAt, plane,
+  tenantId, subjectId })`: the consumer composes the message (typically on `@volcanicminds/tools/mailer`), the
+  backend sends data only. As an identifier it answers the same 202 whether the address exists or not, and the
+  delivery runs after the response.
+- **`oidc`** providers are declared per plane in `authFlows.ts` (`providers`, with `clientSecretEnv` naming the
+  variable that holds the secret) or per tenant by a platform operator (`/tenants/:id/identity-providers`, secret
+  stored encrypted). PKCE and `nonce` always; the return lands on `/auth/flow/return/oidc`, which issues nothing
+  and redirects 303 to the plane's `returnUrl`; the console resumes with `step { method: 'oidc' }`. Identities are
+  linked on `(provider, issuer, subject)`, by address only where the provider opts in for listed domains, and
+  created just in time only where the provider enables it (tenant plane, never `admin`). The provider's own MFA
+  counts (`idp-mfa`) only where the provider is declared trusted for it.
+
+Every step writes the **access log** (`access_log` table, one per container): `GET /access-log` for the tenant's
+`admin`, `GET /system/access-log` with the `access-log` capability.
 
 ### Adapter Implementation (`src/services/mfa.adapter.ts`)
 
@@ -2241,7 +2289,7 @@ export const authLoginResponseSchema = {
 }
 ```
 
-At runtime, `/auth/login` response will return both JWT token and professional profile data.
+At runtime, a completed login (the 200 of `/auth/flow/start` or `/auth/flow/step`) will return both JWT token and professional profile data.
 
 ---
 
@@ -3028,16 +3076,21 @@ returns `false` and whose methods throw `"Not implemented."`. So:
 
 ```typescript
 await start() // 100% valid: the server boots. Public routes work. Any route that NEEDS a manager
-              // (e.g. POST /auth/login needs userManager) returns a "Not implemented" error at call time,
+              // (e.g. POST /auth/flow/start needs userManager) returns a "Not implemented" error at call time,
               // not at boot. Nothing crashes at startup.
 ```
 
 The decorator keys (all optional): `userManager`, `tokenManager`, `trackingManager`, `mfaManager`,
 `transferManager`, `tenantManager`, `systemUserManager`, `impersonationManager`,
-`destructionManager`. Each maps 1:1 to an exported interface (`UserManagement`, `TokenManagement`,
-`TrackingManagement`, `MfaManagement`, `TransferManagement`, `TenantManagement`,
-`SystemUserManagement`, `ImpersonationManagement`, `DestructionManagement` — all re-exported from
-`@volcanicminds/backend`). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
+`destructionManager`, `sessionManager`, `authFlowManager`, `externalIdentityManager`,
+`identityProviderManager`, `challengeDeliveryManager`, `accessLogManager`, `settingManager`. Each maps 1:1
+to an exported interface (`UserManagement`, `TokenManagement`, `TrackingManagement`, `MfaManagement`,
+`TransferManagement`, `TenantManagement`, `SystemUserManagement`, `ImpersonationManagement`,
+`DestructionManagement`, `SessionManagement`, `AuthFlowManagement`, `ExternalIdentityManagement`,
+`IdentityProviderManagement`, `ChallengeDeliveryManagement`, `AccessLogManagement`,
+`SettingManagement`, all re-exported from `@volcanicminds/backend`). The data layer's `start()` returns all
+of them except `mfaManager`, `transferManager` and `challengeDeliveryManager`, which come from the consumer.
+One more key is not a manager: `authenticators`, the project's own login methods (Part 6.2). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
 resolve a consumer entity by name through `global.entity`, and neither is a thing v5 does.
 
 Two more keys the data layer's `start()` returns and the server carries: `provider` (how a request
@@ -3162,13 +3215,14 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Group | Method & Path | Roles (gate) | Auth required | Backing manager |
 | :--- | :--- | :--- | :--- | :--- |
 | Health | `GET /health` | public | no | — |
-| Auth | `POST /auth/register` · `/unregister` · `/login` | public | no | `userManager`; register follows the tenant's account creation mode (closed by default, see below) |
+| Auth | `POST /auth/register` · `/unregister` | public | no | `userManager`; register follows the tenant's account creation mode (closed by default, see below) |
+| Auth (flow) | `GET /auth/flow/options` · `POST /auth/flow/start` · `/flow/step` · `/flow/challenge` · `/flow/cancel` · `GET /auth/flow/return/:method` | public (flow credential) | no² | `userManager` + `authFlowManager`, and per method `mfaManager`, `challengeDeliveryManager` |
+| Auth | `GET /auth/identities` · `DELETE /auth/identities/:id` | any authenticated | **yes** | `externalIdentityManager` |
 | Auth | `POST /auth/validate-password` · `/confirm-email` · `/forgot-password` · `/reset-password` | public | no | `userManager` |
 | Auth | `POST /auth/change-password` · `/invalidate-tokens` | any authenticated | **yes** | `userManager` |
 | Auth | `GET /auth/sessions` · `DELETE /auth/sessions/:id` | any authenticated | **yes** | `sessionManager`⁸ |
 | Auth | `POST /auth/logout` · `/refresh-token` | public¹ | no | `userManager` |
 | Auth (MFA) | `POST /auth/mfa/setup` · `/mfa/enable` · `/mfa/disable` | any authenticated | **yes** | `userManager` + `mfaManager` |
-| Auth (MFA) | `POST /auth/mfa/verify` | public (during login) | no² | `userManager` + `mfaManager` |
 | Users | `GET /users/me` · `PUT /users/me` · `GET /users/roles` · `GET /users/is-admin` | any authenticated | **yes** | `userManager` |
 | Users | `GET /users` · `GET /users/count` · `GET /users/:id` · `PUT /users/:id` · `POST /users`⁴ ⁵ · `DELETE /users/:id` | `users` cap⁵ | **yes** | `userManager` |
 | Users | `POST /users/:id/block` · `/unblock` | `users` cap⁵ | **yes** | `userManager` |
@@ -3180,7 +3234,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Tenants | `POST /tenants/:id/export` | `tenants` cap | **yes** | `provider.exportContainer` |
 | Tenants | `POST /tenants/:id/destruction-request` · `DELETE /tenants/:id/data` | `tenants:destroy` cap⁷ | **yes** | `destructionManager` |
 | Tenants | `POST /tenants/:id/impersonate` · `POST /tenants/impersonate/end` | `tenants:impersonate` cap | **yes** | `impersonationManager` |
-| System | `POST /system/auth/login` · `/refresh-token` · `/logout` · `/mfa/*` | public / control token | varies | `systemUserManager` |
+| System | `/system/auth/flow/*` (the six flow routes) · `POST /system/auth/refresh-token` · `/logout` · `/mfa/setup` · `/mfa/enable` | public / control token | varies | `systemUserManager` |
 | System | `GET /system/auth/me` | any control token | **yes** | — (the resolved `req.systemUser`) |
 | System | `GET /system/auth/sessions` · `DELETE /system/auth/sessions/:id` | any control token | **yes** | `sessionManager`⁸ |
 | System | `GET /system/users` · `POST /system/users` · `PUT/DELETE /system/users/:id` · `/block` · `/unblock` | `system-users` cap | **yes** | `systemUserManager` |
@@ -3195,7 +3249,8 @@ framework reserves `users`, `tokens` and `manifest`; a consumer grants them to i
 
 ¹ `/refresh-token` consumes the refresh credential (body or cookie) and issues a new one; `/logout` revokes the
 session row and, in COOKIE mode, clears the cookies. Both need `sessionManager`.
-² `/auth/mfa/verify` is reached with the **pre-auth MFA temp token** issued by login (`202`); see Part 6.2.
+² The flow routes after `start` are reached with the **flow credential** of the `202` (cookie `auth_flow`, or the
+`flow` field of the body), never with a token; see Part 6.2 and `docs/AUTH_FLOW_V5.md`.
 ³ Token read routes declare roles but no `isAuthenticated` middleware — gate by roles; harden with the middleware if exposing publicly.
 ⁴ Admin-created users start **unconfirmed** by default (standard confirmation flow). Opt-in
 `options.allow_admin_create_confirmed_users: true` (`src/config/general.ts`) creates them already
@@ -3418,7 +3473,8 @@ await layer.migrations.apply({ locator: 'public' })
 await startServer(layer)
 ```
 
-Flow: `POST /auth/login` → `{ token, refreshToken }`; client sends `Authorization: Bearer <token>`; private
+Flow: `POST /auth/flow/start { method: 'password', email, password }` → `{ token, refreshToken }` (or `202` with a
+stage to answer on `/auth/flow/step`); client sends `Authorization: Bearer <token>`; private
 routes (`roles: [roles.admin]`, …) are enforced by the core. Refresh via `POST /auth/refresh-token` with
 `{ refreshToken }` alone, storing the new `refreshToken` that comes back: the credential rotates at every
 renewal, and presenting a spent one closes the session.
@@ -3475,8 +3531,10 @@ What changes at runtime (see Part 1.7 for the security rules):
 `@volcanicminds/tools` is the **utility pillar**; you wrap its features in managers/adapters and inject them.
 
 - **MFA (TOTP):** wrap `tools` mfa in an adapter implementing `MfaManagement` (`generateSetup`, `verify`) and
-  inject as `mfaManager`. Enables `/auth/mfa/*`. Enforce globally with `MFA_POLICY=MANDATORY`. See Part 6.2 and
-  `docs/SECURITY_MFA.md`.
+  inject as `mfaManager`. Enables the `totp` method of the login flow and `/auth/mfa/*`. Enforce with
+  `MFA_POLICY=MANDATORY`. See Part 6.2 and `docs/SECURITY_MFA.md`.
+- **Email sign-in codes:** wrap `tools` mailer in a `ChallengeDeliveryManagement` (`deliver({ to, code, ... })`)
+  and inject as `challengeDeliveryManager`; then list `email-otp` in `src/config/authFlows.ts`.
 - **File upload (TUS):** wrap `tools` transfer in a `TransferManagement` adapter and inject as `transferManager`;
   the core mounts a streaming TUS endpoint at `getPath()`. See Part 1.6 (raw-body/multipart) for related plugins.
 - **Mailer / Logger / Storage:** used directly inside your services (no manager needed) — e.g. send the

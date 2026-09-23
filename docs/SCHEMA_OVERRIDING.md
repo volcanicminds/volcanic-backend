@@ -16,7 +16,7 @@ The Schema Loader (`lib/loader/schemas.ts`) follows a specific loading order:
 
 ## Step-by-Step Example: Extending Login Response
 
-Scenario: You want the `/auth/login` endpoint to return the user's `firstName`, `lastName`, and `professional` profile data, in addition to the standard JWT token.
+Scenario: You want a completed login (the 200 of `POST /auth/flow/start` or `POST /auth/flow/step`, docs/AUTH_FLOW_V5.md) to return the user's `firstName`, `lastName`, and `professional` profile data, in addition to the standard JWT token.
 
 ### 1. Identify the Target Schema
 
@@ -79,7 +79,7 @@ export const authLoginResponseSchema = {
 
 ### 3. Runtime Result
 
-When the server starts, it merges the two definitions. The effective schema used by Fastify for the `/auth/login` route will be:
+When the server starts, it merges the two definitions. The effective schema used by Fastify for the 200 of the login flow routes will be:
 
 ```javascript
 {
