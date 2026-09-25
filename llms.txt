@@ -1286,6 +1286,8 @@ export async function myHandler(req: FastifyRequest, reply: FastifyReply) {
 }
 ```
 
+An async handler answers by returning a value or `return reply.send(...)`. A bare `reply.send(...)` in an async handler resolves to `undefined`, Fastify sends a second time while the async `preSerialization` hooks are still running, and every request logs `ERR_HTTP_HEADERS_SENT`. A sync handler may call `reply.send(...)` without returning: the framework hands the reply back for it.
+
 ### 1. Input Normalization (`req.data()`)
 
 Fastify separates `req.body` (POST/PUT) from `req.query` (GET).

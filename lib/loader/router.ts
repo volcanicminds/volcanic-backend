@@ -432,6 +432,44 @@ async function load(): Promise<ConfiguredRoute[]> {
   return validRoutes
 }
 
+export function controllerHandler(file: string, func: string, handler: string) {
+  return async function (req: FastifyRequest, reply: FastifyReply) {
+    let module
+    try {
+      // A bare path and a file URL are two module keys for the same file: the loader
+      // would compile the handler (and everything it imports) a second time, with its
+      // own module-level state. The URL form is also the only one Windows accepts.
+      try {
+        module = await import(pathToFileURL(file + '.js').href)
+      } catch {
+        try {
+          module = await import(pathToFileURL(file + '.ts').href)
+        } catch {
+          module = await import(pathToFileURL(file).href)
+        }
+      }
+    } catch (err) {
+      if (log.e) log.error(`Cannot load module ${file}: ${err}`)
+      return reply.code(500).send(`Invalid handler module ${handler}`)
+    }
+
+    if (!module || typeof module[func] !== 'function') {
+      if (log.e) log.error(`Method ${func} not found in ${file}`)
+      return reply.code(500).send(`Invalid handler method ${handler}`)
+    }
+
+    // Fastify reads a sync handler returning undefined as "the handler answers through
+    // reply.send()", and waits. This wrapper is async, so the same undefined would arrive as a
+    // resolved promise, which Fastify reads as "send nothing now": that second send overtakes
+    // the first while async preSerialization hooks are still running, and every request logs
+    // ERR_HTTP_HEADERS_SENT. Handing back the reply, a thenable settled when the response
+    // ends, keeps the sync contract. An async controller that sends must still `return reply`.
+    const result = module[func](req, reply)
+    if (result === undefined) return reply
+    return await result
+  }
+}
+
 async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void> {
   if (!routes || routes.length === 0) {
     if (log.w) log.warn('No routes to apply to server')
@@ -483,33 +521,7 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
           cache: cache || undefined,
           tracking: tracking || undefined
         },
-        handler: async function (req: FastifyRequest, reply: FastifyReply) {
-          let module
-          try {
-            // A bare path and a file URL are two module keys for the same file: the loader
-            // would compile the handler (and everything it imports) a second time, with its
-            // own module-level state. The URL form is also the only one Windows accepts.
-            try {
-              module = await import(pathToFileURL(file + '.js').href)
-            } catch {
-              try {
-                module = await import(pathToFileURL(file + '.ts').href)
-              } catch {
-                module = await import(pathToFileURL(file).href)
-              }
-            }
-          } catch (err) {
-            if (log.e) log.error(`Cannot load module ${file}: ${err}`)
-            return reply.code(500).send(`Invalid handler module ${handler}`)
-          }
-
-          if (!module || typeof module[func] !== 'function') {
-            if (log.e) log.error(`Method ${func} not found in ${file}`)
-            return reply.code(500).send(`Invalid handler method ${handler}`)
-          }
-
-          return await module[func](req, reply)
-        }
+        handler: controllerHandler(file, func, handler)
       }
 
       if (cacheHooks?.preHandler) {

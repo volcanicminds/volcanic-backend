@@ -1104,6 +1104,8 @@ export function user(req: FastifyRequest, reply: FastifyReply) {
 }
 ```
 
+A sync controller may call `reply.send()` without returning. An `async` one returns its value, or `return reply.send(...)`: a bare `reply.send()` there resolves to `undefined`, and Fastify sends a second time (`ERR_HTTP_HEADERS_SENT` in the log on every request).
+
 Useful methods / objects:
 
 - `req.user` to grab **user** data (validated and linked by JWT).
