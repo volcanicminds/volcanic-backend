@@ -34,9 +34,9 @@ rilievo e non da un lavoro cronometrato.
 | ~~A. Il contesto dati~~ | **chiuso l'11 settembre 2026**, T-10.1, T-10.2, T-10.3 | fatto |
 | ~~B. Configurazione che mente~~ | **chiuso l'11 settembre 2026**, T-10.4 → T-10.10 | fatto |
 | ~~C. Allineamento di `volcanic-admin` alla v5~~ | **chiuso il 15 settembre 2026**, T-10.11 → T-10.18; la sessione in cookie httpOnly di default era chiusa l'11 settembre 2026 (T-10.37 → T-10.39) | fatto |
-| D. Sample committabile | **chiuso l'11 settembre 2026** tranne il commit (T-10.28, su richiesta) | fatto |
+| ~~D. Sample committabile~~ | **chiuso l'11 settembre 2026**; il commit (T-10.28) è `volcanic-backend-sample@23c6c04` | fatto |
 | ~~E. Igiene del framework~~ | **chiuso l'11 settembre 2026** | fatto |
-| F. Coda del blocco C | difetti e disegni emersi chiudendo C | 3 correzioni fatte, 3 voci aperte |
+| ~~F. Coda del blocco C~~ | difetti e disegni emersi chiudendo C, tutti chiusi (T-10.19 → T-10.27 della sezione F) | fatto |
 
 ---
 
@@ -639,11 +639,11 @@ chiuse queste voci, perché due di esse rendono il sample non funzionante su un 
   serve `node scripts/link-peers.mjs`, perché npm non rilancia il `postinstall` e restano due copie
   di `drizzle-orm` (errore di tipi, non di runtime): è il meccanismo che c'era già.
 
-- [~] **T-10.28** Committare il porting.
+- [x] **T-10.28** Committare il porting.
   **Dipende da**: T-10.3, T-10.19, T-10.20.
   **Chiuso quando**: `git status` del sample è pulito e il commit cita le voci chiuse.
-  **Pronto, non eseguito**: il commit si fa su richiesta esplicita. Tutto il lavoro del sample è nel
-  working tree, verificato (type-check, lint senza errori, 7 test verdi contro Postgres reale).
+  **Evidenza**: `volcanic-backend-sample@23c6c04` (`feat(v5): port sample app to the v5 data
+  layer`), pubblicato su `origin/v5`; working tree del sample pulito.
 
 ---
 

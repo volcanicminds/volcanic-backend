@@ -30,9 +30,11 @@
   - **Verification:** `type-check` OK; 4 scenarios (missing dev / weak prod / weak dev / strong) with the expected exit codes (1/1/0/0); dev secret (88 chars) passes without warning.
   - **Note:** the "public routes only, no secret" scenario was intentionally not implemented — the native auth routes (login/refresh) sign tokens and require the secret anyway; see discussion (Options B/Hybrid discarded).
 
-- [ ] **S3 — CORS default `origin: '*'` + `credentials: true`** · `BE`
+- [x] **S3 — CORS default `origin: '*'` + `credentials: true`** · `BE`
   - File: `lib/config/plugins.ts:6-9`
   - Default too permissive for B2B. Allowlist origins via env; forbid `*`+credentials; startup warning.
+  - **Done in v5 (D-16):** the allowlist comes from `CORS_ORIGINS` (`lib/config/plugins.ts:8`), and
+    `credentials` is never granted against a wildcard (`lib/util/cors.ts`, `corsCredentialsFor`).
 
 - [x] **S4 — helmet disabled by default and absent with GraphQL** · `BE` ✅ *(2026-06-17)*
   - File: `lib/config/plugins.ts:46-49`, `index.ts:201` (`!loadApollo`)
@@ -102,9 +104,11 @@
   - File: `lib/api/tenants/controller/tenants.ts:141-193`; `index.ts:319-352` (MFA admin reset via env)
   - Persist the audit log; reduce the TTL; consider step-up MFA; mandatory audit on the MFA reset via env.
 
-- [ ] **S14 — Revocation latency: cache on `retrieveUserByExternalId`** · `DB`
+- [x] **S14 — Revocation latency: cache on `retrieveUserByExternalId`** · `DB`
   - File: `lib/loader/userManager.ts:208-211` (`cache: global.cacheTimeout`)
   - Blocked user/changed roles stay valid until the cache expires. Invalidate the cache on `block`/`resetExternalId`/role change; document the trade-off.
+  - **Done in v5 (D-15):** the TypeORM manager is gone; `retrieveUserByExternalId` in
+    `lib/database/managers/user.ts` reads the container with no query cache.
 
 - [x] **Q2 — `changePassword`: null deref if the user does not exist** · `DB` ✅ *(2026-06-18)*
   - File: `lib/loader/userManager.ts:239-240`
@@ -118,9 +122,11 @@
   - **Done:** `throw new Error(e)` → `throw e` (the only catchable error in the try is already an `Error`, previously it was double-wrapped/stringified).
   - **Verification:** `build` (typeorm) OK.
 
-- [ ] **Q4 — `_logic` parser without depth/length limit (DoS)** · `DB`
+- [x] **Q4 — `_logic` parser without depth/length limit (DoS)** · `DB`
   - File: `lib/query/parser.ts`
   - Limit the number of tokens and the nesting depth.
+  - **Done in v5 (D-13):** `DEFAULT_LOGIC_LIMITS` in `lib/database/query/logic.ts` (length 512,
+    depth 8, aliases 32); exceeding them answers `QUERY_LOGIC_TOO_COMPLEX`.
 
 - [x] **Q5 — `Semaphore.release()` can make `running` negative** · `TO` ✅ *(2026-06-18)*
   - File: `lib/ai/concurrency.ts:40`
@@ -159,13 +165,17 @@
   - **Done:** removed the module-level destructuring `const { embedded_auth = true } = global.config?.options || {}` (executed at import, when `global.config` might not be populated yet → frozen/`undefined` value at first load) and moved it inside the `onRequest` handler, so the flag is re-read on every request from the now-initialized `global.config`.
   - **Verification:** `check-all` (lint + type-check) OK on `volcanic-backend`.
 
-- [ ] **Q8 — `do/while` loop with a DB query for UUIDv4 uniqueness** · `DB`
+- [x] **Q8 — `do/while` loop with a DB query for UUIDv4 uniqueness** · `DB`
   - File: `lib/loader/userManager.ts:61-65,116-120`; `lib/loader/tokenManager.ts:51-54`
   - Collision ~impossible: generate the UUID and rely on the unique constraint.
+  - **Done in v5 (D-28):** ids are UUID v7 generated in process (`lib/database/uuid.ts`), with no
+    database round trip.
 
-- [ ] **Q9 — Useless and repeated `try { } catch (e) { throw e }`** · `DB`
+- [x] **Q9 — Useless and repeated `try { } catch (e) { throw e }`** · `DB`
   - File: `lib/loader/userManager.ts`, `lib/loader/tokenManager.ts` (various, with `eslint-disable no-useless-catch`)
   - Remove the useless wrappers.
+  - **Not applicable in v5:** both files were removed with the TypeORM data layer, and no
+    `no-useless-catch` suppression is left in `lib/`.
 
 - [ ] **Q10 — `@ts-ignore`/`as any` on `req.user`/`req.tenant`** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts`
