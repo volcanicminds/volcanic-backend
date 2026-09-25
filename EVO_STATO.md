@@ -52,7 +52,7 @@ sei nuove dimostrano che una sessione vive nel contenitore del suo tenant, che i
 tenant presentato come un altro è rifiutato, e che dopo logout o riuso non si rinnova più. **Fase 11 chiusa**: T-11.18 decisa e implementata, la lista dei dispositivi collegati è un pannello
 dell'account nella console, non una risorsa del manifest, che ne annuncia l'endpoint per piano.
 
-**Fase 12 aperta il 18 settembre 2026** (`EVO_FASE_12.md`): motore di autenticazione componibile su
+**Fase 12 aperta il 18 settembre 2026, chiusa il 25 settembre 2026** (`EVO_FASE_12.md`): motore di autenticazione componibile su
 entrambi i piani (password, TOTP, email-otp, OIDC, contratto per SMS e social), `/auth/flow/*` al
 posto delle rotte di login attuali, registro degli accessi `access_log`. SAML rinviato a una fase
 successiva, collegamento self-service degli account rinviato dopo la 5.0 (F48). Chiusa T-12.1, il
@@ -118,7 +118,9 @@ dell'audit (S5, S7, S16, Q10 a meno di `systemUserManager`, Q11, Q12 in
 `docs/AUDIT_TASKS_TODO.md`): `confirmation_token` scritto alla creazione e consegnato al
 middleware `global.postAuth`, limiti su ogni rotta che prende un segreto, account bloccato
 risposto come segreto sbagliato, `BODY_LIMIT` e tetti multipart, `npm audit --omit=dev` in CI.
-`npm test` 909 prove con `DATABASE_URL`, banco multi-tenant 22. Prossimo: T-12.45, `volcanic-admin`.
+`npm test` 909 prove con `DATABASE_URL`, banco multi-tenant 22. Chiuso T-12.45
+(`volcanic-admin@80e981c`): il login dell'admin è il flusso, verificato con Playwright sui due piani
+in bearer e in cookie, TOTP, iscrizione forzata, codice via email e OIDC. La fase 12 è chiusa.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:

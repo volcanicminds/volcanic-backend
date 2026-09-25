@@ -1328,7 +1328,7 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   in `ae73f14`: `StartOptions` non accettava i manager in un oggetto letterale, e un manager
   `undefined` sostituiva il Null Object.
 
-- [ ] **T-12.45** `volcanic-admin`.
+- [x] **T-12.45** `volcanic-admin`.
   **Cosa fare**: il client di autenticazione diventa un client di flusso: `endpoints.ts:13-32`,
   `client.ts:18-36` e `:178-183`, `providers/auth.ts:78-83`, `tokenStore.ts` (il posto del token
   temporaneo diventa quello del credenziale di flusso in bearer); `LoginView.tsx` disegna le
@@ -1341,6 +1341,18 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Criterio di chiusura**: login `password`, `password → totp`, iscrizione forzata ed
   `email-otp` verificati con Playwright contro il backend locale, sui due piani; OIDC verificato
   contro l'issuer finto del blocco L.
+  **Evidenza**: `volcanic-admin@80e981c`: `LoginView.tsx` riscritta sul flusso (opzioni, stadi 202,
+  iscrizione TOTP con QR, redirect e ripresa, reinvio, annullamento, codici di rifiuto su chiavi
+  `login.*`, codice a 8 cifre per `email-otp` identificatore e a 6 come verificatore), client,
+  endpoint, `tokenStore` (credenziale `vf1.` in bearer), mock e `controlManifest` rigenerato da
+  `/system/manifest`. Playwright contro il backend locale e Postgres usa e getta, in bearer e in
+  cookie: tenant password, password errata, `password → totp` (codice errato con tentativi
+  residui, annullamento), `email-otp` identificatore con reinvio, iscrizione forzata con
+  `mfa_policy MANDATORY` (il pavimento offre `email-otp` come verificatore); piano di controllo con
+  iscrizione TOTP forzata e secondo login TOTP; OIDC contro l'issuer finto, registro
+  `flow.started → idp.linked → stage.passed → login.succeeded`. In cookie nessun token né flusso
+  nello storage, `auth_token` e `control_token` impostati. Il registro degli accessi si legge dalle
+  risorse del manifest sui due piani (8 e 20 righe). Console senza errori JS.
 
 ## O. Creazione degli account
 
