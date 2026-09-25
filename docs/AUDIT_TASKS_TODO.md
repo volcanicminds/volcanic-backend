@@ -60,7 +60,7 @@
   - **Done:** `retrieveUserByPassword` now **always** runs `bcrypt.compare` (against a cost-12 dummy hash when the user does not exist) and returns `null` in both failure cases. It equalizes the timing (test: 267.0 vs 266.7 ms) and also removes the previous inconsistency throw→500 (missing user) vs return-null→403 (wrong password): both paths now return a uniform 403 "Wrong credentials". Removed the redundant `try/catch`. Bump `@volcanicminds/typeorm 2.3.4 → 2.3.5`.
   - **Verification:** `type-check` + `build` OK on typeorm.
 
-- [ ] **S7 — User enumeration via messages/states** · `BE`
+- [x] **S7 — User enumeration via messages/states** · `BE` ✅ *(2026-09-26)*
   - File: `lib/api/auth/controller/auth.ts:28,153,157,212`; `lib/hooks/onRequest.ts:147`
   - "Email already registered", "User blocked" vs "Wrong credentials", `404 SUBJECT_NOT_FOUND`. `forgotPassword` must always respond with a generic 200; make the public messages uniform.
   - **Done in v5:** a failed login answers `401 AUTH_INVALID_CREDENTIALS` whatever the cause
@@ -164,7 +164,7 @@
     (`lib/util/credential.ts`), renewal works in cookie mode, and `JWT_EXPIRES_IN` defaults to `1h`.
     Tested by `test/lib/authChannels.spec.ts`.
 
-- [ ] **S16 — Missing explicit `bodyLimit`/`limits` for multipart (payload DoS)** · `BE`
+- [x] **S16 — Missing explicit `bodyLimit`/`limits` for multipart (payload DoS)** · `BE` ✅ *(2026-09-26)*
   - File: `index.ts` (server/multipart registration)
   - Set `bodyLimit` and `limits.fileSize`.
   - **Done in v5:** `bodyLimit` comes from `BODY_LIMIT` (default 1 MiB, `index.ts`); multipart gets
@@ -209,12 +209,17 @@
   - **Done in v5 (backend):** `.github/workflows/ci.yml` runs lint, type-check, depcruise, the
     session and migration checks, build, publint, attw, the suites with coverage and a Postgres
     job; `npm audit --omit=dev --audit-level=high` stops the `verify` job. No SAST step.
+  - **Still open (2026-09-26):** `volcanic-tools`, `volcanic-admin` and `volcanic-rag` have no
+    `.github/workflows`, and the backend has no SAST step.
 
 - [ ] **Q12 — Residual moderate vulnerabilities (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
   - File: dependencies
   - `npm audit fix` and re-verify.
   - **Done in v5 (backend):** `npm audit --omit=dev` reports 0 vulnerabilities (2026-09-25); the 7
     moderate left are in dev dependencies only. CI now fails on a high one in production (Q11).
+  - **Still open (2026-09-26), `npm audit --omit=dev`:** `volcanic-tools` 44 (1 critical,
+    `fast-xml-parser`; 10 high; all fixable by `npm audit fix` except `nodemailer`, which needs
+    major 10); `volcanic-admin` 28 (2 high, `fast-uri` and `linkify-it`); `volcanic-rag` 0.
 
 ---
 
