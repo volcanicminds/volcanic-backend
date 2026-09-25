@@ -301,8 +301,10 @@ And, what you see in [package.json](package.json).
 
 ### Installation
 
+The 5 line is a prerelease on the `next` dist-tag; `latest` is still 4.x:
+
 ```sh
-npm install @volcanicminds/backend
+npm install @volcanicminds/backend@next
 ```
 
 For database interactions, the data layer is the subpath `@volcanicminds/backend/db`. Install its
