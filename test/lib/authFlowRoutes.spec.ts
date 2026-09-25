@@ -455,5 +455,21 @@ describe('auth · the flow routes of both planes (T-12.15, T-12.16, T-12.19 to T
         expect(limitOf(file, `${prefix}/cancel`)).toBeUndefined()
       }
     })
+
+    it('limits every tenant route that takes a secret, and renewal loosely (S5)', () => {
+      const credential = { max: 10, timeWindow: 60000 }
+      for (const path of [
+        '/register',
+        '/unregister',
+        '/change-password',
+        '/confirm-email',
+        '/forgot-password',
+        '/reset-password'
+      ]) {
+        expect([path, limitOf(tenantRoutes, path)]).toEqual([path, credential])
+      }
+      expect(limitOf(tenantRoutes, '/refresh-token')).toEqual({ max: 60, timeWindow: 60000 })
+      expect(limitOf(systemRoutes, '/auth/refresh-token')).toEqual(credential)
+    })
   })
 })

@@ -222,7 +222,8 @@ export function normalizeRouteCache(
   }
 }
 
-const HIT = Symbol('volcanic.cacheHit')
+// The requests answered from the cache, so `onSend` does not store the replay again.
+const HITS = new WeakSet<FastifyRequest>()
 const HEADER_ALLOW = /^(content-type|v-)/i
 
 /**
@@ -266,16 +267,16 @@ export function buildCacheHooks(routeCache: NormalizedRouteCache) {
 
   const preHandler = cacheable
     ? async (req: FastifyRequest, reply: FastifyReply) => {
-        if (!cacheEnabled() || (req as any).method !== 'GET' || tenantMissing(req)) return
+        if (!cacheEnabled() || req.method !== 'GET' || tenantMissing(req)) return
         const hit = cacheGet(keyFor(req, keyGroup))
         if (hit) {
           for (const [h, v] of Object.entries(hit.headers as Record<string, any>)) reply.header(h, v as any)
-          ;(req as any)[HIT] = true
+          HITS.add(req)
           reply.code(hit.statusCode)
-          if (log?.d) log.debug(`Cache 🧊 hit ${keyGroup} ${(req as any).method} ${(req as any).url}`)
+          if (log?.d) log.debug(`Cache 🧊 hit ${keyGroup} ${req.method} ${req.url}`)
           return reply.send(hit.payload)
         }
-        if (log?.d) log.debug(`Cache 🧊 miss ${keyGroup} ${(req as any).method} ${(req as any).url}`)
+        if (log?.d) log.debug(`Cache 🧊 miss ${keyGroup} ${req.method} ${req.url}`)
       }
     : undefined
 
@@ -287,8 +288,8 @@ export function buildCacheHooks(routeCache: NormalizedRouteCache) {
     // Store fresh GET 2xx responses (skip replays and anything with Set-Cookie).
     if (
       cacheable &&
-      !(req as any)[HIT] &&
-      (req as any).method === 'GET' &&
+      !HITS.has(req) &&
+      req.method === 'GET' &&
       reply.statusCode >= 200 &&
       reply.statusCode < 300 &&
       typeof payload === 'string' &&
@@ -303,7 +304,7 @@ export function buildCacheHooks(routeCache: NormalizedRouteCache) {
     // Invalidate declared key-groups after a successful mutation.
     if (
       invalidates?.length &&
-      (req as any).method !== 'GET' &&
+      req.method !== 'GET' &&
       reply.statusCode >= 200 &&
       reply.statusCode < 300
     ) {

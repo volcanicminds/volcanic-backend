@@ -495,6 +495,7 @@ An example `.env` for production.
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
 | `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format.                                  |    No    | `true`              |
 | `LOG_FASTIFY`                  | Enable Fastify's built-in logger.                                       |    No    | `false`             |
+| `BODY_LIMIT`                   | Largest request body Fastify parses, in bytes; also the default `fileSize` of a multipart upload. |    No    | `1048576`           |
 | `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `true`              |
 | `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
 | `SWAGGER_TITLE`                | The title of the API documentation.                                     |    No    | `API Documentation` |

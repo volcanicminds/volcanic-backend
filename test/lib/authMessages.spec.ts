@@ -11,7 +11,14 @@
 // registration on a taken address is indistinguishable from one on a free address.
 //
 import { expect } from 'expect'
-import { register, refreshToken } from '../../lib/api/auth/controller/auth.js'
+import {
+  changePassword,
+  confirmEmail,
+  refreshToken,
+  register,
+  resetPassword,
+  unregister
+} from '../../lib/api/auth/controller/auth.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../lib/config/constants.js'
 import { buildAuthenticatorRegistry } from '../../lib/auth/registry.js'
 import { tenantStart, passwordLogin, useFrameworkFlows } from './fixtures/flowLogin.js'
@@ -183,6 +190,24 @@ describe('auth · a taken address registers like a free one (D-17, decision A5)'
     expect(lookups).toBe(0)
   })
 
+  it('hands the confirmation token to the consumer, and never to the caller', async () => {
+    const manager = registerManager({
+      createUser: async (_ctx: any, data: any) => ({ id: 'real-id', email: data.email, confirmationToken: 'c0ffee' })
+    })
+    const req = fakeRequest({ ...body }, manager)
+    await register(req, fakeReply())
+    expect(req.confirmationToken).toBe('c0ffee')
+
+    const taken = registerManager({
+      createUser: async () => {
+        throw Object.assign(new Error('Email already registered'), { code: EMAIL_ALREADY_REGISTERED })
+      }
+    })
+    const decoyReq = fakeRequest({ ...body }, taken)
+    await register(decoyReq, fakeReply())
+    expect(decoyReq.confirmationToken).toBeUndefined()
+  })
+
   it('lets any other failure through instead of dressing it as a duplicate', async () => {
     const broken = registerManager({
       createUser: async () => {
@@ -191,6 +216,42 @@ describe('auth · a taken address registers like a free one (D-17, decision A5)'
     })
     await expect(register(fakeRequest({ ...body }, broken), fakeReply())).rejects.toThrow('connection terminated')
   })
+})
+
+describe('auth · a blocked account answers like a wrong secret outside the login (S7)', () => {
+  const blocked = { id: 'u1', email: 'someone@acme.test', password: 'hash', blocked: true }
+  const secretRoutes: Array<[string, (req: any, reply: any) => Promise<unknown>, any]> = [
+    ['unregister', unregister, { email: blocked.email, password: GOOD }],
+    [
+      'change-password',
+      changePassword,
+      { email: blocked.email, oldPassword: GOOD, newPassword1: GOOD, newPassword2: GOOD }
+    ],
+    ['confirm-email', confirmEmail, { code: 'c0ffee' }],
+    ['reset-password', resetPassword, { code: '9999999999.c0ffee', newPassword1: GOOD, newPassword2: GOOD }]
+  ]
+
+  for (const [name, handler, data] of secretRoutes) {
+    it(`gives ${name} one answer for a wrong secret and a blocked account`, async () => {
+      const answer = async (found: any) => {
+        const manager = {
+          isImplemented: () => true,
+          isValidUser: (u: any) => !!u?.email && !!u?.password,
+          retrieveUserByPassword: async () => found,
+          retrieveUserByConfirmationToken: async () => found,
+          retrieveUserByResetPasswordToken: async () => found
+        }
+        const req = fakeRequest(data, manager)
+        req.user = { email: blocked.email }
+        const reply = fakeReply()
+        await handler(req, reply)
+        return reply.sent
+      }
+      const wrong = await answer(null)
+      expect(wrong.code).toBe(403)
+      expect(await answer(blocked)).toEqual(wrong)
+    })
+  }
 })
 
 describe('auth · refresh when refresh tokens are turned off (T-9.5)', () => {

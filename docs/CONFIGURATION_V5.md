@@ -140,6 +140,7 @@ where it is used without passing through the configuration at all.
 | `VOLCANIC_MAX_PAGE_SIZE` | `100` | Magic Query page-size clamp | no key: read by the query layer |
 | `CORS_ORIGINS` | — | **required in production**: comma-separated allowlist | `origin` of the `cors` entry in `config/plugins.ts` |
 | `HIDE_ERROR_DETAILS` | `true` in production | honoured by every error path, `onError` included | no key |
+| `BODY_LIMIT` | `1048576` | bytes of the largest request body Fastify parses; also the default `fileSize` of a multipart upload, which additionally caps `files` at 10, `fields` at 50 and `parts` at 60 unless `options.limits` of the `multipart` entry says otherwise | no key |
 | `JWT_SECRET` `MFA_DB_SECRET` | — | minimum 32 characters; a weak or missing secret refuses the boot | no key |
 | `AUTH_MODE` | `COOKIE` | where the session travels: `COOKIE` (httpOnly cookies; the header for integration tokens only) or `BEARER`. Any other value refuses the boot | no key |
 | `COOKIE_SECRET` | — | signs the session cookies; **required in cookie mode**, so required by default, with the same strength rule as the other secrets | `secret` of the `cookie` entry in `config/plugins.ts` |
@@ -157,7 +158,7 @@ where it is used without passing through the configuration at all.
 | `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
 | `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |
-| `AUTH_RATELIMIT_MAX` | `10` | requests per window, per address, on the credential routes (the start of a login on both planes, register, forgot and reset password) | no key: read by `lib/api/auth/routes.ts` and `lib/api/system/routes.ts` |
+| `AUTH_RATELIMIT_MAX` | `10` | requests per window, per address, on the routes that take a secret (the start of a login on both planes, register, unregister, change, forgot and reset password, email confirmation, the platform's renewal) | no key: read by `lib/api/auth/routes.ts` and `lib/api/system/routes.ts` |
 | `AUTH_RATELIMIT_WINDOW` | `60000` | that window, in milliseconds | no key: same |
 | `AUTH_FLOW_TTL` | `600` | seconds a login in progress lives, never extended | `limits.flowTtl` of `config/authFlows.ts`, and it **wins** over the file |
 | `AUTH_OTP_TTL` | `300` | seconds a sent code stays valid | `limits.otpTtl`, same rule |

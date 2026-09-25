@@ -1497,6 +1497,14 @@ declare module 'fastify' {
      * `{ok:true}` to avoid account enumeration.
      */
     resetToken?: string
+    /**
+     * Confirmation token minted by `POST /auth/register` for the account it created, handed to the
+     * `global.postAuth` middleware so the consumer can deliver it (e.g. email a confirmation link
+     * that calls `POST /auth/confirm-email`). Unset when the address was already registered, so a
+     * consumer that delivers it before answering makes the two registrations differ in latency:
+     * deliver after the response. MUST NOT be serialized into the response.
+     */
+    confirmationToken?: string
     /** Raw request body, populated by `fastify-raw-body` when enabled on the route. */
     rawBody?: string | Buffer
     /** Multipart helpers, populated by `@fastify/multipart`. */
@@ -1582,6 +1590,8 @@ export interface FastifyRequest extends FastifyRequest {
   tenantInfo?: Tenant
   /** Reset token minted by `POST /auth/forgot-password` — see the `fastify` module augmentation above. */
   resetToken?: string
+  /** Confirmation token minted by `POST /auth/register`: see the `fastify` module augmentation above. */
+  confirmationToken?: string
   /** Raw request body, populated by `fastify-raw-body` when enabled on the route. */
   rawBody?: string | Buffer
   /** Multipart helpers, populated by `@fastify/multipart`. */

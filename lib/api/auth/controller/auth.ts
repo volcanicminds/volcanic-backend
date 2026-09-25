@@ -133,6 +133,10 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     await recordTenantAccess(req, { event: 'account.pending', outcome: 'success', subjectId: String(user.externalId), methods: ['password'] })
   }
 
+  // Handed to the `global.postAuth` middleware, which the consumer implements to deliver it, as
+  // `forgot-password` does with the reset token. The response schema never carries it.
+  req.confirmationToken = user.confirmationToken ?? undefined
+
   return user
 }
 
@@ -142,12 +146,10 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
   const user = await req.server['userManager'].retrieveUserByPassword(dataContext(req), email, password)
   const isValid = await req.server['userManager'].isValidUser(user)
 
-  if (!isValid) {
+  // A blocked account answers as a wrong secret does: telling the two apart tells whoever holds
+  // the secret that the account exists and has been blocked (S7).
+  if (!isValid || user.blocked) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
-  }
-
-  if (user.blocked) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   // `disableUserById` never existed on any manager, so this route threw on every call and the
@@ -205,12 +207,10 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
   let user = await req.server['userManager'].retrieveUserByPassword(dataContext(req), email, oldPassword)
   let isValid = await req.server['userManager'].isValidUser(user)
 
-  if (!isValid) {
+  // A blocked account answers as a wrong secret does: telling the two apart tells whoever holds
+  // the secret that the account exists and has been blocked (S7).
+  if (!isValid || user.blocked) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
-  }
-
-  if (user.blocked) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   user = await req.server['userManager'].changePassword(dataContext(req), email, newPassword1, oldPassword)
@@ -267,12 +267,10 @@ export async function confirmEmail(req: FastifyRequest, reply: FastifyReply) {
   let user = await req.server['userManager'].retrieveUserByConfirmationToken(dataContext(req), code)
   let isValid = await req.server['userManager'].isValidUser(user)
 
-  if (!isValid) {
+  // A blocked account answers as a wrong secret does: telling the two apart tells whoever holds
+  // the secret that the account exists and has been blocked (S7).
+  if (!isValid || user.blocked) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
-  }
-
-  if (user.blocked) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   user = await req.server['userManager'].userConfirmation(dataContext(req), user)
@@ -299,12 +297,10 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
   let user = await req.server['userManager'].retrieveUserByResetPasswordToken(dataContext(req), code)
   let isValid = await req.server['userManager'].isValidUser(user)
 
-  if (!isValid) {
+  // A blocked account answers as a wrong secret does: telling the two apart tells whoever holds
+  // the secret that the account exists and has been blocked (S7).
+  if (!isValid || user.blocked) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
-  }
-
-  if (user.blocked) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User blocked' })
   }
 
   // Distinct message on purpose: the caller already holds a token that matched a

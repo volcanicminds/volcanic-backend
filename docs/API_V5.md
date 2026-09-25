@@ -33,7 +33,7 @@ removed with no replacement.
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | POST | `/auth/register` | public | follows the tenant's account creation mode (§2.5): 403 `REGISTRATION_CLOSED` under `invite`, a waiting account under `approval`. Creates `confirmed: false`, always. Rate limited |
-| POST | `/auth/unregister` | authenticated | |
+| POST | `/auth/unregister` | authenticated | rate limited |
 | GET | `/auth/flow/options` | public | the identifiers of the plane, the provider keys of `oidc`, the account creation mode. Writes nothing. 60/min per IP |
 | POST | `/auth/flow/start` | public | the login (§2.6): runs the identifier named by `method`. **200** with the session, or **202** with the next stage. Rate limited like the other credential routes. The session travels as before: in cookie mode, the default, it is written into `auth_token` and `refresh_token` and the body carries `token: null`, `refreshToken: null` (MIGRATION §24) |
 | POST | `/auth/flow/step` | flow credential | answers the current stage, or starts an in-flow enrolment with `action: 'enrol'`. 200 or 202. 10/min per IP |
@@ -43,13 +43,13 @@ removed with no replacement.
 | GET | `/auth/identities` | authenticated | the provider accounts linked to the caller |
 | DELETE | `/auth/identities/:id` | authenticated | unlinks one of them; one of somebody else answers 404 |
 | POST | `/auth/logout` | authenticated | **revokes the session row** of the presenting token, then clears the cookies (§2.3) |
-| POST | `/auth/refresh-token` | public (valid refresh credential) | rotates the session: §2.3. **Verifies the routing segment** against the resolved tenant (defect D-19) |
+| POST | `/auth/refresh-token` | public (valid refresh credential) | rotates the session: §2.3. **Verifies the routing segment** against the resolved tenant (defect D-19). 60/min per IP |
 | POST | `/auth/invalidate-tokens` | authenticated | revokes **every** session of the user, then rotates `external_id` |
 | GET | `/auth/sessions` | authenticated | where this account is logged in, with the current session marked (§2.4) |
 | DELETE | `/auth/sessions/:id` | authenticated | closes one session of the caller; somebody else's answers **404** (§2.4) |
 | POST | `/auth/validate-password` | public | |
-| POST | `/auth/change-password` | authenticated | |
-| POST | `/auth/confirm-email` | public | |
+| POST | `/auth/change-password` | authenticated | rate limited |
+| POST | `/auth/confirm-email` | public | spends the `confirmationToken` minted with every account created unconfirmed (§2.5). Rate limited |
 | POST | `/auth/forgot-password` | public | rate limited. Always 200 |
 | POST | `/auth/reset-password` | public | rate limited |
 | POST | `/auth/mfa/setup` | authenticated | account management, with a complete session. 409 `MFA_ALREADY_ENABLED` when a factor is already active: replacing one goes through disable |
@@ -74,6 +74,10 @@ every rejection that happens before a successful password verification, on both 
 | account waiting for approval (§2.5) | did not exist | `AUTH_INVALID_CREDENTIALS`, 401 |
 | email already registered | `Email already registered` | 200 with the same body as a successful registration, and no account created |
 | password expired | `Password is expired` | `PASSWORD_TO_BE_CHANGED`, 403 — **stays distinct**, because it happens *after* the password verified |
+
+The routes that take a secret outside the login (`unregister`, `change-password`, `confirm-email`,
+`reset-password`) keep their 403 `Wrong credentials`, and a blocked account now gets that same
+answer instead of `User blocked`.
 
 The real cause is written to the log with a distinct internal code (`AUTH_UNKNOWN_EMAIL`,
 `AUTH_BAD_PASSWORD`, `AUTH_UNCONFIRMED`, `AUTH_BLOCKED`, `AUTH_PENDING_APPROVAL`). Verified that no backoffice of ours
@@ -186,6 +190,13 @@ has just authenticated the person who owns the account. A password or `email-otp
 waiting account gets the uniform answer of §2.1. Administrators list the waiting accounts with
 `GET /users?approved=false` and approve them with `POST /users/:id/approve` (§3), which writes
 `account.approved`.
+
+Confirming the address is separate from approval. Every account created unconfirmed gets a
+`confirmationToken`, and `POST /auth/register` hands it to the `global.postAuth` middleware as
+`req.confirmationToken`, never in the response: the consumer overrides that middleware to deliver
+it (for example a link that calls `POST /auth/confirm-email` with `{ code }`), as it does for the
+reset token of `forgot-password`. A registration on a taken address leaves it unset, so deliver
+after the response, or the two differ in latency.
 
 ### 2.6 The login flow
 

@@ -87,9 +87,8 @@ T-12.49): chi può creare un account in un tenant, `invite`, `approval` o `open`
 ammesso deciso dal piano di controllo (per tutti o per un tenant) e la scelta del tenant dentro
 l'insieme; registrazione chiusa di fabbrica, tabella `setting`, colonna `approved`, approvazione
 da `/users/:id/approve`, stessa regola per `register` e per il JIT. `npm test` 778 prove (864 con
-`DATABASE_URL`), banco multi-tenant 17, copertura 86,6% di righe. Aperto per il manutentore:
-nessuna rotta scrive `confirmation_token`, quindi chi si registra non può confermare l'indirizzo da
-sé (nota in T-12.48). Chiuso il blocco I (T-12.28 → T-12.30): OIDC come identificatore su
+`DATABASE_URL`), banco multi-tenant 17, copertura 86,6% di righe. Il `confirmation_token` che mancava (nota in T-12.48) ora lo scrive
+`createUser` per ogni account non confermato. Chiuso il blocco I (T-12.28 → T-12.30): OIDC come identificatore su
 entrambi i piani, `openid-client` caricato solo al primo uso e vietato come import statico, PKCE e
 `nonce` sempre, `state` speso al primo ritorno, sessione solo al passo successivo, `idp-mfa` solo
 dove il provider è dichiarato affidabile; IdP finto senza rete per le prove. `npm test` 790 prove
@@ -114,7 +113,12 @@ ritorno dall'IdP fallito, ora risposto dal passo successivo con il suo codice in
 `FLOW_REQUIRED`, e il reset MFA d'emergenza, che con i tenant cercava l'amministratore nella tabella
 sbagliata. Chiuso T-12.44 (`volcanic-backend-sample@8c9648b`): il sample entra con il flusso, TOTP e
 codice via email, 13 prove su 13; il porting ha corretto `StartOptions` nel framework (`ae73f14`).
-`npm test` 902 prove con `DATABASE_URL`, banco multi-tenant 22. Prossimo: T-12.45, `volcanic-admin`.
+`npm test` 902 prove con `DATABASE_URL`, banco multi-tenant 22. Chiusi a margine i residui
+dell'audit (S5, S7, S16, Q10 a meno di `systemUserManager`, Q11, Q12 in
+`docs/AUDIT_TASKS_TODO.md`): `confirmation_token` scritto alla creazione e consegnato al
+middleware `global.postAuth`, limiti su ogni rotta che prende un segreto, account bloccato
+risposto come segreto sbagliato, `BODY_LIMIT` e tetti multipart, `npm audit --omit=dev` in CI.
+`npm test` 909 prove con `DATABASE_URL`, banco multi-tenant 22. Prossimo: T-12.45, `volcanic-admin`.
 
 **Cosa resta**, e non è nel piano: la pubblicazione dell'alpha su npm e la sorte di `develop` e
 `main`, entrambe nella tabella «Fuori piano» e entrambe su richiesta esplicita. Il push è fatto:

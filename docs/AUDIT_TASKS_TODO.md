@@ -44,9 +44,15 @@
   - **Verification:** `type-check` + `build` + lint OK; real boot OK (39 routes, "Server up", helmet active). `npm audit` prod: from **13 → 9** vulnerabilities (4 removed with apollo/graphql).
   - **Note:** public-surface change (published package) → mark as **minor/breaking** in versioning. Cosmetic leftover: in `llms.txt` the numbering jumps "Part 8 → Part 10" (not renumbered to avoid touching the `10.x` sub-paragraphs).
 
-- [ ] **S5 — rate-limit disabled by default + no limit on auth/MFA** · `BE`
+- [x] **S5 — rate-limit disabled by default + no limit on auth/MFA** · `BE`
   - File: `lib/config/plugins.ts:41-44`, `lib/api/auth/routes.ts`
   - Brute-force on login and on the MFA code (6 digits = 10⁶) without throttling. Rate-limit enabled by default + tight per-route limits on login/forgot/reset/mfa.
+  - **Done in v5:** the login flow routes carry their own limits and the MFA step spends the
+    attempts of its flow; every other tenant route that takes a secret (register, unregister,
+    change and reset password, confirm-email) declares `AUTH_RATELIMIT_MAX` per minute per IP, and
+    `/auth/refresh-token` a looser 60. Tested by `test/lib/authFlowRoutes.spec.ts`; observed over
+    HTTP on Postgres: nine wrong codes on `/auth/confirm-email` answer 403, the eleventh request 429.
+    The store is in memory, so the ceiling counts per instance.
 
 - [x] **S6 — Timing attack / user enumeration in login** · `DB` ✅ *(2026-06-17)*
   - File: `lib/loader/userManager.ts:217-227`
@@ -57,6 +63,12 @@
 - [ ] **S7 — User enumeration via messages/states** · `BE`
   - File: `lib/api/auth/controller/auth.ts:28,153,157,212`; `lib/hooks/onRequest.ts:147`
   - "Email already registered", "User blocked" vs "Wrong credentials", `404 SUBJECT_NOT_FOUND`. `forgotPassword` must always respond with a generic 200; make the public messages uniform.
+  - **Done in v5:** a failed login answers `401 AUTH_INVALID_CREDENTIALS` whatever the cause
+    (D-17); a registration on a taken address answers as a new one does; `forgot-password` always
+    answers 200; unregister, change-password, confirm-email and reset-password answer a blocked
+    account with the same `403 Wrong credentials` as a wrong secret (`test/lib/authMessages.spec.ts`).
+    `SUBJECT_NOT_FOUND` stays: it needs a token the server signed, so it tells nothing to whoever
+    does not already hold one.
 
 - [x] **Q1 — `username` regex with `/gi` flag used with `.test()` (validation bug)** · `BE` ✅ *(2026-06-17)*
   - File: `lib/util/regexp.ts:5`
@@ -103,6 +115,8 @@
 - [ ] **S13 — Impersonation: audit not persisted, 24h TTL, no step-up MFA** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts:141-193`; `index.ts:319-352` (MFA admin reset via env)
   - Persist the audit log; reduce the TTL; consider step-up MFA; mandatory audit on the MFA reset via env.
+  - **Partly done in v5:** the impersonation session is persisted and every request it makes is
+    logged. The step-up MFA is deferred after 5.0, together with F48.
 
 - [x] **S14 — Revocation latency: cache on `retrieveUserByExternalId`** · `DB`
   - File: `lib/loader/userManager.ts:208-211` (`cache: global.cacheTimeout`)
@@ -153,6 +167,10 @@
 - [ ] **S16 — Missing explicit `bodyLimit`/`limits` for multipart (payload DoS)** · `BE`
   - File: `index.ts` (server/multipart registration)
   - Set `bodyLimit` and `limits.fileSize`.
+  - **Done in v5:** `bodyLimit` comes from `BODY_LIMIT` (default 1 MiB, `index.ts`); multipart gets
+    `fileSize` equal to it and caps on files, fields and parts, under whatever the consumer's
+    `plugins.multipart` entry writes. Observed over HTTP: a 4 KB JSON body with `BODY_LIMIT=2048`
+    answers 413.
 
 - [x] **S17 — `console.log('DEBUG: …')` in production** · `TO` ✅ *(2026-06-18)*
   - File: `lib/ai/model.ts:50,52`
@@ -180,14 +198,23 @@
 - [ ] **Q10 — `@ts-ignore`/`as any` on `req.user`/`req.tenant`** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts`
   - Type the Fastify augmentations to eliminate the bypasses.
+  - **Done in v5:** no `@ts-ignore` and no `as any` on `req.user`, `req.tenant` or `req.method`
+    left in `lib/`; the last ones, in `lib/util/cache.ts`, went with the cache hit marker becoming
+    a `WeakSet`. Left open: `req.server['systemUserManager']` in `lib/hooks/onRequest.ts` is still
+    reached through an untyped index, since typing it reaches into the `SystemUserManagement` contract.
 
 - [ ] **Q11 — No CI** · `BE`, `TO`, `DB`, `SA`
   - File: `.github/` absent
   - Pipeline on PR: `lint` + `type-check` + `test` + `npm audit` + SAST.
+  - **Done in v5 (backend):** `.github/workflows/ci.yml` runs lint, type-check, depcruise, the
+    session and migration checks, build, publint, attw, the suites with coverage and a Postgres
+    job; `npm audit --omit=dev --audit-level=high` stops the `verify` job. No SAST step.
 
 - [ ] **Q12 — Residual moderate vulnerabilities (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
   - File: dependencies
   - `npm audit fix` and re-verify.
+  - **Done in v5 (backend):** `npm audit --omit=dev` reports 0 vulnerabilities (2026-09-25); the 7
+    moderate left are in dev dependencies only. CI now fails on a high one in production (Q11).
 
 ---
 

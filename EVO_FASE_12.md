@@ -1392,7 +1392,9 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   file sopra. Da segnalare, fuori da F49: nessuna rotta scrive `confirmation_token`, quindi un
   account nato da `register` non può confermare l'indirizzo da sé, e `/auth/confirm-email` non ha
   mai un codice da ricevere; sotto `open` e `approval` resta non confermato finché un amministratore
-  non interviene. Il banco lo conferma a mano con SQL.
+  non interviene. Il banco lo conferma a mano con SQL. Risolto dopo la chiusura: `createUser` in
+  `lib/database/managers/user.ts` scrive il token per ogni account non confermato e `register` lo
+  passa al middleware `global.postAuth` (`req.confirmationToken`), prova in `test/db/managers.spec.ts`.
 
 - [x] **T-12.49** Documentazione.
   **Cosa fare**: `docs/API_V5.md`, `docs/CONFIGURATION_V5.md`, `docs/MANAGERS_V5.md`,

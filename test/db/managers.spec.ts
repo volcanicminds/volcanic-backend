@@ -100,6 +100,28 @@ describe('database/managers · users', function () {
     expect(created.confirmed).toBe(false) // registration never self-confirms
   })
 
+  it('mints the confirmation token of an unconfirmed account, and spends it on confirmation', async () => {
+    const pending: any = await users.createUser(tenant, { email: 'pending@acme.test', password: 'Pend-pw-123456' })
+    expect(pending.confirmationToken).toMatch(/^[0-9a-f]{32}$/)
+
+    const found: any = await users.retrieveUserByConfirmationToken(tenant, pending.confirmationToken)
+    expect(found.id).toBe(pending.id)
+    expect(await users.userConfirmation(tenant, found)).toBe(true)
+
+    const confirmed: any = await users.retrieveUserById(tenant, pending.id)
+    expect(confirmed.confirmed).toBe(true)
+    expect(confirmed.confirmationToken).toBeNull()
+    expect(await users.retrieveUserByConfirmationToken(tenant, pending.confirmationToken)).toBeNull()
+
+    // An account created confirmed has nothing left to confirm.
+    const direct: any = await users.createUser(tenant, {
+      email: 'direct@acme.test',
+      password: 'Dir-pw-1234567',
+      confirmed: true
+    })
+    expect(direct.confirmationToken).toBeNull()
+  })
+
   it('verifies a password, and costs the same when the email is unknown', async () => {
     expect(await users.retrieveUserByPassword(tenant, 'anna@acme.test', 'Acme-pw-123456')).toBeTruthy()
     expect(await users.retrieveUserByPassword(tenant, 'anna@acme.test', 'wrong')).toBeNull()

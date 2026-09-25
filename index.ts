@@ -4,6 +4,7 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 import yn from './lib/util/yn.js'
+import { envInt } from './lib/util/env.js'
 import logger from './lib/util/logger.js'
 import * as mark from './lib/util/mark.js'
 import { TranslatedError } from './lib/util/errors.js'
@@ -251,7 +252,10 @@ const start = async (decorators: StartOptions = {}) => {
   // Fastify's own request logger, off unless asked for (T-10.10). `LOG_FASTIFY` was in the
   // README's environment table while the only line reading it was commented out, so setting
   // it did nothing: a documented variable read by nobody, which is D-11 again.
-  const server: FastifyInstance = fastify({ logger: yn(process.env.LOG_FASTIFY, false) })
+  // Written out rather than left to Fastify's default (S16), so the ceiling on a JSON body is a
+  // number the deployment can read and change. Transfers do not go through it: they stream.
+  const bodyLimit = envInt('BODY_LIMIT', 1048576)
+  const server: FastifyInstance = fastify({ logger: yn(process.env.LOG_FASTIFY, false), bodyLimit })
   global.server = server
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230' } = process.env
@@ -324,7 +328,16 @@ const start = async (decorators: StartOptions = {}) => {
     reply.code(statusCode).send(body)
   })
 
-  if (plugins?.multipart) await server.register(multipart, plugins.multipart || {})
+  if (plugins?.multipart) {
+    // A consumer's `config/plugins.ts` entry replaces the framework's options whole, so the
+    // ceilings are applied here, under whatever the consumer wrote: without them a single request
+    // may carry any number of files and fields (S16).
+    const options = plugins.multipart as { limits?: Record<string, number> }
+    await server.register(multipart, {
+      ...options,
+      limits: { fileSize: bodyLimit, files: 10, fields: 50, parts: 60, ...options.limits }
+    })
+  }
   if (plugins?.cors) {
     // Checked on the EFFECTIVE options, not on the framework default: a consuming project
     // that writes its own `config/plugins.ts` replaces that default whole, and the one

@@ -1,4 +1,5 @@
-// Throttle credential-sensitive endpoints (login, register, forgot/reset password)
+// Throttle the endpoints that take a secret (login, register, unregister, change and reset
+// password, email confirmation)
 // to blunt brute-force / credential-stuffing / password-spray (OWASP API2/API4).
 // Per-IP, configurable via env. The rateLimit plugin is registered global:false,
 // so only routes carrying this opt in.
@@ -10,6 +11,10 @@ const authRateLimit = {
 // Per IP, on top of the per-flow and per-subject ceilings of the flow store, which are the real
 // gates (F44). `cancel` has none: it can only end the caller's own flow.
 const perMinute = (max: number) => ({ max, timeWindow: 60000 })
+
+// Renewal presents an unguessable credential, so the ceiling is against flooding, not guessing,
+// and it is loose because every user behind one office address renews from that address.
+const renewalRateLimit = perMinute(60)
 
 export default {
   config: {
@@ -44,6 +49,7 @@ export default {
       roles: [],
       handler: 'auth.unregister',
       middlewares: ['global.preAuth', 'global.postAuth'],
+      rateLimit: authRateLimit,
       config: {
         title: 'Unregister existing user (actually disables it)',
         description: 'Unregister an existing user (actually disables it)',
@@ -74,6 +80,7 @@ export default {
       roles: [],
       handler: 'auth.changePassword',
       middlewares: ['global.isAuthenticated'],
+      rateLimit: authRateLimit,
       config: {
         title: 'Change password',
         description: 'Change password for an existing user',
@@ -89,6 +96,7 @@ export default {
       roles: [],
       handler: 'auth.confirmEmail',
       middlewares: [],
+      rateLimit: authRateLimit,
       config: {
         title: 'Confirm email',
         description: 'Confirm email for an existing user',
@@ -152,6 +160,7 @@ export default {
       roles: [],
       handler: 'auth.refreshToken',
       middlewares: [],
+      rateLimit: renewalRateLimit,
       config: {
         title: 'Refresh authentication token',
         description: 'Refresh login authentication token',

@@ -132,6 +132,9 @@ export function createUserManager(): UserManagement {
             password,
             confirmed: data.confirmed ?? false,
             confirmedAt: data.confirmed ? new Date() : null,
+            // An account that starts unconfirmed gets the secret that confirms it, or
+            // `/auth/confirm-email` has nothing to match and only an administrator could confirm it.
+            confirmationToken: data.confirmed ? null : crypto.randomUUID().replace(/-/g, ''),
             // Only a self-created account under `approval` waits (F49); every other path passes nothing.
             approved: data.approved ?? true,
             roles: data.roles ?? [],

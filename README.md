@@ -594,6 +594,7 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
 | `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format.                                  |    No    | `true`              |
 | `LOG_FASTIFY`                  | Enable Fastify's built-in logger.                                       |    No    | `false`             |
+| `BODY_LIMIT`                   | Largest request body Fastify parses, in bytes; also the default `fileSize` of a multipart upload. |    No    | `1048576`           |
 | `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `false`             |
 | `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
 | `SWAGGER_TITLE`                | The title of the API documentation.                                     |    No    | `Volcanic API Documentation` |
@@ -890,6 +891,10 @@ import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
 import rawBody from 'fastify-raw-body'
 ```
+
+When `multipart` is enabled, the framework applies ceilings under whatever `options` says:
+`limits: { fileSize: BODY_LIMIT, files: 10, fields: 50, parts: 60 }`. Any of them set in
+`options.limits` wins.
 
 ## The container of a request (`req.control`, `req.tenant`)
 

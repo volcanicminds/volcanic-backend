@@ -309,6 +309,7 @@ data remains in any backup taken before the destruction, and the response says s
 | wrong password | 403 `Wrong credentials` | **401** `AUTH_INVALID_CREDENTIALS` |
 | unconfirmed account | 403 `User email unconfirmed` | **401** `AUTH_INVALID_CREDENTIALS` |
 | blocked account | 403 `User blocked` | **401** `AUTH_INVALID_CREDENTIALS` |
+| blocked account on `unregister`, `change-password`, `confirm-email`, `reset-password` | 403 `User blocked` | 403 `Wrong credentials`, the answer of a wrong secret |
 | expired password | 403 `PASSWORD_TO_BE_CHANGED` | unchanged: 403 `PASSWORD_TO_BE_CHANGED` |
 | `POST /auth/register` on an address already registered | 400 `Email already registered` | **200**, the body of a successful registration, and nothing created |
 

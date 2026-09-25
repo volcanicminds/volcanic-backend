@@ -22,6 +22,9 @@ jobs:
       # T-5.2: the two migration sets stay two. A tenant container that quietly gained a copy
       # of the registry is the shape D-01 needed to become a privilege escalation.
       - run: npm run check:migration-sets
+      # Q12: the dependencies a consumer installs. Dev-only advisories are not gated, because
+      # they never reach a deployment; a high one in production dependencies stops the build.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run build
       - run: npx publint
       - run: npx --yes @arethetypeswrong/cli@latest --pack . --profile esm-only

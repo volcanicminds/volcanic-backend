@@ -48,9 +48,9 @@ export default [
   },
   {
     name: 'rateLimit',
-    // Registered with `global: false` so it limits ONLY routes that opt in via `config.rateLimit`
-    // (currently the MFA endpoints, see S11). Turning on global throttling + per-route limits on
-    // login/forgot/reset is tracked separately under S5.
+    // Registered with `global: false`: it limits only the routes that declare `rateLimit`, which
+    // every route taking a secret does (`lib/api/auth/routes.ts`, `lib/api/system/routes.ts`).
+    // The store is in process memory, so behind several instances each one counts on its own.
     enable: true,
     options: { global: false }
   },
