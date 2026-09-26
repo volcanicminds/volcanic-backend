@@ -18,6 +18,18 @@ import { tenantsConfig } from '../util/tenancy.js'
 //     behind must not take the other nine hundred down with it: it is refused at resolution,
 //     with an explicit error and a log line, and the rest keep serving.
 //
+/**
+ * What the two checks ask of the data layer's migrations, restated because the core may not
+ * import `lib/database/ports.ts`. Absent when no data layer was injected.
+ */
+export interface SchemaVersionPort {
+  expected(container: { tenantId?: string; locator: string }): string | null
+  version(container: { tenantId?: string; locator: string }): Promise<string | null>
+}
+
+export const migrationsOf = (server: FastifyInstance): SchemaVersionPort | undefined =>
+  (server as unknown as Record<string, SchemaVersionPort | undefined>)?.['migrations']
+
 export interface SchemaCheckOptions {
   /** Called instead of process.exit(1) on the fail-fast path (injected by tests). */
   onFatal?: (message: string) => void
@@ -25,7 +37,7 @@ export interface SchemaCheckOptions {
 
 /** `checkOnResolve` and `refuseStartIfControlBehind`, both default true (invariant 2). */
 export function migrationChecks(): { onResolve: boolean; onBoot: boolean } {
-  const declared = (tenantsConfig() as any)?.migrations ?? {}
+  const declared = tenantsConfig()?.migrations ?? {}
   return {
     onResolve: declared.checkOnResolve !== false,
     onBoot: declared.refuseStartIfControlBehind !== false
@@ -40,7 +52,7 @@ export function migrationChecks(): { onResolve: boolean; onBoot: boolean } {
  * against the old tables has no staged-rollout reading. Migrate first.
  */
 export async function assertControlSchemaCurrent(server: FastifyInstance, opts: SchemaCheckOptions = {}): Promise<void> {
-  const migrations = (server as any)?.['migrations']
+  const migrations = migrationsOf(server)
   if (!migrations?.expected) return // no data layer: nothing to be behind
 
   const onFatal =

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 //
 // Where the request's credential is, how it is read, and how a session is written.
 //
@@ -85,9 +84,9 @@ function headerToken(req: FastifyRequest): string | undefined {
 }
 
 function signedCookie(req: FastifyRequest, name: string): string | undefined {
-  const raw = (req as any).cookies?.[name]
-  if (!raw || typeof (req as any).unsignCookie !== 'function') return undefined
-  const unsigned = (req as any).unsignCookie(raw)
+  const raw = req.cookies?.[name]
+  if (!raw || typeof req.unsignCookie !== 'function') return undefined
+  const unsigned = req.unsignCookie(raw)
   return unsigned?.valid && unsigned.value ? unsigned.value : undefined
 }
 
@@ -172,7 +171,7 @@ export function flowCookieOf(req: FastifyRequest, plane: Plane): string | undefi
 }
 
 function secondsLeft(reply: FastifyReply, token: string): number {
-  const claims = (reply.server as any).jwt.decode(token) as { exp?: number } | null
+  const claims = reply.server.jwt.decode<{ exp?: number }>(token)
   if (!claims?.exp) throw new Error('A session cookie must carry a token that expires')
   return Math.max(0, claims.exp - Math.floor(Date.now() / 1000))
 }

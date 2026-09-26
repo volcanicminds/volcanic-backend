@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import crypto from 'crypto'
-import type { DataHandle, DataProvider } from '../../types/global.js'
+import type { ControlHandle, DataHandle, DataProvider } from '../../types/global.js'
 import { includesRole, isFounder } from '../util/authz.js'
 import { isTenancyEnabled } from '../util/tenancy.js'
 
@@ -49,15 +49,14 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
   // an instance could boot with no administrator at all without saying so.
   const provider = (server as unknown as Record<string, DataProvider | undefined>)['provider']
   if (!provider) return // no live data layer (e.g. a core-only boot)
-  const ctx = (await provider.control()) as DataHandle
+  const ctx = await provider.control()
 
   // Which apex the deployment needs (T-4.1). With tenants declared, the first identity to
   // exist is a PLATFORM one: a tenant admin is provisioned with its tenant, and seeding one
   // here would put an application user in the container that administers the application.
   if (isTenancyEnabled()) return await ensureGenesisSystemAdmin(server, ctx, opts)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const um = (server as any)?.['userManager']
+  const um = server?.userManager
   if (!um?.isImplemented?.()) return
 
   const onFatal =
@@ -142,11 +141,10 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
  */
 async function ensureGenesisSystemAdmin(
   server: FastifyInstance,
-  ctx: DataHandle,
+  ctx: ControlHandle,
   opts: GenesisOptions
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sm = (server as any)?.['systemUserManager']
+  const sm = server?.systemUserManager
   if (!sm?.isImplemented?.()) return
 
   const onFatal =

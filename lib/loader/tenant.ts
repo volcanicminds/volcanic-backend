@@ -1,9 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { ControlHandle, DataProvider, Tenant, TenantManagement } from '../../types/global.js'
 import { isTenancyEnabled, tenantsConfig } from '../util/tenancy.js'
 import { declaredTenant } from '../util/tenantResolution.js'
-import { migrationChecks } from './schemaVersion.js'
+import { migrationChecks, migrationsOf } from './schemaVersion.js'
 import { credentialOf, REFRESH_TYP } from '../util/credential.js'
 import { parseFlowState } from '../util/flowCredential.js'
 import { httpError } from '../util/httpError.js'
@@ -192,7 +191,7 @@ async function containerBehind(
 ): Promise<{ applied: string | null; expected: string } | null> {
   if (!migrationChecks().onResolve) return null
 
-  const migrations = (req.server as unknown as Record<string, any>)['migrations']
+  const migrations = migrationsOf(req.server)
   if (!migrations?.expected) return null
 
   const container = { tenantId: tenant.id, locator: tenant.locator }
