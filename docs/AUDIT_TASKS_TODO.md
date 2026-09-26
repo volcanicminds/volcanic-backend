@@ -209,8 +209,17 @@
   - **Done in v5 (backend):** `.github/workflows/ci.yml` runs lint, type-check, depcruise, the
     session and migration checks, build, publint, attw, the suites with coverage and a Postgres
     job; `npm audit --omit=dev --audit-level=high` stops the `verify` job. No SAST step.
-  - **Still open (2026-09-26):** `volcanic-tools`, `volcanic-admin` and `volcanic-rag` have no
-    `.github/workflows`, and the backend has no SAST step.
+  - **Done (2026-09-26), `v5` of each repository:** `volcanic-tools@700576a` (lint, type-check,
+    production audit, tests, build, publint), `volcanic-admin@acb6303` (lint, production audit,
+    library and demo builds, publint), `volcanic-rag@83f4a4f` and `7970d32` (type-check, subpath
+    boundary, production audit, unit tests with a Qdrant 1.19.1 service; the backend `v5` is
+    checked out and built next to it, as `file:../volcanic-backend` needs). SAST is CodeQL
+    (`security-extended`) on push, pull request and weekly in backend, tools and admin; 0 open
+    alerts on the first run. The backend CI also gained `check:refusals` (`7d6fc0b`), which
+    `check-all` ran and CI did not. All runs green on GitHub.
+  - **Still open:** `volcanic-rag` has no SAST, since the repository is private and CodeQL there
+    needs GitHub Advanced Security; `volcanic-backend-sample` (SA) has no CI; DB is the TypeORM
+    package, deprecated in v5.
 
 - [ ] **Q12 — Residual moderate vulnerabilities (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
   - File: dependencies
