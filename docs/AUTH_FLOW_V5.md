@@ -250,6 +250,7 @@ channel a second factor may travel on.
 |---|---|---|---|
 | `GET /auth/flow/options` | `GET /system/auth/flow/options` | 60/min | the identifiers of the plane, without writing anything |
 | `POST /auth/flow/start` | `POST /system/auth/flow/start` | `AUTH_RATELIMIT_MAX` per `AUTH_RATELIMIT_WINDOW` (10/min) | runs the identifier named by `method` |
+| `POST /auth/flow/step-up` | `POST /system/auth/flow/step-up` | as `start` | the same, for the session of the request: a step-up (§8.5) |
 | `POST /auth/flow/step` | `POST /system/auth/flow/step` | 10/min | answers the current stage, or starts an enrolment with `action: 'enrol'` |
 | `POST /auth/flow/challenge` | `POST /system/auth/flow/challenge` | 5/min | sends a code again, within the ceilings |
 | `POST /auth/flow/cancel` | `POST /system/auth/flow/cancel` | none | ends the flow of the credential, if any. Always `{ ok: true }` |
@@ -506,8 +507,10 @@ with 403 `FLOW_ENROLMENT_REFUSED`.
 The end of a flow issues the session **once**, the same session and refresh rotation as always
 (docs/AUTHORIZATION_V5.md §9). The `session` row gains `auth_methods`, the methods the login
 satisfied (for example `{password,totp}` or `{oidc,idp-mfa}`): whether a session was born without a
-second factor is a fact that cannot be reconstructed afterwards, and a future step-up will ask it.
-`reset_external_id_on_login` rotates the identifier once, at the end, on the tenant plane only.
+second factor is a fact that cannot be reconstructed afterwards. It also gains `authenticated_at`,
+the moment the person last proved to be there, which the access token carries as `auth_time`
+(§8.5). `reset_external_id_on_login` rotates the identifier once, at the end, on the tenant plane
+only.
 
 ### 8.4 The MFA management routes
 
@@ -515,7 +518,48 @@ second factor is a fact that cannot be reconstructed afterwards, and a future st
 as account management, and they need a **complete session**: no temporary token exists any more.
 `enable` no longer issues a session, because the forced enrolment it served now happens inside the
 flow. Enrolling, replacing or removing a factor is an operation on an account already
-authenticated; only the enrolment `MANDATORY` imposes lives in the login.
+authenticated; only the enrolment `MANDATORY` imposes lives in the login. `setup` and `disable`
+(and `/system/auth/mfa/setup`) also need a fresh one (§8.5); `enable` follows a `setup` made inside
+the window.
+
+### 8.5 Step-up
+
+A route declared with `freshAuth: true` (docs/AUTHORIZATION_V5.md §10) answers only to a session
+whose person proved to be there within the last `STEP_UP_MAX_AGE` seconds (300 by default,
+docs/CONFIGURATION_V5.md). The framework marks `POST /tenants/:id/impersonate`, `/auth/mfa/setup`,
+`/auth/mfa/disable` and `/system/auth/mfa/setup`: the operations that give a stolen session a power
+that outlives it.
+
+**The moment.** `session.authenticated_at` is written by the login and moved only by a step-up. The
+access token carries it as `auth_time`, in seconds, so the check reads a signed claim and costs no
+query. A renewal copies it from the row and never moves it: renewing is not proving again.
+
+**The refusal.** After the role gate, a stale session gets **403 `STEP_UP_REQUIRED`** with
+`maxAge` (the window, in seconds) in the body. 403 and not 401: a client that reads 401 as "the
+session is over" would send to the login page someone who only has to confirm. A credential no
+step-up can make fresh gets **403 `STEP_UP_NOT_AVAILABLE`** instead, and only a new login helps: an
+impersonation token (whoever impersonates does not know the person's credentials), an integration
+token (nobody stands behind it), and a stale token with no `sid` (nothing to confirm).
+
+**The flow.** `POST /auth/flow/step-up` (`/system/auth/flow/step-up` on the control plane) needs an
+authenticated session and takes the same body as `start`. It opens a flow with `purpose: 'step-up'`,
+the `sid` of the session and its subject, and goes on through the usual `step`, `challenge`,
+`cancel` and `return`, with the same methods and the same MFA floor as a login: a subject with a
+second factor is asked for it again. The routes after `step-up` are public and read the purpose
+from the flow row, never from the request.
+
+- The identified subject must be the session's own, or the flow ends with
+  `AUTH_INVALID_CREDENTIALS`, the same uniform answer as any failed identifier.
+- The end **does not open a session**: it writes `authenticated_at` and `auth_methods` on the
+  session it started from and answers 200 `{ token, authenticatedAt, maxAge }`, a new access token
+  with the same `sid`. The refresh credential does not rotate. In cookie mode `token` is `null` and
+  only the access cookie is replaced.
+- A session revoked or expired meanwhile ends the flow with 403 `STEP_UP_NOT_AVAILABLE`.
+- A step-up is a flow of its subject like a login, so opening one retires the other flows of that
+  subject (F37), a login in another tab included, and the other way round.
+
+A client that meets `STEP_UP_REQUIRED` runs the step-up and repeats the request. The manifest names
+the route as `auth.flowStepUp` (docs/API_V5.md §7).
 
 ---
 
@@ -530,7 +574,8 @@ customer's accesses only by impersonating, which leaves its own trace.
 `flow.started`, `stage.passed`, `stage.failed`, `challenge.sent`, `challenge.refused`,
 `flow.expired`, `flow.exhausted`, `idp.linked`, `idp.unlinked`, `idp.provisioned`, `idp.rejected`,
 `account.pending`, `account.approved`, `mfa.enrolled`, `mfa.disabled`, `logout`, `session.revoked`,
-`session.reuse_detected`, `tokens.invalidated`. A successful renewal is deliberately not an event:
+`session.reuse_detected`, `tokens.invalidated`, `step-up.succeeded`, `step-up.failed`. A step-up
+writes `step-up.*` where a login would write `login.*`, with the `sid` it confirms. A successful renewal is deliberately not an event:
 it happens every hour for every live session, and the session row keeps `last_used_at`.
 
 **Columns**: `id` (UUID v7), `occurred_at`, `scope`, `event`, `outcome` (`success` or `failure`),
@@ -592,6 +637,10 @@ always the consumer's, because the backend emits data, not presentation.
 | `IDP_IDENTITY_NOT_LINKED` | 403 | yes | §7 |
 | `ACCOUNT_PENDING_APPROVAL` | 403 | yes | the account behind a provider login awaits an administrator |
 | `SYSTEM_USERS_NOT_AVAILABLE` | 503 | | a control-plane flow route in a build without platform identities |
+| `STEP_UP_NOT_AVAILABLE` | 403 | yes | a step-up asked with a credential that cannot be confirmed, or for a session closed meanwhile (§8.5) |
+
+`STEP_UP_REQUIRED` (403) is not a flow refusal: a `freshAuth` route answers it to a stale session
+(§8.5).
 
 A refusal code of a consumer's authenticator passes through as 401 with that code.
 
@@ -606,8 +655,8 @@ and the `identity_provider.type` column. The method and its library are a later 
 **Self-service linking** (F48, after 5.0). A user with a live session adding a provider account is a
 back door for whoever steals that session for an hour: the link outlives password changes, logouts
 and even a rotation of `external_id`. It will come with a flow of another purpose that asks for a
-fresh re-authentication first, that is with step-up, which does not exist yet. Until then links are
-created by the three routes of §7, by an administrator, or not at all.
+fresh re-authentication first, that is with step-up (§8.5). Until then links are created by the
+three routes of §7, by an administrator, or not at all.
 
 **SMS and social logins.** `ChallengeChannel` already has `'sms'`, and `ChallengeDeliveryManagement`
 will carry it; a social login is an OIDC provider or a consumer's authenticator with `initiate` and

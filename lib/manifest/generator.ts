@@ -101,6 +101,8 @@ const SENSITIVE_WRITE_ONLY = ['password']
 const flowEndpoints = (prefix: string) => ({
   flowOptions: `${prefix}/flow/options`,
   flowStart: `${prefix}/flow/start`,
+  // The re-authentication a `STEP_UP_REQUIRED` asks for (F53); it continues on the same step routes.
+  flowStepUp: `${prefix}/flow/step-up`,
   flowStep: `${prefix}/flow/step`,
   flowChallenge: `${prefix}/flow/challenge`,
   flowCancel: `${prefix}/flow/cancel`

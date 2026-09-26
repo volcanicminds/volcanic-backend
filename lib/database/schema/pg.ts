@@ -201,6 +201,10 @@ export function appTables(schemaName: string) {
       // The methods the login satisfied (F45), e.g. `{password,totp}`. Null on sessions opened
       // before the flow engine: what is not known is not written as an empty list.
       authMethods: text('auth_methods').array(),
+      // When the person last proved to be there: the login, then every step-up (F51). A renewal
+      // copies it into the new access token and never moves it. Null on sessions opened before
+      // step-up existed, which reads as not fresh.
+      authenticatedAt: timestamp('authenticated_at', { withTimezone: true }),
       createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
     },
     (t) => [
@@ -247,6 +251,11 @@ export function appTables(schemaName: string) {
       stateHash: text('state_hash'),
       external: text('external'),
       externalResult: jsonb('external_result'),
+      // `step-up` confirms the session `session_sid` of `expected_subject_id` instead of opening
+      // one (F53, F54); a login leaves both null.
+      purpose: text('purpose').notNull().default('login'),
+      sessionSid: text('session_sid'),
+      expectedSubjectId: text('expected_subject_id'),
       version: integer('version').notNull().default(1),
       ip: text('ip'),
       userAgent: text('user_agent'),

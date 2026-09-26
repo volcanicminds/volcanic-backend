@@ -62,12 +62,28 @@ export interface FlowPlane<R = unknown> {
   loadSubject(externalId: string): Promise<{ record: R; subject: AuthSubject } | null>
   /** Opens the session, once, and answers the body of the 200 and the subject it was issued to. */
   issue(record: R, subject: AuthSubject, methods: string[]): Promise<{ body: Record<string, unknown>; subjectId: string }>
+  /**
+   * The end of a step-up (F54): proves the live session `sid` again and answers the body of the 200,
+   * or null when that session can no longer be confirmed (revoked, expired, not the subject's).
+   */
+  elevate(record: R, subject: AuthSubject, sid: string, methods: string[]): Promise<{ body: Record<string, unknown> } | null>
   /** Best effort: a failed write never fails a login. */
   record(entry: Omit<AccessLogEntry, 'scope'>): Promise<void>
   /** Who may create an account on this plane (F49); absent on the control plane, which has no registration. */
   accountCreation?: AuthContext['accountCreation']
   /** The identity providers of this plane and tenant, by key (F38). */
   provider?: AuthContext['provider']
+  /** What the flow of this request is for; a login when absent. Set by the engine, never by a controller. */
+  readonly intent?: FlowIntent
+}
+
+/** A login opens a session; a step-up confirms the live session `sid` of `subjectId` (F53). */
+export type FlowIntent = { purpose: 'login' } | { purpose: 'step-up'; sid: string; subjectId: string }
+
+/** The session a step-up confirms, as the authenticated request presented it. */
+export interface StepUpSession {
+  sid: string
+  subjectId: string
 }
 
 export interface Refusal {
@@ -98,6 +114,7 @@ export const REFUSALS = {
   IDP_RETURN_INVALID: { status: 401, code: 'IDP_RETURN_INVALID', message: 'The answer of the identity provider is not valid' },
   IDP_DENIED: { status: 401, code: 'IDP_DENIED', message: 'The identity provider did not authenticate' },
   IDP_IDENTITY_NOT_LINKED: { status: 403, code: 'IDP_IDENTITY_NOT_LINKED', message: 'This identity is not linked to an account here' },
+  STEP_UP_NOT_AVAILABLE: { status: 403, code: 'STEP_UP_NOT_AVAILABLE', message: 'This session cannot be confirmed: log in again' },
   ACCOUNT_PENDING_APPROVAL: { status: 403, code: 'ACCOUNT_PENDING_APPROVAL', message: 'The account awaits the approval of an administrator' }
 } as const satisfies Record<string, Refusal>
 
@@ -136,6 +153,28 @@ interface PlannedStage {
 
 const unique = (ids: readonly string[]) => [...new Set(ids)]
 const asDate = (value: Date | string) => (value instanceof Date ? value : new Date(value))
+
+const LOGIN: FlowIntent = { purpose: 'login' }
+const intentOf = <R>(p: FlowPlane<R>): FlowIntent => p.intent ?? LOGIN
+
+/**
+ * The plane with the intent of its flow. A step-up says so in the log of accesses: its failures
+ * are not failed logins, and a dashboard counting those must not count a confirmation.
+ */
+function bind<R>(p: FlowPlane<R>, intent: FlowIntent): FlowPlane<R> {
+  if (intent.purpose === 'login') return p
+  return {
+    ...p,
+    intent,
+    record: (entry) => p.record({ ...entry, event: entry.event === 'login.failed' ? 'step-up.failed' : entry.event, sid: entry.sid ?? intent.sid })
+  }
+}
+
+/** The intent a flow row carries. Null for a step-up row missing what it confirms: such a row confirms nothing. */
+function intentOfRow(flow: AuthFlow): FlowIntent | null {
+  if (flow.purpose !== 'step-up') return LOGIN
+  return flow.sessionSid && flow.expectedSubjectId ? { purpose: 'step-up', sid: flow.sessionSid, subjectId: flow.expectedSubjectId } : null
+}
 
 const storeOf = <R>(p: FlowPlane<R>) => p.managers.authFlowManager
 const storeAvailable = <R>(p: FlowPlane<R>) => storeOf(p)?.isImplemented?.() === true
@@ -298,12 +337,14 @@ async function refuseSubject<R>(p: FlowPlane<R>, flow: AuthFlow | null, subjectI
 
 async function openFlow<R>(p: FlowPlane<R>, subjectId: string | null, flowIndex: number | null) {
   const secret = newFlowSecret()
+  const intent = intentOf(p)
   const flow = await storeOf(p).openFlow(p.handle, {
     flowId: uuidv7(),
     scope: p.plane,
     secret,
     subjectId,
     flowName: flowIndex === null ? null : String(flowIndex),
+    ...(intent.purpose === 'step-up' ? { purpose: intent.purpose, sessionSid: intent.sid, expectedSubjectId: intent.subjectId } : {}),
     expiresAt: new Date(Date.now() + p.limits.flowTtl * 1000),
     ip: p.ip,
     userAgent: p.userAgent
@@ -348,14 +389,26 @@ async function proceed<R>(p: FlowPlane<R>, s: Progress<R>): Promise<FlowOutcome>
 async function complete<R>(p: FlowPlane<R>, s: Progress<R>): Promise<FlowOutcome> {
   // Spent before the session exists: a flow is good for one session, whatever happens next.
   if (s.flow && !(await storeOf(p).completeFlow(p.handle, s.flow.flowId))) return refuse('FLOW_REQUIRED', true)
+  const intent = intentOf(p)
+  if (intent.purpose === 'step-up') {
+    const elevated = await p.elevate(s.record, s.subject, intent.sid, s.satisfied)
+    const flowId = s.flow?.flowId ?? null
+    if (!elevated) {
+      await p.record({ event: 'step-up.failed', outcome: 'failure', code: 'STEP_UP_NOT_AVAILABLE', subjectId: s.subject.externalId, methods: s.satisfied, flowId })
+      return refuse('STEP_UP_NOT_AVAILABLE', true)
+    }
+    await p.record({ event: 'step-up.succeeded', outcome: 'success', subjectId: s.subject.externalId, methods: s.satisfied, flowId })
+    return { kind: 'complete', body: elevated.body }
+  }
   const { body, subjectId } = await p.issue(s.record, s.subject, s.satisfied)
   await p.record({ event: 'login.succeeded', outcome: 'success', subjectId, methods: s.satisfied, flowId: s.flow?.flowId ?? null })
   return { kind: 'complete', body }
 }
 
-type Located = { flow: AuthFlow; credential: FlowCredential }
+/** A live flow, and the plane bound to what the flow is for. */
+type Located<R = unknown> = { flow: AuthFlow; credential: FlowCredential; plane: FlowPlane<R> }
 
-async function identified<R>(p: FlowPlane<R>, method: string, result: AuthResult, located: Located | null): Promise<FlowOutcome> {
+async function identified<R>(p: FlowPlane<R>, method: string, result: AuthResult, located: Located<R> | null): Promise<FlowOutcome> {
   const flow = located?.flow ?? null
   if (result.outcome === 'fail') {
     await end(p, flow, { event: 'login.failed', outcome: 'failure', code: result.reason, subjectId: null, methods: [method] })
@@ -371,6 +424,12 @@ async function identified<R>(p: FlowPlane<R>, method: string, result: AuthResult
   // same way at every step, and a method written by a consumer may not ask it at all.
   const loaded = await p.loadSubject(result.subject.externalId)
   if (!loaded) return await refuseSubject(p, flow, null, [method])
+  // A step-up proves the person of the session and nobody else (F54): someone else's valid
+  // credentials are wrong credentials here, and they end the flow.
+  const intent = intentOf(p)
+  if (intent.purpose === 'step-up' && loaded.subject.externalId !== intent.subjectId) {
+    return await refuseSubject(p, flow, intent.subjectId, [method])
+  }
 
   const flowIndex = chooseFlow(p.flows, loaded.subject.roles)
   const allowed = p.flows.flows[flowIndex]?.identifiers
@@ -405,7 +464,7 @@ async function identified<R>(p: FlowPlane<R>, method: string, result: AuthResult
 }
 
 /** The flow a request presents, or the refusal that says why there is none. */
-async function locate<R>(p: FlowPlane<R>, presented: string | undefined): Promise<Located | FlowOutcome> {
+async function locate<R>(p: FlowPlane<R>, presented: string | undefined): Promise<Located<R> | FlowOutcome> {
   const credential = parseFlowCredential(presented)
   if (!credential) return refuse('FLOW_REQUIRED', Boolean(presented))
   // The routing is addressing, like the refresh credential's: checked against the container this
@@ -416,6 +475,12 @@ async function locate<R>(p: FlowPlane<R>, presented: string | undefined): Promis
   const lookup = await storeOf(p).findBySecret(p.handle, credential.flowId, credential.secret)
   // A flow of the other plane is not a flow of this one, even where both live in one container.
   if (lookup.outcome === 'unknown' || lookup.flow.scope !== p.plane) return refuse('FLOW_REQUIRED', true)
+  const intent = intentOfRow(lookup.flow)
+  if (!intent) {
+    await storeOf(p).cancelFlow(p.handle, lookup.flow.flowId)
+    return refuse('FLOW_REQUIRED', true)
+  }
+  p = bind(p, intent)
   if (lookup.outcome === 'expired') {
     await p.record({ event: 'flow.expired', outcome: 'failure', code: 'FLOW_EXPIRED', subjectId: lookup.flow.subjectId, flowId: lookup.flow.flowId })
     return refuse('FLOW_EXPIRED', true)
@@ -426,13 +491,13 @@ async function locate<R>(p: FlowPlane<R>, presented: string | undefined): Promis
     await end(p, lookup.flow, { event: 'login.failed', outcome: 'failure', code: failure.code, subjectId: lookup.flow.subjectId, methods: [failure.method] })
     return refuse(failure.code, true)
   }
-  return { flow: lookup.flow, credential }
+  return { flow: lookup.flow, credential, plane: p }
 }
 
-const isOutcome = (value: Located | FlowOutcome): value is FlowOutcome => 'kind' in value
+const isOutcome = <R>(value: Located<R> | FlowOutcome): value is FlowOutcome => 'kind' in value
 
 /** A proven flow as it stands: the subject re-validated, the stage it waits on and its options. */
-async function standing<R>(p: FlowPlane<R>, located: Located) {
+async function standing<R>(p: FlowPlane<R>, located: Located<R>) {
   const { flow, credential } = located
   const subjectId = flow.subjectId as string
   const loaded = await p.loadSubject(subjectId)
@@ -488,7 +553,16 @@ export async function start<R>(p: FlowPlane<R>, method: unknown, input: AuthInpu
   const opened = await openFlow(p, null, null)
   await p.record({ event: 'flow.started', outcome: 'success', methods: [id], flowId: opened.flow.flowId })
   const result = await authenticator.initiate(context(p, null, opened.flow, opened.credential.secret), input)
-  return await unproven(p, id, result, opened, 'challenge.refused')
+  return await unproven(p, id, result, { ...opened, plane: p }, 'challenge.refused')
+}
+
+/**
+ * A step-up (F53): the same start, for the person of a live session. The flow carries the session
+ * and its subject from the first row it writes, so the routes that follow, public as every flow
+ * route, need not know it is one.
+ */
+export async function stepUp<R>(p: FlowPlane<R>, session: StepUpSession, method: unknown, input: AuthInput): Promise<FlowOutcome> {
+  return await start(bind(p, { purpose: 'step-up', sid: session.sid, subjectId: session.subjectId }), method, input)
 }
 
 /**
@@ -500,7 +574,7 @@ async function unproven<R>(
   p: FlowPlane<R>,
   method: string,
   result: AuthResult,
-  located: Located,
+  located: Located<R>,
   failure: 'stage.failed' | 'challenge.refused'
 ): Promise<FlowOutcome> {
   const { flow } = located
@@ -520,6 +594,7 @@ async function unproven<R>(
 export async function step<R>(p: FlowPlane<R>, presented: string | undefined, method: unknown, input: AuthInput, action?: unknown): Promise<FlowOutcome> {
   const located = await locate(p, presented)
   if (isOutcome(located)) return located
+  p = located.plane
 
   if (!located.flow.subjectId) {
     const authenticator = identifierOf(p, method)
@@ -588,6 +663,7 @@ export async function step<R>(p: FlowPlane<R>, presented: string | undefined, me
 export async function challenge<R>(p: FlowPlane<R>, presented: string | undefined, method: unknown, input: AuthInput): Promise<FlowOutcome> {
   const located = await locate(p, presented)
   if (isOutcome(located)) return located
+  p = located.plane
 
   if (!located.flow.subjectId) {
     const authenticator = identifierOf(p, method)
@@ -637,6 +713,9 @@ export async function returnFrom<R>(p: FlowPlane<R>, method: string, input: Auth
   if (state.routing !== p.routing) return refuse('TENANT_MISMATCH')
   const flow = await storeOf(p).findByState(p.handle, state.raw)
   if (!flow || flow.scope !== p.plane) return refuse('FLOW_REQUIRED')
+  const intent = intentOfRow(flow)
+  if (!intent) return refuse('FLOW_REQUIRED')
+  p = bind(p, intent)
 
   const subject = flow.subjectId ? ((await p.loadSubject(flow.subjectId))?.subject ?? null) : null
   const result = await authenticator.complete(context(p, subject, flow), input)

@@ -145,6 +145,21 @@ describe('auth · the renewal contract survives serialization (T-11.8)', () => {
     expect(body.refreshToken).not.toBe(credential)
     await server.close()
   })
+
+  it('copies auth_time from the session and never moves it: renewing is not proving again (F51)', async () => {
+    const server = await build((instance) => {
+      instance.post('/auth/renew', { config: { tenantContext: true, requiredRoles: PUBLIC } }, refreshToken)
+    })
+    const first = JSON.parse((await server.inject({ method: 'POST', url: '/auth/flow/start', payload: passwordLogin(ANNA.email) })).body)
+    const { sid } = server.jwt.decode(first.token)
+    const proven = new Date(Date.now() - 10 * 60 * 1000)
+    store.rows.get(sid)!.authenticatedAt = proven
+
+    const renewed = await server.inject({ method: 'POST', url: '/auth/renew', payload: { refreshToken: first.refreshToken } })
+    expect(renewed.statusCode).toBe(200)
+    expect(server.jwt.decode(JSON.parse(renewed.body).token)).toMatchObject({ sid, auth_time: Math.floor(proven.getTime() / 1000) })
+    await server.close()
+  })
 })
 
 describe('auth · the sessions of the caller (T-11.14)', () => {

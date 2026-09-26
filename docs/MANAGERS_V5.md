@@ -387,6 +387,10 @@ export interface SessionManagement {
       ip?: string | null
       userAgent?: string | null
       impersonationId?: string | null
+      /** The methods the login satisfied. */
+      authMethods?: string[] | null
+      /** When the person proved to be there: the moment of the login. */
+      authenticatedAt?: Date | string | null
     }
   ): Promise<Session>
 
@@ -400,6 +404,9 @@ export interface SessionManagement {
     generation: number,
     next: { secret: string; idleExpiresAt: Date | string }
   ): Promise<Session | null>
+
+  /** A step-up: the live, non-impersonated session `sid` of `subjectId` proven again now. Null otherwise. */
+  markAuthenticated(ctx: DataHandle, sid: string, subjectId: string, methods: string[]): Promise<Session | null>
 
   revokeSession(ctx: DataHandle, sid: string, reason: string): Promise<boolean>
   /** Returns how many were closed. */
@@ -436,6 +443,12 @@ matches no row. `null` is therefore **not an error and must not be raised as one
 else rotated first", and the correct answer is a fresh access token with the credential left
 untouched, because the caller's copy is now the previous generation and the grace window still
 accepts it. Minting a second live secret there is exactly the bug this signature exists to prevent.
+
+**`markAuthenticated` is the end of a step-up** (docs/AUTH_FLOW_V5.md §8.5): it writes
+`authenticated_at` and `auth_methods` in one conditional `UPDATE` that matches the `sid`, its subject,
+a row neither revoked nor past either clock, and no `impersonation_id`. `null` means the session can
+no longer be confirmed, and the engine answers `STEP_UP_NOT_AVAILABLE`. It moves neither the
+generation nor the secret: a step-up confirms a session, it does not renew it.
 
 **Every method takes a `DataHandle`, never a `ControlHandle`**, because a session lives where its
 subject lives: a tenant user's inside the tenant container, a platform identity's in the control
@@ -501,6 +514,8 @@ interface AuthFlowManagement {
     flowId: string; scope: SessionScope; secret: string
     subjectId?: string | null; candidateSubjectId?: string | null; flowName?: string | null
     expiresAt: Date | string; ip?: string | null; userAgent?: string | null
+    /** 'login' by default; a step-up names the session it confirms and the subject it expects. */
+    purpose?: 'login' | 'step-up'; sessionSid?: string | null; expectedSubjectId?: string | null
   }): Promise<AuthFlow>
   /** A malformed or unknown secret is an answer, not a throw. */
   findBySecret(ctx: DataHandle, flowId: string, secret: string): Promise<AuthFlowLookup> // current | expired | unknown
@@ -524,6 +539,11 @@ interface AuthFlowManagement {
   purgeExpired(ctx: DataHandle, before?: Date | string): Promise<number>
 }
 ```
+
+**The purpose is written once, at `openFlow`**, and `advance` cannot change it: the routes after the
+first are public and read the purpose, the session and the expected subject from the row, so they
+must be facts of the row and not of a request. A step-up row without its `sessionSid` or
+`expectedSubjectId` is treated by the engine as no flow at all.
 
 **Every change is one conditional statement.** A read followed by a write would let two steps racing
 each other both win: `advance` names the `version` it moves, `consumeChallenge` spends the right code

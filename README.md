@@ -1039,6 +1039,11 @@ framework reserves `users`, `tokens` and `manifest`; a consumer grants its own c
 }
 ```
 
+An operation that should outlive a stolen session (deleting an account, changing who owns it) adds
+`freshAuth: true`: a session whose person has not proved to be there in the last `STEP_UP_MAX_AGE` seconds
+(300) gets 403 `STEP_UP_REQUIRED`, and the client runs `POST /auth/flow/step-up` and repeats the request
+(`docs/AUTH_FLOW_V5.md` §8.5).
+
 **Declaring which plane a route acts on:**
 By default a route runs **inside the tenant**, which is the safe default. A route that acts on the platform
 itself says so:

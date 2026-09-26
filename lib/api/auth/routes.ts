@@ -220,6 +220,7 @@ export default {
       roles: [],
       handler: 'auth.mfaSetup',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Setup MFA',
         description: 'Generate secret and QR code for MFA setup',
@@ -251,6 +252,7 @@ export default {
       roles: [],
       handler: 'auth.mfaDisable',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Disable MFA',
         description: 'Disable MFA for the current user',
@@ -286,6 +288,24 @@ export default {
         body: { $ref: 'authFlowStartBodySchema#' },
         response: {
           200: { $ref: 'authLoginResponseSchema#' },
+          202: { $ref: 'authFlowPartialResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/flow/step-up',
+      roles: [],
+      handler: 'flow.stepUp',
+      middlewares: ['global.isAuthenticated'],
+      rateLimit: authRateLimit,
+      config: {
+        title: 'Confirm the current session',
+        description:
+          'Starts a flow for the person of this session, with the methods and stages of a login. Its end proves the session again and answers a new access token with the same `sid`; it opens no session',
+        body: { $ref: 'authFlowStartBodySchema#' },
+        response: {
+          200: { $ref: 'authStepUpResponseSchema#' },
           202: { $ref: 'authFlowPartialResponseSchema#' }
         }
       }

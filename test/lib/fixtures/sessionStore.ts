@@ -28,6 +28,7 @@ export interface FakeSession {
   userAgent: string | null
   impersonationId: string | null
   authMethods: string[] | null
+  authenticatedAt: Date | null
   createdAt: Date
 }
 
@@ -64,6 +65,7 @@ export function fakeSessionStore() {
         userAgent: data.userAgent ?? null,
         impersonationId: data.impersonationId ?? null,
         authMethods: data.authMethods ?? null,
+        authenticatedAt: data.authenticatedAt ? new Date(data.authenticatedAt) : null,
         createdAt: new Date()
       }
       rows.set(row.sid, row)
@@ -105,6 +107,14 @@ export function fakeSessionStore() {
       row.rotatedAt = new Date()
       row.lastUsedAt = new Date()
       row.idleExpiresAt = new Date(next.idleExpiresAt)
+      return row
+    },
+
+    async markAuthenticated(_ctx: any, sid: string, subjectId: string, methods: string[]) {
+      const row = rows.get(sid)
+      if (!row || row.subjectId !== subjectId || row.impersonationId || state(row, new Date()) !== 'live') return null
+      row.authenticatedAt = new Date()
+      row.authMethods = [...methods]
       return row
     },
 

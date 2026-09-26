@@ -150,6 +150,8 @@ export default {
       requireCapability: 'tenants:impersonate',
       handler: 'tenants.impersonate',
       middlewares: ['global.isAuthenticated'],
+      // Opening a session as someone else outlives the operator's own: it asks for a recent proof (F56).
+      freshAuth: true,
       config: {
         title: 'Act as a user of a tenant',
         description: 'Records who, into which tenant, as whom and why, then issues a short-lived tenant token',

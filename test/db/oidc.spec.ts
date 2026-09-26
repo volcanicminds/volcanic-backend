@@ -73,6 +73,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
           const user: any = await users.retrieveUserByExternalId(db.tenant, externalId)
           return (await mayLogIn(users, user)) ? { record: user, subject: toSubject('tenant', user) } : null
         },
+        elevate: async () => null,
         issue: async (user: any, _s, methods) => ({ body: { sub: user.externalId, methods }, subjectId: user.externalId }),
         record: async (entry) => void accesses.push(entry),
         accountCreation: async () => 'open',

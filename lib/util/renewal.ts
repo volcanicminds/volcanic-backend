@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { DataHandle, SessionManagement, SessionScope, Session } from '../../types/global.js'
 import { httpError } from './httpError.js'
 import { recordAccess } from './accessLog.js'
+import { authTimeClaim } from './stepUp.js'
 import {
   clearSessionCookies,
   isCookieMode,
@@ -142,7 +143,8 @@ export async function renew<S>(context: RenewalContext<S>) {
   const idleExpiresAt = nextIdleExpiry(session.absoluteExpiresAt)
   const rotated = await manager.rotate(ctx, session.sid, session.generation, { secret, idleExpiresAt })
 
-  const token = await reply.jwtSign({ ...context.claims(subject), sid: session.sid })
+  // The proof is copied from the row and never moved: renewing is not proving again (F51).
+  const token = await reply.jwtSign({ ...context.claims(subject), ...authTimeClaim(session.authenticatedAt), sid: session.sid })
 
   // A lost race is not a failure. Another request of the same session rotated first, so this one
   // hands back a fresh access token and leaves the credential alone: the caller's copy is now the

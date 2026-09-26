@@ -1,4 +1,4 @@
-import { and, eq, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, eq, gt, isNull, lte, or, sql } from 'drizzle-orm'
 import crypto from 'crypto'
 import type { DataHandle, Session, SessionLookup, SessionManagement } from '../../../types/global.js'
 import { runtime, table, column } from './runtime.js'
@@ -78,7 +78,8 @@ export function createSessionManager(): SessionManagement {
           ip: data.ip ?? null,
           userAgent: data.userAgent ?? null,
           impersonationId: data.impersonationId ?? null,
-          authMethods: data.authMethods ?? null
+          authMethods: data.authMethods ?? null,
+          authenticatedAt: data.authenticatedAt ? new Date(data.authenticatedAt as never) : null
         })
         .returning()
       return rows[0] as Session
@@ -148,6 +149,28 @@ export function createSessionManager(): SessionManagement {
             eq(column(session, 'sid'), sid as never),
             eq(column(session, 'generation'), generation as never),
             isNull(column(session, 'revokedAt'))
+          )
+        )
+        .returning()
+      return (rows[0] as Session) ?? null
+    },
+
+    async markAuthenticated(ctx: DataHandle, sid: string, subjectId: string, methods: string[]) {
+      const { handle, session } = sessions(ctx, 'markAuthenticated')
+      const now = new Date()
+      const rows = await handle.db
+        .update(session)
+        .set({ authenticatedAt: now, authMethods: [...methods] })
+        .where(
+          and(
+            eq(column(session, 'sid'), sid as never),
+            eq(column(session, 'subjectId'), subjectId as never),
+            isNull(column(session, 'revokedAt')),
+            // A session nobody proved stays unproven: the person behind an impersonation is not
+            // the subject, whatever they can type (F55).
+            isNull(column(session, 'impersonationId')),
+            gt(column(session, 'idleExpiresAt'), now as never),
+            gt(column(session, 'absoluteExpiresAt'), now as never)
           )
         )
         .returning()

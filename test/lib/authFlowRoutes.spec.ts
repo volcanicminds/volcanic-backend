@@ -104,6 +104,10 @@ async function build(over: { accessLog?: any } = {}) {
     server.decorate(name, { isImplemented: () => false })
   }
   server.decorate('tokenManager', { isImplemented: () => false })
+  server.decorate('impersonationManager', {
+    isImplemented: () => true,
+    getImpersonation: async (_c: any, id: string) => (id === 'imp-1' ? { id, tenantId: ACME.id } : null)
+  })
   server.decorate('authRegistry', buildAuthenticatorRegistry())
 
   // What the tenant resolution would have done: every tenant route of this server is acme's.
@@ -133,6 +137,7 @@ async function build(over: { accessLog?: any } = {}) {
   mount('/auth', tenantRoutes, tenantFlow, true)
   mount('/system', systemRoutes, systemFlow, false)
   server.get('/orders', { config: { tenantContext: true, requiredRoles: [{ code: 'admin' }] } }, async (req: any) => ({ who: req.user?.email }))
+  server.get('/danger', { config: { tenantContext: true, requiredRoles: [{ code: 'admin' }], freshAuth: true } }, async (req: any) => ({ who: req.user?.email }))
 
   await server.ready()
   return { server, users, operators, secrets, sessions, flows, accesses }
@@ -373,6 +378,32 @@ describe('auth · the flow routes of both planes (T-12.15, T-12.16, T-12.19 to T
       expect(cookieOf(done, 'auth_flow')).toMatchObject({ value: '', path: '/auth/flow' })
       await server.close()
     })
+
+    it('confirms the session of the cookie and replaces only the access cookie (F54)', async () => {
+      const { server } = await build()
+      const login = await start(server, 'anna@acme.test')
+      const fresh = server.jwt.decode(server.unsignCookie(cookieOf(login, 'auth_token').value).value)
+      const stale = server.signCookie(
+        server.jwt.sign({ sub: fresh.sub, tid: fresh.tid, sid: fresh.sid, auth_time: Math.floor(Date.now() / 1000) - 600 })
+      )
+
+      const refused = await server.inject({ method: 'GET', url: '/danger', cookies: { auth_token: stale } })
+      expect(json(refused).code).toBe('STEP_UP_REQUIRED')
+
+      const res = await server.inject({
+        method: 'POST',
+        url: '/auth/flow/step-up',
+        cookies: { auth_token: stale },
+        payload: { method: 'password', email: 'anna@acme.test', password: 'pw' }
+      })
+      expect(res.statusCode).toBe(200)
+      expect(json(res).token).toBeNull()
+      expect(cookieOf(res, 'refresh_token')).toBeUndefined()
+      const renewed = cookieOf(res, 'auth_token').value
+      expect(server.jwt.decode(server.unsignCookie(renewed).value)).toMatchObject({ sid: fresh.sid })
+      expect((await server.inject({ method: 'GET', url: '/danger', cookies: { auth_token: renewed } })).statusCode).toBe(200)
+      await server.close()
+    })
   })
 
   describe('the control plane (T-12.16)', () => {
@@ -439,6 +470,136 @@ describe('auth · the flow routes of both planes (T-12.15, T-12.16, T-12.19 to T
       const res = await start(server, 'root@system.test', {}, '/system/auth')
       expect(res.statusCode).toBe(503)
       expect(json(res).code).toBe('SYSTEM_USERS_NOT_AVAILABLE')
+      await server.close()
+    })
+  })
+
+  describe('step-up and the freshness gate (T-13.5, F50 to F56)', () => {
+    const bearer = (token: string) => ({ authorization: `Bearer ${token}` })
+    const stepUp = (server: any, token: string | null, email: string, over: any = {}, prefix = '/auth') =>
+      server.inject({
+        method: 'POST',
+        url: `${prefix}/flow/step-up`,
+        payload: { method: 'password', email, password: 'pw', ...over },
+        headers: token ? bearer(token) : {}
+      })
+    const danger = (server: any, token: string) => server.inject({ method: 'GET', url: '/danger', headers: bearer(token) })
+    const minutesAgo = (n: number) => Math.floor(Date.now() / 1000) - n * 60
+    // A login ten minutes old: the same session, signed as the login signed it then.
+    const staleLogin = async (server: any) => {
+      const fresh = server.jwt.decode(json(await start(server, 'anna@acme.test')).token)
+      return { sid: fresh.sid, token: server.jwt.sign({ sub: fresh.sub, tid: fresh.tid, sid: fresh.sid, auth_time: minutesAgo(10) }) }
+    }
+
+    it('signs auth_time at login, and a fresh login passes a freshAuth route', async () => {
+      const { server } = await build()
+      const body = json(await start(server, 'anna@acme.test'))
+      const claims = server.jwt.decode(body.token)
+      expect(typeof claims.sid).toBe('string')
+      expect(Math.abs(claims.auth_time - Math.floor(Date.now() / 1000))).toBeLessThanOrEqual(2)
+      const res = await danger(server, body.token)
+      expect(res.statusCode).toBe(200)
+      expect(json(res)).toEqual({ who: 'anna@acme.test' })
+      await server.close()
+    })
+
+    it('asks a stale session to step up, and lets the same session through once it has', async () => {
+      const { server, sessions, accesses } = await build()
+      const { sid, token } = await staleLogin(server)
+      expect((await server.inject({ method: 'GET', url: '/orders', headers: bearer(token) })).statusCode).toBe(200)
+
+      const refused = await danger(server, token)
+      expect(refused.statusCode).toBe(403)
+      expect(json(refused)).toMatchObject({ code: 'STEP_UP_REQUIRED', maxAge: 300 })
+
+      const confirmed = await stepUp(server, token, 'anna@acme.test')
+      expect(confirmed.statusCode).toBe(200)
+      const body = json(confirmed)
+      expect(body.maxAge).toBe(300)
+      expect(Date.now() - Date.parse(body.authenticatedAt)).toBeLessThan(5000)
+      expect(body.refreshToken).toBeUndefined()
+      const claims = server.jwt.decode(body.token)
+      expect(claims).toMatchObject({ sub: 'x-anna', tid: ACME.id, sid })
+      expect(claims.auth_time).toBeGreaterThan(minutesAgo(1))
+
+      // The session was proven again, not opened again.
+      expect(sessions.rows.size).toBe(1)
+      expect(sessions.rows.get(sid)).toMatchObject({ authMethods: ['password'] })
+      expect(accesses.map((a) => a.event)).toContain('step-up.succeeded')
+      expect((await danger(server, body.token)).statusCode).toBe(200)
+      await server.close()
+    })
+
+    it('takes a second factor through the usual step', async () => {
+      const { server, users } = await build()
+      const login = json(await start(server, 'mfa@acme.test'))
+      const done = json(await step(server, login.flow, { method: 'totp', code: 'SECRET-2-ok' }))
+      const fresh = server.jwt.decode(done.token)
+      const stale = server.jwt.sign({ sub: fresh.sub, tid: fresh.tid, sid: fresh.sid, auth_time: minutesAgo(10) })
+      // Ten minutes later the code is a new one: the login's is spent (the replay guard).
+      users[1].mfaLastUsedCounter = currentStep() - 1
+
+      const partial = await stepUp(server, stale, 'mfa@acme.test')
+      expect(partial.statusCode).toBe(202)
+      const confirmed = await step(server, json(partial).flow, { method: 'totp', code: 'SECRET-2-ok' })
+      expect(confirmed.statusCode).toBe(200)
+      expect(server.jwt.decode(json(confirmed).token)).toMatchObject({ sid: fresh.sid })
+      await server.close()
+    })
+
+    it("refuses someone else's credentials, uniformly", async () => {
+      const { server, sessions, accesses } = await build()
+      const { sid, token } = await staleLogin(server)
+      const before = sessions.rows.get(sid)!.authenticatedAt
+      for (const res of [
+        await stepUp(server, token, 'mfa@acme.test'),
+        await stepUp(server, token, 'anna@acme.test', { password: 'nope' })
+      ]) {
+        expect(res.statusCode).toBe(401)
+        expect(json(res)).toEqual(UNIFORM)
+      }
+      expect(sessions.rows.get(sid)!.authenticatedAt).toEqual(before)
+      expect(accesses.map((a) => a.event)).toContain('step-up.failed')
+      expect(accesses.map((a) => a.event)).not.toContain('step-up.succeeded')
+      await server.close()
+    })
+
+    it('answers STEP_UP_NOT_AVAILABLE where no step-up can help (F55)', async () => {
+      const { server, sessions } = await build()
+      const { sid, token } = await staleLogin(server)
+
+      // No session to confirm: the real route answers 401 first, through isAuthenticated.
+      expect(json(await stepUp(server, null, 'anna@acme.test')).code).toBe('STEP_UP_NOT_AVAILABLE')
+
+      // An impersonation is never fresh, and cannot be made fresh.
+      const imp = server.jwt.sign({ sub: 'x-anna', tid: ACME.id, sid, imp: 'imp-1', auth_time: minutesAgo(0) })
+      expect(json(await danger(server, imp))).toMatchObject({ statusCode: 403, code: 'STEP_UP_NOT_AVAILABLE' })
+      expect(json(await stepUp(server, imp, 'anna@acme.test')).code).toBe('STEP_UP_NOT_AVAILABLE')
+
+      // A stale token with no session behind it has nothing a step-up could confirm.
+      const sessionless = server.jwt.sign({ sub: 'x-anna', tid: ACME.id, auth_time: minutesAgo(10) })
+      expect(json(await danger(server, sessionless)).code).toBe('STEP_UP_NOT_AVAILABLE')
+      expect(json(await stepUp(server, sessionless, 'anna@acme.test')).code).toBe('STEP_UP_NOT_AVAILABLE')
+
+      // A session closed meanwhile: the credentials are right, the row refuses.
+      sessions.rows.get(sid)!.revokedAt = new Date()
+      const closed = await stepUp(server, token, 'anna@acme.test')
+      expect(closed.statusCode).toBe(403)
+      expect(json(closed).code).toBe('STEP_UP_NOT_AVAILABLE')
+      await server.close()
+    })
+
+    it('confirms an operator on the control plane with a control token', async () => {
+      const { server, sessions } = await build()
+      const fresh = server.jwt.decode(json(await start(server, 'root@system.test', {}, '/system/auth')).token)
+      const stale = server.jwt.sign({ sub: fresh.sub, scp: 'control', sid: fresh.sid, auth_time: minutesAgo(10) })
+      const res = await stepUp(server, stale, 'root@system.test', {}, '/system/auth')
+      expect(res.statusCode).toBe(200)
+      const claims = server.jwt.decode(json(res).token)
+      expect(claims).toMatchObject({ sub: 'x-root', scp: 'control', sid: fresh.sid })
+      expect(claims.tid).toBeUndefined()
+      expect(claims.auth_time).toBeGreaterThan(minutesAgo(1))
+      expect(sessions.rows.size).toBe(1)
       await server.close()
     })
   })

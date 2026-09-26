@@ -5,9 +5,19 @@ import type { FastifyContextConfig, FastifyReply, FastifyRequest } from 'fastify
 import type { AuthenticatedUser, AuthenticatedToken, ControlHandle, Role, TransferManagement } from '../../types/global.js'
 
 /** The claims this framework signs, as opposed to whatever else may verify with the same secret. */
-type SessionClaims = { sub?: string; tid?: string; scp?: string; imp?: string; role?: string; typ?: string }
+type SessionClaims = {
+  sub?: string
+  tid?: string
+  scp?: string
+  imp?: string
+  role?: string
+  typ?: string
+  sid?: string
+  auth_time?: number
+}
 import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
 import { credentialOf, isCookieMode, REFRESH_TYP } from '../util/credential.js'
+import { finishFreshness } from '../util/stepUp.js'
 
 /** A refusal the catch below answers as 401, or tolerates on a public route. */
 const refusal = (message: string, authCode: string) => Object.assign(new Error(message), { authCode })
@@ -78,6 +88,8 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
     // at the same credential. The plane picks the cookie: an operator's browser may hold a
     // control session and an impersonated tenant session at once.
     const credential = credentialOf(req, controlIdentity ? 'control' : 'tenant')
+    // The claims of the credential that authenticated this request, for the freshness gate.
+    let claims: SessionClaims | null = null
 
     if (credential) {
       try {
@@ -85,6 +97,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         // `VerifyPayloadType`, which is a string or an unknown object: reading `scp` or `imp` off
         // it compiled only because the hook's own parameters were untyped.
         const tokenData = reply.server.jwt.verify(credential.token) as SessionClaims
+        claims = tokenData
 
         // F36, before anything else: the framework no longer signs a token with a `role` claim.
         // The last one it did was the five-minute token between the two factors, and without the
@@ -180,7 +193,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           req.systemUser = systemUser
           const systemRoleCodes = normalizeRoles(systemUser.roles)
           req.roles = () => systemRoleCodes
-          return finishRoleGate(req, reply, cfg)
+          return finishGates(req, reply, cfg, claims)
         }
 
         let user: null | AuthenticatedUser = null
@@ -220,6 +233,8 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         const freshNormalizedRoles = normalizeRoles(req.user?.roles || req.token?.roles)
         req.roles = () => freshNormalizedRoles
       } catch (error) {
+        // A credential that did not authenticate proves nothing, fresh or not.
+        claims = null
         const isRoutePublic = (cfg.requiredRoles || []).some((role: Role) => role.code === roles.public.code)
         // Said out loud even when it is tolerated. A public route treats a bad token as no
         // token, which is right, but swallowing the reason turns "the subject could not be
@@ -233,8 +248,15 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
       }
     }
 
-    return finishRoleGate(req, reply, cfg)
+    return finishGates(req, reply, cfg, claims)
   }
+}
+
+/** The roles, then the freshness a `freshAuth` route asks for (F52): a person who may not act is not asked to prove anything. */
+function finishGates(req: FastifyRequest, reply: FastifyReply, cfg: FastifyContextConfig, claims: SessionClaims | null) {
+  const denied = finishRoleGate(req, reply, cfg)
+  if (denied || !cfg.freshAuth) return denied
+  return finishFreshness(req, reply, claims)
 }
 
 /**

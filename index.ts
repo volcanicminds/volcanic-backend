@@ -71,6 +71,7 @@ import type {
 // `process.env` reads inside it ran before `.env` was loaded.
 import { MfaPolicy } from './lib/config/constants.js'
 import { isCookieMode } from './lib/util/credential.js'
+import { stepUpMaxAge } from './lib/util/stepUp.js'
 import {
   defaultUserManager,
   defaultTokenManager,
@@ -272,6 +273,7 @@ const start = async (decorators: StartOptions = {}) => {
   // Read before anything is registered: a value that is not a mode stops the boot here, not
   // at the first request (lib/util/credential.ts).
   const cookieMode = isCookieMode()
+  stepUpMaxAge()
   const plugins = await loaderPlugins.load()
 
   if (plugins?.rawBody) await server.register(rawBody, plugins.rawBody || {})

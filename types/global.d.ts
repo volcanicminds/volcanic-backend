@@ -203,6 +203,11 @@ export interface Route {
   // Gate on a capability: the allowed set becomes admin + every role that declares it.
   // A capability held by no role leaves the route admin-only. See docs/AUTHORIZATION_MODEL.md §3.
   requireCapability?: string
+  /**
+   * Answers only to a session whose person proved to be there within `STEP_UP_MAX_AGE` seconds;
+   * otherwise 403 `STEP_UP_REQUIRED` (F52). Refused at boot on a route open to `public`.
+   */
+  freshAuth?: boolean
   middlewares: string[]
   config?: RouteConfig
   rateLimit?: any
@@ -468,6 +473,7 @@ export interface ConfiguredRoute {
    */
   tenantContext: boolean
   tenantFrom?: 'flow-state'
+  freshAuth?: boolean
   tracking?: { strict?: boolean }
   method: any
   path: string
@@ -700,8 +706,10 @@ export interface Session {
   ip?: string | null
   userAgent?: string | null
   impersonationId?: string | null
-  /** The methods the login satisfied (F45). Null for a session opened before the flow engine. */
+  /** The methods of the last proof, the login or a step-up (F45, F54). Null for a session opened before the flow engine. */
   authMethods?: string[] | null
+  /** When the person last proved to be there (F51). Null reads as never: not fresh. */
+  authenticatedAt?: Date | string | null
   createdAt: Date | string
 }
 
@@ -743,6 +751,8 @@ export interface SessionManagement {
       userAgent?: string | null
       impersonationId?: string | null
       authMethods?: string[] | null
+      /** The moment of the login's proof; absent on a session nobody proved (an impersonation). */
+      authenticatedAt?: Date | string | null
     }
   ): Promise<Session>
   /** Classifies a presented secret. A malformed or unknown secret is an answer, not a throw. */
@@ -758,6 +768,12 @@ export interface SessionManagement {
     generation: number,
     next: { secret: string; idleExpiresAt: Date | string }
   ): Promise<Session | null>
+  /**
+   * A step-up (F54): the live session `sid` of `subjectId` is proven again now, by `methods`. One
+   * conditional `UPDATE`; null when the session is revoked, expired, an impersonation or someone
+   * else's, and the step-up then confirms nothing.
+   */
+  markAuthenticated(ctx: DataHandle, sid: string, subjectId: string, methods: string[]): Promise<Session | null>
   /** Idempotent: revoking an already revoked session is the same state, not an error. */
   revokeSession(ctx: DataHandle, sid: string, reason: string): Promise<boolean>
   /** Returns how many were closed. The blunt instrument that is not `externalId` (F26). */
@@ -1098,6 +1114,9 @@ export interface ExternalAuthFailure {
   code: AuthRefusalCode
 }
 
+/** A login opens a session; a step-up confirms the one that started it (F53). */
+export type AuthFlowPurpose = 'login' | 'step-up'
+
 /**
  * A flow row (F37). The hashes of the flow secret, of the code and of `state` are deliberately
  * absent, as the secrets are from `Session`.
@@ -1122,6 +1141,10 @@ export interface AuthFlow {
   externalResult: ExternalAuthResult | null
   /** Set by a failed return; the next step ends the flow with its code. */
   externalFailure?: ExternalAuthFailure | null
+  purpose: AuthFlowPurpose
+  /** A step-up only: the session it confirms, and the subject that session belongs to (F54). */
+  sessionSid: string | null
+  expectedSubjectId: string | null
   version: number
   ip?: string | null
   userAgent?: string | null
@@ -1170,6 +1193,10 @@ export interface AuthFlowManagement {
       subjectId?: string | null
       candidateSubjectId?: string | null
       flowName?: string | null
+      /** `login` when absent. A step-up names the session and its subject. */
+      purpose?: AuthFlowPurpose
+      sessionSid?: string | null
+      expectedSubjectId?: string | null
       expiresAt: Date | string
       ip?: string | null
       userAgent?: string | null
@@ -1344,6 +1371,8 @@ export type AccessEvent =
   | 'account.approved'
   | 'mfa.enrolled'
   | 'mfa.disabled'
+  | 'step-up.succeeded'
+  | 'step-up.failed'
   | 'logout'
   | 'session.revoked'
   | 'session.reuse_detected'
@@ -1529,6 +1558,8 @@ declare module 'fastify' {
     tenantContext?: boolean
     /** Reserved to the framework's return routes: the tenant is read from the flow `state` (T-12.17). */
     tenantFrom?: 'flow-state'
+    /** Set by the router from the route's `freshAuth` (F52). */
+    freshAuth?: boolean
     requiredRoles?: Role[]
     /** The route's own method and path, threaded by the router so a refusal can name them. */
     method?: string

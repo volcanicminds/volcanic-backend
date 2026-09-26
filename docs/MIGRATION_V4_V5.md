@@ -680,3 +680,29 @@ for a hook to confine.
   does the enrolment inside the flow instead; `enable` is for a subject already logged in.
 - Read the login routes from the manifest's `auth.endpoints`, not from constants.
 
+
+---
+
+## 30. Step-up: fresh authentication for sensitive routes (phase 13)
+
+Opening an impersonation and enrolling or removing a second factor now need a session whose person
+proved to be there in the last `STEP_UP_MAX_AGE` seconds (300 by default). docs/AUTH_FLOW_V5.md §8.5
+has the mechanism.
+
+**What a deployment has to do.**
+
+- **Apply the new migrations**, `0004_step_up_control` and `0004_step_up_tenant` for each dialect:
+  `authenticated_at` on `session`, `purpose`, `session_sid` and `expected_subject_id` on `auth_flow`.
+  Sessions opened before the upgrade have no `authenticated_at`, so their first call to a marked
+  route asks for a step-up; a flow in progress comes through as a login.
+- **A consumer's own sensitive routes** add `freshAuth: true` next to `roles` or
+  `requireCapability`. The boot refuses it on a route that needs no authentication.
+
+**What a client has to change.**
+
+- On 403 `STEP_UP_REQUIRED`, ask the person to confirm: `POST /auth/flow/step-up` (the manifest's
+  `auth.endpoints.flowStepUp`) with the same body as a login start, follow a 202 through `step`, then
+  repeat the request with the new access token. The session and the refresh credential stay the same.
+- On 403 `STEP_UP_NOT_AVAILABLE` (an impersonation, an integration token), no confirmation helps:
+  say so, or send the person to a new login.
+- An HTTP layer that reads 401 as "session expired" is unaffected: both answers are 403.

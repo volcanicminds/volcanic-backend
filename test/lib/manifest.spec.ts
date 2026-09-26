@@ -293,6 +293,7 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
         flowOptions: '/auth/flow/options',
         flowStart: '/auth/flow/start',
         flowStep: '/auth/flow/step',
+        flowStepUp: '/auth/flow/step-up',
         flowChallenge: '/auth/flow/challenge',
         flowCancel: '/auth/flow/cancel'
       })
@@ -310,6 +311,7 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
         flowOptions: '/system/auth/flow/options',
         flowStart: '/system/auth/flow/start',
         flowStep: '/system/auth/flow/step',
+        flowStepUp: '/system/auth/flow/step-up',
         flowChallenge: '/system/auth/flow/challenge',
         flowCancel: '/system/auth/flow/cancel',
         refresh: '/system/auth/refresh-token',

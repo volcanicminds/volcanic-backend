@@ -97,6 +97,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
           if (!user || user.confirmed !== true || user.blocked) return null
           return { record: user, subject: toSubject('tenant', user) }
         },
+        elevate: async () => null,
         issue: async (user: any, _subject, methods) => ({ body: { sub: user.externalId, methods }, subjectId: user.externalId }),
         record: async (entry) => void accesses.push(entry)
       }

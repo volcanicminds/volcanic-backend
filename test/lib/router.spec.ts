@@ -237,6 +237,29 @@ describe('loader/router — processRoute', () => {
     expect(unknown.length).toBe(1)
   })
 
+  // F52: freshness is asked of the person holding a session, so a route must authenticate first.
+  it('carries `freshAuth` on an authenticated route and refuses it where nobody authenticates', () => {
+    const guarded: string[] = []
+    const byRole: any = run({ method: 'POST', path: '/mfa', handler: 'user.mfa', roles: ['admin'], freshAuth: true }, [], guarded)
+    const byMiddleware: any = run(
+      { method: 'POST', path: '/setup', handler: 'user.setup', freshAuth: true, middlewares: ['global.isAuthenticated'] },
+      [],
+      guarded
+    )
+    expect(guarded).toEqual([])
+    expect(byRole.freshAuth).toBe(true)
+    expect(byMiddleware.freshAuth).toBe(true)
+    expect((run({ method: 'GET', path: '/plain', handler: 'user.find', roles: ['admin'] }) as any).freshAuth).toBeUndefined()
+
+    const open: string[] = []
+    run({ method: 'POST', path: '/open', handler: 'user.open', freshAuth: true }, [], open)
+    expect(open).toEqual(['POST /open (user.open) in users/routes.ts: `freshAuth` on a route that needs no authentication. Require one, or remove it.'])
+
+    const typo: string[] = []
+    run({ method: 'POST', path: '/typo', handler: 'user.typo', roles: ['admin'], freshAuth: 'yes' }, [], typo)
+    expect(typo).toEqual(['POST /typo (user.typo) in users/routes.ts: `freshAuth` is true or false.'])
+  })
+
   it('returns null for a malformed handler', () => {
     const r = run({ method: 'GET', path: '/', handler: 'bogus' })
     expect(r).toBeNull()

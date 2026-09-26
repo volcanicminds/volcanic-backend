@@ -29,6 +29,13 @@
       "when": 1790163099372,
       "tag": "0003_account_creation_tenant",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790460613455,
+      "tag": "0004_step_up_tenant",
+      "breakpoints": true
     }
   ]
 }

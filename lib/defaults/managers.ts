@@ -88,7 +88,7 @@ const SYSTEM_USER_METHODS = [
 const IMPERSONATION_METHODS = ['openImpersonation', 'getImpersonation', 'revokeImpersonation', 'findQuery'] as const
 
 const SESSION_METHODS = [
-  'openSession', 'findBySecret', 'rotate', 'revokeSession', 'revokeAllOfSubject', 'listOfSubject', 'purgeExpired'
+  'openSession', 'findBySecret', 'rotate', 'markAuthenticated', 'revokeSession', 'revokeAllOfSubject', 'listOfSubject', 'purgeExpired'
 ] as const
 
 const DESTRUCTION_METHODS = ['openRequest', 'findLiveRequest', 'consumeRequest'] as const

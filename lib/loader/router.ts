@@ -202,6 +202,7 @@ export function processRoute(
     handler,
     roles: rs = [],
     requireCapability,
+    freshAuth,
     config = {} as RouteConfig,
     middlewares = [],
     rateLimit,
@@ -283,6 +284,15 @@ export function processRoute(
   if (tenantFrom !== undefined && (!framework || tenantFrom !== 'flow-state')) {
     integrityErrors.push(`${where}: \`tenantFrom\` is reserved to the framework's own routes. Remove it.`)
   }
+  // F52: freshness is a question about the person holding a session, and a route anyone may call
+  // unauthenticated has nobody to ask it of. `roles: []` plus `global.isAuthenticated` counts as
+  // authenticated, as it does for the Swagger security above.
+  if (freshAuth !== undefined && typeof freshAuth !== 'boolean') {
+    integrityErrors.push(`${where}: \`freshAuth\` is true or false.`)
+  }
+  if (freshAuth === true && !reqAuth) {
+    integrityErrors.push(`${where}: \`freshAuth\` on a route that needs no authentication. Require one, or remove it.`)
+  }
   if (scope !== 'tenant' && scope !== 'control') {
     integrityErrors.push(`${where}: unknown scope '${scope}'. The two planes are 'tenant' (default) and 'control'.`)
   }
@@ -353,6 +363,7 @@ export function processRoute(
       enable,
       tenantContext,
       ...(tenantFrom === 'flow-state' && framework ? { tenantFrom: 'flow-state' as const } : {}),
+      ...(freshAuth === true ? { freshAuth: true } : {}),
       rawBody,
       rateLimit,
       tracking,
@@ -481,7 +492,7 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
   let countRoutes = 0
   for (const route of routes) {
     if (route?.enable) {
-      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc, tenantContext, tenantFrom, cache, tracking } =
+      const { handler, method, path, middlewares, roles, rawBody, rateLimit, base, file, func, doc, tenantContext, tenantFrom, freshAuth, cache, tracking } =
         route
 
       if (log.d) log.debug(`* Add path ${method} ${path} on handle ${handler}`)
@@ -518,6 +529,7 @@ async function applyRoutes(server: any, routes: ConfiguredRoute[]): Promise<void
           rateLimit: rateLimit || undefined,
           tenantContext: tenantContext,
           tenantFrom: tenantFrom || undefined,
+          freshAuth: freshAuth === true || undefined,
           cache: cache || undefined,
           tracking: tracking || undefined
         },

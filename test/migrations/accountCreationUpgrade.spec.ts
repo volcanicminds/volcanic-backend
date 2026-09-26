@@ -42,10 +42,10 @@ function behaviours(name: string, open: (upTo?: { control?: string; tenant?: str
           db.dialect === 'sqlite' ? { control: 'sqlite', tenant: 'sqlite' } : { control: 'pg', tenant: 'pg' }
         )
         expect(await runner.apply({ locator: db.schemas?.control ?? 'control.db' })).toBe(
-          '0003_account_creation_control'
+          '0004_step_up_control'
         )
         expect(await runner.apply({ locator: db.schemas?.tenant ?? 'acme.db', tenantId: 'id-acme' })).toBe(
-          '0003_account_creation_tenant'
+          '0004_step_up_tenant'
         )
 
         expect(await tableNames(db.tenant, db.dialect, db.schemas?.tenant)).toContain('setting')

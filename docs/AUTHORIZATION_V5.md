@@ -120,6 +120,7 @@ second.
 | `roles` | tenant role codes | `system:*` codes |
 | `sid` | the session this token was issued for (§9), when the deployment keeps a registry | the same |
 | `imp` | impersonation record id, when the session is an impersonation | absent |
+| `auth_time` | when the person last proved to be there, in seconds (§10), when the session has a row | the same |
 
 **The tenant of a request comes from `tid`, never from a header, whenever a token is present**
 (task T-3.2). The header or the subdomain resolves the tenant only for requests that have no
@@ -141,7 +142,8 @@ Closes defect D-18. In v4 impersonation left only a claim in a token, lasted 24 
 
 **v5 flow:**
 
-1. The caller presents a **control** token and holds `tenants:impersonate`.
+1. The caller presents a **control** token, holds `tenants:impersonate`, and proved to be there
+   within the step-up window (§10): the route is `freshAuth`.
 2. The request body must carry a **reason**. An impersonation without a stated reason is refused
    with 400: the reason is what makes the audit record worth keeping.
 3. The framework writes an `impersonation` row (§3.3 of `docs/SCHEMA_V5.md`) **before** issuing
@@ -348,4 +350,24 @@ written with the `tenants` capability (reading them too: they describe the custo
 read-only oversight role does not need), with the client secret encrypted and never returned. A
 tenant's administrator cannot add a provider to its own tenant: an SSO configuration that lets
 people in is a decision of whoever runs the platform.
+
+**An operation that outlives the session asks for a fresh proof.** A route declared with
+`freshAuth: true`, top-level like `requireCapability`, answers only to a session whose `auth_time`
+falls within `STEP_UP_MAX_AGE` seconds (300 by default). The check runs after the role gate and
+reads the signed claim, no query; a stale session gets 403 `STEP_UP_REQUIRED` with `maxAge`, and a
+credential no step-up can make fresh (an impersonation, an integration token, a token without
+`sid`) gets 403 `STEP_UP_NOT_AVAILABLE`. The boot refuses `freshAuth` on a route that needs no
+authentication: `roles: []` alone is public, `roles: []` with `global.isAuthenticated` is not. The
+framework marks impersonation and the factor management routes; the flow that makes a session fresh
+again is docs/AUTH_FLOW_V5.md §8.5.
+
+```typescript
+{
+  method: 'POST',
+  path: '/:id/transfer-ownership',
+  handler: 'account.transferOwnership',
+  roles: [roles.admin],
+  freshAuth: true // 403 STEP_UP_REQUIRED unless the person proved to be there in the last 5 minutes
+}
+```
 

@@ -29,6 +29,13 @@
       "when": 1790163098930,
       "tag": "0003_account_creation_control",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790460613043,
+      "tag": "0004_step_up_control",
+      "breakpoints": true
     }
   ]
 }

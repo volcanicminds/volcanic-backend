@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import type { AuthInput, AuthManagers, AuthPlane, AuthReturnInput, ControlHandle } from '../../types/global.js'
+import type { AuthInput, AuthManagers, AuthPlane, AuthReturnInput, ControlHandle, DataHandle } from '../../types/global.js'
 import { httpError } from '../util/httpError.js'
 import { controlPolicy, tenantPolicy } from '../util/mfaPolicy.js'
 import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
-import { issueSession } from '../util/credential.js'
-import { CONTROL_ROUTING } from '../util/session.js'
+import { issueSession, reissueAccess, sessionTokenOf } from '../util/credential.js'
+import { CONTROL_ROUTING, sessionRegistryEnabled } from '../util/session.js'
+import { stepUpMaxAge } from '../util/stepUp.js'
 import { deliverFlow, forgetFlow, presentedFlow } from '../util/flowCredential.js'
 import { recordAccess } from '../util/accessLog.js'
 import { present } from '../api/system/controller/systemAuth.js'
@@ -59,6 +60,29 @@ async function providerKeys(req: FastifyRequest, plane: AuthPlane): Promise<stri
   const hidden = new Set(own.map((p) => p.key))
   const active = own.filter((p) => p.status === 'active').map((p) => p.key)
   return [...new Set([...active, ...declared.filter((key) => !hidden.has(key))])].filter((key) => PROVIDER_KEY.test(key)).sort()
+}
+
+/**
+ * The end of a step-up on either plane (F54): the session row is proven again, then a new access
+ * token carries the moment. Null when the row refuses, which the engine answers as
+ * `STEP_UP_NOT_AVAILABLE`.
+ */
+async function elevateSession(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  plane: AuthPlane,
+  handle: DataHandle,
+  claims: Record<string, unknown>,
+  sid: string,
+  methods: string[]
+) {
+  const sessions = req.server.sessionManager
+  if (!sessionRegistryEnabled(sessions)) return null
+  const session = await sessions.markAuthenticated(handle, sid, String(claims.sub), methods)
+  if (!session) return null
+  const token = await reissueAccess(reply, plane, claims, session)
+  const authenticatedAt = session.authenticatedAt ? new Date(session.authenticatedAt).toISOString() : null
+  return { body: { token, authenticatedAt, maxAge: stepUpMaxAge() } }
 }
 
 /** The plane of this request, or null once a 503 has been sent. */
@@ -119,6 +143,8 @@ function planeOf(req: FastifyRequest, reply: FastifyReply, plane: AuthPlane): Fl
         )
         return { body: { ...present(user), token, refreshToken, securityPolicy: { mfaPolicy: policy } }, subjectId: user.externalId }
       },
+      elevate: (user, _subject, sid, methods) =>
+        elevateSession(req, reply, 'control', control, { sub: user.externalId, scp: 'control' }, sid, methods),
       record: (entry) => recordAccess(req, control, { ...entry, scope: 'control' })
     }
   }
@@ -168,8 +194,22 @@ function planeOf(req: FastifyRequest, reply: FastifyReply, plane: AuthPlane): Fl
       const roles = roleCodes(current.roles, [global.roles?.public?.code || 'public'])
       return { body: { ...current, roles, token, refreshToken, securityPolicy: { mfaPolicy: policy } }, subjectId: current.externalId }
     },
+    // Never `reset_external_id_on_login`: a new identifier would end the very session being confirmed.
+    elevate: (user, _subject, sid, methods) =>
+      elevateSession(req, reply, 'tenant', handle, { sub: user.externalId, tid: req.tenantInfo?.id }, sid, methods),
     record: (entry) => recordAccess(req, handle, { ...entry, scope: 'tenant' })
   }
+}
+
+/** The session of the token that authenticated this request, when a step-up could confirm it. */
+function confirmableSession(req: FastifyRequest, plane: AuthPlane): engine.StepUpSession | null {
+  if (req.token || req.impersonation) return null
+  const subjectId = plane === 'control' ? req.systemUser?.externalId : req.user?.externalId
+  const raw = sessionTokenOf(req, plane)
+  // Already verified by the hook that authenticated the request: read, not checked again.
+  const claims = raw ? (req.server.jwt.decode(raw) as { sid?: unknown; imp?: unknown; sub?: unknown } | null) : null
+  if (!subjectId || !claims || claims.imp || typeof claims.sid !== 'string' || claims.sub !== subjectId) return null
+  return { sid: claims.sid, subjectId }
 }
 
 /** The fields a method receives: the body without the engine's own. Never the query string. */
@@ -223,6 +263,22 @@ export function flowHandlers(plane: AuthPlane) {
       if (!p) return reply
       const { method, input } = inputOf(req)
       return answer(reply, plane, await engine.start(p, method, input))
+    },
+
+    /**
+     * The start of a step-up (F53), on an authenticated route: the session is the one whose token
+     * authenticated this request. An impersonation, an integration token or a token without a
+     * session has nobody a step-up could confirm (F55).
+     */
+    async stepUp(req: FastifyRequest, reply: FastifyReply) {
+      const session = confirmableSession(req, plane)
+      if (!session) {
+        return reply.status(403).send(httpError(403, 'This credential cannot confirm its holder: log in again', 'STEP_UP_NOT_AVAILABLE'))
+      }
+      const p = planeOf(req, reply, plane)
+      if (!p) return reply
+      const { method, input } = inputOf(req)
+      return answer(reply, plane, await engine.stepUp(p, session, method, input))
     },
 
     async step(req: FastifyRequest, reply: FastifyReply) {

@@ -207,7 +207,8 @@ who ordered it.
 | `ip` | text | yes | | of the request that opened the session |
 | `user_agent` | text | yes | | what a device list shows |
 | `impersonation_id` | text | yes | | set when the session is an impersonation (§3.3), so ending the impersonation ends the session it authorised |
-| `auth_methods` | text[] / json text | yes | | the methods the login satisfied, e.g. `{password,totp}` or `{oidc,idp-mfa}`. Null on sessions opened before the flow engine: what is not known is not written as an empty list. Whether a session was born without a second factor cannot be reconstructed later, and a step-up will ask it |
+| `auth_methods` | text[] / json text | yes | | the methods the login satisfied, e.g. `{password,totp}` or `{oidc,idp-mfa}`. Null on sessions opened before the flow engine: what is not known is not written as an empty list. Whether a session was born without a second factor cannot be reconstructed later. A step-up rewrites it with the methods it satisfied |
+| `authenticated_at` | timestamp | yes | | when the person last proved to be there: the login writes it, a step-up moves it, a renewal never does. The access token carries it as `auth_time` (docs/AUTH_FLOW_V5.md §8.5). Null on sessions opened before 0004, whose tokens a `freshAuth` route answers with `STEP_UP_REQUIRED` |
 | `created_at` | timestamp | no | now | |
 
 **Indexes**: unique on `sid`, index on `secret_hash`, index on `previous_secret_hash`, index on
@@ -261,6 +262,9 @@ identity from a tenant user where both share a container.
 | `candidate_subject_id` | text | yes | | the subject an unproven `email-otp` flow sends codes to, so its sends count against that subject |
 | `secret_hash` | text | no | | SHA-256 of the flow secret. Emptied when the flow is retired, so no credential finds it again |
 | `flow_name` | text | yes | | the index of the configured flow chosen for the subject |
+| `purpose` | text | no | `login` | `login` or `step-up`; written once, at the start |
+| `session_sid` | text | yes | | a step-up's: the `sid` of the session it confirms |
+| `expected_subject_id` | text | yes | | a step-up's: the `external_id` the identified subject must be |
 | `stage_index` | integer | no | `0` | |
 | `satisfied` | jsonb / json text | no | `[]` | the methods proven so far |
 | `challenge_method` | text | yes | | the method of the code last sent |

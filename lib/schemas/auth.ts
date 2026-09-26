@@ -54,7 +54,21 @@ export const authLoginResponseSchema = {
       properties: {
         mfaPolicy: { type: 'string' }
       }
-    }
+    },
+    // The end of a step-up on `/flow/step` answers these two and `token` only (F54).
+    authenticatedAt: { type: 'string', format: 'date-time', nullable: true },
+    maxAge: { type: 'integer' }
+  }
+}
+
+/** The end of a step-up: the session proven again, and for how long it counts as fresh (F54). */
+export const authStepUpResponseSchema = {
+  $id: 'authStepUpResponseSchema',
+  type: 'object',
+  properties: {
+    token: { type: 'string', nullable: true },
+    authenticatedAt: { type: 'string', format: 'date-time', nullable: true },
+    maxAge: { type: 'integer' }
   }
 }
 

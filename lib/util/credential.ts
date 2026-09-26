@@ -27,6 +27,7 @@
 //
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { DataHandle, SessionManagement, SessionScope } from '../../types/global.js'
+import { authTimeClaim } from './stepUp.js'
 import {
   CONTROL_ROUTING,
   composeRefreshCredential,
@@ -258,7 +259,8 @@ export interface SessionOrigin {
  * shipping one while calling it a session would be the worse of the two failures.
  *
  * The access token carries `sid`, so an action can be attributed to a session and not only to a
- * subject. In cookie mode the body carries `null` in place of both tokens: the fields stay, so a
+ * subject, and `auth_time`, the moment of this login's proof, which a `freshAuth` route reads
+ * (F51); it is there without a registry too, where only a new login can move it. In cookie mode the body carries `null` in place of both tokens: the fields stay, so a
  * client can tell "the session is in the cookie" from "this build has no refresh tokens".
  */
 export async function issueSession(
@@ -270,6 +272,7 @@ export async function issueSession(
   let refreshToken: string | undefined
   let refreshMaxAge = 0
   let sid: string | undefined
+  const authenticatedAt = new Date()
 
   if (origin && sessionRegistryEnabled(origin.manager)) {
     const secret = newSessionSecret()
@@ -282,7 +285,8 @@ export async function issueSession(
       absoluteExpiresAt,
       ip: origin.ip ?? null,
       userAgent: origin.userAgent ?? null,
-      authMethods: origin.authMethods ?? null
+      authMethods: origin.authMethods ?? null,
+      authenticatedAt
     })
     sid = session.sid
     refreshToken = composeRefreshCredential(origin.routing || CONTROL_ROUTING, session.sid, secret).raw
@@ -291,7 +295,7 @@ export async function issueSession(
     refreshMaxAge = Math.floor((Math.min(idleExpiresAt.getTime(), absoluteExpiresAt.getTime()) - Date.now()) / 1000)
   }
 
-  const token = await reply.jwtSign(sid ? { ...claims, sid } : claims)
+  const token = await reply.jwtSign({ ...claims, ...authTimeClaim(authenticatedAt), ...(sid ? { sid } : {}) })
 
   if (!isCookieMode()) return { token, refreshToken }
 
@@ -299,4 +303,22 @@ export async function issueSession(
   if (refreshToken) setRefreshCookie(reply, plane, refreshToken, refreshMaxAge)
   else clearRefreshCookie(reply, plane)
   return { token: null, refreshToken: null }
+}
+
+/**
+ * The access token of a session just proven again by a step-up (F54): same `sid`, the new
+ * `auth_time` read from the row. The refresh credential does not rotate, because nothing about
+ * the session's ownership changed; only the access token does, so the proof reaches the next
+ * request without waiting for a renewal.
+ */
+export async function reissueAccess(
+  reply: FastifyReply,
+  plane: Plane,
+  claims: Record<string, unknown>,
+  session: { sid: string; authenticatedAt?: Date | string | null }
+): Promise<string | null> {
+  const token = await reply.jwtSign({ ...claims, ...authTimeClaim(session.authenticatedAt), sid: session.sid })
+  if (!isCookieMode()) return token
+  setAccessCookie(reply, plane, token)
+  return null
 }

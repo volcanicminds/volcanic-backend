@@ -116,7 +116,8 @@
   - File: `lib/api/tenants/controller/tenants.ts:141-193`; `index.ts:319-352` (MFA admin reset via env)
   - Persist the audit log; reduce the TTL; consider step-up MFA; mandatory audit on the MFA reset via env.
   - **Partly done in v5:** the impersonation session is persisted and every request it makes is
-    logged. The step-up MFA is deferred after 5.0, together with F48.
+    logged. The step-up is reopened (2026-09-27) as phase 13 (`EVO_FASE_13.md`): the impersonation
+    route asks for a re-authentication younger than five minutes.
 
 - [x] **S14 — Revocation latency: cache on `retrieveUserByExternalId`** · `DB`
   - File: `lib/loader/userManager.ts:208-211` (`cache: global.cacheTimeout`)

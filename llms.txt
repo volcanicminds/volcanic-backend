@@ -3382,6 +3382,12 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
 appended to every route). A consumer's `config/roles.ts` may override only their *labels* (name/description) — code
 and capabilities are locked — and add its own roles freely. `backoffice` is **not** built-in (removed in v4).
 
+**Fresh authentication.** A route with `freshAuth: true` (top-level, like `requireCapability`) answers only to a
+session whose token `auth_time` is within `STEP_UP_MAX_AGE` seconds (default 300): otherwise 403 `STEP_UP_REQUIRED`
+with `maxAge`, and the client runs `POST /auth/flow/step-up` (same body as `/auth/flow/start`, same `sid` in the new
+token) and repeats the request. Impersonation and integration tokens get 403 `STEP_UP_NOT_AVAILABLE`. The route
+must require authentication, or the boot refuses it.
+
 **Capabilities.** A role may declare `capabilities: string[]`; a route gates on one with `requireCapability: 'X'`
 (top-level, alongside/instead of `roles`). At **boot** the allowed set is resolved to `admin` ∪ {every role that
 declares `X`}; the request gate is unchanged. The framework reserves three capability names and gates its native

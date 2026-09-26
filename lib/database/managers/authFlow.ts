@@ -4,6 +4,7 @@ import type { Table } from 'drizzle-orm'
 import type {
   AuthFlow,
   AuthFlowExternal,
+  AuthFlowPurpose,
   AuthFlowLookup,
   AuthFlowManagement,
   ChallengeLimits,
@@ -59,6 +60,9 @@ interface FlowRow {
   external: string | null
   // A failed return is kept in the same column, as `{ failure }`: one write, one spent `state`.
   externalResult: ExternalAuthResult | { failure: ExternalAuthFailure } | null
+  purpose: AuthFlowPurpose
+  sessionSid: string | null
+  expectedSubjectId: string | null
   version: number
   ip: string | null
   userAgent: string | null
@@ -100,6 +104,9 @@ async function toFlow(row: FlowRow): Promise<AuthFlow> {
     external: row.external ? (JSON.parse(await decrypt(row.external)) as AuthFlowExternal) : null,
     externalResult: row.externalResult && !('failure' in row.externalResult) ? row.externalResult : null,
     externalFailure: row.externalResult && 'failure' in row.externalResult ? row.externalResult.failure : null,
+    purpose: row.purpose,
+    sessionSid: row.sessionSid ?? null,
+    expectedSubjectId: row.expectedSubjectId ?? null,
     version: row.version,
     ip: row.ip ?? null,
     userAgent: row.userAgent ?? null,
@@ -213,6 +220,9 @@ export function createAuthFlowManager(options: { sendWindowSeconds?: number } = 
         subjectId: data.subjectId ?? null,
         candidateSubjectId: data.candidateSubjectId ?? null,
         flowName: data.flowName ?? null,
+        purpose: data.purpose ?? 'login',
+        sessionSid: data.sessionSid ?? null,
+        expectedSubjectId: data.expectedSubjectId ?? null,
         expiresAt: new Date(data.expiresAt as never),
         ip: data.ip ?? null,
         userAgent: data.userAgent ?? null

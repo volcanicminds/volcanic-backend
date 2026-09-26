@@ -106,6 +106,7 @@ function world() {
   const store = fakeFlowStore()
   const events: Array<Omit<AccessLogEntry, 'scope'>> = []
   const issued: Array<{ subjectId: string; methods: string[] }> = []
+  const elevated: Array<{ subjectId: string; sid: string; methods: string[] }> = []
 
   function plane(flows: Partial<AuthPlaneFlows> = {}, over: Partial<FlowPlane<User>> = {}): FlowPlane<User> {
     return {
@@ -128,6 +129,12 @@ function world() {
         issued.push({ subjectId: user.externalId, methods })
         return { body: { externalId: user.externalId, methods }, subjectId: user.externalId }
       },
+      // A session the registry no longer confirms: revoked, expired or someone else's.
+      async elevate(user, _subject, sid, methods) {
+        if (sid === 'sid-dead') return null
+        elevated.push({ subjectId: user.externalId, sid, methods })
+        return { body: { sid, methods } }
+      },
       async record(entry) {
         events.push(entry)
       },
@@ -135,7 +142,7 @@ function world() {
     }
   }
 
-  return { users, store, events, issued, plane }
+  return { users, store, events, issued, elevated, plane }
 }
 
 const login = (p: FlowPlane<User>, email: string, method = 'password') => engine.start(p, method, { email, password: 'pw' })
@@ -389,5 +396,63 @@ describe('auth · the flow engine (T-12.14)', () => {
     expect(await engine.returnFrom(p, 'fake-social', { code: 'granted', state: next })).toEqual({ kind: 'returned', ok: true, returnTo: '/after' })
     expect(w.issued).toHaveLength(0)
     expect(body(await engine.step(p, again.credential.raw, 'fake-social', {}))).toMatchObject({ externalId: 'ext-1', methods: ['fake-social'] })
+  })
+})
+
+describe('auth · step-up (F53, F54)', () => {
+  const ada = { sid: 'sid-ada', subjectId: 'ext-ada' }
+
+  it('proves the session again with the methods of a login, and opens none', async () => {
+    const w = world()
+    const done = await engine.stepUp(w.plane(), ada, 'password', { email: 'ada@x.test', password: 'pw' })
+    expect(body(done)).toEqual({ sid: 'sid-ada', methods: ['password'] })
+    expect(w.elevated).toEqual([{ subjectId: 'ext-ada', sid: 'sid-ada', methods: ['password'] }])
+    expect(w.issued).toHaveLength(0)
+    expect(w.events).toEqual([expect.objectContaining({ event: 'step-up.succeeded', subjectId: 'ext-ada', methods: ['password'] })])
+  })
+
+  it('refuses the valid credentials of somebody else as wrong ones, and says so as a step-up', async () => {
+    const w = world()
+    const refused = await engine.stepUp(w.plane(), ada, 'password', { email: 'bob@x.test', password: 'pw' })
+    expect(refusalOf(refused)).toBe('AUTH_INVALID_CREDENTIALS')
+    expect(w.elevated).toHaveLength(0)
+    expect(w.issued).toHaveLength(0)
+    // Not a failed login: a dashboard counting those must not count this.
+    expect(w.events).toEqual([expect.objectContaining({ event: 'step-up.failed', code: 'AUTH_INVALID_CREDENTIALS', subjectId: 'ext-ada', sid: 'sid-ada' })])
+  })
+
+  it('keeps the purpose in the row, so the public step routes finish a step-up without knowing it is one', async () => {
+    const w = world()
+    const flows = { flows: [{ roles: ['*'], stages: [{ anyOf: ['code-a'] }] }] }
+    const first = await engine.stepUp(w.plane(flows), ada, 'password', { email: 'ada@x.test', password: 'pw' })
+    const [row] = [...w.store.rows.values()]
+    expect(row).toMatchObject({ purpose: 'step-up', sessionSid: 'sid-ada', expectedSubjectId: 'ext-ada', subjectId: 'ext-ada' })
+
+    // A plane built for an ordinary request, as the step route builds it.
+    expect(body(await engine.step(w.plane(flows), credentialOf(first), 'code-a', { code: 'a' }))).toEqual({ sid: 'sid-ada', methods: ['password', 'code-a'] })
+    expect(w.issued).toHaveLength(0)
+    expect(w.events.map((e) => e.event)).toEqual(['flow.started', 'stage.passed', 'step-up.succeeded'])
+  })
+
+  it('ends the flow when the session can no longer be confirmed', async () => {
+    const w = world()
+    const flows = { flows: [{ roles: ['*'], stages: [{ anyOf: ['code-a'] }] }] }
+    const first = await engine.stepUp(w.plane(flows), { sid: 'sid-dead', subjectId: 'ext-ada' }, 'password', { email: 'ada@x.test', password: 'pw' })
+    const credential = credentialOf(first)
+    const refused = await engine.step(w.plane(flows), credential, 'code-a', { code: 'a' })
+    expect(refused).toMatchObject({ kind: 'refused', endsFlow: true, refusal: { status: 403, code: 'STEP_UP_NOT_AVAILABLE' } })
+    expect(refusalOf(await engine.step(w.plane(flows), credential, 'code-a', { code: 'a' }))).toBe('FLOW_REQUIRED')
+    expect(w.issued).toHaveLength(0)
+  })
+
+  it('confirms nothing with a step-up row that lost its session, and never falls back to a login', async () => {
+    const w = world()
+    const flows = { flows: [{ roles: ['*'], stages: [{ anyOf: ['code-a'] }] }] }
+    const first = await engine.stepUp(w.plane(flows), ada, 'password', { email: 'ada@x.test', password: 'pw' })
+    const [row] = [...w.store.rows.values()]
+    row.sessionSid = null
+    expect(refusalOf(await engine.step(w.plane(flows), credentialOf(first), 'code-a', { code: 'a' }))).toBe('FLOW_REQUIRED')
+    expect(w.issued).toHaveLength(0)
+    expect(w.elevated).toHaveLength(0)
   })
 })

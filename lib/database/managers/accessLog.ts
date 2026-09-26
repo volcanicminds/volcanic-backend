@@ -34,6 +34,8 @@ const EVENTS: Record<AccessEvent, true> = {
   'account.approved': true,
   'mfa.enrolled': true,
   'mfa.disabled': true,
+  'step-up.succeeded': true,
+  'step-up.failed': true,
   logout: true,
   'session.revoked': true,
   'session.reuse_detected': true,

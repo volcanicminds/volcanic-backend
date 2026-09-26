@@ -150,6 +150,7 @@ where it is used without passing through the configuration at all.
 | `SESSION_IDLE_TTL` | `2592000` | seconds without a renewal before a session ends | `sessions.idleTtl`, and it **wins** over the configured value |
 | `SESSION_ABSOLUTE_TTL` | `15552000` | seconds a session may live, however often it renews | `sessions.absoluteTtl`, same rule |
 | `SESSION_GRACE_SECONDS` | `10` | seconds the just-rotated secret stays acceptable, for tabs renewing together. `0` is a legitimate value and means no tolerance | `sessions.graceSeconds`, same rule |
+| `STEP_UP_MAX_AGE` | `300` | seconds a proof of presence stays fresh for a `freshAuth` route (docs/AUTH_FLOW_V5.md §8.5); an integer between 60 and 3600, or the boot is refused | no key |
 | `ACCESS_LOG_IP` | `truncate` | `truncate` keeps an IPv4 /24 or an IPv6 /48 in the access log, `none` stores no address | `accessLog.ip`, and it **wins** over the configured value |
 | `ACCESS_LOG_RETENTION_DAYS` | `90` | days a tenant-plane row of the access log is kept | `accessLog.retentionDays`, same rule |
 | `ACCESS_LOG_CONTROL_RETENTION_DAYS` | `180` | days a platform row of the access log is kept | `accessLog.controlRetentionDays`, same rule |
@@ -158,7 +159,7 @@ where it is used without passing through the configuration at all.
 | `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
 | `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |
-| `AUTH_RATELIMIT_MAX` | `10` | requests per window, per address, on the routes that take a secret (the start of a login on both planes, register, unregister, change, forgot and reset password, email confirmation, the platform's renewal) | no key: read by `lib/api/auth/routes.ts` and `lib/api/system/routes.ts` |
+| `AUTH_RATELIMIT_MAX` | `10` | requests per window, per address, on the routes that take a secret (the start of a login and of a step-up on both planes, register, unregister, change, forgot and reset password, email confirmation, the platform's renewal) | no key: read by `lib/api/auth/routes.ts` and `lib/api/system/routes.ts` |
 | `AUTH_RATELIMIT_WINDOW` | `60000` | that window, in milliseconds | no key: same |
 | `AUTH_FLOW_TTL` | `600` | seconds a login in progress lives, never extended | `limits.flowTtl` of `config/authFlows.ts`, and it **wins** over the file |
 | `AUTH_OTP_TTL` | `300` | seconds a sent code stays valid | `limits.otpTtl`, same rule |

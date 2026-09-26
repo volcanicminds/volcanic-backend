@@ -119,6 +119,32 @@ describe('database/managers · the session registry (T-11.5)', () => {
     expect(found.session.revokedReason).toBe('logout')
   })
 
+  // F54: a step-up proves the same row again. The conditions are the statement's WHERE clause,
+  // so a row that is not the subject's, not live, or an impersonation is left as it was.
+  it('marks a live session proven again, and nothing else', async () => {
+    const opened = new Date(Date.now() - 600_000)
+    const row = await open({ secret: 'fresh-1', authMethods: ['password'], authenticatedAt: opened })
+    expect(new Date(row.authenticatedAt as any).getTime()).toBe(opened.getTime())
+
+    expect(await sessions.markAuthenticated(handle, row.sid, 'someone-else', ['password'])).toBeNull()
+    const proven: any = await sessions.markAuthenticated(handle, row.sid, 'u-ext-1', ['password', 'totp'])
+    expect(proven.sid).toBe(row.sid)
+    expect(proven.generation).toBe(row.generation)
+    expect(proven.authMethods).toEqual(['password', 'totp'])
+    expect(Date.now() - new Date(proven.authenticatedAt).getTime()).toBeLessThan(5000)
+
+    const impersonated = await open({ secret: 'fresh-imp', impersonationId: 'imp-1' })
+    expect(await sessions.markAuthenticated(handle, impersonated.sid, 'u-ext-1', ['password'])).toBeNull()
+    const idle = await open({ secret: 'fresh-idle', idleExpiresAt: new Date(Date.now() - 1000) })
+    expect(await sessions.markAuthenticated(handle, idle.sid, 'u-ext-1', ['password'])).toBeNull()
+    const absolute = await open({ secret: 'fresh-abs', absoluteExpiresAt: new Date(Date.now() - 1000) })
+    expect(await sessions.markAuthenticated(handle, absolute.sid, 'u-ext-1', ['password'])).toBeNull()
+    const revoked = await open({ secret: 'fresh-rev' })
+    await sessions.revokeSession(handle, revoked.sid, 'logout')
+    expect(await sessions.markAuthenticated(handle, revoked.sid, 'u-ext-1', ['password'])).toBeNull()
+    expect(await sessions.markAuthenticated(handle, 'sid-does-not-exist', 'u-ext-1', ['password'])).toBeNull()
+  })
+
   it('closes every live session of a subject, and lists only what is still open', async () => {
     const subjectId = 'u-ext-many'
     await open({ subjectId, secret: 'many-1' })

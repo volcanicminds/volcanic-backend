@@ -147,6 +147,7 @@ export function appTables() {
       userAgent: text('user_agent'),
       impersonationId: text('impersonation_id'),
       authMethods: text('auth_methods', { mode: 'json' }).$type<string[]>(),
+      authenticatedAt: integer('authenticated_at', { mode: 'timestamp_ms' }),
       createdAt: integer('created_at', { mode: 'timestamp_ms' })
         .notNull()
         .default(sql`(unixepoch() * 1000)`)
@@ -183,6 +184,9 @@ export function appTables() {
       stateHash: text('state_hash'),
       external: text('external'),
       externalResult: text('external_result', { mode: 'json' }),
+      purpose: text('purpose').notNull().default('login'),
+      sessionSid: text('session_sid'),
+      expectedSubjectId: text('expected_subject_id'),
       version: integer('version').notNull().default(1),
       ip: text('ip'),
       userAgent: text('user_agent'),

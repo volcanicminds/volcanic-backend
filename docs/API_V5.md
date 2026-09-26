@@ -36,6 +36,7 @@ removed with no replacement.
 | POST | `/auth/unregister` | authenticated | rate limited |
 | GET | `/auth/flow/options` | public | the identifiers of the plane, the provider keys of `oidc`, the account creation mode. Writes nothing. 60/min per IP |
 | POST | `/auth/flow/start` | public | the login (§2.6): runs the identifier named by `method`. **200** with the session, or **202** with the next stage. Rate limited like the other credential routes. The session travels as before: in cookie mode, the default, it is written into `auth_token` and `refresh_token` and the body carries `token: null`, `refreshToken: null` (MIGRATION §24) |
+| POST | `/auth/flow/step-up` | authenticated | confirms the session of the request with a fresh proof (§2.6): same body and answers as `start`, but the 200 is `{ token, authenticatedAt, maxAge }`, a new access token with the same `sid`, and no new session. Rate limited like `start` |
 | POST | `/auth/flow/step` | flow credential | answers the current stage, or starts an in-flow enrolment with `action: 'enrol'`. 200 or 202. 10/min per IP |
 | POST | `/auth/flow/challenge` | flow credential | sends the code of a method of the current stage again, within the ceilings of the flow. 5/min per IP |
 | POST | `/auth/flow/cancel` | public | ends the flow of the credential, if there is one; always 200 |
@@ -52,9 +53,9 @@ removed with no replacement.
 | POST | `/auth/confirm-email` | public | spends the `confirmationToken` minted with every account created unconfirmed (§2.5). Rate limited |
 | POST | `/auth/forgot-password` | public | rate limited. Always 200 |
 | POST | `/auth/reset-password` | public | rate limited |
-| POST | `/auth/mfa/setup` | authenticated | account management, with a complete session. 409 `MFA_ALREADY_ENABLED` when a factor is already active: replacing one goes through disable |
+| POST | `/auth/mfa/setup` | authenticated, fresh | account management, with a complete session proven in the last `STEP_UP_MAX_AGE` seconds (§2.6). 409 `MFA_ALREADY_ENABLED` when a factor is already active: replacing one goes through disable |
 | POST | `/auth/mfa/enable` | authenticated | rate limited 10/60s; 409 `MFA_ALREADY_ENABLED` as above. Answers `defaultResponse` and **issues no session**: the enrolment a `MANDATORY` policy forces happens inside the flow (§2.6) |
-| POST | `/auth/mfa/disable` | authenticated | only where the policy lets a subject remove its own factor (`OPTIONAL`) |
+| POST | `/auth/mfa/disable` | authenticated, fresh | only where the policy lets a subject remove its own factor (`OPTIONAL`) |
 
 **Removed in 5.0**: the one-shot login route and the separate MFA verification route, with the
 five-minute temporary token that connected them. The login is `/auth/flow/*`, and a JWT carrying a
@@ -217,6 +218,14 @@ credential travels in the `auth_flow` cookie (path `/auth/flow`). An option may 
 after `action: 'enrol'`) or `action` (`{ type: 'redirect', url }` for a provider). Codes and
 identifiers only: the labels are the console's.
 
+**Step-up.** A route declared `freshAuth` (docs/AUTHORIZATION_V5.md §10) answers 403
+`STEP_UP_REQUIRED` with `maxAge` to a session whose person has not proved to be there in the last
+`STEP_UP_MAX_AGE` seconds (300). The client then sends `POST /auth/flow/step-up` with the session
+and the same body as `start`, follows the 202s through `step` as in a login, and on 200 repeats the
+request with the new token (in cookie mode the access cookie is already replaced). The subject must
+be the session's own. An impersonation or integration token, or a session closed meanwhile, gets
+403 `STEP_UP_NOT_AVAILABLE`: only a new login helps. docs/AUTH_FLOW_V5.md §8.5.
+
 The refusals of a flow, with `remaining` and `retryAt` in the body where they apply:
 
 | Code | Status | When |
@@ -233,6 +242,7 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | `AUTH_FLOW_NOT_AVAILABLE` | 503 | a second step in a build with no flow store |
 | `TENANT_MISMATCH` | 403 | the credential belongs to another tenant |
 | `IDP_UNKNOWN_PROVIDER`, `IDP_UNAVAILABLE`, `IDP_RETURN_PENDING`, `IDP_IDENTITY_NOT_LINKED`, `ACCOUNT_PENDING_APPROVAL` | 400, 502, 409, 403, 403 | provider logins (docs/AUTH_FLOW_V5.md §7) |
+| `STEP_UP_NOT_AVAILABLE` | 403 | a step-up for a credential that cannot be confirmed, or for a session closed meanwhile |
 
 ---
 
@@ -298,13 +308,14 @@ Platform administrators authenticate on their own routes and receive a token car
 |---|---|---|---|
 | GET | `/system/auth/flow/options` | public | the identifiers of the control plane (§2.6) |
 | POST | `/system/auth/flow/start` | public | the platform login, the same engine as §2.6 with the `control` block of `authFlows.ts`, the `control_flow` cookie (path `/system/auth/flow`) and `SYSTEM_MFA_POLICY`. A failed login is 401 `AUTH_INVALID_CREDENTIALS`, as on the tenant plane (in v4 it was 403 with no code) |
+| POST | `/system/auth/flow/step-up` | authenticated (control) | the operator's step-up, as §2.6 |
 | POST | `/system/auth/flow/step` | control flow credential | as §2.6 |
 | POST | `/system/auth/flow/challenge` | control flow credential | as §2.6 |
 | POST | `/system/auth/flow/cancel` | public | as §2.6 |
 | GET | `/system/auth/flow/return/:method` | public (flow `state`) | as §2.6; there is no just-in-time provisioning on this plane |
 | POST | `/system/auth/logout` | authenticated (control) | revokes the platform session, then clears the control cookies |
 | POST | `/system/auth/refresh-token` | valid control refresh credential | literally the same code as `/auth/refresh-token` (§2.3), with the `control_refresh_token` cookie, the `ctl` routing segment and `scope: 'control'` on the row. A tenant session presented here is `SCOPE_MISMATCH` |
-| POST | `/system/auth/mfa/setup` | any platform identity | starts the operator's own enrolment: every identity enrols itself, and `roles: []` here would have meant the superuser alone |
+| POST | `/system/auth/mfa/setup` | any platform identity, fresh (§2.6) | starts the operator's own enrolment: every identity enrols itself, and `roles: []` here would have meant the superuser alone |
 | POST | `/system/auth/mfa/enable` | any platform identity | finishes it with a code from the authenticator, and issues no session; both answer 409 `MFA_ALREADY_ENABLED` for an operator who already has a factor |
 | GET | `/system/auth/me` | any platform identity (`public` role gate plus `isAuthenticated`) | the operator behind the session with its roles, never the credential columns. A console reads it instead of `/users/me`, which refuses a control token (T-10.14) |
 | GET | `/system/auth/sessions` | any platform identity | the operator's own platform sessions, the twin of §2.4 and with the same shape |
@@ -340,7 +351,7 @@ Platform administrators authenticate on their own routes and receive a token car
 | GET | `/tenants/migrations` | `migrations` | which container is at which schema version |
 | POST | `/tenants/:id/migrate` | `migrations` | applies the pending migrations to one container |
 | POST | `/tenants/:id/export` | `tenants:export` | |
-| POST | `/tenants/:id/impersonate` | `tenants:impersonate` | body: `{ userId, reason }`. `reason` is **required** |
+| POST | `/tenants/:id/impersonate` | `tenants:impersonate` | body: `{ userId, reason }`. `reason` is **required**. Fresh: an operator whose proof is older than `STEP_UP_MAX_AGE` gets 403 `STEP_UP_REQUIRED` (§2.6) |
 | POST | `/tenants/impersonate/end` | `tenants:impersonate` | revokes the impersonation record. Body: `{ impersonationId }`. First written as "authenticated (control)", which on a control route resolves to the superuser alone: whoever can open a session must be able to end one, and that is the capability |
 | POST | `/tenants/:id/destruction-request` | `tenants:destroy` | phase 1, see §6.2 |
 | DELETE | `/tenants/:id/data` | `tenants:destroy` | phase 2, see §6.2 |
@@ -406,7 +417,7 @@ Failure modes and their codes: `DESTRUCTION_TOKEN_INVALID`, `DESTRUCTION_TOKEN_E
 sets of routes: `/admin/manifest` the tenant routes, with `auth.plane: 'tenant'` and the `/auth/*`
 endpoints; `/system/manifest` the control routes, with `auth.plane: 'control'` and the
 `/system/auth/*` endpoints. Each plane's `auth.endpoints` names the flow routes (`flowOptions`,
-`flowStart`, `flowStep`, `flowChallenge`, `flowCancel`), `refresh`, `logout` and `sessions`; the
+`flowStart`, `flowStep`, `flowChallenge`, `flowCancel`, `flowStepUp`), `refresh`, `logout` and `sessions`; the
 control plane adds `me`, `mfaSetup` and `mfaEnable`, which manage an operator already logged in.
 There is no login endpoint to name: a login is the flow. A customer's users therefore never
 receive the platform's route map and role codes. Without tenants there is one identity space:
@@ -469,7 +480,7 @@ path, including the `onError` hook, which in v4 leaked the exception message on 
 |---|---|
 | 400 | malformed request, invalid query, missing tenant, sanitisation mismatch |
 | 401 | missing or invalid credentials, uniformly (§2.1) |
-| 403 | valid identity, insufficient scope, role or capability; expired password |
+| 403 | valid identity, insufficient scope, role or capability; expired password; a `freshAuth` route with a stale session (`STEP_UP_REQUIRED`, `STEP_UP_NOT_AVAILABLE`, §2.6) |
 | 404 | the addressed resource does not exist **in the caller's container** |
 | 409 | optimistic lock conflict, or an operation already in progress (fleet migration lock) |
 | 429 | rate limit |

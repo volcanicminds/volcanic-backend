@@ -80,6 +80,23 @@ export default {
     },
     {
       method: 'POST',
+      path: '/auth/flow/step-up',
+      roles: ['public'],
+      handler: 'systemFlow.stepUp',
+      middlewares: ['global.isAuthenticated'],
+      rateLimit: authRateLimit,
+      config: {
+        title: 'Confirm the current platform session',
+        description: 'The twin of `/auth/flow/step-up`: proves this control session again, and opens none',
+        body: { $ref: 'authFlowStartBodySchema#' },
+        response: {
+          200: { $ref: 'authStepUpResponseSchema#' },
+          202: { $ref: 'authFlowPartialResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
       path: '/auth/flow/step',
       roles: ['public'],
       handler: 'systemFlow.step',
@@ -277,6 +294,7 @@ export default {
       roles: ['public'],
       handler: 'systemAuth.mfaSetup',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Start MFA enrolment',
         description: 'Returns the secret and its QR code. Enrolment is required to destroy a container'
