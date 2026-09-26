@@ -217,9 +217,11 @@
     (`security-extended`) on push, pull request and weekly in backend, tools and admin; 0 open
     alerts on the first run. The backend CI also gained `check:refusals` (`7d6fc0b`), which
     `check-all` ran and CI did not. All runs green on GitHub.
+    Admin CI validates the example manifest against the schema (`volcanic-admin@1951e7a`).
   - **Still open:** `volcanic-rag` has no SAST, since the repository is private and CodeQL there
-    needs GitHub Advanced Security; `volcanic-backend-sample` (SA) has no CI; DB is the TypeORM
-    package, deprecated in v5.
+    needs GitHub Advanced Security; the `volcanic-rag-sample` suites are not in rag CI (they need a
+    token for the private repository, deferred to rag T-10.8); `volcanic-backend-sample` (SA) has
+    no CI; DB is the TypeORM package, deprecated in v5.
 
 - [ ] **Q12 — Residual moderate vulnerabilities (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
   - File: dependencies
