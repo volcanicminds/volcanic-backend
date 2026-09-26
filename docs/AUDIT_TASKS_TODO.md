@@ -217,9 +217,14 @@
   - `npm audit fix` and re-verify.
   - **Done in v5 (backend):** `npm audit --omit=dev` reports 0 vulnerabilities (2026-09-25); the 7
     moderate left are in dev dependencies only. CI now fails on a high one in production (Q11).
-  - **Still open (2026-09-26), `npm audit --omit=dev`:** `volcanic-tools` 44 (1 critical,
+  - **Found (2026-09-26), `npm audit --omit=dev`:** `volcanic-tools` 44 (1 critical,
     `fast-xml-parser`; 10 high; all fixable by `npm audit fix` except `nodemailer`, which needs
     major 10); `volcanic-admin` 28 (2 high, `fast-uri` and `linkify-it`); `volcanic-rag` 0.
+  - **Done (2026-09-26):** `volcanic-admin` 0 (`3074fa1` for the high ones, `255e9c3` moves the
+    rich text editor to Tiptap 3 for the 26 moderate ones). `volcanic-tools` down to 4 moderate
+    (`0dbdf38`, nodemailer 10), all in the `minio` chain (`decode-uri-component`, `stream-json`):
+    the only fix offered is `minio` 7.1.3 from `^8.0.6`, a major downgrade, so it does not apply.
+    The tools commits are not pushed yet.
 
 ---
 
