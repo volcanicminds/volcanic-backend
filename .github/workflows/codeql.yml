@@ -1,0 +1,22 @@
+name: CodeQL
+on:
+  push:
+    branches: [main, develop, v5]
+  pull_request:
+  # Weekly, so a query added upstream reaches code nobody touched.
+  schedule:
+    - cron: '0 5 * * 1'
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v3
