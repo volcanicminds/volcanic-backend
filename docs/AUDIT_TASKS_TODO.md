@@ -195,15 +195,21 @@
   - **Not applicable in v5:** both files were removed with the TypeORM data layer, and no
     `no-useless-catch` suppression is left in `lib/`.
 
-- [ ] **Q10 — `@ts-ignore`/`as any` on `req.user`/`req.tenant`** · `BE`
+- [x] **Q10 — `@ts-ignore`/`as any` on `req.user`/`req.tenant`** · `BE`
   - File: `lib/api/tenants/controller/tenants.ts`
   - Type the Fastify augmentations to eliminate the bypasses.
   - **Done in v5:** no `@ts-ignore` and no `as any` on `req.user`, `req.tenant` or `req.method`
     left in `lib/`; the last ones, in `lib/util/cache.ts`, went with the cache hit marker becoming
-    a `WeakSet`. Left open: `req.server['systemUserManager']` in `lib/hooks/onRequest.ts` is still
-    reached through an untyped index, since typing it reaches into the `SystemUserManagement` contract.
+    a `WeakSet`.
+  - **Closed (2026-09-26):** `req.server['systemUserManager']` was already typed, since the
+    `FastifyInstance` augmentation in `types/global.d.ts` declares every manager and an index with a
+    literal key resolves to it (a misspelt method fails `tsc`). The last `as any` on Fastify objects
+    went: the managers in `lib/loader/genesis.ts`, which surfaced a control handle typed as a
+    generic `DataHandle`; `migrations` in `lib/loader/schemaVersion.ts` and `lib/loader/tenant.ts`,
+    through one `SchemaVersionPort`; cookies and `jwt.decode` in `lib/util/credential.ts`, typed by
+    their plugins.
 
-- [ ] **Q11 — No CI** · `BE`, `TO`, `DB`, `SA`
+- [x] **Q11 — No CI** · `BE`, `TO`, `DB`, `SA`
   - File: `.github/` absent
   - Pipeline on PR: `lint` + `type-check` + `test` + `npm audit` + SAST.
   - **Done in v5 (backend):** `.github/workflows/ci.yml` runs lint, type-check, depcruise, the
@@ -218,12 +224,12 @@
     alerts on the first run. The backend CI also gained `check:refusals` (`7d6fc0b`), which
     `check-all` ran and CI did not. All runs green on GitHub.
     Admin CI validates the example manifest against the schema (`volcanic-admin@1951e7a`).
-  - **Still open:** `volcanic-rag` has no SAST, since the repository is private and CodeQL there
+  - **Left out, each with its reason:** `volcanic-rag` has no SAST, since the repository is private and CodeQL there
     needs GitHub Advanced Security; the `volcanic-rag-sample` suites are not in rag CI (they need a
     token for the private repository, deferred to rag T-10.8); `volcanic-backend-sample` (SA) has
     no CI; DB is the TypeORM package, deprecated in v5.
 
-- [ ] **Q12 — Residual moderate vulnerabilities (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
+- [x] **Q12 — Residual moderate vulnerabilities (`yaml`, `uuid`, …)** · `BE`, `TO`, `DB`, `SA`
   - File: dependencies
   - `npm audit fix` and re-verify.
   - **Done in v5 (backend):** `npm audit --omit=dev` reports 0 vulnerabilities (2026-09-25); the 7
@@ -235,7 +241,7 @@
     rich text editor to Tiptap 3 for the 26 moderate ones). `volcanic-tools` down to 4 moderate
     (`0dbdf38`, nodemailer 10), all in the `minio` chain (`decode-uri-component`, `stream-json`):
     the only fix offered is `minio` 7.1.3 from `^8.0.6`, a major downgrade, so it does not apply.
-    The tools commits are not pushed yet.
+    The tools commits are on `origin/v5`.
 
 ---
 
