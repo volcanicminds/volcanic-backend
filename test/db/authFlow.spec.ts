@@ -389,8 +389,20 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       await providers.create(db.control, { tenantId: 't-3', key: 'okta', type: 'oidc', config })
     })
 
+    it("removes every provider of one tenant, and nobody else's", async () => {
+      await providers.create(db.control, { tenantId: 't-4', key: 'entra', type: 'oidc', config, clientSecret: 'a' })
+      await providers.create(db.control, { tenantId: 't-4', key: 'okta', type: 'oidc', config })
+      await providers.create(db.control, { tenantId: 't-5', key: 'entra', type: 'oidc', config })
+
+      expect(await providers.removeAll(db.control, 't-4')).toBe(2)
+      expect(await providers.list(db.control, 't-4')).toEqual([])
+      expect((await providers.list(db.control, 't-5')).map((p) => p.key)).toEqual(['entra'])
+      expect(await providers.removeAll(db.control, 't-4')).toBe(0)
+    })
+
     it('works on the control plane only', async () => {
       await expect(providers.list(db.tenant as never, 't-1')).rejects.toThrow(/works on the control plane/)
+      await expect(providers.removeAll(db.tenant as never, 't-1')).rejects.toThrow(/works on the control plane/)
     })
   })
 }

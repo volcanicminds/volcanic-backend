@@ -3,6 +3,7 @@ import type {
   ControlHandle,
   DataProvider,
   DestructionManagement,
+  IdentityProviderManagement,
   ImpersonationManagement,
   MfaManagement,
   SystemUserManagement,
@@ -522,6 +523,16 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
   await dm.consumeRequest(control(req), request.id, exported.path)
   if (log.w) {
     log.warn(`Destroying ${tenant.slug} (${tenant.locator}) for ${actor.email}, exported to ${exported.path}`)
+  }
+
+  // The tenant's own identity providers live in the control plane, so dropping the container
+  // does not reach them, and each one carries a client secret of the customer's. They go
+  // before the container: a failure here leaves a tenant that can still be destroyed with a
+  // new request, while a failure after the drop would leave the secrets behind a spent token.
+  const idps: IdentityProviderManagement | undefined = req.server['identityProviderManager']
+  if (isImplemented(idps)) {
+    const removed = await idps!.removeAll(control(req), tenant.id)
+    if (removed && log.w) log.warn(`Destroying ${tenant.slug}: removed ${removed} identity provider(s)`)
   }
 
   await provider.dropContainer(tenant.locator)

@@ -585,6 +585,8 @@ interface IdentityProviderManagement {
     status?: 'active' | 'disabled'; config?: OidcProviderSettings; clientSecret?: string | null
   }): Promise<IdentityProvider | null>
   remove(ctx: ControlHandle, tenantId: string, key: string): Promise<boolean>
+  /** Every provider of the tenant; answers how many rows went. Called by the destruction. */
+  removeAll(ctx: ControlHandle, tenantId: string): Promise<number>
 }
 ```
 

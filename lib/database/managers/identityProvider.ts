@@ -108,6 +108,15 @@ export function createIdentityProviderManager(): IdentityProviderManagement {
         .where(whereKey(provider, tenantId, key))
         .returning({ id: column(provider, 'id') })
       return rows.length > 0
+    },
+
+    async removeAll(ctx: ControlHandle, tenantId: string) {
+      const { handle, provider } = providers(ctx, 'removeAll')
+      const rows = await handle.db
+        .delete(provider)
+        .where(eq(column(provider, 'tenantId'), String(tenantId) as never))
+        .returning({ id: column(provider, 'id') })
+      return rows.length
     }
   }
 }

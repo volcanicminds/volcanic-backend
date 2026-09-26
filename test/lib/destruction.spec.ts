@@ -22,11 +22,19 @@ function fakes(over: any = {}) {
   const requests = new Map<string, any>()
   const dropped: string[] = []
   const exported: any[] = []
+  const steps: string[] = []
+  const idps = [
+    { tenantId: ACME.id, key: 'entra' },
+    { tenantId: ACME.id, key: 'okta' },
+    { tenantId: 'id-other', key: 'entra' }
+  ]
 
   return {
     requests,
     dropped,
     exported,
+    steps,
+    idps,
     destructionManager: {
       isImplemented: () => true,
       openRequest: async (_c: any, data: any) => {
@@ -79,7 +87,17 @@ function fakes(over: any = {}) {
         return result
       },
       dropContainer: async (locator: string) => {
+        steps.push('dropContainer')
         dropped.push(locator)
+      }
+    },
+    identityProviderManager: {
+      isImplemented: () => !over.noIdentityProviders,
+      removeAll: async (_c: any, tenantId: string) => {
+        steps.push('removeAll')
+        const before = idps.length
+        idps.splice(0, idps.length, ...idps.filter((p) => p.tenantId !== tenantId))
+        return before - idps.length
       }
     },
     mfaManager: {
@@ -238,6 +256,25 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     await server.close()
   })
 
+  it("removes the tenant's identity providers, its own only, before the container", async () => {
+    const { server, token, idps, steps } = await open()
+    expect((await destroy(server, { token, slug: 'acme', otp: '123456' })).statusCode).toBe(200)
+
+    // Each one carries a client secret of the customer's, in the control plane, where dropping
+    // the container does not reach.
+    expect(idps).toEqual([{ tenantId: 'id-other', key: 'entra' }])
+    expect(steps).toEqual(['removeAll', 'dropContainer'])
+    await server.close()
+  })
+
+  it('destroys without an identity provider manager', async () => {
+    const { server, token, idps, dropped } = await open({ noIdentityProviders: true })
+    expect((await destroy(server, { token, slug: 'acme', otp: '123456' })).statusCode).toBe(200)
+    expect(dropped).toEqual([ACME.locator])
+    expect(idps.length).toBe(3)
+    await server.close()
+  })
+
   it('writes the record before the data goes', async () => {
     const { server, token, requests } = await open()
     await destroy(server, { token, slug: 'acme', otp: '123456' })
@@ -319,13 +356,14 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
   })
 
   it('does not destroy anything when the export fails', async () => {
-    const { server, token, dropped } = await open({ exportFails: true })
+    const { server, token, dropped, steps } = await open({ exportFails: true })
     const res = await destroy(server, { token, slug: 'acme', otp: '123456' })
 
     expect(res.statusCode).toBe(409)
     expect(JSON.parse(res.body).code).toBe('DESTRUCTION_EXPORT_FAILED')
     // No export, no destruction. Decision 2 of EVO_PUNTI_APERTI.
     expect(dropped).toEqual([])
+    expect(steps).toEqual([])
     await server.close()
   })
 

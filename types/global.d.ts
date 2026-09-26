@@ -1298,6 +1298,8 @@ export interface IdentityProviderManagement {
     patch: { status?: 'active' | 'disabled'; config?: OidcProviderSettings; clientSecret?: string | null }
   ): Promise<IdentityProvider | null>
   remove(ctx: ControlHandle, tenantId: string, key: string): Promise<boolean>
+  /** Every provider of the tenant, with its secret; answers how many rows went. */
+  removeAll(ctx: ControlHandle, tenantId: string): Promise<number>
 }
 
 export type ChallengePurpose = 'identify' | 'verify'

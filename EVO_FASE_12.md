@@ -688,8 +688,8 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   unico `identity_provider_tenant_key_uq`; `identity_provider` aggiunta a `CONTROL_ONLY` in
   `scripts/check-migration-sets.mjs:33`, e `test/db/schema.spec.ts` la tiene fuori da `appTables`.
   Deriva dal piano: timbri `created_at` e `updated_at` senza `deleted_at`, perché la rimozione è
-  vera e una chiave deve tornare disponibile sotto il vincolo di unicità. Resta aperto, e va con
-  T-12.26: le righe di un tenant distrutto non si tolgono ancora con il suo contenitore.
+  vera e una chiave deve tornare disponibile sotto il vincolo di unicità. Le righe di un tenant
+  distrutto si tolgono con `removeAll`, prima del contenitore (chiuso il 26 settembre 2026).
 
 - [x] **T-12.11** Le quattro migrazioni.
   **Cosa fare**: `npm run db:generate`, `db:generate:tenant`, `db:generate:sqlite`,

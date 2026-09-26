@@ -384,6 +384,9 @@ the path lands in proxy access logs, browser history and tracing systems.
 - The framework **exports first** (`tenants:export` path, §6 of `docs/SCHEMA_V5.md`). If the
   export fails, or produces an empty file, the destruction does not happen.
 - The event is written **before** execution, with the export reference.
+- The tenant's own identity providers (`identity_provider`, with their client secrets) are removed
+  before the container is dropped; the registry row, the impersonation log and the destruction
+  record stay, because they are the platform's audit.
 - Idempotent: calling it again on an already-destroyed tenant answers 200 with `alreadyDestroyed: true`.
 
 Failure modes and their codes: `DESTRUCTION_TOKEN_INVALID`, `DESTRUCTION_TOKEN_EXPIRED`,

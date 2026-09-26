@@ -103,7 +103,7 @@ const AUTH_FLOW_METHODS = [
 
 const EXTERNAL_IDENTITY_METHODS = ['findLink', 'createLink', 'listOfSubject', 'removeLink', 'touch'] as const
 
-const IDENTITY_PROVIDER_METHODS = ['list', 'get', 'create', 'update', 'remove'] as const
+const IDENTITY_PROVIDER_METHODS = ['list', 'get', 'create', 'update', 'remove', 'removeAll'] as const
 
 const CHALLENGE_DELIVERY_METHODS = ['deliver'] as const
 

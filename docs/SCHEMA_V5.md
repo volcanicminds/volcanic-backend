@@ -427,7 +427,8 @@ tenant.
 | `updated_at` | timestamp | no | now | |
 
 **Indexes**: unique on `(tenant_id, key)`. Deleted for real, not soft-deleted: a key must be reusable
-after a removal.
+after a removal. Destroying the tenant's data removes all its rows, before the container is dropped
+(docs/API_V5.md §6.2): they live in the control plane, where dropping a container does not reach.
 
 ---
 
