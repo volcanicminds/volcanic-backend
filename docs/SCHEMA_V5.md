@@ -370,7 +370,7 @@ Columns: same authentication surface as `user` (`id`, `external_id`, `email`, `p
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
 | `roles` | text[] / json text | no | `[]` | **system role codes only**, all prefixed `system:` |
-| `mfa_enabled` | boolean | no | `false` | strongly recommended: it is the second factor of tenant destruction (T-6.3) |
+| `mfa_enabled` | boolean | no | `false` | strongly recommended: it is the preferred second factor of tenant destruction, the other being a code by email (T-6.3) |
 
 It carries **no** `confirmed` / `confirmation_token`: system users are provisioned, never
 self-registered. There is no public registration route for them.
@@ -409,6 +409,8 @@ The first phase of T-6.3. A row is single-use.
 | `expires_at` | timestamp | no | ten minutes after creation, configurable |
 | `consumed_at` | timestamp | yes | set when phase 2 succeeds |
 | `export_ref` | text | yes | reference to the mandatory export that preceded destruction |
+| `code_hash` | text | yes | the code emailed to an operator without MFA, as an HMAC-SHA-256 keyed by the token: without the token, which is never stored, the row does not give the code away. Null when the factor is TOTP |
+| `code_attempts` | integer | no | checks of that code so far, `0` by default; each one is counted before the comparison |
 
 **Indexes**: `tenant_id`, `expires_at`.
 

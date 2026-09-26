@@ -380,8 +380,10 @@ Body: `{ name, slug, strategy, engine, locator?, config?, admin: { email, passwo
 
 **Phase 1** — `POST /tenants/:id/destruction-request`
 
-Response: `{ requestId, expiresAt, preview: { locator, sizeBytes, rowCounts, lastExportAt } }`
-plus a one-time `token`, returned **once** and never stored (only its SHA-256 is kept).
+Response: `{ requestId, expiresAt, factor, preview: { locator, sizeBytes, rowCounts, lastExportAt } }`
+plus a one-time `token`, returned **once** and never stored (only its SHA-256 is kept). `factor`
+names the second factor phase 2 will ask for: `{ method: 'totp' }`, or
+`{ method: 'email-otp', destination }` with the masked address the code was sent to.
 
 **Phase 2** — `DELETE /tenants/:id/data`
 
@@ -389,9 +391,14 @@ Body: `{ token, slug, otp }`, all three required, **in the body and never in the
 the path lands in proxy access logs, browser history and tracing systems.
 
 - `slug` must equal the tenant's slug, typed again by the operator.
-- `otp` is the operator's **TOTP MFA code** when they have MFA enabled; when they do not, the
-  framework sends a one-time code to their email through `transferManager` and that code is what
-  goes here. MFA is the preferred path and the README says so.
+- `otp` is the operator's **TOTP MFA code** when they have MFA enabled; when they do not, phase 1
+  sends a six-digit code to their address on file through `challengeDeliveryManager`, with
+  `purpose: 'destruction'` and `tenantId` naming the tenant, and that code is what goes here. The
+  code lives as long as the request, is stored only as an HMAC keyed by the token, and allows
+  `AUTH_OTP_MAX_ATTEMPTS` tries (5 by default); past the last, only a new phase 1 helps. The factor
+  is fixed at phase 1: a request opened for an emailed code does not take a TOTP, nor the reverse.
+  Without MFA and without a delivery, or when the delivery fails, phase 1 answers 503
+  `DESTRUCTION_FACTOR_NOT_AVAILABLE` and hands out no token. MFA is the preferred path.
 - The framework **exports first** (`tenants:export` path, §6 of `docs/SCHEMA_V5.md`). If the
   export fails, or produces an empty file, the destruction does not happen.
 - The event is written **before** execution, with the export reference.
@@ -401,7 +408,8 @@ the path lands in proxy access logs, browser history and tracing systems.
 - Idempotent: calling it again on an already-destroyed tenant answers 200 with `alreadyDestroyed: true`.
 
 Failure modes and their codes: `DESTRUCTION_TOKEN_INVALID`, `DESTRUCTION_TOKEN_EXPIRED`,
-`DESTRUCTION_SLUG_MISMATCH`, `DESTRUCTION_OTP_INVALID`, `DESTRUCTION_EXPORT_FAILED`.
+`DESTRUCTION_SLUG_MISMATCH`, `DESTRUCTION_OTP_INVALID`, `DESTRUCTION_EXPORT_FAILED`, and on phase 1
+`DESTRUCTION_FACTOR_NOT_AVAILABLE`.
 
 ---
 

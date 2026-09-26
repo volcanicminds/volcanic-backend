@@ -3121,7 +3121,7 @@ in v4 the argument did not exist and the answer came from a global.
 | `tenantManager` | `TenantManagement` | `@volcanicminds/backend/db` | Tenant resolution and `/tenants/*` | `getTenant`/`getTenantBySlug`/`listTenants`, `createTenant`, `updateTenant`, `suspendTenant`/`restoreTenant`, `softDeleteTenant`, `isImplemented` |
 | `systemUserManager` | `SystemUserManagement` | `@volcanicminds/backend/db` | `/system/auth/*` and `/system/users/*`: the platform's own identities | `retrieveSystemUserByEmail`/`ByExternalId`/`ById`, `createSystemUser`, `blockSystemUser`, `retrieveMfaSecret`, `recordMfaCounter`, `findQuery`/`countQuery` |
 | `impersonationManager` | `ImpersonationManagement` | `@volcanicminds/backend/db` | `/tenants/:id/impersonate`: a **persisted, revocable** session | `open`, `retrieveImpersonation`, `end` |
-| `destructionManager` | `DestructionManagement` | `@volcanicminds/backend/db` | The two-phase destruction of a container | `openRequest`, `findLiveRequest`, `consumeRequest` |
+| `destructionManager` | `DestructionManagement` | `@volcanicminds/backend/db` | The two-phase destruction of a container | `openRequest`, `findLiveRequest`, `checkCode`, `consumeRequest` |
 | `sessionManager` | `SessionManagement` | `@volcanicminds/backend/db` — or your own (Redis, say) | The session registry: renewal, rotation, reuse detection, logout. Without it there is **no renewal** | `openSession`, `findBySecret`, `rotate`, `revokeSession`, `revokeAllOfSubject`, `listOfSubject`, `purgeExpired` |
 
 **Gone:** `dataBaseManager`, with `synchronizeSchemas` (schemas are versioned migrations) and the
@@ -3269,8 +3269,9 @@ founder can only be reset by itself. `/password/reset` (admin resets another use
 default `false`). Unlike self-service `/auth/change-password` (requires the current password), this sets a new
 password with **no** old-password check.
 
-⁷ `tenants:destroy` is **not** part of `tenants`, and the operator must additionally be enrolled in
-MFA. Destruction is two-phase: a request that reports what would be lost and returns a one-time
+⁷ `tenants:destroy` is **not** part of `tenants`, and the operator needs a second factor: a TOTP
+with MFA, otherwise a code emailed through `challengeDeliveryManager` (`purpose: 'destruction'`).
+Destruction is two-phase: a request that reports what would be lost and returns a one-time
 token good for ten minutes, then a delete that types the slug again, presents the token and an OTP,
 **exports first**, records the event, and only then drops.
 
@@ -3543,7 +3544,9 @@ What changes at runtime (see Part 1.7 for the security rules):
   inject as `mfaManager`. Enables the `totp` method of the login flow and `/auth/mfa/*`. Enforce with
   `MFA_POLICY=MANDATORY`. See Part 6.2 and `docs/SECURITY_MFA.md`.
 - **Email sign-in codes:** wrap `tools` mailer in a `ChallengeDeliveryManagement` (`deliver({ to, code, ... })`)
-  and inject as `challengeDeliveryManager`; then list `email-otp` in `src/config/authFlows.ts`.
+  and inject as `challengeDeliveryManager`; then list `email-otp` in `src/config/authFlows.ts`. The same port
+  carries the destruction code of an operator without MFA: compose by `purpose` (`identify`, `verify`,
+  `destruction`), and never word a destruction code as a sign-in.
 - **File upload (TUS):** wrap `tools` transfer in a `TransferManagement` adapter and inject as `transferManager`;
   the core mounts a streaming TUS endpoint at `getPath()`. See Part 1.6 (raw-body/multipart) for related plugins.
 - **Mailer / Logger / Storage:** used directly inside your services (no manager needed) — e.g. send the

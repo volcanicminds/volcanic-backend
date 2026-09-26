@@ -340,7 +340,9 @@ export function registryTables() {
         .default(sql`(unixepoch() * 1000)`),
       expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
       consumedAt: integer('consumed_at', { mode: 'timestamp_ms' }),
-      exportRef: text('export_ref')
+      exportRef: text('export_ref'),
+      codeHash: text('code_hash'),
+      codeAttempts: integer('code_attempts').notNull().default(0)
     },
     (t) => [index('destruction_tenant_idx').on(t.tenantId), index('destruction_expires_idx').on(t.expiresAt)]
   )

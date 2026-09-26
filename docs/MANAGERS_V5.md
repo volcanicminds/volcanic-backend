@@ -627,7 +627,7 @@ interface ChallengeDeliveryManagement {
     channel: 'email' | 'sms'
     to: string                // always the address on file, never one taken from a request
     code: string
-    purpose: 'identify' | 'verify'
+    purpose: 'identify' | 'verify' | 'destruction'
     expiresAt: Date | string
     plane: 'tenant' | 'control'
     tenantId: string | null
@@ -636,6 +636,11 @@ interface ChallengeDeliveryManagement {
   }): Promise<void>
 }
 ```
+
+`identify` and `verify` are the login's codes. `destruction` is the second factor of destroying a
+tenant's data for an operator without MFA (docs/API_V5.md §6.2): `plane` is `control` and
+`tenantId` names the tenant about to be destroyed. Word it as what it is; a message that reads like
+a sign-in would hide it.
 
 A consumer wires it to `Mailer` of `@volcanicminds/tools/mailer`, or to anything else:
 

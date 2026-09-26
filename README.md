@@ -1710,7 +1710,7 @@ path lands in proxy access logs, browser history and tracing systems:
 {
   "token": "...",      // from phase 1, unspent and unexpired, belonging to this operator
   "slug": "acme",      // the tenant's slug, typed again by hand
-  "otp": "123456"      // the operator's TOTP code
+  "otp": "123456"      // the operator's TOTP code, or the code phase 1 emailed
 }
 ```
 
@@ -1724,13 +1724,13 @@ data are not the same job.
 
 ### The second factor
 
-The operator must be enrolled in MFA (`POST /system/auth/mfa/setup`, then `/enable`). An
-operator without it is refused, with the route to call in the message.
-
-This is stricter than `docs/API_V5.md` §6.2, which also allowed a one-time code emailed to an
-operator without MFA. The framework has no email pipeline of its own, and inventing one on the
-path of its only irreversible operation would make the second factor exactly as strong as an
-SMTP configuration nobody reviewed.
+An operator enrolled in MFA (`POST /system/auth/mfa/setup`, then `/enable`) types a TOTP code, and
+that is the preferred path. For an operator without it, phase 1 emails a six-digit code to the
+address on file through the `challengeDeliveryManager` the consumer injects, with
+`purpose: 'destruction'`, and says so in its response (`factor`). The code is bound to the token,
+lasts as long as the request and allows `AUTH_OTP_MAX_ATTEMPTS` tries. With neither MFA nor a
+delivery, phase 1 answers 503 `DESTRUCTION_FACTOR_NOT_AVAILABLE` and hands out no token: a
+permission phase 2 could never accept is worse than none.
 
 ### What it cannot promise
 

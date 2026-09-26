@@ -1,5 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import type {
+  ChallengeDeliveryManagement,
   ControlHandle,
   DataProvider,
   DestructionManagement,
@@ -19,6 +20,7 @@ import { checkTenantOverride } from '../../../auth/accountCreation.js'
 import { absoluteStep, isReplay } from '../../../util/mfaCounter.js'
 import { envInt } from '../../../util/env.js'
 import { ENROLMENT_METHOD, floorEnrollable, isImplemented } from '../../../auth/validate.js'
+import { maskEmail, newCode } from '../../../auth/authenticators/emailOtp.js'
 import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
 
 //
@@ -86,6 +88,7 @@ interface MigrationPort {
 /** The platform identity the destruction routes act for (`req.systemUser`). */
 interface Operator {
   id: string
+  externalId?: string | null
   email?: string
   mfaEnabled?: boolean
   mfaLastUsedCounter?: number | null
@@ -393,7 +396,8 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
 //   - the token it returns is shown once and stored only as a hash, lasts ten minutes and is
 //     good for a single use;
 //   - phase 2 takes the token, the slug TYPED AGAIN, and a second factor, all three IN THE
-//     BODY. A token in the URL lands in proxy access logs, browser history and tracing
+//     BODY. The factor is the operator's TOTP, or, without MFA, a code phase 1 emails to the
+//     address on file through `challengeDeliveryManager`. A token in the URL lands in proxy access logs, browser history and tracing
 //     systems, which is a copy of the permission nobody meant to make;
 //   - the export runs FIRST and must produce a real file. No export, no destruction;
 //   - the event is written BEFORE the data goes, because afterwards there may be nothing left
@@ -428,19 +432,57 @@ export async function destructionRequest(req: FastifyRequest, reply: FastifyRepl
   const tenant = await managerOf(req).getTenant(control(req), id)
   if (!tenant) return reply.status(404).send()
 
+  // Refused here, before a token exists: a permission phase 2 could never accept is worse than no
+  // permission, because it looks like one.
+  const delivery: ChallengeDeliveryManagement | undefined = req.server['challengeDeliveryManager']
+  const byEmail = !actor.mfaEnabled
+  if (byEmail && (!isImplemented(delivery) || !actor.email)) {
+    return reply
+      .status(503)
+      .send(
+        httpError(
+          503,
+          'This operator has no second factor the platform can reach: enrol in MFA (POST /system/auth/mfa/setup), or wire a challengeDeliveryManager for emailed codes',
+          'DESTRUCTION_FACTOR_NOT_AVAILABLE'
+        )
+      )
+  }
+
   const preview = await provider.inspectContainer(tenant)
   // Shown once. What the row keeps is its hash, so a leaked control plane leaks nothing that
   // can destroy anything.
   const token = crypto.randomBytes(32).toString('base64url')
   const expiresAt = new Date(Date.now() + DESTRUCTION_TTL_SECONDS * 1000)
+  const code = byEmail ? newCode('verify') : undefined
 
   const record = await dm.openRequest(control(req), {
     tenantId: tenant.id,
     systemUserId: actor.id,
     token,
+    code,
     preview,
     expiresAt
   })
+
+  if (code) {
+    try {
+      // Awaited, unlike the login's: the operator is authenticated, so the latency tells nobody
+      // anything, and a code that did not leave must not be waited for.
+      await delivery!.deliver({
+        channel: 'email',
+        to: actor.email!,
+        code,
+        purpose: 'destruction',
+        expiresAt,
+        plane: 'control',
+        tenantId: tenant.id,
+        subjectId: actor.externalId ?? actor.id
+      })
+    } catch (error) {
+      if (log.w) log.warn(`Destruction code for ${tenant.slug} not delivered to ${actor.email} (${(error as Error)?.message})`)
+      return reply.status(503).send(httpError(503, 'The code could not be sent: ask again, or enrol in MFA', 'DESTRUCTION_FACTOR_NOT_AVAILABLE'))
+    }
+  }
 
   if (log.w) log.warn(`Destruction requested for ${tenant.slug} by ${actor.email}: ${JSON.stringify(preview.rowCounts)}`)
 
@@ -448,6 +490,7 @@ export async function destructionRequest(req: FastifyRequest, reply: FastifyRepl
     requestId: record.id,
     token,
     expiresAt,
+    factor: code ? { method: 'email-otp', destination: maskEmail(actor.email!) } : { method: 'totp' },
     preview: { ...preview, lastExportAt: null },
     warning: 'Destroying a container does not remove it from backups taken before now.'
   })
@@ -492,7 +535,9 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(httpError(400, 'The slug does not match the tenant', 'DESTRUCTION_SLUG_MISMATCH'))
   }
 
-  const factor = await verifySecondFactor(req, actor, String(otp))
+  const factor = request.codeHash
+    ? await verifyEmailedCode(req, dm, request.id, String(token), String(otp))
+    : await verifySecondFactor(req, actor, String(otp))
   if (!factor.ok) return reply.status(403).send(httpError(403, factor.message, 'DESTRUCTION_OTP_INVALID'))
 
   // The export happens first, and a failure stops everything. Decision 2 of
@@ -519,8 +564,11 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(409).send(httpError(409, 'The export produced no file', 'DESTRUCTION_EXPORT_FAILED'))
   }
 
-  // Written BEFORE the data goes: afterwards there may be nothing left to write with.
-  await dm.consumeRequest(control(req), request.id, exported.path)
+  // Written BEFORE the data goes: afterwards there may be nothing left to write with. A request
+  // spent in the meantime by a concurrent call with the same token is that call's destruction.
+  if (!(await dm.consumeRequest(control(req), request.id, exported.path))) {
+    return reply.status(403).send(httpError(403, 'That destruction token is not usable', 'DESTRUCTION_TOKEN_INVALID'))
+  }
   if (log.w) {
     log.warn(`Destroying ${tenant.slug} (${tenant.locator}) for ${actor.email}, exported to ${exported.path}`)
   }
@@ -547,15 +595,27 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
   })
 }
 
-/**
- * The operator's second factor.
- *
- * TOTP only, and this is a deliberate narrowing of docs/API_V5.md §6.2, which also allowed a
- * one-time code emailed to an operator without MFA. The framework has no email pipeline of its
- * own, and inventing one on the path of its only irreversible operation would mean the second
- * factor is as strong as an SMTP configuration nobody reviewed. An operator who may destroy a
- * customer's data enrols in MFA first; the refusal says exactly that.
- */
+/** The code phase 1 emailed, with the login's attempts: past the last one, only a new request helps. */
+async function verifyEmailedCode(
+  req: FastifyRequest,
+  dm: DestructionManagement,
+  requestId: string,
+  token: string,
+  code: string
+): Promise<{ ok: boolean; message: string }> {
+  const { ok, remaining } = await dm.checkCode(control(req), requestId, {
+    token,
+    code,
+    maxAttempts: global.authFlows.limits.otpMaxAttempts
+  })
+  if (ok) return { ok: true, message: '' }
+  return {
+    ok: false,
+    message: remaining > 0 ? `The code is not valid: ${remaining} attempt(s) left` : 'No attempts left: request the destruction again'
+  }
+}
+
+/** The operator's TOTP, the factor phase 1 settles on whenever the operator has MFA. */
 async function verifySecondFactor(req: FastifyRequest, actor: Operator, otp: string): Promise<{ ok: boolean; message: string }> {
   const mfa: MfaManagement | undefined = req.server['mfaManager']
   const systemUsers: SystemUserManagement = req.server['systemUserManager']
@@ -563,7 +623,8 @@ async function verifySecondFactor(req: FastifyRequest, actor: Operator, otp: str
   if (!actor.mfaEnabled) {
     return {
       ok: false,
-      message: 'Destroying a container needs a second factor: enrol this operator in MFA (POST /system/auth/mfa/setup) first'
+      // MFA disabled between the two phases: the request was opened for a TOTP nobody can type now.
+      message: 'This operator no longer has MFA: request the destruction again'
     }
   }
   if (!mfa?.verify) return { ok: false, message: 'No MFA manager is available to verify the second factor' }

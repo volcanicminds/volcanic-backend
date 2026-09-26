@@ -91,7 +91,7 @@ const SESSION_METHODS = [
   'openSession', 'findBySecret', 'rotate', 'markAuthenticated', 'revokeSession', 'revokeAllOfSubject', 'listOfSubject', 'purgeExpired'
 ] as const
 
-const DESTRUCTION_METHODS = ['openRequest', 'findLiveRequest', 'consumeRequest'] as const
+const DESTRUCTION_METHODS = ['openRequest', 'findLiveRequest', 'checkCode', 'consumeRequest'] as const
 
 const MFA_METHODS = ['generateSetup', 'verify'] as const
 

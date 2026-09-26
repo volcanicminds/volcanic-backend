@@ -661,16 +661,29 @@ export interface DestructionRequest {
   expiresAt: Date | string
   consumedAt?: Date | string | null
   exportRef?: string | null
+  /** The emailed code of an operator without MFA, as an HMAC keyed by the token; null when the factor is TOTP. */
+  codeHash?: string | null
+  codeAttempts?: number
 }
 
 export interface DestructionManagement {
   isImplemented(): boolean
+  /** `code`, when present, is the emailed second factor: stored bound to the token, never as itself. */
   openRequest(
     ctx: ControlHandle,
-    data: { tenantId: string; systemUserId: string; token: string; preview: Record<string, unknown>; expiresAt: Date | string }
+    data: { tenantId: string; systemUserId: string; token: string; code?: string; preview: Record<string, unknown>; expiresAt: Date | string }
   ): Promise<DestructionRequest>
   /** Null for unknown, expired and already spent alike: none of the three is actionable. */
   findLiveRequest(ctx: ControlHandle, tenantId: string, token: string): Promise<DestructionRequest | null>
+  /**
+   * Checks the emailed code of a live request. Each call spends one of `maxAttempts` before the
+   * comparison, so concurrent guesses cannot share one; `remaining` is what is left after it.
+   */
+  checkCode(
+    ctx: ControlHandle,
+    id: string,
+    input: { token: string; code: string; maxAttempts: number }
+  ): Promise<{ ok: boolean; remaining: number }>
   /** Spends it, and records the export that had to succeed first. Called before the drop. */
   consumeRequest(ctx: ControlHandle, id: string, exportRef: string): Promise<DestructionRequest | null>
 }
@@ -1332,6 +1345,13 @@ export interface IdentityProviderManagement {
 export type ChallengePurpose = 'identify' | 'verify'
 
 /**
+ * Why a code travels. `identify` and `verify` are the login's; `destruction` is the second factor
+ * of destroying a tenant's data (docs/API_V5.md §6.2), sent on the control plane with `tenantId`
+ * naming the tenant about to be destroyed. A message worded as a sign-in would hide exactly that.
+ */
+export type DeliveryPurpose = ChallengePurpose | 'destruction'
+
+/**
  * One code to deliver (F43). The consumer composes subject and text: the backend hands over data,
  * not presentation. `to` is always the address on file, never one taken from a request body.
  */
@@ -1339,7 +1359,7 @@ export interface ChallengeDelivery {
   channel: ChallengeChannel
   to: string
   code: string
-  purpose: ChallengePurpose
+  purpose: DeliveryPurpose
   expiresAt: Date | string
   plane: AuthPlane
   tenantId: string | null

@@ -62,11 +62,11 @@ describe('database/migrations · a SQLite container, migrated (T-9.1)', function
     expect(await runner.version({ locator: 'control.db' })).toBeNull()
 
     const applied = await runner.apply({ locator: 'control.db' })
-    expect(applied).toBe('0004_step_up_control')
+    expect(applied).toBe('0005_destruction_code_control')
 
     // The version lives IN the container, never in a central table: when a container is
     // restored from a backup its schema version has to travel back with it.
-    expect(await runner.version({ locator: 'control.db' })).toBe('0004_step_up_control')
+    expect(await runner.version({ locator: 'control.db' })).toBe('0005_destruction_code_control')
     expect(await runner.pending({ locator: 'control.db' })).toEqual([])
   })
 

@@ -1,7 +1,8 @@
-import { and, eq, isNull, gt } from 'drizzle-orm'
+import { and, eq, isNull, isNotNull, gt, lt, sql } from 'drizzle-orm'
 import crypto from 'crypto'
 import type { ControlHandle, DestructionManagement, DestructionRequest } from '../../../types/global.js'
 import { control, table, column } from './runtime.js'
+import { challengeMac } from './authFlow.js'
 
 //
 // The first phase of destroying a customer's data (T-6.3, docs/SCHEMA_V5.md §3.4).
@@ -12,7 +13,8 @@ import { control, table, column } from './runtime.js'
 //
 // The token is **never stored**. What the row keeps is its SHA-256, so a control plane that
 // leaks its own tables still leaks nothing that can destroy anything: the only copy of the
-// token was in the response to phase 1, and the operator has it or nobody does.
+// token was in the response to phase 1, and the operator has it or nobody does. The emailed
+// code of an operator without MFA is kept the same way, as an HMAC keyed by that token.
 //
 const NAME = 'destructionManager'
 
@@ -20,6 +22,9 @@ const NAME = 'destructionManager'
 export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(String(token)).digest('hex')
 }
+
+const sameMac = (a: unknown, b: string): boolean =>
+  typeof a === 'string' && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
 
 export function createDestructionManager(): DestructionManagement {
   const requests = (ctx: unknown, what: string) => {
@@ -38,6 +43,7 @@ export function createDestructionManager(): DestructionManagement {
           tenantId: String(data.tenantId),
           systemUserId: String(data.systemUserId),
           tokenHash: hashToken(String(data.token)),
+          codeHash: data.code ? challengeMac(String(data.token), String(data.code)) : null,
           preview: data.preview ?? {},
           expiresAt: new Date(data.expiresAt as never)
         })
@@ -67,6 +73,29 @@ export function createDestructionManager(): DestructionManagement {
         )
         .limit(1)
       return (rows[0] as DestructionRequest) ?? null
+    },
+
+    /** One attempt is reserved before the comparison and never refunded, as in the login's code. */
+    async checkCode(ctx: ControlHandle, id: string, input) {
+      const { handle, request } = requests(ctx, 'checkCode')
+      const rows = await handle.db
+        .update(request)
+        .set({ codeAttempts: sql`${column(request, 'codeAttempts')} + 1` })
+        .where(
+          and(
+            eq(column(request, 'id'), id as never),
+            eq(column(request, 'tokenHash'), hashToken(String(input.token)) as never),
+            isNull(column(request, 'consumedAt')),
+            gt(column(request, 'expiresAt'), new Date() as never),
+            isNotNull(column(request, 'codeHash')),
+            lt(column(request, 'codeAttempts'), input.maxAttempts as never)
+          )
+        )
+        .returning()
+      const row = rows[0] as DestructionRequest | undefined
+      if (!row) return { ok: false, remaining: 0 }
+      const remaining = Math.max(0, input.maxAttempts - Number(row.codeAttempts))
+      return { ok: sameMac(row.codeHash, challengeMac(String(input.token), String(input.code))), remaining }
     },
 
     /**

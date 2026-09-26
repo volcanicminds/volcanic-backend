@@ -11,18 +11,20 @@ import { expect } from 'expect'
 import fastify from 'fastify'
 import { destructionRequest, destroyData } from '../../lib/api/tenants/controller/tenants.js'
 import { hashToken } from '../../lib/database/managers/destruction.js'
+import { challengeMac } from '../../lib/database/managers/authFlow.js'
 import { getData, getParams } from '../../lib/util/common.js'
 
 ;(global as any).log = {}
 
 const ACME: any = { id: 'id-acme', slug: 'acme', status: 'active', locator: 'tenant_acme', schemaVersion: '0001_init' }
-const ACTOR: any = { id: 'sys-1', email: 'root@system.test', mfaEnabled: true, mfaLastUsedCounter: null }
+const ACTOR: any = { id: 'sys-1', externalId: 'sys-ext-1', email: 'root@system.test', mfaEnabled: true, mfaLastUsedCounter: null }
 
 function fakes(over: any = {}) {
   const requests = new Map<string, any>()
   const dropped: string[] = []
   const exported: any[] = []
   const steps: string[] = []
+  const deliveries: any[] = []
   const idps = [
     { tenantId: ACME.id, key: 'entra' },
     { tenantId: ACME.id, key: 'okta' },
@@ -35,17 +37,20 @@ function fakes(over: any = {}) {
     exported,
     steps,
     idps,
+    deliveries,
     destructionManager: {
       isImplemented: () => true,
       openRequest: async (_c: any, data: any) => {
         // Mirrors the real manager: the token is hashed and dropped, never carried into the
         // stored row. A fake that keeps it would let the assertion below pass on code that
         // stores the token.
-        const { token, ...rest } = data
+        const { token, code, ...rest } = data
         const record = {
           id: `req-${requests.size + 1}`,
           ...rest,
           tokenHash: hashToken(token),
+          codeHash: code ? challengeMac(token, code) : null,
+          codeAttempts: 0,
           consumedAt: null,
           createdAt: new Date()
         }
@@ -60,6 +65,14 @@ function fakes(over: any = {}) {
             !r.consumedAt &&
             new Date(r.expiresAt).getTime() > Date.now()
         ) ?? null,
+      checkCode: async (_c: any, id: string, input: any) => {
+        const r = requests.get(id)
+        if (!r || r.consumedAt || !r.codeHash || r.tokenHash !== hashToken(input.token) || r.codeAttempts >= input.maxAttempts) {
+          return { ok: false, remaining: 0 }
+        }
+        r.codeAttempts += 1
+        return { ok: r.codeHash === challengeMac(input.token, input.code), remaining: input.maxAttempts - r.codeAttempts }
+      },
       consumeRequest: async (_c: any, id: string, exportRef: string) => {
         const r = requests.get(id)
         if (!r || r.consumedAt) return null
@@ -100,6 +113,13 @@ function fakes(over: any = {}) {
         return before - idps.length
       }
     },
+    challengeDeliveryManager: {
+      isImplemented: () => over.delivery !== false,
+      deliver: async (message: any) => {
+        if (over.deliveryFails) throw new Error('SMTP refused')
+        deliveries.push(message)
+      }
+    },
     mfaManager: {
       isImplemented: () => true,
       // A verifier answers with a DELTA: how many steps away from now the accepted code was,
@@ -121,6 +141,7 @@ function fakes(over: any = {}) {
 
 async function build(over: any = {}) {
   ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' }, export_directory: '/tmp' } }
+  ;(global as any).authFlows = { limits: { otpMaxAttempts: 5 } }
   const f = fakes(over)
 
   const server: any = fastify()
@@ -344,13 +365,14 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     await server.close()
   })
 
-  it('refuses an operator with no second factor, and says what to do', async () => {
-    ACTOR.mfaEnabled = false
+  it('refuses a TOTP request once the operator has no MFA left', async () => {
     const { server, token, dropped } = await open()
+    ACTOR.mfaEnabled = false
 
     const res = await destroy(server, { token, slug: 'acme', otp: '123456' })
     expect(res.statusCode).toBe(403)
-    expect(JSON.parse(res.body).message).toMatch(/mfa\/setup/)
+    expect(JSON.parse(res.body).code).toBe('DESTRUCTION_OTP_INVALID')
+    expect(JSON.parse(res.body).message).toMatch(/again/)
     expect(dropped).toEqual([])
     await server.close()
   })
@@ -393,5 +415,108 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).alreadyDestroyed).toBe(true)
     await server.close()
+  })
+})
+
+describe('destruction · the emailed code of an operator without MFA (§6.2)', () => {
+  beforeEach(() => {
+    ACTOR.mfaEnabled = false
+    ACTOR.mfaLastUsedCounter = null
+  })
+  afterEach(() => {
+    ACTOR.mfaEnabled = true
+    ;(global as any).config = undefined
+  })
+
+  const open = async (over: any = {}) => {
+    const ctx = await build(over)
+    const res = await ask(ctx.server)
+    return { ...ctx, res, body: JSON.parse(res.body) }
+  }
+
+  it('sends the code to the address on file, worded as a destruction, and stores it bound to the token', async () => {
+    const { server, body, deliveries, requests } = await open()
+
+    expect(body.factor).toEqual({ method: 'email-otp', destination: 'r***@s***.test' })
+    expect(deliveries).toHaveLength(1)
+    const [sent] = deliveries
+    expect(sent).toMatchObject({
+      channel: 'email',
+      to: ACTOR.email,
+      purpose: 'destruction',
+      plane: 'control',
+      tenantId: ACME.id,
+      subjectId: ACTOR.externalId
+    })
+    expect(sent.code).toMatch(/^\d{6}$/)
+    // The code is in the email and nowhere else: not in the response, not in the row.
+    expect(JSON.stringify(body)).not.toContain(sent.code)
+    const stored = [...requests.values()][0]
+    expect(stored.codeHash).toBe(challengeMac(body.token, sent.code))
+    expect(JSON.stringify(stored)).not.toContain(sent.code)
+    await server.close()
+  })
+
+  it('asks an operator with MFA for the TOTP, and sends nothing', async () => {
+    ACTOR.mfaEnabled = true
+    const { server, body, deliveries } = await open()
+    expect(body.factor).toEqual({ method: 'totp' })
+    expect(deliveries).toEqual([])
+    await server.close()
+  })
+
+  it('destroys with the emailed code, and not with a TOTP', async () => {
+    const { server, body, deliveries, dropped } = await open()
+
+    // The request was opened for the emailed code: a valid TOTP is not the factor it asked for.
+    const totp = await destroy(server, { token: body.token, slug: 'acme', otp: '123456' })
+    expect(totp.statusCode).toBe(403)
+    expect(JSON.parse(totp.body).code).toBe('DESTRUCTION_OTP_INVALID')
+
+    const res = await destroy(server, { token: body.token, slug: 'acme', otp: deliveries[0].code })
+    expect(res.statusCode).toBe(200)
+    expect(dropped).toEqual([ACME.locator])
+    await server.close()
+  })
+
+  it('counts the wrong codes, and past the last one refuses the right one', async () => {
+    const { server, body, deliveries, dropped } = await open()
+    const wrong = deliveries[0].code === '000000' ? '000001' : '000000'
+
+    const first = await destroy(server, { token: body.token, slug: 'acme', otp: wrong })
+    expect(first.statusCode).toBe(403)
+    expect(JSON.parse(first.body).code).toBe('DESTRUCTION_OTP_INVALID')
+    expect(JSON.parse(first.body).message).toMatch(/4 attempt/)
+    for (let i = 0; i < 4; i++) await destroy(server, { token: body.token, slug: 'acme', otp: wrong })
+
+    const right = await destroy(server, { token: body.token, slug: 'acme', otp: deliveries[0].code })
+    expect(right.statusCode).toBe(403)
+    expect(JSON.parse(right.body).message).toMatch(/again/)
+    expect(dropped).toEqual([])
+    await server.close()
+  })
+
+  it('answers 503 DESTRUCTION_FACTOR_NOT_AVAILABLE, before any token, when no code can reach the operator', async () => {
+    for (const shape of [{ delivery: false }, { deliveryFails: true }]) {
+      const { server, res, body, requests } = await open(shape)
+      expect(res.statusCode).toBe(503)
+      expect(body.code).toBe('DESTRUCTION_FACTOR_NOT_AVAILABLE')
+      // A permission phase 2 could never accept is not handed out.
+      expect(body.token).toBe(undefined)
+      if (shape.delivery === false) expect(requests.size).toBe(0)
+      await server.close()
+    }
+  })
+
+  it('answers 503 as well to an operator without an address on file', async () => {
+    const { email } = ACTOR
+    delete ACTOR.email
+    try {
+      const { server, res } = await open()
+      expect(res.statusCode).toBe(503)
+      await server.close()
+    } finally {
+      ACTOR.email = email
+    }
   })
 })

@@ -656,6 +656,7 @@ export type {
   OidcProviderSettings,
   ChallengeDelivery,
   ChallengePurpose,
+  DeliveryPurpose,
   ChallengeDeliveryManagement,
   AccessEvent,
   AccessLogEntry,

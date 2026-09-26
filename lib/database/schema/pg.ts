@@ -410,7 +410,11 @@ export function registryTables(schemaName: string) {
       createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
       expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
       consumedAt: timestamp('consumed_at', { withTimezone: true }),
-      exportRef: text('export_ref')
+      exportRef: text('export_ref'),
+      // The emailed code of an operator without MFA, as an HMAC keyed by the token: without the
+      // token, which is never stored, a leaked row does not give the code away.
+      codeHash: text('code_hash'),
+      codeAttempts: integer('code_attempts').notNull().default(0)
     },
     (t) => [index('destruction_tenant_idx').on(t.tenantId), index('destruction_expires_idx').on(t.expiresAt)]
   )

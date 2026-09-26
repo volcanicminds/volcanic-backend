@@ -706,3 +706,25 @@ has the mechanism.
 - On 403 `STEP_UP_NOT_AVAILABLE` (an impersonation, an integration token), no confirmation helps:
   say so, or send the person to a new login.
 - An HTTP layer that reads 401 as "session expired" is unaffected: both answers are 403.
+
+---
+
+## 31. The emailed second factor of a destruction
+
+An operator without MFA can now destroy a tenant's data with a code sent by email, as
+docs/API_V5.md §6.2 describes; before, only a TOTP was accepted.
+
+**What a deployment has to do.**
+
+- **Apply the new migration**, `0005_destruction_code_control` for each dialect: `code_hash` and
+  `code_attempts` on `destruction_request`.
+- **A `challengeDeliveryManager`** receives messages with `purpose: 'destruction'` too, on the
+  control plane with `tenantId` naming the tenant about to be destroyed. A delivery that switches on
+  `purpose` handles the third value; one that words every code as a sign-in misleads the operator.
+  Without a delivery, an operator without MFA gets 503 `DESTRUCTION_FACTOR_NOT_AVAILABLE` from
+  phase 1.
+
+**What a client has to change.**
+
+- Phase 1 answers `factor`: `{ method: 'totp' }` or `{ method: 'email-otp', destination }`. Show the
+  operator which code to type, and where the emailed one went.
