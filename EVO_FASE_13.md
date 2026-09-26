@@ -69,8 +69,15 @@ nessuno la legge.
   impersonation `STEP_UP_NOT_AVAILABLE`); togliere `freshAuth` dall'impersonation fa fallire il banco.
   `npm test` con `DATABASE_URL`: 936 verdi, 3 saltati; `npm run test:e2e:mt:pg`: 25 verdi;
   `npm run check-all` verde.
-- [ ] **T-13.6** `volcanic-admin`: su `STEP_UP_REQUIRED` la finestra di riautenticazione, poi la
-  richiesta ripetuta; provato nel browser.
+- [x] **T-13.6** `volcanic-admin`: su `STEP_UP_REQUIRED` la finestra di riautenticazione, poi la
+  richiesta ripetuta; provato nel browser. Evidenza: commit `3577eaa` di `volcanic-admin`, provato
+  con Playwright sul sample e Postgres 16 usa e getta con `STEP_UP_MAX_AGE=60`. Piano del tenant in
+  cookie (`/auth/mfa/setup`: 403, finestra, password sbagliata rifiutata, giusta, step-up 200,
+  richiesta ripetuta 200; annulla: `flow/cancel` 200 e rifiuto tenuto) e piano di controllo in
+  bearer (impersonation: 403, `/system/auth/flow/step-up` 200, ripetuta 200; token nuovo, stesso
+  refresh e stesso `sid`, `auth_time` avanzato). Trovato e corretto un difetto: la password
+  sbagliata partiva due volte, perché il 401 del flusso faceva scattare il rinnovo. Difetto
+  piantato (ripetizione spenta in `providers/http.ts`) preso dal browser: 403 senza finestra.
 
 ## 3. Rinviato
 

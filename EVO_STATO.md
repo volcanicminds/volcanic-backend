@@ -118,11 +118,12 @@ risposto come segreto sbagliato, `BODY_LIMIT` e tetti multipart, `npm audit --om
 (`volcanic-admin@80e981c`): il login dell'admin è il flusso, verificato con Playwright sui due piani
 in bearer e in cookie, TOTP, iscrizione forzata, codice via email e OIDC. La fase 12 è chiusa.
 
-**Fase 13 aperta il 27 settembre 2026** (`EVO_FASE_13.md`): lo step-up, riaperto dal manutentore
-con la strada A e una finestra di 5 minuti. Nel backend è fatto (T-13.1 → T-13.5: `freshAuth` sulle
-rotte, `auth_time` nel token, `POST /auth/flow/step-up` sui due piani, migrazioni `0004_step_up_*`),
-provato sul banco multi-tenant Postgres. Resta T-13.6, la finestra di riautenticazione in
-`volcanic-admin`. SAML resta rinviato finché `@node-saml/node-saml` non pubblica una versione nuova.
+**Fase 13 chiusa il 27 settembre 2026** (`EVO_FASE_13.md`): lo step-up, riaperto dal manutentore
+con la strada A e una finestra di 5 minuti. Nel backend, da T-13.1 a T-13.5: `freshAuth` sulle
+rotte, `auth_time` nel token, `POST /auth/flow/step-up` sui due piani, migrazioni `0004_step_up_*`,
+provato sul banco multi-tenant Postgres. T-13.6 (`volcanic-admin@3577eaa`): la finestra di
+riautenticazione e la richiesta ripetuta, provate con Playwright sui due piani in cookie e in
+bearer. SAML resta rinviato finché `@node-saml/node-saml` non pubblica una versione nuova.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
