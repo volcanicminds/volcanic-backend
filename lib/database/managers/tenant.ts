@@ -1,4 +1,4 @@
-import { eq, isNull, and } from 'drizzle-orm'
+import { eq, isNull, and, ne } from 'drizzle-orm'
 import type { TenantManagement, ControlHandle, Tenant, VQuery, TenantHandle } from '../../../types/global.js'
 import { executeFind } from '../query/index.js'
 import { control, table, column } from './runtime.js'
@@ -29,6 +29,11 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
     const handle = control(ctx, `${NAME}.${what}`)
     return { handle, tenant: table(handle, 'tenant') }
   }
+
+  // A destroyed row is the record that the data went, and no status change may bring it back:
+  // a tenant restored to `active` would resolve into a container that no longer exists.
+  const alive = (tenant: ReturnType<typeof table>, id: string) =>
+    and(eq(column(tenant, 'id'), id as never), ne(column(tenant, 'status'), 'destroyed' as never))
 
   const notImplemented = (what: string, task: string) => {
     throw new Error(`${NAME}.${what} arrives with ${task}: it is not implemented in this build`)
@@ -102,7 +107,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       delete values.engine
       delete values.strategy
 
-      const rows = await handle.db.update(tenant).set(values).where(eq(column(tenant, 'id'), id as never)).returning()
+      const rows = await handle.db.update(tenant).set(values).where(alive(tenant, id)).returning()
       return (rows[0] as Tenant) ?? null
     },
 
@@ -111,7 +116,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       const rows = await handle.db
         .update(tenant)
         .set({ status: 'suspended', updatedAt: new Date() })
-        .where(eq(column(tenant, 'id'), id as never))
+        .where(alive(tenant, id))
         .returning()
       return rows.length > 0
     },
@@ -121,7 +126,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       const rows = await handle.db
         .update(tenant)
         .set({ status: 'active', deletedAt: null, updatedAt: new Date() })
-        .where(eq(column(tenant, 'id'), id as never))
+        .where(alive(tenant, id))
         .returning()
       return rows.length > 0
     },
@@ -131,6 +136,17 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       const rows = await handle.db
         .update(tenant)
         .set({ deletedAt: new Date(), status: 'archived', updatedAt: new Date() })
+        .where(alive(tenant, id))
+        .returning()
+      return rows.length > 0
+    },
+
+    /** Written by a destruction once the container is gone; nothing moves a row out of it. */
+    async markTenantDestroyed(ctx: ControlHandle, id: string) {
+      const { handle, tenant } = registry(ctx, 'markTenantDestroyed')
+      const rows = await handle.db
+        .update(tenant)
+        .set({ deletedAt: new Date(), status: 'destroyed', updatedAt: new Date() })
         .where(eq(column(tenant, 'id'), id as never))
         .returning()
       return rows.length > 0

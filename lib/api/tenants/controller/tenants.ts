@@ -311,8 +311,21 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   if (creationRefusal) return creationRefusal
 
   const tenant = await managerOf(req).updateTenant(control(req), id, patch)
-  if (!tenant) return reply.status(404).send()
+  if (!tenant) return await refuseUnchanged(req, reply, id)
   return reply.send(tenant)
+}
+
+/** A destroyed tenant keeps its row as the record of the destruction, and no change reaches it. */
+function refuseDestroyed(reply: FastifyReply, tenant: Tenant | null) {
+  if (tenant?.status !== 'destroyed') return null
+  return reply
+    .status(409)
+    .send(httpError(409, 'This tenant was destroyed: its row is the record of that, and nothing brings it back', 'TENANT_DESTROYED'))
+}
+
+/** The manager changed nothing: either no such tenant, or one it refused to touch because it was destroyed. */
+async function refuseUnchanged(req: FastifyRequest, reply: FastifyReply, id: string) {
+  return refuseDestroyed(reply, await managerOf(req).getTenant(control(req), id)) ?? reply.status(404).send()
 }
 
 export async function suspend(req: FastifyRequest, reply: FastifyReply) {
@@ -321,7 +334,7 @@ export async function suspend(req: FastifyRequest, reply: FastifyReply) {
   const { id } = req.parameters()
   const { reason } = req.data()
   const done = await managerOf(req).suspendTenant(control(req), id, reason)
-  if (!done) return reply.status(404).send()
+  if (!done) return await refuseUnchanged(req, reply, id)
   return reply.send({ id, status: 'suspended' })
 }
 
@@ -330,7 +343,7 @@ export async function restore(req: FastifyRequest, reply: FastifyReply) {
 
   const { id } = req.parameters()
   const done = await managerOf(req).restoreTenant(control(req), id)
-  if (!done) return reply.status(404).send()
+  if (!done) return await refuseUnchanged(req, reply, id)
   return reply.send({ id, status: 'active' })
 }
 
@@ -344,7 +357,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
 
   const { id } = req.parameters()
   const done = await managerOf(req).softDeleteTenant(control(req), id)
-  if (!done) return reply.status(404).send()
+  if (!done) return await refuseUnchanged(req, reply, id)
   return reply.send({ id, registryRow: 'deleted', data: 'retained', hint: 'container data is destroyed separately' })
 }
 
@@ -365,6 +378,8 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
   const { id } = req.parameters()
   const tenant = await managerOf(req).getTenant(control(req), id)
   if (!tenant) return reply.status(404).send()
+  const destroyed = refuseDestroyed(reply, tenant)
+  if (destroyed) return destroyed
 
   const provider = providerOf(req)
   const migrations = migrationsOf(req)
@@ -431,6 +446,8 @@ export async function destructionRequest(req: FastifyRequest, reply: FastifyRepl
   const { id } = req.parameters()
   const tenant = await managerOf(req).getTenant(control(req), id)
   if (!tenant) return reply.status(404).send()
+  const destroyed = refuseDestroyed(reply, tenant)
+  if (destroyed) return destroyed
 
   // Refused here, before a token exists: a permission phase 2 could never accept is worse than no
   // permission, because it looks like one.
@@ -514,9 +531,9 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
   const { token, slug, otp } = req.data()
 
   const tenant = await managerOf(req).getTenant(control(req), id)
-  // Idempotent: a tenant whose registry row is gone has already been through this, and the
-  // second caller is told so instead of being handed an error to interpret.
-  if (!tenant) return reply.send({ id, alreadyDestroyed: true })
+  // Idempotent: a tenant marked destroyed, or whose registry row is gone, has already been
+  // through this, and the second caller is told so instead of being handed an error to interpret.
+  if (!tenant || tenant.status === 'destroyed') return reply.send({ id, alreadyDestroyed: true })
 
   if (!token || !slug || !otp) {
     return reply.status(400).send(httpError(400, 'token, slug and otp are all required, in the body', 'DESTRUCTION_TOKEN_INVALID'))
@@ -535,10 +552,14 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(httpError(400, 'The slug does not match the tenant', 'DESTRUCTION_SLUG_MISMATCH'))
   }
 
-  const factor = request.codeHash
+  const factor: { ok: boolean; message: string; remaining?: number } = request.codeHash
     ? await verifyEmailedCode(req, dm, request.id, String(token), String(otp))
     : await verifySecondFactor(req, actor, String(otp))
-  if (!factor.ok) return reply.status(403).send(httpError(403, factor.message, 'DESTRUCTION_OTP_INVALID'))
+  if (!factor.ok) {
+    // `remaining` travels as data, like a login's: the console words it, the message is for logs.
+    const refusal = httpError(403, factor.message, 'DESTRUCTION_OTP_INVALID')
+    return reply.status(403).send(factor.remaining === undefined ? refusal : { ...refusal, remaining: factor.remaining })
+  }
 
   // The export happens first, and a failure stops everything. Decision 2 of
   // EVO_PUNTI_APERTI: no export, no destruction.
@@ -584,7 +605,7 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
   }
 
   await provider.dropContainer(tenant.locator)
-  await managerOf(req).softDeleteTenant(control(req), tenant.id)
+  await managerOf(req).markTenantDestroyed(control(req), tenant.id)
 
   return reply.send({
     id: tenant.id,
@@ -602,7 +623,7 @@ async function verifyEmailedCode(
   requestId: string,
   token: string,
   code: string
-): Promise<{ ok: boolean; message: string }> {
+): Promise<{ ok: boolean; message: string; remaining?: number }> {
   const { ok, remaining } = await dm.checkCode(control(req), requestId, {
     token,
     code,
@@ -611,6 +632,7 @@ async function verifyEmailedCode(
   if (ok) return { ok: true, message: '' }
   return {
     ok: false,
+    remaining,
     message: remaining > 0 ? `The code is not valid: ${remaining} attempt(s) left` : 'No attempts left: request the destruction again'
   }
 }

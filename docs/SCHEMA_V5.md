@@ -351,7 +351,7 @@ Replaces the v4 entity, whose `dbSchema` / `dbName` pair could not describe a co
 | `engine` | text | no | | `postgres` \| `sqlite` \| `libsql` |
 | `locator` | text | no | | **the one field that says where the data is**: the schema name for `schema`, the database name for a Postgres container, the file path for a SQLite/libSQL container. Sanitised **once, before saving** (§4) |
 | `config` | jsonb / json text | no | `{}` | per-tenant options: connection overrides, limits, feature flags. Never customer content |
-| `status` | text | no | `active` | `active` \| `suspended` \| `archived` |
+| `status` | text | no | `active` | `active` \| `suspended` \| `archived` \| `destroyed`. `destroyed` is final: written by the destruction once the container is gone, and no registry method moves a row out of it |
 | `schema_version` | text | yes | | last migration applied to this container, mirrored from its own `migration` table for read-only reporting. **Not** the source of truth |
 | `created_at` | timestamp | no | now | |
 | `updated_at` | timestamp | no | now | |

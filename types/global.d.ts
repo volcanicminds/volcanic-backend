@@ -328,7 +328,8 @@ export interface Tenant {
   engine: Engine
   /** Where the data is: schema name, database name, or file path. */
   locator: string
-  status: 'active' | 'suspended' | 'archived'
+  /** `destroyed` is final: the container is gone and no registry method moves the row out of it. */
+  status: 'active' | 'suspended' | 'archived' | 'destroyed'
   schemaVersion?: string | null
   config?: Record<string, unknown>
 }
@@ -1469,6 +1470,8 @@ export interface TenantManagement {
   restoreTenant(ctx: ControlHandle, id: string): Promise<boolean>
   /** Soft-deletes the registry row only. It does NOT remove data: that is destroyContainer. */
   softDeleteTenant(ctx: ControlHandle, id: string): Promise<boolean>
+  /** Marks the row `destroyed` once its container is gone. Update, suspend, restore and soft delete leave such a row alone. */
+  markTenantDestroyed(ctx: ControlHandle, id: string): Promise<boolean>
 
   openContainer(tenantId: string): Promise<TenantHandle>
   closeContainer(handle: TenantHandle): Promise<void>

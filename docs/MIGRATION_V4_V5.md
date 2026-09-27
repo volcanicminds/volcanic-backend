@@ -728,3 +728,22 @@ docs/API_V5.md §6.2 describes; before, only a TOTP was accepted.
 
 - Phase 1 answers `factor`: `{ method: 'totp' }` or `{ method: 'email-otp', destination }`. Show the
   operator which code to type, and where the emailed one went.
+- A wrong emailed code answers `DESTRUCTION_OTP_INVALID` with `remaining` in the body, as a login
+  does. Word the attempts left from that field, not from the message.
+
+## 32. A destroyed tenant stays destroyed
+
+The destruction now marks the registry row `status: 'destroyed'` instead of archiving it. Before,
+the row was archived like a soft delete, so a restore brought back an `active` tenant with no
+container, and a second destruction answered 403 instead of `alreadyDestroyed`.
+
+**What a deployment has to do.**
+
+- **A custom `tenantManager`** implements `markTenantDestroyed(ctx, id)`, and its `updateTenant`,
+  `suspendTenant`, `restoreTenant` and `softDeleteTenant` leave a `destroyed` row unchanged. No
+  migration: `status` is a text column.
+
+**What a client has to change.**
+
+- `status` has a fourth value, `destroyed`. Update, suspend, restore, delete, export and a new
+  destruction request on such a tenant answer 409 `TENANT_DESTROYED`.

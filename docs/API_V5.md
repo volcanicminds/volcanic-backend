@@ -348,6 +348,11 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/tenants/:id/suspend` | `tenants` | **new**: explicit, instead of a `status` field edited by hand |
 | POST | `/tenants/:id/restore` | `tenants` | |
 | DELETE | `/tenants/:id` | `tenants` | soft-deletes **the registry row only**. The response says so explicitly |
+
+A tenant whose data was destroyed (§6.2) keeps its row with `status: 'destroyed'`, as the record of
+the destruction. Update, suspend, restore, delete, export and a new destruction request answer 409
+`TENANT_DESTROYED`: restored to `active`, it would resolve requests into a container that no longer
+exists.
 | GET | `/tenants/migrations` | `migrations` | which container is at which schema version |
 | POST | `/tenants/:id/migrate` | `migrations` | applies the pending migrations to one container |
 | POST | `/tenants/:id/export` | `tenants:export` | |
@@ -395,7 +400,8 @@ the path lands in proxy access logs, browser history and tracing systems.
   sends a six-digit code to their address on file through `challengeDeliveryManager`, with
   `purpose: 'destruction'` and `tenantId` naming the tenant, and that code is what goes here. The
   code lives as long as the request, is stored only as an HMAC keyed by the token, and allows
-  `AUTH_OTP_MAX_ATTEMPTS` tries (5 by default); past the last, only a new phase 1 helps. The factor
+  `AUTH_OTP_MAX_ATTEMPTS` tries (5 by default); a wrong one answers `DESTRUCTION_OTP_INVALID` with
+  `remaining` in the body, as a login does, and past the last only a new phase 1 helps. The factor
   is fixed at phase 1: a request opened for an emailed code does not take a TOTP, nor the reverse.
   Without MFA and without a delivery, or when the delivery fails, phase 1 answers 503
   `DESTRUCTION_FACTOR_NOT_AVAILABLE` and hands out no token. MFA is the preferred path.
@@ -405,7 +411,9 @@ the path lands in proxy access logs, browser history and tracing systems.
 - The tenant's own identity providers (`identity_provider`, with their client secrets) are removed
   before the container is dropped; the registry row, the impersonation log and the destruction
   record stay, because they are the platform's audit.
-- Idempotent: calling it again on an already-destroyed tenant answers 200 with `alreadyDestroyed: true`.
+- The registry row is marked `status: 'destroyed'` once the container is gone, and stays.
+- Idempotent: calling it again on a destroyed tenant, or on one whose row is gone, answers 200 with
+  `alreadyDestroyed: true`.
 
 Failure modes and their codes: `DESTRUCTION_TOKEN_INVALID`, `DESTRUCTION_TOKEN_EXPIRED`,
 `DESTRUCTION_SLUG_MISMATCH`, `DESTRUCTION_OTP_INVALID`, `DESTRUCTION_EXPORT_FAILED`, and on phase 1

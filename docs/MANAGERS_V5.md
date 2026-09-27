@@ -190,6 +190,8 @@ export interface TenantManagement {
   restoreTenant(ctx: ControlHandle, id: string): Promise<boolean>
   /** Soft-deletes the registry row only. It does NOT remove data: see destroyContainer. */
   softDeleteTenant(ctx: ControlHandle, id: string): Promise<boolean>
+  /** Marks the row `destroyed` once its container is gone; update, suspend, restore and soft delete then leave it alone. */
+  markTenantDestroyed(ctx: ControlHandle, id: string): Promise<boolean>
 
   // ---- containers ----
   /** Opens (or reuses from the LRU cache) a connection to the tenant's container. */

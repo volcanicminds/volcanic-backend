@@ -9,7 +9,7 @@
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
-import { destructionRequest, destroyData } from '../../lib/api/tenants/controller/tenants.js'
+import { destructionRequest, destroyData, restore } from '../../lib/api/tenants/controller/tenants.js'
 import { hashToken } from '../../lib/database/managers/destruction.js'
 import { challengeMac } from '../../lib/database/managers/authFlow.js'
 import { getData, getParams } from '../../lib/util/common.js'
@@ -25,6 +25,7 @@ function fakes(over: any = {}) {
   const exported: any[] = []
   const steps: string[] = []
   const deliveries: any[] = []
+  const marked: string[] = []
   const idps = [
     { tenantId: ACME.id, key: 'entra' },
     { tenantId: ACME.id, key: 'okta' },
@@ -38,6 +39,7 @@ function fakes(over: any = {}) {
     steps,
     idps,
     deliveries,
+    marked,
     destructionManager: {
       isImplemented: () => true,
       openRequest: async (_c: any, data: any) => {
@@ -83,8 +85,18 @@ function fakes(over: any = {}) {
     },
     tenantManager: {
       isImplemented: () => true,
-      getTenant: async (_c: any, id: string) => (over.missingTenant ? null : id === ACME.id ? ACME : null),
-      softDeleteTenant: async () => true
+      getTenant: async (_c: any, id: string) => {
+        if (over.missingTenant || id !== ACME.id) return null
+        return over.destroyedTenant || marked.includes(id) ? { ...ACME, status: 'destroyed' } : ACME
+      },
+      markTenantDestroyed: async (_c: any, id: string) => {
+        steps.push('markTenantDestroyed')
+        marked.push(id)
+        return true
+      },
+      // Mirrors the real manager: a destroyed row is left alone, and the answer is "unchanged".
+      restoreTenant: async (_c: any, id: string) =>
+        !over.missingTenant && id === ACME.id && !(over.destroyedTenant || marked.includes(id))
     },
     provider: {
       inspectContainer: async () => ({
@@ -168,6 +180,7 @@ async function build(over: any = {}) {
 
   server.post('/tenants/:id/destruction-request', { config: { tenantContext: false } }, destructionRequest)
   server.delete('/tenants/:id/data', { config: { tenantContext: false } }, destroyData)
+  server.post('/tenants/:id/restore', { config: { tenantContext: false } }, restore)
   await server.ready()
   return { server, ...f }
 }
@@ -284,7 +297,7 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     // Each one carries a client secret of the customer's, in the control plane, where dropping
     // the container does not reach.
     expect(idps).toEqual([{ tenantId: 'id-other', key: 'entra' }])
-    expect(steps).toEqual(['removeAll', 'dropContainer'])
+    expect(steps).toEqual(['removeAll', 'dropContainer', 'markTenantDestroyed'])
     await server.close()
   })
 
@@ -306,12 +319,46 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
   })
 
   it('refuses a token that was already spent', async () => {
-    const { server, token } = await open()
-    expect((await destroy(server, { token, slug: 'acme', otp: '123456' })).statusCode).toBe(200)
+    const { server, token, requests, dropped } = await open()
+    // Spent by a call that stopped after writing the record, on a tenant still standing.
+    for (const r of requests.values()) r.consumedAt = new Date()
 
     const again = await destroy(server, { token, slug: 'acme', otp: '123456' })
     expect(again.statusCode).toBe(403)
     expect(JSON.parse(again.body).code).toBe('DESTRUCTION_TOKEN_INVALID')
+    expect(dropped).toEqual([])
+    await server.close()
+  })
+
+  it('answers alreadyDestroyed to the same call made twice, and drops once', async () => {
+    const { server, token, dropped, marked } = await open()
+    expect((await destroy(server, { token, slug: 'acme', otp: '123456' })).statusCode).toBe(200)
+    expect(marked).toEqual([ACME.id])
+
+    const again = await destroy(server, { token, slug: 'acme', otp: '123456' })
+    expect(again.statusCode).toBe(200)
+    expect(JSON.parse(again.body).alreadyDestroyed).toBe(true)
+    expect(dropped).toEqual([ACME.locator])
+    await server.close()
+  })
+
+  it('refuses to restore a destroyed tenant, or to ask for its destruction again', async () => {
+    const { server } = await build({ destroyedTenant: true })
+    const restored = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/restore`, payload: {} })
+    // `active` would resolve requests into a container that no longer exists.
+    expect(restored.statusCode).toBe(409)
+    expect(JSON.parse(restored.body).code).toBe('TENANT_DESTROYED')
+
+    const asked = await ask(server)
+    expect(asked.statusCode).toBe(409)
+    expect(JSON.parse(asked.body).code).toBe('TENANT_DESTROYED')
+    await server.close()
+  })
+
+  it('still answers 404 to restoring a tenant that does not exist', async () => {
+    const { server } = await build({ missingTenant: true })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/restore`, payload: {} })
+    expect(res.statusCode).toBe(404)
     await server.close()
   })
 
@@ -351,6 +398,8 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     const wrong = await destroy(server, { token, slug: 'acme', otp: '000000' })
     expect(wrong.statusCode).toBe(403)
     expect(JSON.parse(wrong.body).code).toBe('DESTRUCTION_OTP_INVALID')
+    // A TOTP has no attempt count of its own to report.
+    expect(JSON.parse(wrong.body).remaining).toBeUndefined()
 
     // The step is spent by the first use, so the same code cannot destroy a second container.
     //
@@ -487,11 +536,14 @@ describe('destruction · the emailed code of an operator without MFA (§6.2)', (
     expect(first.statusCode).toBe(403)
     expect(JSON.parse(first.body).code).toBe('DESTRUCTION_OTP_INVALID')
     expect(JSON.parse(first.body).message).toMatch(/4 attempt/)
+    // The count is data, as on a login: the console words it from here, not from the message.
+    expect(JSON.parse(first.body).remaining).toBe(4)
     for (let i = 0; i < 4; i++) await destroy(server, { token: body.token, slug: 'acme', otp: wrong })
 
     const right = await destroy(server, { token: body.token, slug: 'acme', otp: deliveries[0].code })
     expect(right.statusCode).toBe(403)
     expect(JSON.parse(right.body).message).toMatch(/again/)
+    expect(JSON.parse(right.body).remaining).toBe(0)
     expect(dropped).toEqual([])
     await server.close()
   })

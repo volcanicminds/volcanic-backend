@@ -258,6 +258,23 @@ describe('database/managers · tenants', () => {
     // And the irreversible one refuses to run before T-6.3 gives it its ceremony.
     await expect(manager.destroyContainer(tenantRow.id)).rejects.toThrow(/T-6.3/)
   })
+
+  it('keeps a destroyed row destroyed, whatever asks to change it', async () => {
+    const row: any = await manager.createTenant(control, { name: 'Gone', slug: 'gone', locator: 'gone.db' })
+    expect(await manager.markTenantDestroyed(control, row.id)).toBe(true)
+
+    // Restored to `active`, it would resolve requests into a container that no longer exists.
+    expect(await manager.restoreTenant(control, row.id)).toBe(false)
+    expect(await manager.suspendTenant(control, row.id)).toBe(false)
+    expect(await manager.softDeleteTenant(control, row.id)).toBe(false)
+    expect(await manager.updateTenant(control, row.id, { status: 'active', name: 'Back' })).toBeNull()
+
+    const after: any = await manager.getTenant(control, row.id)
+    expect(after.status).toBe('destroyed')
+    expect(after.name).toBe('Gone')
+    expect(after.deletedAt).toBeTruthy()
+    expect(await manager.getTenantBySlug(control, 'gone')).toBeNull()
+  })
 })
 
 //

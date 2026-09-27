@@ -66,7 +66,7 @@ export const tenantResponseSchema = {
     // Which migration this container was last brought to (T-5.1). Null on a container that
     // predates the version, which a serializer must be able to say rather than drop.
     schemaVersion: { type: ['string', 'null'] },
-    status: { type: 'string', enum: ['active', 'suspended', 'archived'] },
+    status: { type: 'string', enum: ['active', 'suspended', 'archived', 'destroyed'] },
     config: { type: 'object', additionalProperties: true },
     createdAt: { type: 'string' },
     updatedAt: { type: 'string' }

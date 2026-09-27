@@ -73,7 +73,7 @@ const TRACKING_METHODS = ['retrieveBy', 'addChange'] as const
 
 const TENANT_METHODS = [
   'listTenants', 'getTenant', 'getTenantBySlug', 'createTenant', 'updateTenant',
-  'suspendTenant', 'restoreTenant', 'softDeleteTenant',
+  'suspendTenant', 'restoreTenant', 'softDeleteTenant', 'markTenantDestroyed',
   'openContainer', 'closeContainer', 'migrateContainer', 'exportContainer',
   'destroyContainer', 'inspectContainer'
 ] as const

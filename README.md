@@ -1716,8 +1716,10 @@ path lands in proxy access logs, browser history and tracing systems:
 
 Then, in this order: the second factor is verified and its step spent, **the container is
 exported** and the file must be real, the event is recorded with the export reference, and only
-then is the data dropped. If the export fails there is no destruction. Calling it again on a
-tenant that is already gone answers 200 with `alreadyDestroyed: true`.
+then is the data dropped. If the export fails there is no destruction. The registry row stays,
+marked `destroyed`, and no update, suspension or restore moves it out of that status (409
+`TENANT_DESTROYED`). Calling it again on a tenant that is already gone answers 200 with
+`alreadyDestroyed: true`.
 
 `tenants:destroy` is deliberately not part of `tenants`: creating a tenant and destroying its
 data are not the same job.
