@@ -269,6 +269,7 @@ wins.
 - **[Authentication flows](docs/AUTH_FLOW_V5.md)**: the login as a flow of stages on both planes, the authenticator contract, identity providers, linking, the access log and every refusal code.
 - **[Magic Query](docs/MAGIC_QUERY_V5.md)**: the URL-to-SQL grammar, the operator catalogue, and the v4 → v5 correspondence table.
 - **[Schema](docs/SCHEMA_V5.md)**: the framework's own tables, what a consuming project must declare, and the one thing it must never redefine.
+- **[Deployment profiles](docs/DEPLOYMENT_PROFILES_V5.md)**: one page to choose a deployment: databases by profile, what the framework encrypts, and who decides how people log in.
 - **[Configuration](docs/CONFIGURATION_V5.md)**: the `control` and `tenants` blocks, the four supported combinations, and the defaults that changed on purpose.
 - **[Managers](docs/MANAGERS_V5.md)** and **[Authorization](docs/AUTHORIZATION_V5.md)**: the injectable contracts, and the capability model with its control/tenant split.
 - **[Advanced Architecture](docs/ADVANCED_ARCHITECTURE.md)**: Service Layer pattern, BaseService abstraction, and dependency injection.
