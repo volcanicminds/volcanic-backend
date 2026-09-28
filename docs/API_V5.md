@@ -415,9 +415,10 @@ the path lands in proxy access logs, browser history and tracing systems.
 - Idempotent: calling it again on a destroyed tenant, or on one whose row is gone, answers 200 with
   `alreadyDestroyed: true`.
 
-Failure modes and their codes: `DESTRUCTION_TOKEN_INVALID`, `DESTRUCTION_TOKEN_EXPIRED`,
-`DESTRUCTION_SLUG_MISMATCH`, `DESTRUCTION_OTP_INVALID`, `DESTRUCTION_EXPORT_FAILED`, and on phase 1
-`DESTRUCTION_FACTOR_NOT_AVAILABLE`.
+Failure modes and their codes: `DESTRUCTION_TOKEN_INVALID`, `DESTRUCTION_SLUG_MISMATCH`,
+`DESTRUCTION_OTP_INVALID`, `DESTRUCTION_EXPORT_FAILED`, and on phase 1
+`DESTRUCTION_FACTOR_NOT_AVAILABLE`. An expired, spent or unknown token, and one opened by another
+operator, all answer `DESTRUCTION_TOKEN_INVALID`: the remedy is the same, a new phase 1.
 
 ---
 
