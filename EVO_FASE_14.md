@@ -79,10 +79,13 @@ connessione contro cento connessioni.
   anche su PGlite; `shutdown` che chiude l'istanza. Prove: avvio da `start()` con
   `engine: 'pglite'`, migrazioni applicate, handle di controllo e di tenant, stato di sessione
   rifiutato. Difetto piantato: togliere il ramo PGlite da `createPostgresProvider`.
-  Evidenza: `test/db/pglite.spec.ts`, 9 prove verdi su Node 26.9.0 senza `DATABASE_URL` (avvio,
+  Evidenza: `test/db/pglite.spec.ts`, 8 prove verdi su Node 26.9.0 senza `DATABASE_URL` (avvio,
   migrazioni del controllo e di un tenant `schema`, `control.dataDir` dopo un riavvio, schema di
-  controllo fissato all'avvio, guardia sull'istanza e nelle transazioni, lock, rifiuti per nome,
-  chiusura); col ramo PGlite tolto 3 prove su 8 rosse. I tenant `schema` accanto a PGlite stanno
+  controllo fissato all'avvio, SQL grezzo del tenant nel suo schema, lock, rifiuti per nome,
+  chiusura); col ramo PGlite tolto 4 prove su 8 rosse. La guardia sull'istanza e nelle
+  transazioni sta in `test/db/session-state.spec.ts`, con il resto della regola: è la suite che
+  `check:session-state` esenta già, e l'elenco delle esenzioni non si allunga. `npm test` 864 verdi
+  e 31 saltate, `check-all` verde. I tenant `schema` accanto a PGlite stanno
   nella stessa istanza fuori produzione, come dice la matrice (`capabilities.ts`); `container` è
   rifiutato prima di aprirla. Due difetti trovati dalle prove: `PGlite.create(undefined, opzioni)`
   scarta le opzioni (lo schema non veniva fissato); `isUniqueViolation` guardava solo l'errore di
