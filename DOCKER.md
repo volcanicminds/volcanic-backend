@@ -1,6 +1,6 @@
 # Docker
 
-> Images based on **node:24-bookworm-slim** (Node ≥ 24, see `.nvmrc`). glibc is preferred over musl
+> Images based on **node:26-bookworm-slim** (Node ≥ 26, see `.nvmrc`). glibc is preferred over musl
 > because `bcrypt` runs on the libuv threadpool, where the musl allocator causes contention under load;
 > bookworm ships native prebuilts and gives more predictable runtime performance. Since v3 the
 > **data layer** (`@volcanicminds/backend/typeorm`) is included: the image reinstalls the data-layer

@@ -72,7 +72,7 @@ esposto come subpath.
 | Data layer | `lib/database/typeorm/` (2.003 righe, 26,6% di `lib/`), TypeORM 0.3.30 | `lib/database/` su **Drizzle**, subpath `@volcanicminds/backend/db` |
 | Motori | Postgres, PGlite, MongoDB (dichiarato) | **Postgres, SQLite, libSQL**. Mongo esce dal data layer |
 | Tenancy | `none` e `schema` su Postgres | `none`, `schema`, **`container`** (database dedicato o file) |
-| Runtime | Node >= 24, ESM puro, import con estensione `.js` anche nei `.ts` | invariato |
+| Runtime | Node >= 24, ESM puro, import con estensione `.js` anche nei `.ts` | Node >= 26, il resto invariato |
 | Confine architetturale | il core **non** importa il data layer, garantito in CI da `dependency-cruiser` | invariato, ed è il vincolo che decide dove sta la risoluzione del tenant (T-3.2) |
 | Integrazione | il consumer inietta i «manager» (`userManager`, `tokenManager`, `dataBaseManager`, `tenantManager`, `mfaManager`, `transferManager`) via `start(decorators)`; senza, partono i null-object di `lib/defaults/managers.ts` | invariato come meccanismo, firme riviste |
 | Consumer | progetti clienti in single tenant su Postgres | i progetti su v4 restano su v4; il porting è volontario e guidato da T-8.3 |

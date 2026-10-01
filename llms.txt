@@ -330,7 +330,7 @@ The framework uses an **autodiscovery** system based on `glob` patterns. Adherin
 ```bash
 ./
 ├── .env                    # Environment variables (SECRETS)
-├── package.json            # type: "module" (ESM), engines: node >= 24
+├── package.json            # type: "module" (ESM), engines: node >= 26
 ├── tsconfig.json           # target: "ES2022", module: "NodeNext"
 ├── index.ts                # Entry Point (Bootstrap)
 ├── types                   # Custom TypeScript definitions

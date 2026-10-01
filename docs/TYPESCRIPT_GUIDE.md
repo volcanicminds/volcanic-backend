@@ -160,7 +160,7 @@ rejected before it shipped.
 
 ## 6. `tsconfig.json`
 
-The framework is ESM only and targets Node 24. A consumer agrees with it on four points:
+The framework is ESM only and targets Node 26. A consumer agrees with it on four points:
 
 ```jsonc
 {

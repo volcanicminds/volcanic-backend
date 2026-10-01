@@ -51,7 +51,7 @@ devDependencies del consumer: genera le migrazioni, non le applica.
 
 ## Stack e convenzioni
 
-- **Node >= 24** (`.nvmrc` = v24.11.0), **ESM puro** (`"type": "module"`, `module: NodeNext`).
+- **Node >= 26** (`.nvmrc` = v26.10.0), **ESM puro** (`"type": "module"`, `module: NodeNext`).
 - **Import sempre con estensione `.js`** anche nei `.ts`.
 - **Sorgente in `lib/`** (non `src/`). Entry `index.ts` (core) e `db.ts` (subpath `/db`); CLI
   `bin/volcanic.mjs` (`npx volcanic migrate --tenants`). Build `tsc` → `dist/`.

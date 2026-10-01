@@ -1,5 +1,5 @@
 # Stage 1: Dependencies (with fallback toolchain for the data-layer native modules)
-FROM node:24-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 
 WORKDIR /usr/src/app
 
@@ -13,7 +13,7 @@ COPY package*.json ./
 RUN npm install
 
 # Stage 2: Dev runner (hot-reload via `tsx watch`; the source comes from the -v volume)
-FROM node:24-bookworm-slim AS dev-runner
+FROM node:26-bookworm-slim AS dev-runner
 
 LABEL description="Volcanic Backend (dev)"
 LABEL maintainer="Developers <developers@volcanicminds.com>"

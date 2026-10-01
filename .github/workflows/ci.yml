@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: npm }
+        with: { node-version-file: .nvmrc, cache: npm }
       - run: npm ci
       - run: npm run lint
       - run: npm run type-check
@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: npm }
+        with: { node-version-file: .nvmrc, cache: npm }
       - run: npm ci # compila bcrypt (nativo); ubuntu-latest ha i build tools
       - run: npm test # `pretest` builds first — i test girano contro dist/ (self-reference @volcanicminds/backend)
       # A floor nobody runs is not a gate: `npm run coverage` existed since phase 8 and no job
@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: npm }
+        with: { node-version-file: .nvmrc, cache: npm }
       # A `pg_dump` older than the server refuses to dump it, and the export tests then skip
       # rather than fail. Installing the matching client is what keeps T-6.2's happy path
       # actually exercised instead of quietly stepped over.
@@ -110,7 +110,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: npm, registry-url: 'https://registry.npmjs.org' }
+        with: { node-version-file: .nvmrc, cache: npm, registry-url: 'https://registry.npmjs.org' }
       - run: npm ci
       - run: npm run build
       # Una versione con suffisso (5.0.0-alpha.0) esce su dist-tag `next`, mai su `latest`:

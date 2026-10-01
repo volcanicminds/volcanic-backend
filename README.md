@@ -102,7 +102,7 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 
 ## Runtime requirements & notable behavior
 
-- **Node.js ≥ 24**, **pure ESM** (`NodeNext`); CommonJS/`require` is not supported. REST-only (no GraphQL).
+- **Node.js ≥ 26**, **pure ESM** (`NodeNext`); CommonJS/`require` is not supported. REST-only (no GraphQL).
 - `helmet` security headers are enabled by default.
 - Startup **fails fast**, and the list of things it refuses is deliberate. A missing or weak signing secret
   (`JWT_SECRET`, and `COOKIE_SECRET` in cookie mode, which is the default): minimum 32

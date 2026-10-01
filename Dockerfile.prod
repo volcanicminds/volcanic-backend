@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM node:24-bookworm-slim AS builder
+FROM node:26-bookworm-slim AS builder
 
 WORKDIR /usr/src/app
 
@@ -20,7 +20,7 @@ RUN npm prune --omit=dev \
        typeorm@^0.3.28 pg@^8.13.0 bcrypt@^6.0.0 reflect-metadata@^0.2.2 pluralize@^8.0.0
 
 # Stage 2: Production Runner
-FROM node:24-bookworm-slim
+FROM node:26-bookworm-slim
 
 LABEL version="3.0.0"
 LABEL description="Volcanic Backend"
