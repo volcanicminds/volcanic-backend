@@ -623,6 +623,7 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `DB_POOL_MAX`                  | Control-plane pool size. Feeds `control.pool.max`.                      |    No    | `10`                |
 | `DB_POOL_IDLE_MS`              | Milliseconds an idle control-plane connection is kept. Feeds `control.pool.idleTimeoutMs`. |    No    | `30000`             |
 | `DB_SCHEMA`                    | Postgres schema of the control plane. Feeds `control.schema`.           |    No    | `public`            |
+| `PGLITE_DATA_DIR`              | Directory of the database when `CONTROL_ENGINE=pglite`; unset, it lives in memory and ends with the process. Feeds `control.dataDir`. |    No    |                     |
 | `MFA_DB_SECRET`                | Key the MFA secrets are encrypted with. Falls back to `JWT_SECRET`.     |    No    |                     |
 | `BCRYPT_COST`                  | Password work factor. **Never below 12**, whatever is written; measure it with `npm run tune`. |    No    | `12`                |
 | `TENANT_CONTAINERS_MAX_OPEN`   | LRU bound on live tenant containers.                                    |    No    | `20`                |

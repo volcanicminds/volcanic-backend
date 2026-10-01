@@ -15,9 +15,10 @@ export default {
   name: 'general',
   options: {
     control: {
-      engine: 'postgres',                 // 'postgres' | 'sqlite' | 'libsql'
+      engine: 'postgres',                 // 'postgres' | 'pglite' | 'sqlite' | 'libsql'
       url: process.env.DATABASE_URL,      // or the discrete DB_* variables
       schema: 'public',                   // Postgres only: explicit, never inferred
+      dataDir: './data/pglite',           // 'pglite' only: absent, the database lives in memory
       pool: { max: 10, idleTimeoutMs: 30_000 }
     },
 
@@ -93,6 +94,7 @@ Checked at boot by the capability matrix (T-1.4). Anything else logs fatal and e
 | `postgres` | `strategy: 'container'`, `engine: 'postgres'` | one database per tenant |
 | `postgres` | `strategy: 'container'`, `engine: 'sqlite' \| 'libsql'` | one file per tenant |
 | `sqlite` / `libsql` | absent, or `strategy: 'container'` | serverless processes: CLI, agents, desktop |
+| `pglite` | absent; outside production also `strategy: 'schema'`, `engine: 'postgres'` | development and tests: Postgres inside the process, in memory or in `control.dataDir`, tenants as schemas of the same instance |
 
 Every combination above has a **migration set in its own dialect** (`migrations/<set>/pg` and
 `migrations/<set>/sqlite`, T-9.1). Until those existed, the two serverless rows were engines the
@@ -103,6 +105,7 @@ only committed SQL said `timestamp with time zone`.
 |---|---|
 | any engine + `strategy: 'schema'` on SQLite or libSQL | schemas do not exist there, and faking them with table prefixes is the `row` strategy under another name, which decision 5 forbids |
 | `pglite` + any `tenants` block in production | one connection only: no isolation under concurrency |
+| `pglite` + `strategy: 'container'` | a database per tenant needs a Postgres server; so does an export, which is refused at the call |
 | MongoDB, anywhere | the adapter is removed in v5 |
 
 ---
@@ -134,6 +137,7 @@ where it is used without passing through the configuration at all.
 | `DB_SCHEMA` | `public` | Postgres schema of the control plane | `control.schema` |
 | `DB_POOL_MAX` | `10` | control plane pool size | `control.pool.max` |
 | `DB_POOL_IDLE_MS` | `30000` | how long an idle control plane connection is kept | `control.pool.idleTimeoutMs` |
+| `PGLITE_DATA_DIR` | in memory | where PGlite keeps the database; unset, it ends with the process | `control.dataDir` |
 | `TENANT_CONTAINERS_MAX_OPEN` | `20` | LRU limit of live containers | fallback of `tenants.containers.maxOpen` |
 | `TENANT_CONTAINERS_DIR` | `./data/tenants` | where per-tenant files live | fallback of `tenants.containers.directory` |
 | `EXPORT_DIRECTORY` | `./data/exports` | where container exports are written | `export_directory` |
@@ -264,6 +268,7 @@ Declared optional; install only what the chosen engines need.
 | Subpath | Requires |
 |---|---|
 | `@volcanicminds/backend/db` with Postgres | `drizzle-orm`, `pg`, `bcrypt` |
+| the same with PGlite | `drizzle-orm`, `pg` (the adapter imports it either way), `@electric-sql/pglite`, `bcrypt` |
 | the same with SQLite | `drizzle-orm`, `better-sqlite3`, `bcrypt` |
 | the same with libSQL | `drizzle-orm`, `@libsql/client`, `bcrypt` |
 | development | `drizzle-kit` |

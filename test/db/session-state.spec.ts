@@ -6,14 +6,15 @@
 // records every statement the data layer emits, so the claim under test is not "the code
 // looks right" but "these are the statements, and none of them writes session state".
 // No database is involved, which is why this suite runs everywhere. The real-Postgres
-// half of the proof lives in postgres.spec.ts and in the bench of T-0.2.
+// half of the proof lives in postgres.spec.ts and in the bench of T-0.2. The PGlite block
+// opens a database, inside the process, so it runs everywhere too (T-14.1).
 //
 // What made D-01 possible was not a missing reset: it was that a reset was needed at all.
 // These tests state the property that removes the need.
 //
 import { expect } from 'expect'
 import { sql } from 'drizzle-orm'
-import { PostgresProvider } from '../../lib/database/adapters/postgres/index.js'
+import { PostgresProvider, openPglite, type PgliteDb } from '../../lib/database/adapters/postgres/index.js'
 import { assertNoSessionState, guardPool, queryTextOf, SessionStateError } from '../../lib/database/adapters/postgres/guard.js'
 import { RequestLeases } from '../../lib/database/leases.js'
 
@@ -156,6 +157,43 @@ describe('database · session state (T-3.1)', () => {
       const second = await guarded.connect()
       expect(second).toBe(first)
       expect(() => second.query('set local search_path to tenant_acme')).toThrow(SessionStateError)
+    })
+  })
+
+  describe('on PGlite, the one session it has (T-14.1)', function () {
+    this.timeout(60000)
+    let db: PgliteDb
+    let provider: PostgresProvider
+
+    before(async () => {
+      db = await openPglite()
+      provider = new PostgresProvider({ pglite: db })
+      const control: any = provider.control()
+      await provider.createSchema('tenant_acme')
+      await control.execute(sql.raw('create table tenant_acme.widget (tag text)'))
+      await control.execute(sql.raw(`insert into tenant_acme.widget (tag) values ('ACME')`))
+    })
+
+    after(async () => {
+      await provider.shutdown()
+    })
+
+    it('refuses session state on the instance and in a transaction, and allows SET LOCAL there', async () => {
+      const control: any = provider.control()
+      await refused(() => control.execute(sql.raw('set search_path to tenant_acme')))
+      // Outside a transaction SET LOCAL has no effect: the code that sends it believes something false.
+      await refused(() => control.execute(sql.raw('set local search_path to tenant_acme')))
+      // Under Drizzle too, straight on the client: the guard sits on the instance.
+      await refused(async () => db.$client.query('set search_path to tenant_acme'))
+      await refused(async () => db.$client.exec('set session search_path to tenant_acme'))
+
+      const inside = await control.transaction(async (tx: any) => {
+        await tx.execute(sql.raw('set local search_path to tenant_acme'))
+        return (await tx.execute(sql.raw('select tag from widget'))).rows
+      })
+      expect(inside).toEqual([{ tag: 'ACME' }])
+      expect((await control.execute(sql.raw('show search_path'))).rows).toEqual([{ search_path: 'public' }])
+      await refused(() => control.transaction(async (tx: any) => tx.execute(sql.raw('set search_path to tenant_acme'))))
     })
   })
 

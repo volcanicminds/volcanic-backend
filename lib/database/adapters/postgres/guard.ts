@@ -110,3 +110,51 @@ export function guardPool<T extends { query: any; connect: any }>(pool: T): T {
 
   return pool
 }
+
+/** The object PGlite hands to a `transaction()` callback: every statement on it is inside one. */
+function guardPgliteTransaction(tx: any): any {
+  const originalQuery = tx.query.bind(tx)
+  const originalExec = tx.exec.bind(tx)
+  tx.query = (text: any, params?: any, options?: any) => {
+    assertNoSessionState(queryTextOf(text), true)
+    return originalQuery(text, params, options)
+  }
+  tx.exec = (text: any, options?: any) => {
+    assertNoSessionState(queryTextOf(text), true)
+    return originalExec(text, options)
+  }
+  return tx
+}
+
+/**
+ * The same rule on PGlite (F60), which has no pool: one session, inside the process.
+ *
+ * A statement on the instance is outside any transaction, like `pool.query`; a statement on
+ * the object handed to a `transaction()` callback is inside one, like a checked-out client
+ * after BEGIN. PGlite opens and closes its transactions through private methods, so there is
+ * no depth to track. Covered: `query` and `exec`, which is everything Drizzle and
+ * `handle.execute` reach. In place, and not behind a Proxy: the Drizzle database arrives
+ * already built around this instance, and its session keeps the reference it was given.
+ */
+export function guardPglite<T extends { query: any; exec: any; transaction: any }>(client: T): T {
+  const anyClient = client as any
+  if (anyClient[PATCHED]) return client
+  anyClient[PATCHED] = true
+
+  const originalQuery = client.query.bind(client)
+  const originalExec = client.exec.bind(client)
+  const originalTransaction = client.transaction.bind(client)
+
+  anyClient.query = (text: any, params?: any, options?: any) => {
+    assertNoSessionState(queryTextOf(text), false)
+    return originalQuery(text, params, options)
+  }
+  anyClient.exec = (text: any, options?: any) => {
+    assertNoSessionState(queryTextOf(text), false)
+    return originalExec(text, options)
+  }
+  anyClient.transaction = (callback: (tx: any) => Promise<unknown>) =>
+    originalTransaction((tx: any) => callback(guardPgliteTransaction(tx)))
+
+  return client
+}

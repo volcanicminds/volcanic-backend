@@ -1,12 +1,14 @@
 import pg from 'pg'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
+import type { PgliteDatabase } from 'drizzle-orm/pglite'
+import type { PGlite } from '@electric-sql/pglite'
 import { sql, type SQLWrapper } from 'drizzle-orm'
 import { eq } from 'drizzle-orm'
 import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestScope } from '../../../../types/global.js'
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/pg.js'
 import { RequestLeases } from '../../leases.js'
 import { exportPostgresSchema } from '../../containers/export.js'
-import { guardPool } from './guard.js'
+import { guardPglite, guardPool } from './guard.js'
 import { envInt } from '../../env.js'
 
 //
@@ -28,6 +30,23 @@ import { envInt } from '../../env.js'
 //     Postgres 16: inside the transaction the value applies, after it the connection is back
 //     to the pinned one.
 //
+// The same code runs on PGlite (F60): Postgres compiled to WebAssembly, inside the process,
+// for development and tests. Same dialect, same tables, same migrations, same session guard;
+// what it lacks is a server, so there is no pool to size, no database per tenant, no
+// `pg_dump`.
+//
+
+/** Drizzle bound to PGlite, as `openPglite()` returns it. */
+export type PgliteDb = PgliteDatabase & { $client: PGlite }
+
+/** Drizzle over either driver: a pool of `pg` connections, or one PGlite instance. */
+export type PgDb = NodePgDatabase | PgliteDb
+
+/** What raw SQL answers on both drivers: `pg` and PGlite agree on `rows`, and on little else. */
+export interface RawRows<T = Record<string, unknown>> {
+  rows: T[]
+}
+
 export interface PostgresHandle {
   readonly kind: 'control' | 'tenant'
   /** The dialect the Magic Query builds for: a handle knows its engine, callers do not ask. */
@@ -35,14 +54,14 @@ export interface PostgresHandle {
   readonly tenantId?: string
   /** The schema this handle addresses, when it addresses one. Raw SQL is run inside it. */
   readonly locator?: string
-  /** Drizzle bound to the pool. Shared: it holds no per-container state. */
-  readonly db: NodePgDatabase
+  /** Drizzle bound to the pool, or to PGlite. Shared: it holds no per-container state. */
+  readonly db: PgDb
   /** The application tables, already qualified for this container. */
   readonly tables: AppTables
   /** The registry. Present on the control handle only: a container never carries it. */
   readonly registry?: RegistryTables
-  execute(query: SQLWrapper | string): Promise<pg.QueryResult>
-  transaction<T>(fn: (tx: NodePgDatabase) => Promise<T>): Promise<T>
+  execute<T = Record<string, unknown>>(query: SQLWrapper | string): Promise<RawRows<T>>
+  transaction<T>(fn: (tx: PgDb) => Promise<T>): Promise<T>
 }
 
 export interface PostgresProviderOptions {
@@ -64,6 +83,11 @@ export interface PostgresProviderOptions {
    * pool and reads back every statement the data layer emitted.
    */
   pool?: pg.Pool
+  /**
+   * Drizzle on a PGlite instance, used instead of a pool (F60); `openPglite()` builds one.
+   * The provider owns it from here on: `shutdown()` closes it.
+   */
+  pglite?: PgliteDb
 }
 
 const DEFAULT_SCHEMA = 'public'
@@ -79,8 +103,15 @@ function connectionStringFrom(options: PostgresProviderOptions): string {
 }
 
 export class PostgresProvider {
-  private readonly pool: pg.Pool
-  private readonly db: NodePgDatabase
+  /** Absent on PGlite, which has one session and no pool. */
+  private readonly pool: pg.Pool | null
+  /** Present on PGlite only. */
+  private readonly pglite: PGlite | null
+  private readonly db: PgDb
+  /** Which driver runs underneath. The dialect is Postgres either way. */
+  readonly engine: 'postgres' | 'pglite'
+  /** Container locks held by this process: the PGlite form of an advisory lock (`withContainerLock`). */
+  private readonly heldLocks = new Set<string>()
   private readonly controlSchema: string
   private readonly registry: RegistryTables
   private readonly controlHandle: PostgresHandle
@@ -88,7 +119,8 @@ export class PostgresProvider {
   private readonly containers = new Map<string, AppTables>()
   private readonly maxOpenContainers: number
   private readonly leases = new RequestLeases()
-  private readonly url: string
+  /** Absent on PGlite: there is no server, so what needs one asks `serverUrl()` and is refused by name. */
+  private readonly url: string | null
   readonly strategy: 'schema' | 'container'
   private readonly containerPoolMax: number
   private readonly containerIdleMs: number
@@ -116,26 +148,38 @@ export class PostgresProvider {
     this.containerPoolMax = options.containerPoolMax ?? 2
     this.containerIdleMs = options.containerIdleMs ?? 300000
 
-    this.url = connectionStringFrom(options)
+    if (options.pglite) {
+      refuseContainersOnPglite(this.strategy)
+      this.engine = 'pglite'
+      this.url = null
+      this.pool = null
+      // The pool's refusal below, on the one session PGlite has (T-3.1, point 3).
+      this.pglite = guardPglite(options.pglite.$client)
+      this.db = options.pglite
+    } else {
+      this.engine = 'postgres'
+      this.url = connectionStringFrom(options)
+      this.pglite = null
 
-    const pool =
-      options.pool ??
-      new pg.Pool({
-        connectionString: this.url,
-        max: options.poolMax ?? 10,
-        idleTimeoutMillis: options.idleTimeoutMs ?? 30000,
-        // Pinned once, at connect time, identical on every connection: configuration, not
-        // session state. It matters only for the control plane in `public`, which Drizzle
-        // cannot qualify (docs/SCHEMA_V5.md §1).
-        options: `-c search_path=${this.controlSchema}`
-      })
+      const pool =
+        options.pool ??
+        new pg.Pool({
+          connectionString: this.url,
+          max: options.poolMax ?? 10,
+          idleTimeoutMillis: options.idleTimeoutMs ?? 30000,
+          // Pinned once, at connect time, identical on every connection: configuration, not
+          // session state. It matters only for the control plane in `public`, which Drizzle
+          // cannot qualify (docs/SCHEMA_V5.md §1).
+          options: `-c search_path=${this.controlSchema}`
+        })
 
-    // From here on the pool refuses to carry a session `search_path` (T-3.1, point 3).
-    // The check sits on the driver rather than on this class so it also covers raw SQL
-    // written by a consumer through `handle.execute`.
-    this.pool = guardPool(pool)
+      // From here on the pool refuses to carry a session `search_path` (T-3.1, point 3).
+      // The check sits on the driver rather than on this class so it also covers raw SQL
+      // written by a consumer through `handle.execute`.
+      this.pool = guardPool(pool)
+      this.db = drizzle(this.pool)
+    }
 
-    this.db = drizzle(this.pool)
     this.registry = registryTables(this.controlSchema)
     this.controlHandle = this.buildHandle('control', appTables(this.controlSchema), undefined, this.controlSchema)
   }
@@ -159,7 +203,7 @@ export class PostgresProvider {
     // a pooled connection. Statements built from the qualified tables are unaffected, because
     // they already name their schema.
     //
-    const enter = async (tx: Pick<NodePgDatabase, 'execute'>) => {
+    const enter = async (tx: { execute(query: SQLWrapper): Promise<unknown> }) => {
       if (locator) await tx.execute(sql.raw(`set local search_path to ${escapeIdentifier(locator)}`))
     }
 
@@ -168,9 +212,9 @@ export class PostgresProvider {
         ? (query) =>
             db.transaction(async (tx) => {
               await enter(tx)
-              return (await tx.execute(query as never)) as unknown as pg.QueryResult
-            }) as Promise<pg.QueryResult>
-        : (query) => db.execute(query as never) as unknown as Promise<pg.QueryResult>
+              return (await tx.execute(query as never)) as never
+            }) as never
+        : (query) => db.execute(query as never) as never
 
     const transaction: PostgresHandle['transaction'] =
       kind === 'tenant' && locator
@@ -314,7 +358,7 @@ export class PostgresProvider {
 
     const pool = guardPool(
       new pg.Pool({
-        connectionString: databaseUrl(this.url, locator),
+        connectionString: databaseUrl(this.serverUrl('A database per tenant'), locator),
         max: this.containerPoolMax,
         idleTimeoutMillis: 10000
       })
@@ -336,9 +380,17 @@ export class PostgresProvider {
       db,
       tables,
       registry: undefined,
-      execute: (query) => db.execute(query as never) as unknown as Promise<pg.QueryResult>,
+      execute: (query) => db.execute(query as never) as never,
       transaction: (fn) => db.transaction(fn as never) as never
     }
+  }
+
+  /** The server's connection string. PGlite has none, so whatever needs a server is refused by name. */
+  private serverUrl(what: string): string {
+    if (this.url === null) {
+      throw new Error(`${what} needs a Postgres server: PGlite runs inside this process and has none`)
+    }
+    return this.url
   }
 
   /**
@@ -433,10 +485,10 @@ export class PostgresProvider {
    *
    * The connection string is the provider's, not the caller's: an export route reachable over
    * HTTP must not decide which database it reads from any more than it decides where it
-   * writes.
+   * writes. On PGlite there is no server for `pg_dump` to reach, so the export is refused.
    */
   async exportContainer(tenant: Tenant, request: { directory?: string; schemaVersion: string | null }) {
-    return await exportPostgresSchema(tenant, { ...request, url: this.url })
+    return await exportPostgresSchema(tenant, { ...request, url: this.serverUrl('Export (pg_dump)') })
   }
 
   /**
@@ -450,7 +502,7 @@ export class PostgresProvider {
     assertLocator(tenant.locator)
     const handle = await this.forLocator(tenant.locator, tenant.id)
 
-    const tables: pg.QueryResult<{ table_name: string }> = await handle.execute(
+    const tables = await handle.execute<{ table_name: string }>(
       sql.raw(
         `select table_name from information_schema.tables ` +
           `where table_schema = '${tenant.locator}' and table_type = 'BASE TABLE' order by table_name`
@@ -459,13 +511,13 @@ export class PostgresProvider {
 
     const rowCounts: Record<string, number> = {}
     for (const row of tables.rows ?? []) {
-      const counted: pg.QueryResult<{ n: number }> = await handle.execute(
+      const counted = await handle.execute<{ n: number }>(
         sql.raw(`select count(*)::int as n from ${escapeIdentifier(row.table_name)}`)
       )
       rowCounts[row.table_name] = Number(counted.rows?.[0]?.n ?? 0)
     }
 
-    const size = await this.db.execute<{ bytes: string | number }>(
+    const size = await this.controlHandle.execute<{ bytes: string | number }>(
       sql.raw(
         `select coalesce(sum(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))), 0)::bigint as bytes ` +
           `from pg_tables where schemaname = '${tenant.locator}'`
@@ -528,9 +580,23 @@ export class PostgresProvider {
    * `pg_try_advisory_lock` and not `pg_advisory_lock`: a fleet migrator that BLOCKS on a
    * container someone else is migrating turns two operators into a deadlock with a queue.
    * Not acquiring is an outcome to report, not a reason to wait.
+   *
+   * On PGlite the lock is a set in this process. Its one session takes an advisory lock it
+   * already holds again (they are re-entrant), so it cannot tell two callers apart; and only
+   * one process may open a PGlite database, so this process is the whole truth.
    */
   async withContainerLock<T>(locator: string, fn: () => Promise<T>): Promise<T | null> {
     assertLocator(locator)
+    if (!this.pool) {
+      if (this.heldLocks.has(locator)) return null
+      this.heldLocks.add(locator)
+      try {
+        return await fn()
+      } finally {
+        this.heldLocks.delete(locator)
+      }
+    }
+
     const client = await this.pool.connect()
     try {
       const key = advisoryKey(locator)
@@ -550,7 +616,8 @@ export class PostgresProvider {
     if (this.sweeper) clearInterval(this.sweeper)
     this.sweeper = null
     for (const locator of [...this.openContainers.keys()]) await this.closeContainer_(locator)
-    await this.pool.end()
+    if (this.pglite) await this.pglite.close()
+    else await this.pool?.end()
   }
 }
 
@@ -602,10 +669,56 @@ export function assertLocator(name: string): string {
   return name
 }
 
-export function createPostgresProvider(options: GeneralConfig['options']): PostgresProvider {
+/**
+ * Opens Drizzle on PGlite (F60), in memory or on `dataDir`.
+ *
+ * Both packages are optional peers, imported here and only here: a deployment on a Postgres
+ * server never needs them installed. The control schema is pinned at start, as the pool pins
+ * it at connect: configuration for the life of the only session, never a `SET` the guard
+ * would have to let through.
+ */
+export async function openPglite(options: { dataDir?: string; schema?: string } = {}): Promise<PgliteDb> {
+  const schema = assertLocator(options.schema || DEFAULT_SCHEMA)
+  const [{ PGlite }, { drizzle: drizzlePglite }] = await Promise.all([
+    import('@electric-sql/pglite'),
+    import('drizzle-orm/pglite')
+  ])
+  // One options object: `create()` reads its second argument only when the first is a string,
+  // and a database in memory has no directory to put there.
+  const client = await PGlite.create({
+    dataDir: options.dataDir,
+    startParams: [...PGlite.defaultStartParams, '-c', `search_path=${schema}`]
+  })
+  return drizzlePglite(client)
+}
+
+/**
+ * A database per tenant needs a server to create it on: refused by name, and not at the first
+ * tenant as a connection to a URL nobody configured.
+ */
+function refuseContainersOnPglite(strategy: string): void {
+  if (strategy === 'container') {
+    throw new Error('PGlite cannot run the container strategy: a database per tenant needs a Postgres server')
+  }
+}
+
+export async function createPostgresProvider(options: GeneralConfig['options']): Promise<PostgresProvider> {
   const control = options?.control
   const tenants = options?.tenants
   const containers = tenants?.containers
+  // One database per tenant only where the configuration says so: `schema` stays the
+  // default and the shape everything else in the framework was built around.
+  const strategy = tenants?.strategy === 'container' ? 'container' : 'schema'
+
+  if (control?.engine === 'pglite') {
+    // Tenants declared next to PGlite live in the same instance, as schemas, on its one
+    // session: usable in development, refused in production by the capability check. The
+    // strategy is checked before the instance opens, which takes about a second.
+    refuseContainersOnPglite(strategy)
+    const pglite = await openPglite({ dataDir: control.dataDir, schema: control.schema })
+    return new PostgresProvider({ schema: control.schema, pglite, strategy })
+  }
+
   return new PostgresProvider({
     url: control?.url,
     schema: control?.schema,
@@ -616,9 +729,7 @@ export function createPostgresProvider(options: GeneralConfig['options']): Postg
     // that tune from outside the repository, and until T-9.4 it was documented and read by
     // nobody (D-11 in another shape).
     maxOpenContainers: containers?.maxOpen ?? envInt('TENANT_CONTAINERS_MAX_OPEN', 20, { min: 1, max: 10_000 }),
-    // One database per tenant only where the configuration says so: `schema` stays the
-    // default and the shape everything else in the framework was built around.
-    strategy: tenants?.strategy === 'container' ? 'container' : 'schema',
+    strategy,
     containerPoolMax: containers?.poolMax,
     containerIdleMs: containers?.idleTimeoutMs
   })

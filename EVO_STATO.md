@@ -129,7 +129,10 @@ bearer. SAML resta rinviato finché `@node-saml/node-saml` non pubblica una vers
 manutentore per gli scenari S1, S2 e S3. Prima PGlite nel provider e i test del data layer su
 PGlite (T-14.1, T-14.2), poi via SQLite e libSQL (T-14.3), poi gli statement preparati sui percorsi
 caldi (T-14.4); dopo, pino e OpenTelemetry, AI SDK 7, MCP. Node 26 è già nei sei repository (qui
-`53befa8`).
+`53befa8`). T-14.1 fatto: `control.engine: 'pglite'` apre PGlite nel provider Postgres, in memoria
+o in `control.dataDir`, con la stessa guardia, le stesse migrazioni e i tenant `schema` fuori
+produzione; le prove hanno trovato un'email duplicata che su Postgres non diventava
+`EMAIL_ALREADY_REGISTERED`.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

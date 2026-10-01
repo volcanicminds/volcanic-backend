@@ -73,12 +73,22 @@ connessione contro cento connessioni.
 
 ## 2. Compiti
 
-- [ ] **T-14.1** PGlite nel provider (F60). Opzione `pglite` del provider, creata da
+- [x] **T-14.1** PGlite nel provider (F60). Opzione `pglite` del provider, creata da
   `createPostgresProvider` per `control.engine: 'pglite'`; `withContainerLock` sull'unica
   sessione; export rifiutato con un messaggio che dice perché; la guardia sullo stato di sessione
   anche su PGlite; `shutdown` che chiude l'istanza. Prove: avvio da `start()` con
   `engine: 'pglite'`, migrazioni applicate, handle di controllo e di tenant, stato di sessione
   rifiutato. Difetto piantato: togliere il ramo PGlite da `createPostgresProvider`.
+  Evidenza: `test/db/pglite.spec.ts`, 9 prove verdi su Node 26.9.0 senza `DATABASE_URL` (avvio,
+  migrazioni del controllo e di un tenant `schema`, `control.dataDir` dopo un riavvio, schema di
+  controllo fissato all'avvio, guardia sull'istanza e nelle transazioni, lock, rifiuti per nome,
+  chiusura); col ramo PGlite tolto 3 prove su 8 rosse. I tenant `schema` accanto a PGlite stanno
+  nella stessa istanza fuori produzione, come dice la matrice (`capabilities.ts`); `container` è
+  rifiutato prima di aprirla. Due difetti trovati dalle prove: `PGlite.create(undefined, opzioni)`
+  scarta le opzioni (lo schema non veniva fissato); `isUniqueViolation` guardava solo l'errore di
+  Drizzle, che avvolge quello del driver, quindi su Postgres un'email già registrata usciva come
+  errore grezzo e il nuovo tentativo di `authFlow` non partiva (dal sorgente di `pg-core`, su un
+  server non osservato). Ora scende nella catena `cause`.
 - [ ] **T-14.2** I test del data layer su PGlite (F61). `test/db/fixtures/migrated.ts` con il
   contenitore migrato su PGlite; le suite che oggi dicono «SQLite always, Postgres with
   DATABASE_URL» passano a PGlite; `managers`, `query`, `schema` e `sessions`, che girano solo su

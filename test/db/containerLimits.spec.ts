@@ -37,7 +37,7 @@ const declared = (tenants: any) =>
 describe('container limits · from the loader to the adapter (T-10.9)', () => {
   it('reads TENANT_CONTAINERS_MAX_OPEN when the configuration does not say', async () => {
     await withEnv('TENANT_CONTAINERS_MAX_OPEN', '7', async () => {
-      const provider: any = createPostgresProvider(declared({ strategy: 'schema', engine: 'postgres' }))
+      const provider: any = await createPostgresProvider(declared({ strategy: 'schema', engine: 'postgres' }))
       try {
         expect(provider.maxOpenContainers).toBe(7)
       } finally {
@@ -48,7 +48,7 @@ describe('container limits · from the loader to the adapter (T-10.9)', () => {
 
   it('lets the configuration win over the environment', async () => {
     await withEnv('TENANT_CONTAINERS_MAX_OPEN', '7', async () => {
-      const provider: any = createPostgresProvider(
+      const provider: any = await createPostgresProvider(
         declared({ strategy: 'schema', engine: 'postgres', containers: { maxOpen: 4 } })
       )
       try {
@@ -61,7 +61,7 @@ describe('container limits · from the loader to the adapter (T-10.9)', () => {
 
   it('falls back to the documented default when neither says', async () => {
     await withEnv('TENANT_CONTAINERS_MAX_OPEN', undefined, async () => {
-      const provider: any = createPostgresProvider(declared({ strategy: 'schema', engine: 'postgres' }))
+      const provider: any = await createPostgresProvider(declared({ strategy: 'schema', engine: 'postgres' }))
       try {
         expect(provider.maxOpenContainers).toBe(20)
       } finally {

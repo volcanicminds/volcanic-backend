@@ -40,13 +40,18 @@ const DUMMY_PASSWORD_HASH = '$2b$12$4sLKI6Ag4n6KjUBPqA4oJuAthEdYgbwUj7oIR8yj7Iek
 const EMAIL_TAKEN_CODE = 'EMAIL_ALREADY_REGISTERED'
 
 // Every engine we support names a unique violation somewhere in the code or the message:
-// Postgres answers 23505, better-sqlite3 and libSQL answer SQLITE_CONSTRAINT_UNIQUE. The test
-// is deliberately loose because it is not what decides: the lookup that follows it is.
+// Postgres answers 23505, better-sqlite3 and libSQL answer SQLITE_CONSTRAINT_UNIQUE. Drizzle
+// wraps what the driver throws in its own "Failed query" error, so the answer is searched down
+// the cause chain, a few links deep. The test is deliberately loose because it is not what
+// decides: the lookup that follows it is.
 export function isUniqueViolation(err: unknown): boolean {
-  const { code: rawCode, message: rawMessage } = (err ?? {}) as { code?: unknown; message?: unknown }
-  const code = String(rawCode ?? '')
-  const message = String(rawMessage ?? '').toLowerCase()
-  return code === '23505' || code.startsWith('SQLITE_CONSTRAINT') || message.includes('unique')
+  let link = err as { code?: unknown; message?: unknown; cause?: unknown } | undefined
+  for (let depth = 0; link && depth < 5; depth++, link = link.cause as typeof link) {
+    const code = String(link.code ?? '')
+    const message = String(link.message ?? '').toLowerCase()
+    if (code === '23505' || code.startsWith('SQLITE_CONSTRAINT') || message.includes('unique')) return true
+  }
+  return false
 }
 
 const NAME = 'userManager'

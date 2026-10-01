@@ -230,6 +230,8 @@ export interface ControlConfig {
   /** Postgres only: the schema the control plane lives in. Explicit, never inferred. */
   schema?: string
   pool?: PoolConfig
+  /** `pglite` only: the directory of the database. Omitted, it lives in memory and ends with the process. */
+  dataDir?: string
   [option: string]: unknown
 }
 

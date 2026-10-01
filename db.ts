@@ -56,7 +56,8 @@ export async function start(options?: DataLayerOptions) {
   assertSupported(resolved)
 
   const engine = resolved?.control?.engine ?? 'postgres'
-  const provider = engine === 'sqlite' || engine === 'libsql' ? createSqliteProvider(resolved) : createPostgresProvider(resolved)
+  const provider =
+    engine === 'sqlite' || engine === 'libsql' ? createSqliteProvider(resolved) : await createPostgresProvider(resolved)
 
   // The measured constraint of appendix A.3 is the connection, so it is checked before the
   // first one is handed out and not at the two-hundredth tenant (T-7.1).

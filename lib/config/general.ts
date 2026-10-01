@@ -38,7 +38,9 @@ export default {
       pool: {
         max: Number(process.env.DB_POOL_MAX) || 10,
         idleTimeoutMs: Number(process.env.DB_POOL_IDLE_MS) || 30000
-      }
+      },
+      // pglite only: unset, the database lives in memory and ends with the process.
+      dataDir: process.env.PGLITE_DATA_DIR || undefined
     },
     // Assente = single tenant, ed è il default. Dichiarare il blocco È abilitare la tenancy:
     // non esiste un flag `enabled` che possa contraddire la strategia (in v4 esisteva, e il
