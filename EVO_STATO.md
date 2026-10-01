@@ -125,6 +125,12 @@ provato sul banco multi-tenant Postgres. T-13.6 (`volcanic-admin@3577eaa`): la f
 riautenticazione e la richiesta ripetuta, provate con Playwright sui due piani in cookie e in
 bearer. SAML resta rinviato finché `@node-saml/node-saml` non pubblica una versione nuova.
 
+**Fase 14 aperta il 1° ottobre 2026** (`EVO_FASE_14.md`): solo Postgres, poi lo stack scelto dal
+manutentore per gli scenari S1, S2 e S3. Prima PGlite nel provider e i test del data layer su
+PGlite (T-14.1, T-14.2), poi via SQLite e libSQL (T-14.3), poi gli statement preparati sui percorsi
+caldi (T-14.4); dopo, pino e OpenTelemetry, AI SDK 7, MCP. Node 26 è già nei sei repository (qui
+`53befa8`).
+
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
 `ERR_HTTP_HEADERS_SENT` del sample è chiuso (26 settembre 2026, tabella «Fuori piano»). Restano,
@@ -269,3 +275,4 @@ documenti esistono e in che ordine si leggono.
 | Tenant `destroyed`, stato finale | `[x]` | **Fatto il 27 settembre 2026**. La distruzione marca la riga `destroyed` (`markTenantDestroyed`) invece del soft delete: il ripristino riportava in `active` un tenant senza contenitore. Le scritture del manager (`updateTenant`, `suspendTenant`, `restoreTenant`, `softDeleteTenant`) escludono le righe distrutte nel `where`; le rotte rispondono 409 `TENANT_DESTROYED`, e una seconda `DELETE /tenants/:id/data` risponde 200 con `alreadyDestroyed: true`, come dice la doc. Prove: `check-all` verde (97 rifiuti), `npm test` 957 più 3 saltati, banco multi-tenant Postgres 25; tre difetti piantati presi; a runtime seconda distruzione 200 `alreadyDestroyed`, restore, suspend, update e fase 1 tutti 409. Drift di doc chiuso il 28 settembre 2026: `DESTRUCTION_TOKEN_EXPIRED` non era mai emesso ed è tolto da `docs/API_V5.md` §6.2, che ora dice che un token scaduto, speso, sconosciuto o di un altro operatore risponde `DESTRUCTION_TOKEN_INVALID` (il rimedio è lo stesso, una nuova fase 1; nessun consumer usava il codice). |
 | Step-up sugli upload dell'admin | `[x]` | **Fatto il 27 settembre 2026**. `src/ui/widgets/upload/rest.ts` faceva `fetch` diretto e saltava rinnovo e step-up: ora passa da `dataProvider.custom()` (corpo `FormData` senza `Content-Type` JSON). Provato a runtime: dopo `STEP_UP_MAX_AGE` la richiesta chiede la conferma d'identità (una volta) e il rifiuto resta. Il mock risponde `{}` agli endpoint immagine. |
 | Etichette «Plural» senza dizionario | `[x]` | **Fatto il 27 settembre 2026**. Il fallback dell'admin umanizzava l'ultimo segmento, e `res.<name>.plural` diventava «Plural» per ogni risorsa. Ora per `singular`/`plural` usa `<name>`: «System Access Log» a runtime sul piano di controllo. |
+| Solo Postgres: SQLite e libSQL fuori dal framework | `[ ]` | **Decisa il 1° ottobre 2026** (`EVO_PUNTI_APERTI.md`, voce 23 riaperta). Al 1° ottobre 2026 SQLite e libSQL compaiono in 29 file di `lib/`, 24 di `test/` e 10 tra `docs/`, `README.md` e `llms.txt`: l'adattatore `lib/database/adapters/sqlite`, `lib/database/schema/sqlite.ts`, gli insiemi `control/sqlite` e `tenant/sqlite` in `lib/database/migrations`, i peer `better-sqlite3` e `@libsql/client`. Piano in `EVO_FASE_14.md` (F58, da T-14.1 a T-14.3). |
