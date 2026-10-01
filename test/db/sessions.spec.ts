@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-11.5, against a real SQLite in memory: the session registry as the database sees it.
+// T-11.5, against a container migrated on PGlite: the session registry as the database sees it.
 //
 // The controller-level behaviour lives in test/lib/authChannels.spec.ts with an in-memory store.
 // What is proved here is the part that store cannot prove: that the SQL does what the contract
@@ -8,24 +8,12 @@
 // the WHERE clause, which is what makes two simultaneous renewals end with one winner, and the
 // shift of `secret_hash` into `previous_secret_hash` inside a single UPDATE.
 //
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
-import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import { expect } from 'expect'
-import { appTables } from '../../lib/database/schema/sqlite.js'
 import { createSessionManager, hashSecret } from '../../lib/database/managers/session.js'
-
-const tables = appTables()
-
-const createTableSql = (table: any) => {
-  const config = getTableConfig(table)
-  const columns = config.columns
-    .map((c: any) => `"${c.name}" ${c.getSQLType()}${c.primary ? ' primary key' : ''}`)
-    .join(', ')
-  return `create table "${config.name}" (${columns})`
-}
+import { migratedPglite, type Migrated } from './fixtures/migrated.js'
 
 const sessions = createSessionManager()
+let db: Migrated
 let handle: any
 
 const open = (overrides: Record<string, unknown> = {}) =>
@@ -38,21 +26,21 @@ const open = (overrides: Record<string, unknown> = {}) =>
     ...(overrides as any)
   })
 
-before(() => {
-  const sqlite = new Database(':memory:')
-  const db = drizzle(sqlite)
-  sqlite.exec(createTableSql(tables.session))
-  handle = { kind: 'tenant', dialect: 'sqlite', tenantId: 'acme', db, tables }
-})
-
 describe('database/managers · the session registry (T-11.5)', () => {
+  before(async () => {
+    db = await migratedPglite()
+    handle = db.raw
+  })
+
+  after(async () => await db?.close())
+
   it('refuses to work without a handle instead of finding one', async () => {
     await expect(sessions.findBySecret(undefined as never, 'x', 10)).rejects.toThrow(/needs a data handle/)
   })
 
   it('writes the hash of the secret and never the secret', async () => {
     const row: any = await open({ secret: 'plain-secret' })
-    const stored: any = handle.db.select().from(tables.session).all().find((r: any) => r.sid === row.sid)
+    const stored: any = (await handle.db.select().from(handle.tables.session)).find((r: any) => r.sid === row.sid)
 
     expect(stored.secretHash).toBe(hashSecret('plain-secret'))
     expect(JSON.stringify(stored)).not.toContain('plain-secret')

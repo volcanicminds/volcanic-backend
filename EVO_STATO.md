@@ -132,7 +132,10 @@ caldi (T-14.4); dopo, pino e OpenTelemetry, AI SDK 7, MCP. Node 26 è già nei s
 `53befa8`). T-14.1 fatto: `control.engine: 'pglite'` apre PGlite nel provider Postgres, in memoria
 o in `control.dataDir`, con la stessa guardia, le stesse migrazioni e i tenant `schema` fuori
 produzione; le prove hanno trovato un'email duplicata che su Postgres non diventava
-`EMAIL_ALREADY_REGISTERED`.
+`EMAIL_ALREADY_REGISTERED`. T-14.2 fatto: i test del data layer girano su PGlite, su istanze
+clonate da una migrata con le migrazioni vere; nessuna prova persa, una nuova che tiene lo schema
+migrato contro quello dichiarato. Il prezzo: circa 7 s sulle due suite e, su `test:migrations`,
+un picco di memoria da 247 a 1338 MB.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

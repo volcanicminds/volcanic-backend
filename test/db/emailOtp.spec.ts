@@ -3,7 +3,7 @@
 // T-12.22 to T-12.24: `email-otp` through the flow engine, on the real flow store of a migrated
 // container. The store is not faked here because the properties in doubt are its own: the ceiling
 // per subject that a restarted flow must not reset, the conditional consumption of a code, and an
-// unproven flow that must not evict a proven one. SQLite always, Postgres with DATABASE_URL.
+// unproven flow that must not evict a proven one. PGlite always, Postgres with DATABASE_URL.
 //
 import { expect } from 'expect'
 import { eq } from 'drizzle-orm'
@@ -16,7 +16,7 @@ import { maskEmail, newCode } from '../../lib/auth/authenticators/emailOtp.js'
 import { createAuthFlowManager } from '../../lib/database/managers/authFlow.js'
 import { createUserManager } from '../../lib/database/managers/user.js'
 import { column } from '../../lib/database/managers/runtime.js'
-import { DATABASE_URL, migratedPostgres, migratedSqlite, type Migrated } from './fixtures/migrated.js'
+import { DATABASE_URL, migratedPglite, migratedPostgres, type Migrated } from './fixtures/migrated.js'
 
 process.env.MFA_DB_SECRET = process.env.MFA_DB_SECRET || 'unit-test-secret-please-change-32xyz'
 ;(global as any).log = {}
@@ -314,7 +314,7 @@ describe('auth · email-otp helpers', () => {
   })
 })
 
-behaviours('SQLite', () => migratedSqlite())
+behaviours('PGlite', () => migratedPglite())
 
 if (DATABASE_URL) {
   behaviours('Postgres', () => migratedPostgres({ control: 'test_p12_otp_ctl', tenant: 'test_p12_otp_acme' }))

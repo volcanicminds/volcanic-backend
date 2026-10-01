@@ -4,7 +4,7 @@
 // container and against a provider that answers in process (test/lib/fixtures/fakeIdp.ts). The
 // store is real because the properties in doubt are its own: the `state` found by its hash in the
 // right container, spent with the first return, the verifier and the nonce kept encrypted, the
-// result cashed only by the flow that started. SQLite always, Postgres with DATABASE_URL.
+// result cashed only by the flow that started. PGlite always, Postgres with DATABASE_URL.
 //
 import { expect } from 'expect'
 import type { AuthPlaneFlows, ResolvedIdentityProvider } from '../../types/global.js'
@@ -17,7 +17,7 @@ import { createAuthFlowManager } from '../../lib/database/managers/authFlow.js'
 import { createExternalIdentityManager } from '../../lib/database/managers/externalIdentity.js'
 import { createUserManager } from '../../lib/database/managers/user.js'
 import { fakeIdp } from '../lib/fixtures/fakeIdp.js'
-import { DATABASE_URL, migratedPostgres, migratedSqlite, type Migrated } from './fixtures/migrated.js'
+import { DATABASE_URL, migratedPglite, migratedPostgres, type Migrated } from './fixtures/migrated.js'
 
 process.env.MFA_DB_SECRET = process.env.MFA_DB_SECRET || 'unit-test-secret-please-change-32xyz'
 ;(global as any).log = {}
@@ -225,7 +225,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
   })
 }
 
-behaviours('SQLite', () => migratedSqlite())
+behaviours('PGlite', () => migratedPglite())
 
 if (DATABASE_URL) {
   behaviours('Postgres', () => migratedPostgres({ control: 'test_p12_oidc_ctl', tenant: 'test_p12_oidc_acme' }))

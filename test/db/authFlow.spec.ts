@@ -2,9 +2,10 @@
 // T-12.12, against a real container migrated with the framework's own migrations: the flow store,
 // the links to external identities and the tenant's identity providers, as the database sees them.
 //
-// SQLite always; Postgres too when DATABASE_URL is set, because the two properties that are
-// statements and not JavaScript (one winner among concurrent submissions of a code, and the
-// per-subject ceiling across flows) are exactly where two engines can disagree.
+// PGlite always; Postgres too when DATABASE_URL is set, because PGlite serves every statement on
+// its one session: the two properties that are statements and not JavaScript (one winner among
+// concurrent submissions of a code, and the per-subject ceiling across flows) meet a real race
+// only on a server, where the submissions travel on different connections.
 //
 import { expect } from 'expect'
 import { eq } from 'drizzle-orm'
@@ -15,7 +16,7 @@ import { createIdentityProviderManager } from '../../lib/database/managers/ident
 import { hashSecret } from '../../lib/database/managers/session.js'
 import { column } from '../../lib/database/managers/runtime.js'
 import type { RuntimeHandle } from '../../lib/database/managers/runtime.js'
-import { DATABASE_URL, migratedPostgres, migratedSqlite, type Migrated } from './fixtures/migrated.js'
+import { DATABASE_URL, migratedPglite, migratedPostgres, type Migrated } from './fixtures/migrated.js'
 
 process.env.MFA_DB_SECRET = process.env.MFA_DB_SECRET || 'unit-test-secret-please-change-32xyz'
 ;(global as unknown as { log: object }).log = {}
@@ -407,7 +408,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
   })
 }
 
-behaviours('SQLite', () => migratedSqlite())
+behaviours('PGlite', () => migratedPglite())
 
 if (DATABASE_URL) {
   behaviours('Postgres', () => migratedPostgres({ control: `test_p12_ctl_${++counter}`, tenant: `test_p12_acme_${++counter}` }))

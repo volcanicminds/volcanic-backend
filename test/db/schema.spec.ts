@@ -5,13 +5,57 @@
 // chosen by qualifying the tables, not by mutating a connection.
 //
 import { expect } from 'expect'
+import { sql } from 'drizzle-orm'
 import { getTableConfig as pgConfig } from 'drizzle-orm/pg-core'
 import { getTableConfig as sqliteConfig } from 'drizzle-orm/sqlite-core'
 import * as pg from '../../lib/database/schema/pg.js'
 import * as sqlite from '../../lib/database/schema/sqlite.js'
+import { migratedPglite, type Migrated } from './fixtures/migrated.js'
 
 const columns = (config: any) => config.columns.map((c: any) => c.name).sort()
 const column = (config: any, name: string) => config.columns.find((c: any) => c.name === name)
+
+// One line per column and per index, so a failure prints the difference and nothing else.
+const declared = (tables: Record<string, any>) =>
+  Object.values(tables)
+    .flatMap((table) => {
+      const config = pgConfig(table)
+      const pk = new Set([
+        ...config.columns.filter((c) => c.primary).map((c) => c.name),
+        ...config.primaryKeys.flatMap((p) => p.columns.map((c) => c.name))
+      ])
+      return [
+        ...config.columns.map(
+          (c) => `${config.name}.${c.name} ${c.getSQLType()}${c.notNull ? ' not null' : ''}${pk.has(c.name) ? ' pk' : ''}`
+        ),
+        ...config.indexes.map(
+          (i) => `${config.name} ${i.config.name}${i.config.unique ? ' unique' : ''}${i.config.where ? ' partial' : ''}`
+        )
+      ]
+    })
+    .sort()
+
+const migrated = async (handle: any, schema: string) => {
+  const cols = await handle.execute(sql`
+    select c.relname as "table", a.attname as name, format_type(a.atttypid, a.atttypmod) as type,
+      a.attnotnull as "notNull", coalesce(a.attnum = any(i.indkey), false) as pk
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
+    left join pg_index i on i.indrelid = c.oid and i.indisprimary
+    where n.nspname = ${schema} and c.relkind = 'r'`)
+  const indexes = await handle.execute(sql`
+    select t.relname as "table", x.relname as name, i.indisunique as "unique", i.indpred is not null as partial
+    from pg_index i
+    join pg_class x on x.oid = i.indexrelid
+    join pg_class t on t.oid = i.indrelid
+    join pg_namespace n on n.oid = t.relnamespace
+    where n.nspname = ${schema} and not i.indisprimary`)
+  return [
+    ...cols.rows.map((c: any) => `${c.table}.${c.name} ${c.type}${c.notNull ? ' not null' : ''}${c.pk ? ' pk' : ''}`),
+    ...indexes.rows.map((i: any) => `${i.table} ${i.name}${i.unique ? ' unique' : ''}${i.partial ? ' partial' : ''}`)
+  ].sort()
+}
 
 describe('database/schema · parity between the two dialects', () => {
   const pgApp = pg.appTables('public')
@@ -111,6 +155,29 @@ describe('database/schema · postgres', () => {
     expect(columns(tenant)).toContain('locator')
     expect(columns(tenant)).not.toContain('db_schema') // v4 had dbSchema + dbName, and neither
     expect(columns(tenant)).not.toContain('db_name') //  could describe a file container
+  })
+})
+
+//
+// The schema file declares, drizzle-kit writes the migrations, and the runner applies those: a
+// column declared and never generated would pass every test that does not touch it. So what the
+// migrations build is held against what the file declares, in both sets.
+//
+describe('database/schema · what the migrations build', () => {
+  let db: Migrated
+
+  before(async () => {
+    db = await migratedPglite()
+  })
+
+  after(async () => await db?.close())
+
+  it('builds the declared tables, columns and indexes, in the control set and in the tenant set', async () => {
+    const { control, tenant } = db.schemas
+    expect(await migrated(db.control, control)).toEqual(
+      declared({ ...pg.appTables(control), ...pg.registryTables(control) })
+    )
+    expect(await migrated(db.control, tenant)).toEqual(declared(pg.appTables(tenant)))
   })
 })
 

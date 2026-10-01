@@ -1,14 +1,14 @@
 //
 // T-12.12, the access log manager of F44 on a real migrated container: the closed vocabulary, the
 // truncated address, and the purge by predicate. T-12.32 and T-12.33: the reading of one plane and
-// the two retentions. SQLite always, Postgres with DATABASE_URL.
+// the two retentions. PGlite always, Postgres with DATABASE_URL.
 //
 import { expect } from 'expect'
 import { eq } from 'drizzle-orm'
 import type { AccessLogEntry } from '../../types/global.js'
 import { createAccessLogManager, truncateIp } from '../../lib/database/managers/accessLog.js'
 import { column } from '../../lib/database/managers/runtime.js'
-import { DATABASE_URL, migratedPostgres, migratedSqlite, type Migrated } from './fixtures/migrated.js'
+import { DATABASE_URL, migratedPglite, migratedPostgres, type Migrated } from './fixtures/migrated.js'
 
 ;(global as unknown as { log: object }).log = {}
 
@@ -174,7 +174,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
   })
 }
 
-behaviours('SQLite', () => migratedSqlite())
+behaviours('PGlite', () => migratedPglite())
 
 if (DATABASE_URL) {
   behaviours('Postgres', () => migratedPostgres({ control: 'test_p12_log_ctl', tenant: 'test_p12_log_acme' }))

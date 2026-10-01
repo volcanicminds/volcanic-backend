@@ -11,7 +11,7 @@ import { resolveExternal } from '../../lib/auth/external.js'
 import type { ResolvedProvider } from '../../lib/auth/providers.js'
 import { createExternalIdentityManager } from '../../lib/database/managers/externalIdentity.js'
 import { createUserManager } from '../../lib/database/managers/user.js'
-import { DATABASE_URL, migratedPostgres, migratedSqlite, type Migrated } from './fixtures/migrated.js'
+import { DATABASE_URL, migratedPglite, migratedPostgres, type Migrated } from './fixtures/migrated.js'
 
 process.env.MFA_DB_SECRET = process.env.MFA_DB_SECRET || 'unit-test-secret-please-change-32xyz'
 ;(global as any).log = {}
@@ -147,7 +147,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
   })
 }
 
-behaviours('SQLite', () => migratedSqlite())
+behaviours('PGlite', () => migratedPglite())
 
 if (DATABASE_URL) {
   behaviours('Postgres', () => migratedPostgres({ control: 'test_p12_ext_ctl', tenant: 'test_p12_ext_acme' }))

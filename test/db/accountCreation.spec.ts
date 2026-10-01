@@ -3,7 +3,7 @@
 // T-12.46 and T-12.48 on the real stores of a migrated container (F49): the settings table on both
 // containers, an account that waits and the approval that ends the wait, the doors a waiting
 // account must not pass (password, email-otp, a link to a provider), and the just-in-time
-// provisioning under each of the three modes. SQLite always, Postgres with DATABASE_URL.
+// provisioning under each of the three modes. PGlite always, Postgres with DATABASE_URL.
 //
 import { expect } from 'expect'
 import type { AuthContext, AuthPlaneFlows, ExternalAuthResult } from '../../types/global.js'
@@ -17,7 +17,7 @@ import { createAuthFlowManager } from '../../lib/database/managers/authFlow.js'
 import { createExternalIdentityManager } from '../../lib/database/managers/externalIdentity.js'
 import { createSettingManager } from '../../lib/database/managers/setting.js'
 import { createUserManager } from '../../lib/database/managers/user.js'
-import { DATABASE_URL, migratedPostgres, migratedSqlite, type Migrated } from './fixtures/migrated.js'
+import { DATABASE_URL, migratedPglite, migratedPostgres, type Migrated } from './fixtures/migrated.js'
 
 process.env.MFA_DB_SECRET = process.env.MFA_DB_SECRET || 'unit-test-secret-please-change-32xyz'
 ;(global as any).log = {}
@@ -226,7 +226,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
   })
 }
 
-behaviours('SQLite', () => migratedSqlite())
+behaviours('PGlite', () => migratedPglite())
 
 if (DATABASE_URL) {
   behaviours('Postgres', () => migratedPostgres({ control: 'test_f49_ctl', tenant: 'test_f49_acme' }))

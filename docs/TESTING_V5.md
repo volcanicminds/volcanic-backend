@@ -13,7 +13,7 @@
 | core end-to-end | `test/e2e` | PGlite | `npm run test:e2e:pglite` | 2234 |
 | multi-tenant, logic | `test/e2e-mt` | PGlite | `npm run test:e2e:mt:pglite` | 2235 |
 | cookie mode, no-refresh, MFA, rate limit, fixtures | `test/e2e-*` | PGlite | one script each | 2236-2240 |
-| data layer | `test/typeorm` → **rename to `test/db`** | PGlite | `npm run test:db` | — |
+| data layer | `test/db`, `test/migrations` | PGlite; Postgres too with `DATABASE_URL` | `npm run test:db`, `npm run test:migrations` | none |
 | **isolation, black box** | **`test/e2e-mt-pg` (new)** | **real Postgres** | **`npm run test:e2e:mt:pg`** | **2241** |
 | performance | `test/perf` | PGlite | `npm run test:perf` | 2233 |
 

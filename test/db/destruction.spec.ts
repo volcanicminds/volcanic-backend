@@ -6,7 +6,7 @@
 import { expect } from 'expect'
 import { createDestructionManager, hashToken } from '../../lib/database/managers/destruction.js'
 import { challengeMac } from '../../lib/database/managers/authFlow.js'
-import { DATABASE_URL, migratedPostgres, migratedSqlite, type Migrated } from './fixtures/migrated.js'
+import { DATABASE_URL, migratedPglite, migratedPostgres, type Migrated } from './fixtures/migrated.js'
 
 ;(global as unknown as { log: object }).log = {}
 
@@ -107,7 +107,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
   })
 }
 
-behaviours('SQLite', () => migratedSqlite())
+behaviours('PGlite', () => migratedPglite())
 
 if (DATABASE_URL) {
   behaviours('Postgres', () => migratedPostgres({ control: 'test_destruction_ctl', tenant: 'test_destruction_acme' }))

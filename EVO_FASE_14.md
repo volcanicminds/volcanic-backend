@@ -92,11 +92,32 @@ connessione contro cento connessioni.
   Drizzle, che avvolge quello del driver, quindi su Postgres un'email già registrata usciva come
   errore grezzo e il nuovo tentativo di `authFlow` non partiva (dal sorgente di `pg-core`, su un
   server non osservato). Ora scende nella catena `cause`.
-- [ ] **T-14.2** I test del data layer su PGlite (F61). `test/db/fixtures/migrated.ts` con il
+- [x] **T-14.2** I test del data layer su PGlite (F61). `test/db/fixtures/migrated.ts` con il
   contenitore migrato su PGlite; le suite che oggi dicono «SQLite always, Postgres with
   DATABASE_URL» passano a PGlite; `managers`, `query`, `schema` e `sessions`, che girano solo su
   SQLite in memoria, passano a PGlite; in `test/migrations` gli insiemi, l'export e gli upgrade.
   L'evidenza riporta il conteggio delle prove prima e dopo, con il motivo di ogni prova che sparisce.
+  Evidenza: non sparisce nessuna prova. Per file, prima e dopo, su Node 26.9.0 senza
+  `DATABASE_URL`: `accessLog` 11, `accountCreation` 7, `authFlow` 24 e una saltata, `destruction` 5,
+  `emailOtp` 12, `externalIdentity` 6, `oidc` 10, `managers` 26, `query` 23, `sessions` 11, gli
+  upgrade 1, 2 e 1; `schema` da 12 a 13, con la prova nuova che mette ciò che le migrazioni
+  costruiscono (colonne, tipi, chiavi, indici, nei due insiemi) accanto a ciò che `schema/pg.ts`
+  dichiara. `npm run coverage` 865 verdi e 31 saltate (prima 864 e 31), istruzioni da 87,67% a
+  88,07%; `check-all` verde. I file di `test/` che nominano SQLite o libSQL scendono da 24 a 11.
+  Difetti piantati: una colonna dichiarata in `pg.ts` e mai generata fa rosse due prove (la nuova e
+  la parità con SQLite); il modello col tenant fermo a `0001_sessions_tenant` ne fa rosse 50 in
+  cinque suite. Ogni fixture è un'istanza a sé, clonata da una migrata una volta per processo
+  (migrare costa circa 0,85 s, clonare circa 0,17 s); un upgrade fermo a una migrazione vecchia
+  migra da zero. Il prezzo, una corsa per parte, col picco `maxRSS` del processo di mocha:
+  `test:db` da 29,7 a 33,7 s e da 1261 a 1368 MB; `test:migrations` da 0,35 a 3,6 s e da 247 a
+  1338 MB. Niente da portare in `sets`, che legge i file delle migrazioni e nessun database, né in
+  `export`: il file SQLite se ne va con T-14.3, il dump vuole `pg_dump` e un server, e su PGlite
+  l'export è rifiutato da T-14.1. Corretto per strada: `managers`, `query` e `sessions` aprivano il
+  database in `before` e `after` al livello del file, che mocha esegue come hook di radice
+  dell'intera corsa; ora stanno nel `describe` del file. Il rifiuto dell'email già registrata
+  (D-17) gira sull'indice unico creato dalle migrazioni. La concorrenza di `authFlow` resta su
+  Postgres con `DATABASE_URL`: PGlite serve tutto su una sessione. `docs/TESTING_V5.md` §1, riga
+  del data layer, allineata; la riga Magic Query di §3 parla ancora di SQLite e va con T-14.3.
 - [ ] **T-14.3** Via SQLite e libSQL (F58, F59). Codice: `adapters/sqlite`, `schema/sqlite.ts`,
   `schema/entry/*.sqlite.ts`, `containers/replica.ts`, `exportSqliteFile`, i due insiemi `sqlite`,
   i rami di `db.ts`, `runner.ts`, `files.ts`, `query/operators.ts`, `managers/user.ts`,
