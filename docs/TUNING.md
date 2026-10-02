@@ -146,3 +146,79 @@ A tunable work factor is also a way to weaken every password in the database wit
 environment variable, and nothing downstream would report it. The bench measures to spend the
 budget well, not to find permission to spend less. The ceiling is there for the mirror image: a
 typo that makes every login a thirty-second wait is a denial of service typed by an operator.
+
+## The hot paths: prepared statements
+
+```sh
+npm run bench:paths                                    # PGlite; Postgres too with BENCH_DATABASE_URL
+npm run bench:paths -- --out before.json               # where the report goes (bench-paths.json)
+npm run bench:paths -- --baseline before.json          # every median against an earlier report
+```
+
+Every authenticated request reads the same few rows before its handler runs. `scripts/bench-paths.ts`
+times those reads through the managers, called the way `lib/loader/tenant.ts` and
+`lib/hooks/onRequest.ts` call them:
+
+| Path | Read by |
+|---|---|
+| `tenant.byId` | tenant resolution from the token: `getTenant`, then the provider opening the container |
+| `tenant.bySlug` | tenant resolution from the header or the subdomain, without a token |
+| `user.byExternalId` | every authenticated request on a tenant |
+| `token.byExternalId` | every request carrying an integration token |
+| `systemUser.byExternalId` | every authenticated request on the control plane |
+| `login.password` | the credential check: bcrypt is 99.9% of it, so it is the **control**, and it must not move |
+
+The world it builds: 3 tenants with 2000 users and 200 integration tokens each, 200 rows in the
+registry, 200 system users. PGlite runs in the process at concurrency 1; Postgres runs at 1
+(latency) and at 10 on a pool of 10 (throughput). Each path gets 15 rounds of 1000 operations
+(10 for the login), interleaved, with the first path rotating, so a slow minute lands on every
+path instead of on one. It uses the same gate as `tune` (`scripts/machine.ts`).
+
+Postgres comes from `BENCH_DATABASE_URL` and **never** from `DATABASE_URL`: the bench creates
+`bench_*` schemas and drops them at the end, and refuses to start when one already exists.
+
+### What it decided, 2 October 2026
+
+`kerkyra-2.local` (Apple M1 Pro, 10 cores, 16 GB), Node 26.10.0, Drizzle 0.45.2, `pg` 8.22.0,
+PGlite 0.5.3, a local Postgres 14.22. Microseconds per operation, median of 15 rounds, IQR
+(p25 to p75 over the median) in brackets. Two runs before the change, to know the noise.
+
+| Path | Engine | Before, run 1 | Before, run 2 | After | After / before |
+|---|---|---|---|---|---|
+| `tenant.byId` | PGlite | 494.4 (5.6%) | 461.2 (4.4%) | 374.6 (3.4%) | 0.76 |
+| | Postgres, 1 | 251.9 (7.5%) | 264.1 (5.3%) | 160.5 (8.1%) | 0.64 |
+| | Postgres, 10 | 136.8 (5.4%) | 147.0 (10.7%) | 52.1 (4.2%) | 0.38 |
+| `tenant.bySlug` | PGlite | 243.6 (7.4%) | 234.5 (6.6%) | 191.3 (10.5%) | 0.79 |
+| | Postgres, 1 | 123.4 (6.8%) | 130.5 (7.5%) | 73.7 (16.2%) | 0.60 |
+| | Postgres, 10 | 71.0 (6.8%) | 72.1 (7.5%) | 25.1 (3.9%) | 0.35 |
+| `user.byExternalId` | PGlite | 339.3 (4.5%) | 330.2 (4.1%) | 258.3 (5.9%) | 0.76 |
+| | Postgres, 1 | 177.7 (6.5%) | 186.3 (12.5%) | 105.0 (5.7%) | 0.59 |
+| | Postgres, 10 | 107.0 (8.3%) | 107.9 (7.7%) | 32.5 (10.6%) | 0.30 |
+| `token.byExternalId` | PGlite | 245.1 (5.3%) | 235.3 (4.9%) | 189.7 (2.7%) | 0.77 |
+| | Postgres, 1 | 122.8 (6.3%) | 131.7 (23.7%) | 79.6 (3.4%) | 0.65 |
+| | Postgres, 10 | 69.5 (3.1%) | 69.4 (7.0%) | 24.8 (4.3%) | 0.36 |
+| `systemUser.byExternalId` | PGlite | 265.6 (3.5%) | 255.8 (4.7%) | 205.8 (4.6%) | 0.78 |
+| | Postgres, 1 | 139.2 (6.7%) | 143.7 (9.2%) | 82.6 (8.9%) | 0.59 |
+| | Postgres, 10 | 81.0 (4.3%) | 83.5 (9.1%) | 27.8 (12.4%) | 0.34 |
+| `login.password` | PGlite | 271.0 ms | 268.3 ms | 268.6 ms | 0.99 |
+| | Postgres, 1 | 267.8 ms | 273.0 ms | 267.4 ms | 1.00 |
+| | Postgres, 10 | 82.9 ms | 85.2 ms | 83.1 ms | 1.00 |
+
+The two runs before the change differ by 8% at most; every lookup gained between 21% and 70%,
+and the control stayed flat. The gain is the query builder: building and rendering the
+`externalId` lookup costs 64 µs of CPU in Node, measured alone with no round trip. At
+concurrency 10 the single Node thread is the bottleneck, which is why the throughput gains most.
+
+The login is **not** prepared: its lookup is under 0.1% of a 270 ms bcrypt verification, below
+any noise the bench can see.
+
+**Unnamed, on purpose.** A named statement saves the parse on the server too. Measured against
+the unnamed one: no difference on PGlite (it ignores the name), 0.69 to 0.79 on Postgres at
+concurrency 1, 0.98 to 1.06 at concurrency 10. That is 16 to 35 µs of latency per lookup when
+the server is idle and nothing under load, paid with session state: the statement stays on the
+connection, which T-3.1 forbids, and a PgBouncer in transaction mode needs 1.21 or later with
+`max_prepared_statements` above 0. `test/db/prepared.spec.ts` fails if a lookup leaves a named
+statement on its connection.
+
+`tenant.byId` costs twice `tenant.bySlug` because the resolution reads the registry row twice:
+`getTenant`, then the provider opening the container looks the same id up again.

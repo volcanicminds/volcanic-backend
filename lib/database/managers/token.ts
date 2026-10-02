@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm'
 import type { TokenManagement, DataHandle, VQuery } from '../../../types/global.js'
 import { executeFind, executeCount } from '../query/index.js'
 import { runtime, table, column } from './runtime.js'
+import { firstBy } from '../prepared.js'
 
 //
 // Machine credentials (T-2.5). Same shape as the user manager, one difference that matters:
@@ -77,7 +78,11 @@ export function createTokenManager(): TokenManagement {
     },
 
     retrieveTokenById: async (ctx, id) => await one(ctx, 'retrieveTokenById', 'id', id),
-    retrieveTokenByExternalId: async (ctx, externalId) => await one(ctx, 'retrieveTokenByExternalId', 'externalId', externalId),
+    // Every request carrying an integration token reads this row: prepared (F62).
+    retrieveTokenByExternalId: async (ctx, externalId) => {
+      const { handle, token } = tokens(ctx, 'retrieveTokenByExternalId')
+      return await firstBy(handle.db, token, 'externalId', externalId)
+    },
 
     async blockTokenById(ctx: DataHandle, id: string, reason: string) {
       const { handle, token } = tokens(ctx, 'blockTokenById')

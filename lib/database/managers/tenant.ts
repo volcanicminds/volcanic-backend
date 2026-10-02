@@ -1,7 +1,8 @@
-import { eq, isNull, and, ne } from 'drizzle-orm'
+import { eq, isNull, and, ne, sql } from 'drizzle-orm'
 import type { TenantManagement, ControlHandle, Tenant, VQuery, TenantHandle } from '../../../types/global.js'
 import { executeFind } from '../query/index.js'
 import { control, table, column } from './runtime.js'
+import { firstBy, prepared } from '../prepared.js'
 
 //
 // The registry and the container life cycle (T-2.5).
@@ -47,19 +48,22 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       return (await executeFind(handle, tenant, (query ?? {}) as never)) as never
     },
 
+    // The two lookups of tenant resolution (lib/loader/tenant.ts), on every request: prepared (F62).
     async getTenant(ctx: ControlHandle, id: string) {
       const { handle, tenant } = registry(ctx, 'getTenant')
-      const rows = await handle.db.select().from(tenant).where(eq(column(tenant, 'id'), id as never)).limit(1)
-      return (rows[0] as Tenant) ?? null
+      return await firstBy<Tenant>(handle.db, tenant, 'id', id)
     },
 
     async getTenantBySlug(ctx: ControlHandle, slug: string) {
       const { handle, tenant } = registry(ctx, 'getTenantBySlug')
-      const rows = await handle.db
-        .select()
-        .from(tenant)
-        .where(and(eq(column(tenant, 'slug'), slug as never), isNull(column(tenant, 'deletedAt'))))
-        .limit(1)
+      const statement = prepared(handle.db, tenant, 'bySlug', () =>
+        handle.db
+          .select()
+          .from(tenant)
+          .where(and(eq(column(tenant, 'slug'), sql.placeholder('slug')), isNull(column(tenant, 'deletedAt'))))
+          .limit(1)
+      )
+      const rows = await statement.execute({ slug })
       return (rows[0] as Tenant) ?? null
     },
 

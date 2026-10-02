@@ -70,6 +70,9 @@ connessione contro cento connessioni.
 | F65 | Modelli e agenti: AI SDK 7 e il suo `ToolLoopAgent` in `volcanic-tools`, al posto dell'involucro di Mastra (`lib/ai/agent.ts`); intervalli dei peer chiusi | oggi `"@mastra/core": ">=1.0.0"` e `"ai": ">=4.0.0"` accettano qualunque major futura |
 | F66 | MCP: un contratto `defineTool` con adattatori in `volcanic-tools`; nel backend un server generato dalle rotte che lo dichiarano, che agisce con l'identità del chiamante e chiama l'API, mai il database | lo stesso confine di rag T-7.6: un assistente non vede più di quanto vedrebbe la persona che lo usa |
 | F67 | Vettori: pgvector e LanceDB, entrambi motori di rag dietro `RetrievalStore`. Il lavoro sta già in `volcanic-rag/TASKS.md` §K, da T-11.2 a T-11.6, e qui non si duplica | scelta del manutentore, 1° ottobre 2026; §K l'aveva già pianificato il 28 settembre (D10) |
+| F68 | Precisa F64: l'SDK di OpenTelemetry lo avvia il framework in `preload()` quando è configurato, **senza `--import` obbligatorio**. Span HTTP da `@fastify/otel` (un plugin, non una patch), span delle query emessi dal data layer, `fetch` in uscita dall'instrumentazione di undici su `diagnostics_channel`. Il `--import` resta facoltativo, per l'auto-instrumentazione di librerie di terzi | `import-in-the-middle` 3.5.2 documenta solo `module.register()`, che su Node 26.10 stampa `DEP0205` (provato il 2 ottobre 2026); ok del manutentore lo stesso giorno |
+| F69 | Precisa F65: `createAgent()` in `volcanic-tools` resta come **cablaggio** (modello da config ed env, tool di `defineTool`, identità del chiamante, span) e restituisce il `ToolLoopAgent` dell'SDK così com'è, senza un tipo suo. `ai` resta peer (`^7`): il consumer lo dichiara, come i provider `@ai-sdk/*`. Lo usano rag e il sample | un involucro dell'API di `ai` (messaggi, tool, stream, errori) insegue ogni minor, come TypeORM dentro il backend; una dipendenza interna darebbe due copie e tool non riconosciuti fra l'una e l'altra; ok del manutentore, 2 ottobre 2026 |
+| F70 | Precisa F66: il server MCP accetta **sessioni e token d'integrazione** (`/token`), le credenziali che esistono già. Niente `oidc-provider` per ora: OAuth 2.1 per i connettori di terzi è un compito a parte, se servirà | un client di terzi (connettore di Claude.ai o ChatGPT) è l'unico caso che lo richiede; ok del manutentore, 2 ottobre 2026 |
 
 ## 2. Compiti
 
@@ -166,9 +169,41 @@ connessione contro cento connessioni.
   devDependencies), che il prossimo `npm install` riallinea. In rag la coda della sentinella su
   `node:sqlite` (`src/sentinel/queue.ts`, `llms.txt`, `README.md`, `TASKS.md`), che resta. Admin e
   tools 0, salvo la build della demo (`dist-demo`, ignorata da git).
-- [ ] **T-14.4** Statement preparati sui percorsi caldi (F62): banco prima, poi i preparati, poi lo
+- [x] **T-14.4** Statement preparati sui percorsi caldi (F62): banco prima, poi i preparati, poi lo
   stesso banco. L'evidenza riporta mediane e dispersione per percorso e motore; un preparato senza
   guadagno misurato non entra.
+  Fatto il 2 ottobre 2026. Banco `scripts/bench-paths.ts` (`npm run bench:paths`): le letture che
+  ogni richiesta autenticata fa prima del suo handler, chiamate attraverso i manager, con il login
+  come controllo; 3 tenant da 2000 utenti e 200 token, 200 righe di registro, 200 utenti di
+  sistema; PGlite a concorrenza 1, Postgres 14.22 a 1 e a 10 su un pool da 10; 15 giri da 1000
+  operazioni, intercalati. Il cancello sul carico è quello di `tune`, spostato in
+  `scripts/machine.ts`. Preparati in `lib/database/prepared.ts`, per database e per oggetto
+  tabella, su mappe deboli: `getTenant` e `lookupTenant` del provider (lo stesso statement),
+  `getTenantBySlug`, `retrieveUserByExternalId`, `retrieveTokenByExternalId`,
+  `retrieveSystemUserByExternalId`. Mediane in µs, prima (giro 1) e dopo, IQR del dopo tra
+  parentesi, su PGlite, Postgres a 1 e Postgres a 10:
+  `tenant.byId` 494,4 → 374,6 (3,4%), 251,9 → 160,5 (8,1%), 136,8 → 52,1 (4,2%);
+  `tenant.bySlug` 243,6 → 191,3 (10,5%), 123,4 → 73,7 (16,2%), 71,0 → 25,1 (3,9%);
+  `user.byExternalId` 339,3 → 258,3 (5,9%), 177,7 → 105,0 (5,7%), 107,0 → 32,5 (10,6%);
+  `token.byExternalId` 245,1 → 189,7 (2,7%), 122,8 → 79,6 (3,4%), 69,5 → 24,8 (4,3%);
+  `systemUser.byExternalId` 265,6 → 205,8 (4,6%), 139,2 → 82,6 (8,9%), 81,0 → 27,8 (12,4%).
+  Il login, controllo, resta tra 0,99 e 1,00. Tabella completa con i due giri prima e le loro IQR
+  in `docs/TUNING.md`. I due giri prima differiscono al massimo dell'8%; il guadagno va dal 21% al
+  24% su PGlite, dal 35% al 41% su Postgres a 1, dal 62% al 70% a 10. È il builder di Drizzle:
+  costruire e rendere il lookup su `externalId` costa 64 µs di CPU in Node, misurati da soli; a
+  concorrenza 10 il collo di bottiglia è il thread di Node. Il login non è preparato: la sua query
+  sta sotto lo 0,1% della verifica bcrypt. Statement senza nome: con il nome, Postgres a
+  concorrenza 1 scende ancora a 0,69-0,79 della variante senza nome, a 10 resta tra 0,98 e 1,06,
+  PGlite è identico; il prezzo è uno stato di sessione sulla connessione (T-3.1) e PgBouncer 1.21
+  o successivo in modalità transazione. Prove: `test/db/prepared.spec.ts`, 3 casi (isolamento tra
+  due contenitori su PGlite e su Postgres con pool da 4; nessuno statement con nome sulla
+  connessione dopo un lookup, pool da 1). Difetti piantati, presi e ritirati: cache per solo
+  database (2 prove rosse, il contenitore B restituisce la riga di A), statement con nome (1 rossa,
+  `pg_prepared_statements` a 1; su Postgres anche la prova d'isolamento si rompe sul nome
+  riusato). `check-all` verde senza avvisi; `npm run coverage` 831 verdi e 30 saltate (prima 830),
+  istruzioni 88,11% (3484 su 3954), rami 90,32%, funzioni 93,23%, righe 88,81%. Con un Postgres
+  14.22 usa e getta e `DATABASE_URL`: `npm test` 936 verdi e 1 saltata (prima 933), banco
+  multi-tenant 25 verdi.
 - [ ] **T-14.5** pino e OpenTelemetry nel backend (F63, F64).
 - [ ] **T-14.6** AI SDK 7 e `ToolLoopAgent` in `volcanic-tools` (F65).
 - [ ] **T-14.7** MCP (F66): `defineTool` e adattatori in `volcanic-tools`, il server nel backend,
@@ -179,3 +214,9 @@ connessione contro cento connessioni.
 `docs/TESTING_V5.md` §1 elenca ancora suite PGlite della v4 che non esistono più
 (`test:e2e:pglite`, `test:e2e:mt:pglite`, `test:perf`): T-14.2 allinea la riga del data layer, il
 resto della tabella aspetta una decisione del manutentore.
+
+La risoluzione del tenant legge due volte la stessa riga di registro: `getTenant` in
+`lib/loader/tenant.ts`, poi `provider.tenant()` la rilegge in `lookupTenant`
+(`lib/database/adapters/postgres/index.ts`). Misurato da T-14.4: `tenant.byId` costa il doppio di
+`tenant.bySlug` (374,6 contro 191,3 µs su PGlite, 52,1 contro 25,1 su Postgres a concorrenza 10).
+Proposta: il provider riceve la riga già letta. Aspetta il manutentore.

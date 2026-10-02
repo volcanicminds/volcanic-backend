@@ -23,6 +23,7 @@ import path from 'path'
 import crypto from 'crypto'
 import v8 from 'v8'
 import vm from 'vm'
+import { BENCH_LOCK as LOCK, machineIsFit, provenance } from './machine.js'
 
 // ── what a run is allowed to do ───────────────────────────────────────────────────────────
 const argv = process.argv.slice(2)
@@ -42,27 +43,8 @@ const TARGET_MS = value('--target-ms', 250)
 const CACHE_BUDGET_MB = value('--cache-budget-mb', 32)
 const OUT = path.resolve(process.cwd(), 'tuning.json')
 const ENV_FILE = path.resolve(process.cwd(), '.env')
-const LOCK = path.join(os.tmpdir(), 'volcanic-tune.lock')
 
 const say = (line = '') => process.stdout.write(line + '\n')
-
-// ── refusing to measure a machine that cannot be measured ─────────────────────────────────
-//
-// Better no number than a number taken while something else was running: a plausible wrong
-// figure is worse than a missing one, because it gets used.
-//
-function machineIsFit(): string | null {
-  const cores = os.cpus()?.length || 1
-  const [load1] = os.loadavg()
-  // loadavg is 0 on Windows, so "no signal" is not "idle".
-  if (load1 > 0 && load1 / cores > 0.4) {
-    return `the machine is busy (load ${load1.toFixed(2)} over ${cores} cores). Measuring now would report the contention, not the cost.`
-  }
-  if (fs.existsSync(LOCK)) {
-    return `another tune is running (${LOCK}). Two benches on one machine measure each other.`
-  }
-  return null
-}
 
 // ── measuring ─────────────────────────────────────────────────────────────────────────────
 interface Sample {
@@ -492,22 +474,6 @@ async function tuneRateLimit(): Promise<any> {
 }
 
 // ── writing it down ───────────────────────────────────────────────────────────────────────
-function provenance() {
-  const cpus = os.cpus() || []
-  return {
-    at: new Date().toISOString(),
-    node: process.version,
-    platform: `${process.platform} ${process.arch}`,
-    cpu: cpus[0]?.model ?? 'unknown',
-    cores: cpus.length,
-    totalMemoryMB: Math.round(os.totalmem() / 1024 / 1024),
-    loadAverage1m: round(os.loadavg()[0]),
-    // Named so a reader can tell a laptop measurement from a production one at a glance, which
-    // is the single fact appendix A was missing.
-    host: os.hostname()
-  }
-}
-
 /** What the .env file says today, so the diff is about the file that will be rewritten. */
 function readEnvFile(): Record<string, string> {
   if (!fs.existsSync(ENV_FILE)) return {}

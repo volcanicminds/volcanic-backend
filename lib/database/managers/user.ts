@@ -4,6 +4,7 @@ import type { UserManagement, DataHandle, VQuery } from '../../../types/global.j
 import { executeFind, executeCount } from '../query/index.js'
 import { encrypt, decrypt } from '../crypto.js'
 import { runtime, table, column } from './runtime.js'
+import { firstBy } from '../prepared.js'
 import { envInt } from '../env.js'
 
 //
@@ -195,7 +196,11 @@ export function createUserManager(): UserManagement {
     },
 
     retrieveUserById: (ctx, id) => byColumn(ctx, 'retrieveUserById', 'id', id),
-    retrieveUserByExternalId: (ctx, externalId) => byColumn(ctx, 'retrieveUserByExternalId', 'externalId', externalId),
+    // Every authenticated request on a tenant reads this row: prepared (F62).
+    retrieveUserByExternalId: async (ctx, externalId) => {
+      const { handle, user } = users(ctx, 'retrieveUserByExternalId')
+      return await firstBy(handle.db, user, 'externalId', externalId)
+    },
     retrieveUserByUsername: (ctx, username) => byColumn(ctx, 'retrieveUserByUsername', 'username', username),
     retrieveUserByResetPasswordToken: (ctx, token) =>
       byColumn(ctx, 'retrieveUserByResetPasswordToken', 'resetPasswordToken', token),

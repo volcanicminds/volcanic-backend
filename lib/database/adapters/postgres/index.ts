@@ -3,12 +3,12 @@ import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import type { PgliteDatabase } from 'drizzle-orm/pglite'
 import type { PGlite } from '@electric-sql/pglite'
 import { sql, type SQLWrapper } from 'drizzle-orm'
-import { eq } from 'drizzle-orm'
 import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestScope } from '../../../../types/global.js'
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/pg.js'
 import { RequestLeases } from '../../leases.js'
 import { exportPostgresSchema } from '../../containers/export.js'
 import { guardPglite, guardPool } from './guard.js'
+import { firstBy } from '../../prepared.js'
 import { envInt } from '../../env.js'
 
 //
@@ -471,9 +471,9 @@ export class PostgresProvider {
     this.evictContainers()
   }
 
+  /** On every request that enters a container: the same prepared statement as `getTenant` (F62). */
   private async lookupTenant(tenantId: string): Promise<Tenant | null> {
-    const rows = await this.db.select().from(this.registry.tenant).where(eq(this.registry.tenant.id, tenantId)).limit(1)
-    return (rows[0] as unknown as Tenant) ?? null
+    return await firstBy<Tenant>(this.db, this.registry.tenant, 'id', tenantId)
   }
 
   /**

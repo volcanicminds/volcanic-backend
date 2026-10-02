@@ -139,7 +139,13 @@ un picco di memoria da 247 a 1338 MB. T-14.3 fatto il 2 ottobre: SQLite e libSQL
 framework (codice, tipi, API, script, peer, documenti) e dai dati finti dell'admin; il sample perde
 le guardie sul dialetto, che `access()` non restituisce più. Restano le due guardie che rifiutano i
 motori a file per nome, la storia nei file `EVO_*` e la coda della sentinella di rag su
-`node:sqlite`.
+`node:sqlite`. T-14.4 fatto il 2 ottobre: statement preparati senza nome sulla risoluzione del
+tenant e sulle letture per `externalId` di utente, token e utente di sistema, misurati con
+`npm run bench:paths` prima e dopo; mediane dal 21% al 24% più basse su PGlite, dal 35% al 41% su
+Postgres a concorrenza 1, dal 62% al 70% a concorrenza 10, con un rumore tra due giri prima
+dell'8% al massimo e il login fermo (numeri in `docs/TUNING.md`). Il login non è preparato. Con il
+nome si guadagnerebbe ancora a concorrenza 1, ma la connessione tornerebbe al pool con uno stato
+(T-3.1): una prova lo vieta.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

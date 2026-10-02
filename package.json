@@ -83,7 +83,8 @@
     "coverage": "npm run coverage:report && node scripts/check-coverage.mjs",
     "coverage:report": "c8 --config .c8rc.json cross-env NODE_ENV=memory AUTH_MODE=BEARER mocha --import=tsx \"./test/lib/**/*.spec.ts\" \"./test/db/**/*.spec.ts\" \"./test/migrations/**/*.spec.ts\" -t 30000 --exit",
     "check:refusals": "node scripts/check-refusals.mjs",
-    "tune": "tsx --env-file-if-exists=.env scripts/tune.ts"
+    "tune": "tsx --env-file-if-exists=.env scripts/tune.ts",
+    "bench:paths": "tsx scripts/bench-paths.ts"
   },
   "dependencies": {
     "@fastify/compress": "^8.3.0",

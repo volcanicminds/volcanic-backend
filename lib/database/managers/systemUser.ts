@@ -4,6 +4,7 @@ import type { SystemUserManagement, ControlHandle, VQuery } from '../../../types
 import { executeFind, executeCount } from '../query/index.js'
 import { encrypt, decrypt } from '../crypto.js'
 import { control, table, column } from './runtime.js'
+import { firstBy } from '../prepared.js'
 import { envInt } from '../env.js'
 
 //
@@ -102,8 +103,11 @@ export function createSystemUserManager(): SystemUserManagement {
     },
 
     retrieveSystemUserById: (ctx, id) => byColumn(ctx, 'retrieveSystemUserById', 'id', id),
-    retrieveSystemUserByExternalId: (ctx, externalId) =>
-      byColumn(ctx, 'retrieveSystemUserByExternalId', 'externalId', externalId),
+    // Every authenticated request on the control plane reads this row: prepared (F62).
+    retrieveSystemUserByExternalId: async (ctx, externalId) => {
+      const { handle, user } = users(ctx, 'retrieveSystemUserByExternalId')
+      return await firstBy(handle.db, user, 'externalId', externalId)
+    },
     retrieveSystemUserByEmail: async (ctx, email) =>
       await byColumn(ctx, 'retrieveSystemUserByEmail', 'email', String(email ?? '').trim().toLowerCase()),
 
