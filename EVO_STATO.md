@@ -8,7 +8,7 @@
 > **Regola unica**: una casella si chiude solo con un'**evidenza citata**, cioè un `file:riga`,
 > un identificativo di commit o l'output di un comando. Senza evidenza resta aperta.
 >
-> Linea di lavoro: branch `v5`, pubblicato su `origin/v5` (dal 9 settembre 2026; prima era `develop`), versione bersaglio
+> Linea di lavoro: branch `v5`, solo locale: tolto da `origin` il 28 settembre 2026 e non ripubblicato fino all'ok del manutentore (`git ls-remote --heads origin` del 2 ottobre 2026: `develop`, `main`, `v3`), versione bersaglio
 > `5.0.0`, data layer Drizzle.
 
 | Simbolo | |
