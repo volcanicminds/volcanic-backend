@@ -14,8 +14,8 @@ import type { TenantHandle, Tenant, GeneralConfig, DataProvider, DataRequestScop
 export type RequestScope = DataRequestScope
 
 export interface ConnectionProvider extends DataProvider {
-  /** Opens or reuses a tenant's container, honouring the LRU limit of T-7.1. */
-  tenant(tenantId: string, scope?: RequestScope): Promise<TenantHandle>
+  /** Opens or reuses the container of a registry row, honouring the LRU limit of T-7.1. */
+  tenant(tenant: Tenant, scope?: RequestScope): Promise<TenantHandle>
 }
 
 export interface ContainerRef {

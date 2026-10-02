@@ -735,7 +735,7 @@ export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(503).send(httpError(503, 'The data layer is not loaded', 'TENANCY_NOT_AVAILABLE'))
   }
 
-  const container = await provider.tenant(tenant.id, req.dataScope)
+  const container = await provider.tenant(tenant, req.dataScope)
   const users = req.server['userManager'] as UserManagement
   const target =
     (await users.retrieveUserById(container, String(userId))) ??

@@ -88,7 +88,7 @@ async function build() {
     isImplemented: () => true,
     getTenant: async (_c: any, id: string) => (id === ACME.id ? ACME : null)
   })
-  server.decorate('provider', { tenant: async (tenantId: string) => ({ kind: 'tenant', tenantId }) })
+  server.decorate('provider', { tenant: async (row: any) => ({ kind: 'tenant', tenantId: row.id }) })
   server.decorate('mfaManager', { verify: (code: string) => (code === '123456' ? 1 : null) })
   server.decorate('impersonationManager', {
     isImplemented: () => true,

@@ -23,9 +23,9 @@ function fakeProvider() {
     releases,
     opened,
     control: () => ({ kind: 'control' }) as any,
-    tenant: async (tenantId: string, scope?: any) => {
-      opened.push(`${tenantId}@${scope?.requestId ?? 'no-scope'}`)
-      return { kind: 'tenant', tenantId } as any
+    tenant: async (row: any, scope?: any) => {
+      opened.push(`${row.id}@${scope?.requestId ?? 'no-scope'}`)
+      return { kind: 'tenant', tenantId: row.id } as any
     },
     releaseRequestScope: async (scope: any, error?: Error) => {
       releases.push({ requestId: scope.requestId, error: error?.message })
@@ -131,7 +131,7 @@ describe('loader/tenant · the request data context (T-3.1)', () => {
     const provider = fakeProvider()
     const server = await serverWith(provider)
     server.get('/x', { config: { tenantContext: false } }, async (req: any) => {
-      await openTenantContext(req, 'acme-id')
+      await openTenantContext(req, { id: 'acme-id', slug: 'acme', status: 'active', locator: 'tenant_acme' } as any)
       return { tenant: (req.tenant as any).tenantId }
     })
 

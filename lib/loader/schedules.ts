@@ -171,7 +171,7 @@ async function inTenant(
 ): Promise<void> {
   const scope = { requestId: `job:${jobName}:${tenant.id}:${Date.now()}` }
   try {
-    const handle = await provider.tenant(tenant.id, scope)
+    const handle = await provider.tenant(tenant, scope)
     await fn(handle as DataHandle, { jobName, tenant, signal })
   } finally {
     await provider.releaseRequestScope(scope)
@@ -209,7 +209,12 @@ async function everyTenant(
 
       const tenant = tenants[index]
       try {
-        await inTenant(provider, jobName, tenant, fn, signal)
+        // The list was read when the fan-out began, and a fleet can take minutes: the row is
+        // read again right before its job, so a tenant suspended meanwhile is refused.
+        const row = await tm.getTenant(control as never, tenant.id)
+        if (!row) throw new Error(`Tenant '${tenant.slug}' is not in the registry`)
+        if (row.status !== 'active') throw new Error(`Tenant '${row.slug}' is ${row.status}`)
+        await inTenant(provider, jobName, row, fn, signal)
       } catch (e) {
         // Collected, not rethrown: one customer's failure is not a reason to skip the
         // others, and a fan-out that stops halfway is the hardest kind to notice.

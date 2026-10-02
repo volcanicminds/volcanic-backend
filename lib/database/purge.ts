@@ -12,7 +12,7 @@ export interface PurgeTarget {
 }
 
 export interface PurgeLayer {
-  provider: { control(): ControlHandle | Promise<ControlHandle>; tenant(id: string): DataHandle | Promise<DataHandle> }
+  provider: { control(): ControlHandle | Promise<ControlHandle>; tenant(tenant: Tenant): DataHandle | Promise<DataHandle> }
   tenantManager: { listTenants(ctx: ControlHandle, query?: VQuery): Promise<VFindResult<Tenant>> }
 }
 
@@ -41,7 +41,7 @@ export async function purgeContainers(layer: PurgeLayer, target: PurgeTarget, op
     } as VQuery)
     const records = result?.records ?? []
     for (const tenant of records) {
-      removed += await target.purgeExpired(await layer.provider.tenant(tenant.id))
+      removed += await target.purgeExpired(await layer.provider.tenant(tenant))
       containers += 1
     }
     if (records.length < PURGE_PAGE_SIZE) break

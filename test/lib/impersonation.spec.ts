@@ -65,7 +65,7 @@ function fakes(over: any = {}) {
     },
     provider: {
       control: async () => ({ kind: 'control' }),
-      tenant: async (tenantId: string) => ({ kind: 'tenant', tenantId }),
+      tenant: async (row: any) => ({ kind: 'tenant', tenantId: row.id }),
       releaseRequestScope: async () => {},
       shutdown: async () => {}
     }

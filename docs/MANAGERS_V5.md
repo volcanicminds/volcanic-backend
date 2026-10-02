@@ -311,8 +311,12 @@ implementer needs them written down:
 ```ts
 export interface ConnectionProvider {
   control(): ControlHandle
-  /** Opens or reuses the container of a tenant; obeys the LRU limit of T-7.1. */
-  tenant(tenantId: string): Promise<TenantHandle>
+  /**
+   * Opens or reuses the container a registry row points at; obeys the LRU limit of T-7.1.
+   * The row is one the caller just read through the tenant manager: the provider does not
+   * read the registry again, and never takes a row built from the request.
+   */
+  tenant(tenant: Tenant, scope?: RequestScope): Promise<TenantHandle>
   /** Called once per request, after the response: releases what the request borrowed. */
   releaseRequestScope(scope: RequestScope): Promise<void>
   shutdown(): Promise<void>

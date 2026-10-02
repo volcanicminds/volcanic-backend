@@ -145,7 +145,9 @@ tenant e sulle letture per `externalId` di utente, token e utente di sistema, mi
 Postgres a concorrenza 1, dal 62% al 70% a concorrenza 10, con un rumore tra due giri prima
 dell'8% al massimo e il login fermo (numeri in `docs/TUNING.md`). Il login non è preparato. Con il
 nome si guadagnerebbe ancora a concorrenza 1, ma la connessione tornerebbe al pool con uno stato
-(T-3.1): una prova lo vieta.
+(T-3.1): una prova lo vieta. Lo stesso giorno la risoluzione del tenant smette di leggere due
+volte la riga di registro: `provider.tenant()` riceve la riga già letta e `tenant.byId` scende a
+circa metà (0,48-0,55), pari a `tenant.bySlug` (`EVO_FASE_14.md` §3).
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

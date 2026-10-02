@@ -220,5 +220,10 @@ connection, which T-3.1 forbids, and a PgBouncer in transaction mode needs 1.21 
 `max_prepared_statements` above 0. `test/db/prepared.spec.ts` fails if a lookup leaves a named
 statement on its connection.
 
-`tenant.byId` costs twice `tenant.bySlug` because the resolution reads the registry row twice:
-`getTenant`, then the provider opening the container looks the same id up again.
+**One registry read per request.** `provider.tenant()` takes the row the resolution has just
+read and opens its container without reading the registry again. Against the unnamed run
+above, `tenant.byId` went from 374.6 to 179.8 µs on PGlite (0.48), 160.5 to 82.8 on Postgres at
+concurrency 1 (0.52) and 52.1 to 28.5 at concurrency 10 (0.55), level with `tenant.bySlug`
+(178.5, 70.9, 24.2); the other paths stayed within the baseline dispersion. A scheduled
+`every-tenant` job reads each row again right before its run, because the fleet list can be
+minutes old: `test/lib/schedules.spec.ts` fails if it trusts the list.

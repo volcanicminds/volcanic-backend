@@ -215,8 +215,14 @@ connessione contro cento connessioni.
 (`test:e2e:pglite`, `test:e2e:mt:pglite`, `test:perf`): T-14.2 allinea la riga del data layer, il
 resto della tabella aspetta una decisione del manutentore.
 
-La risoluzione del tenant legge due volte la stessa riga di registro: `getTenant` in
-`lib/loader/tenant.ts`, poi `provider.tenant()` la rilegge in `lookupTenant`
-(`lib/database/adapters/postgres/index.ts`). Misurato da T-14.4: `tenant.byId` costa il doppio di
-`tenant.bySlug` (374,6 contro 191,3 µs su PGlite, 52,1 contro 25,1 su Postgres a concorrenza 10).
-Proposta: il provider riceve la riga già letta. Aspetta il manutentore.
+~~La risoluzione del tenant legge due volte la stessa riga di registro.~~ **Corretto il 2 ottobre
+2026**, su ok del manutentore: `DataProvider.tenant()` riceve la riga di registro che il chiamante ha
+appena letto dal tenant manager (mai una costruita dalla richiesta) e non la rilegge;
+`lookupTenant` è sparito, `openContainer(id)` legge la riga una volta sola. Il fan-out
+`every-tenant` rilegge ogni riga prima del suo job, perché la lista può avere minuti: un tenant
+sospeso nel frattempo è rifiutato (prova in `test/lib/schedules.spec.ts`, che cade se il job si
+fida della lista: difetto piantato, 1 rosso su 12). Banco contro il giro senza nome:
+`tenant.byId` 374,6 → 179,8 µs su PGlite (0,48), 160,5 → 82,8 su Postgres a concorrenza 1 (0,52),
+52,1 → 28,5 a concorrenza 10 (0,55), ora pari a `tenant.bySlug` (178,5; 70,9; 24,2); gli altri
+percorsi dentro la dispersione della baseline. Verde: `check-all`, coverage 832 test,
+`npm test` con Postgres 937 test, `test:e2e:mt:pg` 25 test.

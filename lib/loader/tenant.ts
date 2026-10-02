@@ -170,7 +170,7 @@ export async function apply(server: FastifyInstance) {
     }
 
     req.tenantInfo = tenant
-    await openTenantContext(req, tenant.id)
+    await openTenantContext(req, tenant)
   })
 }
 
@@ -251,10 +251,11 @@ function claimedTenant(req: FastifyRequest): string | typeof CONTROL_TOKEN | und
  * The scope travels with the call so the data layer knows WHO is holding the container: it
  * is what the LRU consults before closing one, and what `release()` gives back. Nothing is
  * written to the connection, so there is no matching "leave the container" step, and that
- * absence is the point of T-3.1.
+ * absence is the point of T-3.1. The row is the one resolution read from the registry, so
+ * the provider opens it without reading it again.
  */
-export async function openTenantContext(req: FastifyRequest, tenantId: string): Promise<void> {
+export async function openTenantContext(req: FastifyRequest, tenant: Tenant): Promise<void> {
   const provider = providerOf(req.server)
   if (!provider) throw new Error('No data layer is loaded: a tenant context cannot be opened')
-  req.tenant = await provider.tenant(tenantId, req.dataScope)
+  req.tenant = await provider.tenant(tenant, req.dataScope)
 }

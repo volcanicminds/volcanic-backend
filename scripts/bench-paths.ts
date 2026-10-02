@@ -136,7 +136,7 @@ async function populate(provider: PostgresProvider, locators: string[], close: (
         locator: `filler_${i + 1}`
       }))
     ])
-    .returning({ id: registry.id, slug: registry.slug, locator: registry.locator })
+    .returning()
 
   const systemUsers = await insertAll(
     control,
@@ -147,7 +147,7 @@ async function populate(provider: PostgresProvider, locators: string[], close: (
   const tenants: BenchTenant[] = []
   for (const row of registered.slice(0, TENANTS)) {
     await runner.apply({ locator: row.locator, tenantId: row.id })
-    const handle = (await provider.tenant(row.id)) as unknown as RuntimeHandle
+    const handle = (await provider.tenant(row)) as unknown as RuntimeHandle
     const emails = Array.from({ length: USERS_PER_TENANT }, (_, i) => `u${i + 1}@${row.slug}.bench.test`)
     const users = await insertAll(
       handle,
@@ -162,7 +162,7 @@ async function populate(provider: PostgresProvider, locators: string[], close: (
     tenants.push({ id: row.id, slug: row.slug, handle, users, emails, tokens })
   }
 
-  const tenantManager = createTenantManager({ openContainer: (id) => provider.tenant(id) as never })
+  const tenantManager = createTenantManager({ openContainer: (id) => provider.openContainer(id) })
   return { provider, tenantManager, control, tenants, systemUsers, close }
 }
 
@@ -226,13 +226,13 @@ interface BenchPath {
 const PATHS: BenchPath[] = [
   {
     // What a request with a token pays to enter its container: the registry row the token
-    // names (lib/loader/tenant.ts), then the handle (`provider.tenant`), which reads it again.
+    // names (lib/loader/tenant.ts), then the handle the provider builds from that row.
     name: 'tenant.byId',
     ops: OPS,
     run: async (world, pick) => {
       const t = pick(world.tenants)
       const tenant = await world.tenantManager.getTenant(world.control, t.id)
-      return tenant && (await world.provider.tenant(t.id))
+      return tenant && (await world.provider.tenant(tenant))
     }
   },
   {

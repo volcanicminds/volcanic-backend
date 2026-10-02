@@ -51,7 +51,7 @@ async function serverWith(opts: any = {}) {
 
   const provider = {
     control: async () => CONTROL,
-    tenant: async (tenantId: string) => ({ kind: 'tenant', tenantId }) as any,
+    tenant: async (row: any) => ({ kind: 'tenant', tenantId: row.id }) as any,
     releaseRequestScope: async () => {},
     shutdown: async () => {}
   }

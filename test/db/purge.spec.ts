@@ -10,7 +10,7 @@ function fleet(size: number) {
   const tenants = Array.from({ length: size }, (_, i) => ({ id: `t-${i + 1}`, status: 'active' }))
   const queries: Array<Record<string, unknown>> = []
   const layer = {
-    provider: { control: () => ({ kind: 'control' }) as never, tenant: (id: string) => ({ kind: 'tenant', id }) as never },
+    provider: { control: () => ({ kind: 'control' }) as never, tenant: (row: { id: string }) => ({ kind: 'tenant', id: row.id }) as never },
     tenantManager: {
       listTenants: async (_ctx: unknown, query: Record<string, unknown> = {}) => {
         queries.push(query)

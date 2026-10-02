@@ -30,7 +30,7 @@ function fakeServer(over: any = {}) {
   const provider = {
     released,
     control: async () => CONTROL,
-    tenant: async (tenantId: string, scope?: any) => ({ kind: 'tenant', tenantId, scope }) as any,
+    tenant: async (row: any, scope?: any) => ({ kind: 'tenant', tenantId: row.id, scope }) as any,
     releaseRequestScope: async (scope: any) => {
       released.push(scope.requestId)
     },
@@ -38,6 +38,7 @@ function fakeServer(over: any = {}) {
   }
   const tenantManager = {
     isImplemented: () => true,
+    getTenant: async (_ctx: any, id: string) => REGISTRY.find((t) => t.id === id) ?? null,
     getTenantBySlug: async (_ctx: any, slug: string) => REGISTRY.find((t) => t.slug === slug) ?? null,
     listTenants: async (_ctx: any, query: any) => ({
       records: query?._page === 1 ? REGISTRY.filter((t) => t.status === 'active') : [],
@@ -126,6 +127,22 @@ describe('loader/schedules · where a job runs (T-3.4)', () => {
     // globex ran anyway: a fan-out that stops halfway is the hardest kind to notice.
     expect(visited.sort()).toEqual(['acme', 'globex'])
     expect(server.provider.released.length).toBe(2)
+  })
+
+  it('refuses a tenant suspended after the fan-out read the fleet (T-14.4)', async () => {
+    // The provider no longer reads the registry: the fan-out reads each row again right
+    // before its job, so a list that is minutes old cannot run a job in a suspended tenant.
+    const server = fakeServer()
+    server.tenantManager.getTenant = async (_ctx: any, id: string) => {
+      const row = REGISTRY.find((t) => t.id === id)
+      return row?.slug === 'globex' ? { ...row, status: 'suspended' } : row
+    }
+    const { seen, fn } = recorder()
+
+    await expect(runnerFor(server, 'sweep', { scope: 'every-tenant' } as any, fn, never)()).rejects.toThrow(
+      /failed on 1 of 2 tenants[\s\S]*globex: Tenant 'globex' is suspended/
+    )
+    expect(seen.map((s) => s.tenant)).toEqual(['acme'])
   })
 
   it('stops the fan-out when the server closes', async () => {

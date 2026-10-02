@@ -301,8 +301,13 @@ export interface DataRequestScope {
  */
 export interface DataProvider {
   control(): ControlHandle | Promise<ControlHandle>
-  /** `scope` says which request is holding the container, so the LRU knows not to close it. */
-  tenant(tenantId: string, scope?: DataRequestScope): Promise<TenantHandle>
+  /**
+   * Opens the container a registry row points at. The row is one the caller has just read
+   * through the tenant manager, never one built from the request: the provider trusts its
+   * locator and status and does not read the registry again. `scope` says which request is
+   * holding the container, so the LRU knows not to close it.
+   */
+  tenant(tenant: Tenant, scope?: DataRequestScope): Promise<TenantHandle>
   /**
    * Returns whatever the request borrowed. `error` is passed when the client went away
    * mid-flight: a connection given back after an abort must be destroyed, not reused.

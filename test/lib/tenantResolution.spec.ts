@@ -29,9 +29,9 @@ function fakeProvider() {
   return {
     opened,
     control: () => ({ kind: 'control' }) as any,
-    tenant: async (tenantId: string) => {
-      opened.push(tenantId)
-      return { kind: 'tenant', tenantId } as any
+    tenant: async (row: any) => {
+      opened.push(row.id)
+      return { kind: 'tenant', tenantId: row.id } as any
     },
     releaseRequestScope: async () => {},
     shutdown: async () => {}

@@ -292,15 +292,14 @@ export class PostgresProvider {
   }
 
   /**
-   * A tenant's container. The registry says where it is; the tables are built once per
-   * locator and cached, because they are objects and cost nothing to keep — the LRU bound
-   * exists for the `container` strategy, where a live container also means a live pool.
+   * A tenant's container. The registry row says where it is, and the caller has just read it:
+   * reading it again here was a second registry query on every request (T-14.4). The tables
+   * are built once per locator and cached, because they are objects and cost nothing to keep;
+   * the LRU bound exists for the `container` strategy, where a live container also means a
+   * live pool.
    */
-  async tenant(tenantId: string, scope?: DataRequestScope): Promise<TenantHandle> {
-    const row = await this.lookupTenant(tenantId)
-    if (!row) throw new Error(`Tenant '${tenantId}' is not in the registry`)
+  async tenant(row: Tenant, scope?: DataRequestScope): Promise<TenantHandle> {
     if (row.status !== 'active') throw new Error(`Tenant '${row.slug}' is ${row.status}`)
-
     return (await this.forLocator(row.locator, row.id, scope)) as unknown as TenantHandle
   }
 
@@ -471,11 +470,6 @@ export class PostgresProvider {
     this.evictContainers()
   }
 
-  /** On every request that enters a container: the same prepared statement as `getTenant` (F62). */
-  private async lookupTenant(tenantId: string): Promise<Tenant | null> {
-    return await firstBy<Tenant>(this.db, this.registry.tenant, 'id', tenantId)
-  }
-
   /**
    * Takes a customer's data out, through `pg_dump`, limited to their schema (T-6.2).
    *
@@ -528,9 +522,11 @@ export class PostgresProvider {
     }
   }
 
-  /** Opens a tenant's container by id. The name the manager port uses (T-6.1). */
+  /** Opens a tenant's container by id, reading its registry row. The name the manager port uses (T-6.1). */
   async openContainer(tenantId: string): Promise<TenantHandle> {
-    return await this.tenant(tenantId)
+    const row = await firstBy<Tenant>(this.db, this.registry.tenant, 'id', tenantId)
+    if (!row) throw new Error(`Tenant '${tenantId}' is not in the registry`)
+    return await this.tenant(row)
   }
 
   /** Creates the container of a tenant that is being provisioned (T-6.1). */
