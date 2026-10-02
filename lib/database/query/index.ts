@@ -1,13 +1,12 @@
 import { and, or, not, asc, desc, isNull, sql, getTableColumns, type SQL, type Column, type Table } from 'drizzle-orm'
 import { queryError } from './errors.js'
-import { operatorFor, type Dialect } from './operators.js'
+import { operatorFor } from './operators.js'
 import { parseLogic, aliasesOf, DEFAULT_LOGIC_LIMITS, type LogicLimits, type LogicNode } from './logic.js'
 import { envInt } from '../env.js'
 import type { RuntimeHandle } from '../managers/runtime.js'
 
 export * from './errors.js'
 export { escapeLike, coerce, OPERATORS } from './operators.js'
-export type { Dialect } from './operators.js'
 
 //
 // The Magic Query: from a query string to a query (docs/MAGIC_QUERY_V5.md).
@@ -33,7 +32,6 @@ export const DEFAULT_SENSITIVE_FIELDS = [
 ]
 
 export interface QueryOptions {
-  dialect: Dialect
   /** Never returned, and — new in v5 — never filterable either: filtering a hash is an oracle. */
   sensitiveFields?: string[]
   maxPageSize?: number
@@ -70,7 +68,7 @@ type Condition = { alias: string; sql: SQL; explicitAlias: boolean }
 
 const ALIAS_SUFFIX = /\[([A-Za-z_][A-Za-z0-9_]{0,31})\]$/
 
-export function parseQuery(table: Table, params: Record<string, unknown>, options: QueryOptions): ParsedQuery {
+export function parseQuery(table: Table, params: Record<string, unknown>, options: QueryOptions = {}): ParsedQuery {
   // Keyed by the TypeScript property name, which is the name a client sees in the response
   // and therefore the name it filters on: `createdAt`, not `created_at`.
   const columns = getTableColumns(table) as unknown as Record<string, Column>
@@ -180,11 +178,11 @@ export function parseQuery(table: Table, params: Record<string, unknown>, option
     }
     if (!explicitAlias) seen.add(bare)
 
-    const operator = operatorFor(operatorName, options.dialect)
+    const operator = operatorFor(operatorName)
     conditions.push({
       alias,
       explicitAlias,
-      sql: operator.build({ dialect: options.dialect, column: column(fieldName), raw })
+      sql: operator.build({ column: column(fieldName), raw })
     })
   }
 
@@ -274,7 +272,7 @@ export async function executeFind<T>(
   handle: Pick<RuntimeHandle, 'db'>,
   table: Table,
   params: Record<string, unknown>,
-  options: QueryOptions
+  options: QueryOptions = {}
 ): Promise<FindResult<T>> {
   const parsed = parseQuery(table, params, options)
 
@@ -291,7 +289,7 @@ export async function executeCount(
   handle: Pick<RuntimeHandle, 'db'>,
   table: Table,
   params: Record<string, unknown>,
-  options: QueryOptions
+  options: QueryOptions = {}
 ): Promise<number> {
   const parsed = parseQuery(table, params, options)
 

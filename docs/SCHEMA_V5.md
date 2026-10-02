@@ -6,8 +6,8 @@
 > implementation, the task is not done. If something here turns out to be wrong **in practice**,
 > stop, report it, and fix this document first.
 
-The framework owns fourteen tables. Nine live **inside every tenant container** (schema, dedicated
-database, or file), and the control plane carries them too, for its own identities. Five live
+The framework owns fourteen tables. Nine live **inside every tenant container** (schema or dedicated
+database), and the control plane carries them too, for its own identities. Five live
 **only in the control plane**. A consumer adds its own tables to either side; the framework never
 touches them.
 
@@ -38,15 +38,15 @@ configuration. Never customer content.
 
 These apply to every table below. They are not repeated in each definition.
 
-| Concern | Postgres | SQLite / libSQL |
-|---|---|---|
-| Primary key | `id uuid PRIMARY KEY` | `id text PRIMARY KEY` |
-| Id generation | **in process**, UUID v7 | same |
-| Timestamps | `timestamptz` (`timestamp with time zone`) | `integer` = epoch **milliseconds**, UTC |
-| Booleans | `boolean` | `integer` 0/1 |
-| String arrays | `text[]` | `text` holding a JSON array |
-| Free-form objects | `jsonb` | `text` holding JSON |
-| Soft delete | `deleted_at` nullable; a row with `deleted_at` set is invisible to every default query | same |
+| Concern | Rule |
+|---|---|
+| Primary key | `id uuid PRIMARY KEY` |
+| Id generation | **in process**, UUID v7 |
+| Timestamps | `timestamptz` (`timestamp with time zone`) |
+| Booleans | `boolean` |
+| String arrays | `text[]` |
+| Free-form objects | `jsonb` |
+| Soft delete | `deleted_at` nullable; a row with `deleted_at` set is invisible to every default query |
 
 **A container is chosen by qualifying its tables, never by a session setting.** The Postgres
 factories take the schema name and produce `"tenant_acme"."user"`, which is what makes T-3.1
@@ -67,8 +67,7 @@ b-tree inserts local and gives a free creation-time ordering. Implement it in
 version, 74 bits of `crypto.randomBytes`, variant bits set); do not add a dependency for it.
 
 **Timestamps carry a zone.** Postgres columns are `timestamptz`, never naive `timestamp`. This
-closes a decision that had been taken before and never migrated. On SQLite the equivalent is an
-integer epoch in milliseconds, always UTC: no local time ever reaches the database.
+closes a decision that had been taken before and never migrated.
 
 **Optimistic locking.** `user` and `token` keep a `version` integer, incremented by the data
 layer on every update. An update whose `version` does not match responds `409`.
@@ -81,7 +80,7 @@ layer on every update. An update whose `version` does not match responds `409`.
 
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
-| `id` | uuid / text | no | generated | primary key |
+| `id` | uuid | no | generated | primary key |
 | `external_id` | text | no | generated | **public** identifier: it is the JWT subject. Rotating it invalidates every token of that user (`resetExternalId`) |
 | `username` | text | yes | | unique per container when present |
 | `email` | text | no | | unique per container, stored lowercase, trimmed |
@@ -97,12 +96,12 @@ layer on every update. An update whose `version` does not match responds `409`.
 | `reset_password_token` | text | yes | | carries its own `<epochSeconds>.` expiry prefix. Never selected by default |
 | `reset_password_token_at` | timestamp | yes | | |
 | `confirmation_token` | text | yes | | never selected by default |
-| `roles` | text[] / json text | no | `[]` | role **codes**, resolved against the role catalogue at boot |
+| `roles` | text[] | no | `[]` | role **codes**, resolved against the role catalogue at boot |
 | `is_founder` | boolean | no | `false` | **new in v5**: replaces the process-wide `ADMIN_EMAIL` comparison (defect D-27). Founder is a property of the row in its container, not of the environment |
 | `mfa_enabled` | boolean | no | `false` | |
 | `mfa_secret` | text | yes | | AES-256-GCM, format `v2:salt:iv:authTag:ciphertext`. Never selected by default |
 | `mfa_type` | text | yes | | `totp` is the only value today |
-| `mfa_recovery_codes` | text[] / json text | yes | | hashed, never plaintext |
+| `mfa_recovery_codes` | text[] | yes | | hashed, never plaintext |
 | `mfa_last_used_counter` | integer | yes | | absolute TOTP step already consumed: rejects replay inside the validity window |
 | `version` | integer | no | `1` | optimistic lock |
 | `created_at` | timestamp | no | now | |
@@ -118,14 +117,14 @@ index on `reset_password_token`, index on `confirmation_token`, index on `delete
 
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
-| `id` | uuid / text | no | generated | |
+| `id` | uuid | no | generated | |
 | `external_id` | text | no | generated | the credential presented by the client |
 | `name` | text | no | | |
 | `description` | text | yes | | |
 | `blocked` | boolean | no | `false` | |
 | `blocked_reason` | text | yes | | |
 | `blocked_at` | timestamp | yes | | |
-| `roles` | text[] / json text | no | `[]` | |
+| `roles` | text[] | no | `[]` | |
 | `expires_at` | timestamp | yes | | **new in v5**: a machine credential without an expiry is a permanent secret. `null` means no expiry and must be an explicit choice |
 | `version` | integer | no | `1` | |
 | `created_at` | timestamp | no | now | |
@@ -140,7 +139,7 @@ The audit trail. **Append-only**: rows are never updated and never soft-deleted.
 
 | Column | Type | Null | Notes |
 |---|---|:---:|---|
-| `id` | uuid / text | no | **new in v5**: v4 had no primary key |
+| `id` | uuid | no | **new in v5**: v4 had no primary key |
 | `created_at` | timestamp | no | |
 | `user_id` | text | yes | `null` when the write came from a job or a machine token |
 | `token_id` | text | yes | **new in v5**: which credential wrote, when it was not a user |
@@ -148,7 +147,7 @@ The audit trail. **Append-only**: rows are never updated and never soft-deleted.
 | `status` | text | no | `create` / `update` / `delete` (this table first said `created`/`updated`/`deleted`; the code has always written the short forms, and the document was the side that was wrong) |
 | `entity_name` | text | no | |
 | `entity_id` | text | no | |
-| `contents` | jsonb / json text | no | the change payload, with sensitive fields already stripped (§5) |
+| `contents` | jsonb | no | the change payload, with sensitive fields already stripped (§5) |
 
 **Indexes**: `(entity_name, entity_id)`, `created_at`.
 
@@ -162,7 +161,7 @@ the tables no longer have. Do not hand-write rows.
 
 | Column | Type | Null | Notes |
 |---|---|:---:|---|
-| `id` | uuid / text | no | |
+| `id` | uuid | no | |
 | `set` | text | no | `control` or `tenant`. The control plane applies both sets: its own, and the application one, which lives there when the deployment has no tenants |
 | `name` | text | no | the migration file's name, which is also its order |
 | `hash` | text | no | SHA-256 of the file. A migration that changed after it ran is refused, not skipped |
@@ -191,7 +190,7 @@ who ordered it.
 
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
-| `id` | uuid / text | no | generated | |
+| `id` | uuid | no | generated | |
 | `sid` | text | no | generated | the session's name, **stable for its whole life**, carried by every access token it issues (claim `sid`) and by the refresh credential |
 | `subject_id` | text | no | | the subject's `external_id`: the same value the access token carries in `sub` |
 | `scope` | text | no | `tenant` | `tenant` or `control`. Both kinds of row sit in the same container in a deployment without tenants, and a renewal refuses a session opened on the other plane |
@@ -207,7 +206,7 @@ who ordered it.
 | `ip` | text | yes | | of the request that opened the session |
 | `user_agent` | text | yes | | what a device list shows |
 | `impersonation_id` | text | yes | | set when the session is an impersonation (§3.3), so ending the impersonation ends the session it authorised |
-| `auth_methods` | text[] / json text | yes | | the methods the login satisfied, e.g. `{password,totp}` or `{oidc,idp-mfa}`. Null on sessions opened before the flow engine: what is not known is not written as an empty list. Whether a session was born without a second factor cannot be reconstructed later. A step-up rewrites it with the methods it satisfied |
+| `auth_methods` | text[] | yes | | the methods the login satisfied, e.g. `{password,totp}` or `{oidc,idp-mfa}`. Null on sessions opened before the flow engine: what is not known is not written as an empty list. Whether a session was born without a second factor cannot be reconstructed later. A step-up rewrites it with the methods it satisfied |
 | `authenticated_at` | timestamp | yes | | when the person last proved to be there: the login writes it, a step-up moves it, a renewal never does. The access token carries it as `auth_time` (docs/AUTH_FLOW_V5.md §8.5). Null on sessions opened before 0004, whose tokens a `freshAuth` route answers with `STEP_UP_REQUIRED` |
 | `created_at` | timestamp | no | now | |
 
@@ -243,7 +242,7 @@ platform's rules for every tenant in the control container, a tenant's own choic
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
 | `key` | text | no | | primary key |
-| `value` | jsonb (Postgres) / JSON text (SQLite) | no | | never a secret |
+| `value` | jsonb | no | | never a secret |
 | `updated_by` | text | yes | | the `externalId` of whoever wrote it |
 | `updated_at` | timestamp | no | now | |
 
@@ -255,7 +254,7 @@ identity from a tenant user where both share a container.
 
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
-| `id` | uuid / text | no | generated | |
+| `id` | uuid | no | generated | |
 | `flow_id` | text | no | | the name the flow credential carries (`vf1.<routing>.<flow_id>.<secret>`) |
 | `scope` | text | no | `tenant` | `tenant` or `control` |
 | `subject_id` | text | yes | | the subject's `external_id`, set once the first stage passed. Only then does the flow hold the subject's slot |
@@ -266,7 +265,7 @@ identity from a tenant user where both share a container.
 | `session_sid` | text | yes | | a step-up's: the `sid` of the session it confirms |
 | `expected_subject_id` | text | yes | | a step-up's: the `external_id` the identified subject must be |
 | `stage_index` | integer | no | `0` | |
-| `satisfied` | jsonb / json text | no | `[]` | the methods proven so far |
+| `satisfied` | jsonb | no | `[]` | the methods proven so far |
 | `challenge_method` | text | yes | | the method of the code last sent |
 | `challenge_hash` | text | yes | | the code as `HMAC-SHA256(flow secret, code)`: the key is not in this table, so a copy of it does not let anyone try the codes offline |
 | `challenge_expires_at` | timestamp | yes | | |
@@ -275,7 +274,7 @@ identity from a tenant user where both share a container.
 | `last_sent_at` | timestamp | yes | | what the per-subject windows count |
 | `state_hash` | text | yes | | SHA-256 of the `state` of a round trip to a provider |
 | `external` | text | yes | | ciphertext written by the manager: the PKCE verifier, the `nonce`, the provider, the `returnTo` path, the secret of an in-flow enrolment |
-| `external_result` | jsonb / json text | yes | | what a return left for the next step: the validated claims (provider, issuer, subject, email, `amr`, `acr`), or `{ failure: { method, code } }` when it failed. Written once, with `state_hash` cleared in the same statement |
+| `external_result` | jsonb | yes | | what a return left for the next step: the validated claims (provider, issuer, subject, email, `amr`, `acr`), or `{ failure: { method, code } }` when it failed. Written once, with `state_hash` cleared in the same statement |
 | `version` | integer | no | `1` | every change is conditional on it |
 | `ip` | text | yes | | |
 | `user_agent` | text | yes | | |
@@ -297,7 +296,7 @@ only, and an address is never a key.
 
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
-| `id` | uuid / text | no | generated | |
+| `id` | uuid | no | generated | |
 | `scope` | text | no | `tenant` | |
 | `subject_id` | text | no | | the subject's `external_id` |
 | `provider` | text | no | | the provider key |
@@ -316,14 +315,14 @@ The access log (docs/AUTH_FLOW_V5.md §9). Append-only like `change`: no `update
 
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
-| `id` | uuid / text | no | generated | UUID v7, so time-ordered |
+| `id` | uuid | no | generated | UUID v7, so time-ordered |
 | `occurred_at` | timestamp | no | now | |
 | `scope` | text | no | `tenant` | |
 | `event` | text | no | | one of a closed list, enforced by the manager |
 | `outcome` | text | no | | `success` or `failure` |
 | `code` | text | yes | | the refusal or outcome code, e.g. `AUTH_INVALID_CREDENTIALS` |
 | `subject_id` | text | yes | | the `external_id`; null when the subject is not known. The address tried is never written |
-| `methods` | text[] / json text | yes | | the methods involved |
+| `methods` | text[] | yes | | the methods involved |
 | `provider` | text | yes | | the provider key, if any |
 | `flow_id` | text | yes | | |
 | `sid` | text | yes | | the session, if any |
@@ -344,13 +343,13 @@ Replaces the v4 entity, whose `dbSchema` / `dbName` pair could not describe a co
 
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
-| `id` | uuid / text | no | generated | |
+| `id` | uuid | no | generated | |
 | `name` | text | no | | human label |
 | `slug` | text | no | | unique, lowercase, `[a-z0-9-]{2,50}`. It is what an operator types to confirm destruction |
 | `strategy` | text | no | | `schema` \| `container` |
-| `engine` | text | no | | `postgres` \| `sqlite` \| `libsql` |
-| `locator` | text | no | | **the one field that says where the data is**: the schema name for `schema`, the database name for a Postgres container, the file path for a SQLite/libSQL container. Sanitised **once, before saving** (§4) |
-| `config` | jsonb / json text | no | `{}` | per-tenant options: connection overrides, limits, feature flags. Never customer content |
+| `engine` | text | no | | always `postgres`: the tenants API accepts no other engine |
+| `locator` | text | no | | **the one field that says where the data is**: the schema name for `schema`, the database name for `container`. Sanitised **once, before saving** (§4) |
+| `config` | jsonb | no | `{}` | per-tenant options: connection overrides, limits, feature flags. Never customer content |
 | `status` | text | no | `active` | `active` \| `suspended` \| `archived` \| `destroyed`. `destroyed` is final: written by the destruction once the container is gone, and no registry method moves a row out of it |
 | `schema_version` | text | yes | | last migration applied to this container, mirrored from its own `migration` table for read-only reporting. **Not** the source of truth |
 | `created_at` | timestamp | no | now | |
@@ -369,7 +368,7 @@ Columns: same authentication surface as `user` (`id`, `external_id`, `email`, `p
 
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
-| `roles` | text[] / json text | no | `[]` | **system role codes only**, all prefixed `system:` |
+| `roles` | text[] | no | `[]` | **system role codes only**, all prefixed `system:` |
 | `mfa_enabled` | boolean | no | `false` | strongly recommended: it is the preferred second factor of tenant destruction, the other being a code by email (T-6.3) |
 
 It carries **no** `confirmed` / `confirmation_token`: system users are provisioned, never
@@ -381,7 +380,7 @@ Closes defect D-18: in v4 impersonation left no persisted trace.
 
 | Column | Type | Null | Notes |
 |---|---|:---:|---|
-| `id` | uuid / text | no | referenced by the `imp` claim of the issued token |
+| `id` | uuid | no | referenced by the `imp` claim of the issued token |
 | `system_user_id` | text | no | who |
 | `tenant_id` | text | no | into which tenant |
 | `target_user_id` | text | no | as whom |
@@ -400,11 +399,11 @@ The first phase of T-6.3. A row is single-use.
 
 | Column | Type | Null | Notes |
 |---|---|:---:|---|
-| `id` | uuid / text | no | |
+| `id` | uuid | no | |
 | `tenant_id` | text | no | |
 | `system_user_id` | text | no | who asked |
 | `token_hash` | text | no | SHA-256 of the one-time token. **The token itself is never stored** |
-| `preview` | jsonb / json text | no | what phase 1 reported: container size, row counts per table, last export |
+| `preview` | jsonb | no | what phase 1 reported: container size, row counts per table, last export |
 | `created_at` | timestamp | no | |
 | `expires_at` | timestamp | no | ten minutes after creation, configurable |
 | `consumed_at` | timestamp | yes | set when phase 2 succeeds |
@@ -422,12 +421,12 @@ tenant.
 
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
-| `id` | uuid / text | no | generated | |
+| `id` | uuid | no | generated | |
 | `tenant_id` | text | no | | |
 | `key` | text | no | | lowercase letters, digits, `-`, `_`; what a login names |
 | `type` | text | no | `oidc` | the only value today; ready for `saml` |
 | `status` | text | no | `active` | `active` or `disabled`. A disabled row also hides the deployment's provider of the same key for that tenant |
-| `config` | jsonb / json text | no | `{}` | the settings that are not secret: issuer, client id, redirect URI, scopes, linking, JIT, MFA trust |
+| `config` | jsonb | no | `{}` | the settings that are not secret: issuer, client id, redirect URI, scopes, linking, JIT, MFA trust |
 | `secret_enc` | text | yes | | the client secret, encrypted with `MFA_DB_SECRET` (falling back to `JWT_SECRET`) |
 | `created_at` | timestamp | no | now | |
 | `updated_at` | timestamp | no | now | |
@@ -444,9 +443,7 @@ after a removal. Destroying the tenant's data removes all its rows, before the c
 
 1. Sanitise **once, before saving**. The stored value and the used value are the same string.
    In v4 they were not, and a registry row could name a schema that did not exist (defect D-20).
-2. The sanitised form must match `^[a-z][a-z0-9_]{1,62}$` for a Postgres schema or database
-   name; for a file path it must resolve **inside** the configured container directory, with no
-   `..` segment and no symlink escape.
+2. The sanitised form must match `^[a-z][a-z0-9_]{1,62}$`, a Postgres schema or database name.
 3. If the sanitised value differs from what the caller sent, respond **400** and name the
    difference. Never accept silently a name different from the one requested.
 4. Never interpolate `locator` into SQL by string concatenation, even after sanitisation: use

@@ -19,7 +19,8 @@ export const tenantBodySchema = {
       pattern: '^[a-z0-9_-]+$'
     },
     strategy: { type: 'string', enum: ['schema', 'container'] },
-    engine: { type: 'string', enum: ['postgres', 'sqlite', 'libsql'] },
+    // A container lives on a Postgres server: PGlite is a single process, so it never holds tenants.
+    engine: { type: 'string', enum: ['postgres'] },
     // S12: a safe SQL identifier alphabet. The name is printed into every statement built
     // for the container (T-3.1), so it is validated at the edge, again before it is stored,
     // and again before it becomes a cache key. maxLength 63 = Postgres identifier limit.

@@ -33,8 +33,8 @@ export function createSettingManager(): SettingManagement {
     async set(ctx: DataHandle, key: string, value: unknown, updatedBy?: string | null) {
       const { handle, setting } = settings(ctx, 'set')
       const values = { key: String(key), value: value as never, updatedBy: updatedBy ?? null, updatedAt: new Date() }
-      // One statement on both engines: the key is the primary key, and a read-then-write would let
-      // two administrators saving at once both insert.
+      // One statement: the key is the primary key, and a read-then-write would let two
+      // administrators saving at once both insert.
       await handle.db
         .insert(setting)
         .values(values)

@@ -13,6 +13,7 @@ import { create, exportContainer } from '../../lib/api/tenants/controller/tenant
 import { getData, getParams } from '../../lib/util/common.js'
 import { buildAuthenticatorRegistry, createAuthenticatorRegistry } from '../../lib/auth/registry.js'
 import { passwordAuthenticator } from '../../lib/auth/builtins.js'
+import { tenantBodySchema } from '../../lib/schemas/tenant.js'
 
 ;(global as any).log = {}
 
@@ -45,8 +46,7 @@ async function build(over: any = {}) {
     createContainer: async () => {},
     dropContainer: async () => {},
     forLocator: async () => ({ kind: 'tenant' }),
-    // A data layer that cannot export: the file-per-container engines can, a shared-schema
-    // Postgres deployment without pg_dump cannot.
+    // A data layer that cannot export: one injected without `exportContainer`.
     ...(over.canExport === false ? {} : { exportContainer: async () => ({ path: '/tmp/acme.sql', bytes: 2048 }) })
   })
 
@@ -57,7 +57,11 @@ async function build(over: any = {}) {
     req.systemUser = { id: 'sys-1', email: 'root@system.test' }
   })
 
-  server.post('/tenants', { config: { tenantContext: false } }, create)
+  // The route's body schema, mounted only where a test is about the edge.
+  if (over.validated) server.addSchema(tenantBodySchema)
+  const body = over.validated ? { schema: { body: { $ref: 'tenantBodySchema#' } } } : {}
+
+  server.post('/tenants', { config: { tenantContext: false }, ...body }, create)
   server.post('/tenants/:id/export', { config: { tenantContext: false } }, exportContainer)
 
   await server.ready()
@@ -101,6 +105,23 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     })
     expect(res.statusCode).toBeLessThan(400)
     expect(created[0].locator).toBe('tenant_acme')
+    await server.close()
+  })
+
+  it('refuses an engine other than postgres, before anything is provisioned (F59)', async () => {
+    // The registry still records the engine, and there is one: a body naming another is
+    // refused at the edge instead of being written into the row.
+    const { server, created } = await build({ validated: true })
+    const admin = { email: 'admin@acme.test', password: 'Str0ng-passw0rd!' }
+
+    for (const engine of ['sqlite', 'libsql', 'pglite']) {
+      expect((await provision(server, { slug: 'acme', name: 'Acme', engine, admin })).statusCode).toBe(400)
+    }
+    expect(created.length).toBe(0)
+
+    const res = await provision(server, { slug: 'acme', name: 'Acme', engine: 'postgres', admin })
+    expect(res.statusCode).toBeLessThan(400)
+    expect(created[0].engine).toBe('postgres')
     await server.close()
   })
 

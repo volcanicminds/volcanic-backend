@@ -15,7 +15,7 @@ export default {
   name: 'general',
   options: {
     control: {
-      engine: 'postgres',                 // 'postgres' | 'pglite' | 'sqlite' | 'libsql'
+      engine: 'postgres',                 // 'postgres' | 'pglite'
       url: process.env.DATABASE_URL,      // or the discrete DB_* variables
       schema: 'public',                   // Postgres only: explicit, never inferred
       dataDir: './data/pglite',           // 'pglite' only: absent, the database lives in memory
@@ -25,15 +25,14 @@ export default {
     // Absent = single tenant. This is the configuration of most projects.
     tenants: {
       strategy: 'schema',                 // 'schema' | 'container'
-      engine: 'postgres',                 // 'postgres' | 'sqlite' | 'libsql'
+      engine: 'postgres',                 // the only engine that holds tenants
       resolver: 'header',                 // 'header' | 'subdomain'
       headerKey: 'x-tenant-id',           // used when resolver = 'header'
       subdomainLevel: 1,                  // used when resolver = 'subdomain': which label to read
       containers: {
         maxOpen: 20,                      // LRU limit of live containers
         idleTimeoutMs: 300_000,           // close a container idle for this long
-        poolMax: 2,                       // pool size per container
-        directory: './data/tenants'       // 'container' + sqlite/libsql only
+        poolMax: 2                        // pool size per container
       },
       migrations: {
         checkOnResolve: true,             // a container behind its version answers with an error
@@ -92,18 +91,13 @@ Checked at boot by the capability matrix (T-1.4). Anything else logs fatal and e
 | `postgres` | absent | single tenant |
 | `postgres` | `strategy: 'schema'`, `engine: 'postgres'` | many tenants, one database, one schema each |
 | `postgres` | `strategy: 'container'`, `engine: 'postgres'` | one database per tenant |
-| `postgres` | `strategy: 'container'`, `engine: 'sqlite' \| 'libsql'` | one file per tenant |
-| `sqlite` / `libsql` | absent, or `strategy: 'container'` | serverless processes: CLI, agents, desktop |
 | `pglite` | absent; outside production also `strategy: 'schema'`, `engine: 'postgres'` | development and tests: Postgres inside the process, in memory or in `control.dataDir`, tenants as schemas of the same instance |
 
-Every combination above has a **migration set in its own dialect** (`migrations/<set>/pg` and
-`migrations/<set>/sqlite`, T-9.1). Until those existed, the two serverless rows were engines the
-framework could open and could not prepare: the adapter worked, the containers opened, and the
-only committed SQL said `timestamp with time zone`.
+Every combination above applies the same two migration sets, `migrations/control/pg` and
+`migrations/tenant/pg`: PGlite is Postgres, and runs the same SQL.
 
 | Combination | Refused because |
 |---|---|
-| any engine + `strategy: 'schema'` on SQLite or libSQL | schemas do not exist there, and faking them with table prefixes is the `row` strategy under another name, which decision 5 forbids |
 | `pglite` + any `tenants` block in production | one connection only: no isolation under concurrency |
 | `pglite` + `strategy: 'container'` | a database per tenant needs a Postgres server; so does an export, which is refused at the call |
 | MongoDB, anywhere | the adapter is removed in v5 |
@@ -139,7 +133,6 @@ where it is used without passing through the configuration at all.
 | `DB_POOL_IDLE_MS` | `30000` | how long an idle control plane connection is kept | `control.pool.idleTimeoutMs` |
 | `PGLITE_DATA_DIR` | in memory | where PGlite keeps the database; unset, it ends with the process | `control.dataDir` |
 | `TENANT_CONTAINERS_MAX_OPEN` | `20` | LRU limit of live containers | fallback of `tenants.containers.maxOpen` |
-| `TENANT_CONTAINERS_DIR` | `./data/tenants` | where per-tenant files live | fallback of `tenants.containers.directory` |
 | `EXPORT_DIRECTORY` | `./data/exports` | where container exports are written | `export_directory` |
 | `VOLCANIC_MAX_PAGE_SIZE` | `100` | Magic Query page-size clamp | no key: read by the query layer |
 | `CORS_ORIGINS` | — | **required in production**: comma-separated allowlist | `origin` of the `cors` entry in `config/plugins.ts` |
@@ -178,14 +171,13 @@ buys 14,400 attempts a day and 4.7% of one core, and 22 addresses would saturate
 figures and their provenance are in `docs/TUNING.md`. The 404 handler carries a separate limit of
 30 per 30s, written in `index.ts`, and it guards a `reply.code(404).send()` rather than a hash.
 
-**Fallback, not override.** For the two `TENANT_CONTAINERS_*` variables the configuration wins
-and the environment is read only when the configuration is silent. That is why the loader does
-**not** fill `containers.maxOpen` and `containers.directory` with defaults: until T-10.9 it did,
-the configuration was never silent, and the two variables were ignored on every boot that
-declared tenants.
+**Fallback, not override.** For `TENANT_CONTAINERS_MAX_OPEN` the configuration wins and the
+environment is read only when the configuration is silent. That is why the loader does **not**
+fill `containers.maxOpen` with a default: until T-10.9 it did, the configuration was never
+silent, and the variable was ignored on every boot that declared tenants.
 
 **Override, and deliberately the other way round.** The three `SESSION_*` variables win over the
-`sessions` block, unlike the two `TENANT_CONTAINERS_*` above. The lifetime of a session is the one
+`sessions` block, unlike `TENANT_CONTAINERS_MAX_OPEN` above. The lifetime of a session is the one
 setting an incident makes you want to change on a running deployment, without cutting a release of
 the consumer's `config/general.ts`. A value that is not a positive number falls back to the default
 rather than being read as zero, with the single exception of `SESSION_GRACE_SECONDS`, where zero
@@ -269,8 +261,6 @@ Declared optional; install only what the chosen engines need.
 |---|---|
 | `@volcanicminds/backend/db` with Postgres | `drizzle-orm`, `pg`, `bcrypt` |
 | the same with PGlite | `drizzle-orm`, `pg` (the adapter imports it either way), `@electric-sql/pglite`, `bcrypt` |
-| the same with SQLite | `drizzle-orm`, `better-sqlite3`, `bcrypt` |
-| the same with libSQL | `drizzle-orm`, `@libsql/client`, `bcrypt` |
 | development | `drizzle-kit` |
 | a plane that lists `oidc` in `config/authFlows.ts` | `openid-client` `^6`: loaded on first use, and its absence refuses the boot |
 

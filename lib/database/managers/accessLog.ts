@@ -156,12 +156,12 @@ export function createAccessLogManager(options: AccessLogOptions = {}): AccessLo
 
     async findQuery(ctx: DataHandle, query: VQuery, scope?: SessionScope) {
       const { handle, log } = entries(ctx, 'findQuery')
-      return (await executeFind(handle, log, query as never, { dialect: handle.dialect, extraWhere: ofScope(log, scope) })) as never
+      return (await executeFind(handle, log, query as never, { extraWhere: ofScope(log, scope) })) as never
     },
 
     async countQuery(ctx: DataHandle, query: VQuery, scope?: SessionScope) {
       const { handle, log } = entries(ctx, 'countQuery')
-      return await executeCount(handle, log, query as never, { dialect: handle.dialect, extraWhere: ofScope(log, scope) })
+      return await executeCount(handle, log, query as never, { extraWhere: ofScope(log, scope) })
     },
 
     /** One statement on the indexed `occurred_at`, like the purge of sessions. */

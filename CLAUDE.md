@@ -45,8 +45,8 @@ await layer.migrations.apply({ locator: 'public' }) // in produzione: npm run db
 await startServer(layer)
 ```
 
-Peer opzionali del data layer: `drizzle-orm`, `pg`, `better-sqlite3`, `@libsql/client`,
-`@electric-sql/pglite` (con `pglite-pgvector`), `bcrypt`. `drizzle-kit` va nelle
+Peer opzionali del data layer: `drizzle-orm`, `pg`, `@electric-sql/pglite` (con
+`pglite-pgvector`), `bcrypt`. Motore unico Postgres, su server o PGlite nel processo. `drizzle-kit` va nelle
 devDependencies del consumer: genera le migrazioni, non le applica.
 
 ## Stack e convenzioni
@@ -67,7 +67,7 @@ npm run test:e2e:mt:pg    # banco nero multi-tenant, vuole Postgres reale
 npm run check-all         # lint, type-check, depcruise, check:session-state, check:migration-sets, check:refusals
 npm run coverage          # c8 (backend monocart) + scripts/check-coverage.mjs; gira in CI
 npm run db:migrate        # piano di controllo; i tenant con npx volcanic migrate --tenants
-npm run db:generate       # anche :tenant, :sqlite, :tenant:sqlite
+npm run db:generate       # anche :tenant
 npm run tune              # banco di taratura (docs/TUNING.md)
 ```
 
@@ -86,8 +86,8 @@ quella variabile non dice quello che sembra. Il comando Docker per il Postgres d
 - `lib/hooks/*`, `lib/middleware/*`, `lib/schemas/*`, `lib/manifest/*` (manifest per
   `volcanic-admin`), `lib/defaults/managers.ts`.
 - `lib/database/**`: data layer. `ports.ts`, `capabilities.ts` (matrice motori e strategie, rifiuto
-  all'avvio), `adapters/{postgres,sqlite}`, `schema/{pg,sqlite}.ts`, `query/` (Magic Query v5),
-  `managers/`, `migrations/` (runner e flotta), `containers/` (export, replica Litestream),
+  all'avvio), `adapters/postgres` (anche PGlite), `schema/pg.ts`, `query/` (Magic Query v5),
+  `managers/`, `migrations/` (runner e flotta), `containers/` (export),
   `leases.ts`, `access.ts`. Il core non deve importarlo.
 
 ## Nozioni non ovvie (v5)
@@ -112,7 +112,7 @@ quella variabile non dice quello che sembra. Il comando Docker per il Postgres d
   catalogo chiuso, rotte `/system/*`). Il fondatore è la colonna `is_founder` nel contenitore;
   `ADMIN_EMAIL` serve solo alla genesi.
 - **Migrazioni** forward-only: SQL generato da drizzle-kit e applicato dal runner del framework,
-  due insiemi (`control`, `tenant`) per dialetto (`pg`, `sqlite`).
+  due insiemi (`control`, `tenant`), solo nel dialetto `pg`.
 - `HIDE_ERROR_DETAILS` vale su entrambi i gestori d'errore; il `code` resta sempre.
 - `req.data()` fonde query string e corpo, e vince il corpo.
 - Un codice di rifiuto nuovo arriva con un test, o `check:refusals` fallisce.

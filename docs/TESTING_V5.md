@@ -109,7 +109,7 @@ exists. If any of them passes before the fix, it is checking a configuration and
 |---|---|
 | capability matrix (T-1.4) | one per unsupported combination: the process exits 1 with the expected message. Use the injectable `onFatal` pattern of `lib/util/secret.ts` so the test process survives |
 | configuration merge (T-1.1) | declaring one key inside `tenants` does not erase its siblings |
-| Magic Query (T-2.4) | the same battery on Postgres and SQLite: identical results where the capability exists, 400 with the right `code` where it does not |
+| Magic Query (T-2.4) | the battery on PGlite: the rows a query returns, and 400 with the right `code` when it is refused |
 | tenant context (T-3.1) | no emitted SQL contains `set search_path` outside a transaction |
 | tracking (T-3.5) | the `change` row lands **inside the tenant container**; with the write made impossible, strict mode returns 500 and `strict: false` returns 200 |
 | scheduled jobs (T-3.4) | a job declared "for every tenant" runs once per tenant with the right handle, and one failing tenant does not stop the others |

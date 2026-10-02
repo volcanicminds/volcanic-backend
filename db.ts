@@ -5,15 +5,12 @@
 // public API and changing it became a breaking change for every consumer (invariant 10).
 // What lives behind it is Drizzle today and is nobody's business tomorrow.
 //
-// The implementation arrives in phase 2, task by task: schema (T-2.1), Postgres adapter
-// (T-2.2), SQLite and libSQL (T-2.3), Magic Query (T-2.4), managers (T-2.5), async key
-// derivation (T-2.6). What is real here already is the contract — the ports every adapter
-// implements — and the capability matrix, which refuses a combination the framework cannot
-// isolate before a single connection is opened.
+// One engine, Postgres, on a server or on PGlite inside the process (F58, F60). The contract is
+// the ports every adapter implements, and the capability matrix refuses a combination the
+// framework cannot isolate before a single connection is opened.
 //
 import { assertSupported } from './lib/database/capabilities.js'
 import { createPostgresProvider } from './lib/database/adapters/postgres/index.js'
-import { createSqliteProvider } from './lib/database/adapters/sqlite/index.js'
 import { buildManagers } from './lib/database/managers/index.js'
 import { createMigrationRunner, type MigrationSet, type MigrationTarget } from './lib/database/migrations/runner.js'
 import { migrateFleet, type FleetOptions, type FleetResult } from './lib/database/migrations/fleet.js'
@@ -27,7 +24,6 @@ export * from './lib/database/ports.js'
 export * from './lib/database/managers/index.js'
 export * from './lib/database/query/index.js'
 export { appTables as pgTables, registryTables as pgRegistryTables } from './lib/database/schema/pg.js'
-export { appTables as sqliteTables, registryTables as sqliteRegistryTables } from './lib/database/schema/sqlite.js'
 export { access, type DataAccess } from './lib/database/access.js'
 export { encrypt, decrypt } from './lib/database/crypto.js'
 export { uuidv7 } from './lib/database/uuid.js'
@@ -36,7 +32,6 @@ export * from './lib/database/migrations/fleet.js'
 export { purgeContainers, PURGE_PAGE_SIZE, type PurgeLayer, type PurgeTarget, type PurgeResult } from './lib/database/purge.js'
 export { readMigrations, statementsOf } from './lib/database/migrations/files.js'
 export { PostgresProvider } from './lib/database/adapters/postgres/index.js'
-export { SqliteProvider } from './lib/database/adapters/sqlite/index.js'
 export {
   assertSupported,
   supports,
@@ -55,9 +50,7 @@ export async function start(options?: DataLayerOptions) {
   const resolved = options ?? global.config?.options
   assertSupported(resolved)
 
-  const engine = resolved?.control?.engine ?? 'postgres'
-  const provider =
-    engine === 'sqlite' || engine === 'libsql' ? createSqliteProvider(resolved) : await createPostgresProvider(resolved)
+  const provider = await createPostgresProvider(resolved)
 
   // The measured constraint of appendix A.3 is the connection, so it is checked before the
   // first one is handed out and not at the two-hundredth tenant (T-7.1).
@@ -115,76 +108,43 @@ async function activeTenants(
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-/** The dialects migrations are written for. Two, because the SQL genuinely differs. */
-export type MigrationDialect = 'pg' | 'sqlite'
-
-/** The folder name a dialect reads from. Postgres is `pg`; SQLite and libSQL share `sqlite`. */
-export function migrationDialect(engine?: string): MigrationDialect {
-  return engine === 'sqlite' || engine === 'libsql' ? 'sqlite' : 'pg'
-}
-
 /**
- * Where the migrations of each set are read from (T-5.1 point 5, per dialect since T-9.1).
+ * Where the migrations of each set are read from (T-5.1 point 5).
  *
  * The framework's folder first, then the consumer's: the framework owns the migrations of
  * its own tables and nothing else, and a consumer's entities are the consumer's to move. Two
  * folders rather than one because merging them would make it impossible to say, looking at a
  * failure, whose change broke the container.
  *
- * The dialect is part of the path and not a translation applied at run time. A
- * `timestamp with time zone` is an integer of epoch milliseconds on SQLite, a `boolean` is
- * 0/1, an array is JSON text, and `USING btree` is nothing at all: rewriting one into the
- * other on the way to the database would put in front of a customer's data a statement
- * nobody has read, which is the whole reason migrations are committed SQL.
+ * Both folders end in `pg`, where drizzle-kit writes the Postgres dialect: a consumer keeps its
+ * migrations in `migrations/<set>/pg`.
  *
- * The keys are `<set>:<dialect>`, and a missing one is an error rather than an empty set.
- * "Zero migrations applied" and "no migrations exist for this engine" are different facts,
- * and before T-9.1 they had the same answer: success.
+ * The keys are `control` and `tenant`, and a missing one is an error rather than an empty set.
+ * "Zero migrations applied" and "no migrations exist" are different facts, and before T-9.1
+ * they had the same answer: success.
  */
 export function migrationSets(): Record<string, MigrationSet> {
-  const framework = (set: string, dialect: string) =>
-    path.join(__dirname, 'lib', 'database', 'migrations', set, dialect)
-  const consumer = (set: string, dialect: string) => path.join(process.cwd(), 'migrations', set, dialect)
+  const framework = (set: string) => path.join(__dirname, 'lib', 'database', 'migrations', set, 'pg')
+  const consumer = (set: string) => path.join(process.cwd(), 'migrations', set, 'pg')
 
   const sets: Record<string, MigrationSet> = {}
   for (const set of ['control', 'tenant']) {
-    for (const dialect of ['pg', 'sqlite'] as const) {
-      sets[`${set}:${dialect}`] = { name: set, folders: [framework(set, dialect), consumer(set, dialect)] }
-    }
+    sets[set] = { name: set, folders: [framework(set), consumer(set)] }
   }
   return sets
 }
 
 function buildMigrationRunner(provider: unknown, options: DataLayerOptions) {
-  const engine = options?.control?.engine ?? 'postgres'
   const controlSchema = options?.control?.schema || 'public'
-
-  // A deployment may hold the control plane on Postgres and give each customer a SQLite file
-  // (a supported combination), so the two planes are asked separately which language their
-  // schema is written in. `tenants.engine` defaults to the control engine, not to Postgres:
-  // a `tenants` block that names no engine means "the same one".
-  const dialects = {
-    control: migrationDialect(engine),
-    tenant: migrationDialect(options?.tenants?.engine ?? engine)
-  }
   const p = provider as {
     control(): unknown
     forLocator(locator: string, tenantId: string): unknown
   }
 
-  const open = async (container: ContainerRef): Promise<MigrationTarget> => {
-    const handle = container.tenantId
-      ? await p.forLocator(container.locator, container.tenantId)
-      : await p.control()
-    const sqlite = (container.tenantId ? dialects.tenant : dialects.control) === 'sqlite'
-    return {
-      handle,
-      // SQLite is a file per container, so there is no schema to enter and nothing to
-      // qualify: the locator is the file, and the handle already opened it.
-      locator: sqlite ? undefined : container.locator || controlSchema,
-      dialect: sqlite ? 'sqlite' : 'postgres'
-    }
-  }
+  const open = async (container: ContainerRef): Promise<MigrationTarget> => ({
+    handle: container.tenantId ? await p.forLocator(container.locator, container.tenantId) : await p.control(),
+    locator: container.locator || controlSchema
+  })
 
-  return createMigrationRunner(open, migrationSets(), dialects)
+  return createMigrationRunner(open, migrationSets())
 }

@@ -35,7 +35,7 @@ mode of translating silently is not an error, it is an answer from the wrong con
 |---|---|---|
 | Subpath | `@volcanicminds/backend/typeorm` | `@volcanicminds/backend/db` |
 | ORM | TypeORM 0.3.x | an implementation detail, not part of the API |
-| Engines | Postgres, PGlite, Mongo (declared) | Postgres, SQLite, libSQL |
+| Engines | Postgres, PGlite, Mongo (declared) | Postgres, on a server or PGlite inside the process |
 | Encryption | `encrypt` / `decrypt`, synchronous | the same functions, `async` |
 
 The subpath carries no engine name any more: in v4 the ORM was part of the public API, so
@@ -405,7 +405,7 @@ framework one (`docs/SCHEMA_V5.md` §6). Three things it needs, and where they a
 | | |
 |---|---|
 | The handle types | `ControlHandle`, `TenantHandle`, `DataHandle` from `@volcanicminds/backend`. Typing that seam `any` makes the control plane and a container interchangeable, which is what the two brands exist to prevent |
-| The inside of a handle | `access(handle)` from `@volcanicminds/backend/db`: `db`, `dialect`, `locator`, `execute`, `transaction`. Reaching into `lib/` instead couples the project to an internal path |
+| The inside of a handle | `access(handle)` from `@volcanicminds/backend/db`: `db`, `locator`, `execute`, `transaction`. Reaching into `lib/` instead couples the project to an internal path |
 | A restriction the URL cannot relax | `QueryOptions.extraWhere`, AND-ed after everything the caller asked for, `_logic` included. This is v4's fourth argument of `executeFindQuery` under a name |
 
 **Build the table objects per locator.** Drizzle prints the schema name into the SQL, so a
@@ -564,8 +564,8 @@ and it makes the theft an event somebody can count. The full reasoning is `docs/
 
 **What a deployment has to do.**
 
-- **Apply the new migrations.** Four of them, `0001_sessions_control` and `0001_sessions_tenant` for
-  each dialect. The control plane takes both sets, every tenant container takes the tenant one
+- **Apply the new migrations**, `0001_sessions_control` and `0001_sessions_tenant`. The control
+  plane takes both sets, every tenant container takes the tenant one
   (`npm run db:migrate`, then `npx volcanic migrate --tenants`). Without the table there is no
   registry, and without a registry there is no renewal at all.
 - **Drop `JWT_REFRESH_SECRET` and `JWT_REFRESH_EXPIRES_IN`** from the environment, and set the
@@ -602,8 +602,8 @@ deployment's own default is **`invite`**: accounts are created by an administrat
 
 **What a deployment has to do.**
 
-- **Apply the new migrations**, `0003_account_creation_control` and `0003_account_creation_tenant`
-  for each dialect: the `setting` table, and `approved` / `approved_at` on `user`. Existing users
+- **Apply the new migrations**, `0003_account_creation_control` and `0003_account_creation_tenant`:
+  the `setting` table, and `approved` / `approved_at` on `user`. Existing users
   come through approved, so nobody is locked out by the upgrade.
 - **To keep the registration open**, say so: `ACCOUNT_CREATION_DEFAULT=open` in the environment, or
   `accountCreation: { allowed: [...], default: 'open' }` in `config/general.ts`, or at runtime
@@ -649,8 +649,8 @@ for a hook to confine.
 
 **What a deployment has to do.**
 
-- **Apply the new migrations**, `0002_auth_flow_control` and `0002_auth_flow_tenant` for each
-  dialect: the tables `auth_flow`, `external_identity`, `access_log` and, in the control plane,
+- **Apply the new migrations**, `0002_auth_flow_control` and `0002_auth_flow_tenant`: the
+  tables `auth_flow`, `external_identity`, `access_log` and, in the control plane,
   `identity_provider`, plus `auth_methods` on `session`. Without the flow store a login that needs a
   second step cannot run, and the boot refuses a configuration that needs one.
 - **Nothing else to keep the v4 behaviour**: the framework's default flows are a password and, for
@@ -691,7 +691,7 @@ has the mechanism.
 
 **What a deployment has to do.**
 
-- **Apply the new migrations**, `0004_step_up_control` and `0004_step_up_tenant` for each dialect:
+- **Apply the new migrations**, `0004_step_up_control` and `0004_step_up_tenant`:
   `authenticated_at` on `session`, `purpose`, `session_sid` and `expected_subject_id` on `auth_flow`.
   Sessions opened before the upgrade have no `authenticated_at`, so their first call to a marked
   route asks for a step-up; a flow in progress comes through as a login.
@@ -716,7 +716,7 @@ docs/API_V5.md §6.2 describes; before, only a TOTP was accepted.
 
 **What a deployment has to do.**
 
-- **Apply the new migration**, `0005_destruction_code_control` for each dialect: `code_hash` and
+- **Apply the new migration**, `0005_destruction_code_control`: `code_hash` and
   `code_attempts` on `destruction_request`.
 - **A `challengeDeliveryManager`** receives messages with `purpose: 'destruction'` too, on the
   control plane with `tenantId` naming the tenant about to be destroyed. A delivery that switches on

@@ -88,8 +88,8 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 | **Scheduler / cron** | ✅ | — | — | `@fastify/schedule` + `toad-scheduler`. Enabled by `options.scheduler` |
 | **In-memory cache** | ✅ | — | — | LRU+TTL per-route cache (`cache:`), `invalidateCache`. Enabled by `options.cache.enabled` |
 | **Manifest endpoint** | ✅ | — | — | `GET /admin/manifest` (tenant plane) and, with tenants, `GET /system/manifest` (platform console), each gated by the `manifest` capability of its catalogue. Enabled by `options.manifest.enabled` |
-| **Multi-tenant** | ✅ | — | — | Header or subdomain resolver, and the **token decides** whenever there is one. Enabled by declaring the `tenants` block; a schema, a database or a file per customer |
-| **Data layer (Magic Query)** | ✅ | — | — | Drizzle + query builder via subpath `/db`. Optional peer deps (`drizzle-orm`, `pg` or `better-sqlite3`/`@libsql/client`, `bcrypt`) |
+| **Multi-tenant** | ✅ | — | — | Header or subdomain resolver, and the **token decides** whenever there is one. Enabled by declaring the `tenants` block; a schema or a database per customer |
+| **Data layer (Magic Query)** | ✅ | — | — | Drizzle + query builder via subpath `/db`. Optional peer deps (`drizzle-orm`, `pg`, `bcrypt`; `@electric-sql/pglite` for PGlite) |
 | **Schema migrations** | ✅ | — | ✅ | Committed SQL applied in order, versioned **inside each container**. The instance refuses to boot behind its own schema |
 | **Login flow** | ✅ | — | ✅ | `/auth/flow/*` and `/system/auth/flow/*`: password, TOTP, email code and OIDC as composable stages, configured per plane in `config/authFlows.ts` ([docs](docs/AUTH_FLOW_V5.md)). Flow state and access log need the data layer |
 | **MFA / TOTP** | (policy and flow) | ✅ | — | Enforced by the flow engine, `202` + stage; TOTP implementation via injected `mfaManager`. Policy via `MFA_POLICY`, `SYSTEM_MFA_POLICY` and per tenant |
@@ -119,7 +119,8 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 old one, is in [docs/MIGRATION_V4_V5.md](docs/MIGRATION_V4_V5.md).
 
 - **Subpath and ORM.** `@volcanicminds/backend/typeorm` becomes `@volcanicminds/backend/db`; TypeORM is
-  replaced by Drizzle and the ORM stops being part of the public API. Engines: Postgres, SQLite, libSQL.
+  replaced by Drizzle and the ORM stops being part of the public API. One engine, Postgres: on a server, or
+  on PGlite inside the process for development and tests.
   MongoDB is removed — its multi-tenant path was fail-open, working on the whole database with no isolation.
 - **Tenant isolation by construction.** A container is chosen by qualifying the tables, not by `SET
   search_path` on a pooled connection: nothing is left on the session, so nothing has to be reset. That closes
@@ -133,8 +134,8 @@ old one, is in [docs/MIGRATION_V4_V5.md](docs/MIGRATION_V4_V5.md).
 - **Versioned migrations.** Committed SQL applied in order, recorded inside each container.
   `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` and the whole `/tool` group are gone. A fleet migrator brings every
   tenant forward, refuses to run without a `--snapshot`, and names the containers that failed.
-- **One container per tenant**, optionally: a schema, a database or a file each, with an LRU bound checked
-  against `max_connections` before the first connection is handed out, and Litestream replication behind a port.
+- **One container per tenant**, optionally: a schema or a database each, with an LRU bound checked against
+  `max_connections` before the first connection is handed out.
 - **Platform identities.** `/system/auth` and `/system/users`: a platform administrator is a `system_user` in
   the control plane, not a row in the `user` table of `public` that only a resolved schema separated from a
   tenant's admin. Impersonation leaves a revocable record instead of a claim in a token.
@@ -290,8 +291,8 @@ And, what you see in [package.json](package.json).
 
 - **Convention over Configuration**: A clear and consistent project structure for APIs, controllers, and routes simplifies development and reduces boilerplate.
 - **Extensibility**: Easily extendable with custom plugins, hooks, and middleware to fit any project's needs.
-- **Database Agnostic**: the data layer lives behind `@volcanicminds/backend/db` and the ORM is not part of the API. Postgres, SQLite and libSQL; MongoDB is gone, because a driver that could not be isolated per tenant was a promise the framework could not keep.
-- **Failures are visible**: v5 has no silent fallbacks. A query with no container throws instead of reading whichever one the pool held; an audit write that fails fails the request; a filter the engine cannot honour answers 400 instead of quietly returning something else.
+- **One engine, behind a port**: the data layer lives behind `@volcanicminds/backend/db` and the ORM is not part of the API. The engine is Postgres, on a server or on PGlite inside the process; MongoDB is gone, because a driver that could not be isolated per tenant was a promise the framework could not keep.
+- **Failures are visible**: v5 has no silent fallbacks. A query with no container throws instead of reading whichever one the pool held; an audit write that fails fails the request; a filter that cannot be honoured answers 400 instead of quietly returning something else.
 - **Feature-Rich**: Out-of-the-box support for JWT authentication, role-based access control (RBAC), automatic Swagger/OpenAPI documentation, and much more.
 
 ## Project sample
@@ -312,10 +313,11 @@ For database interactions, the data layer is the subpath `@volcanicminds/backend
 optional **peer dependencies**, and only the ones your engine needs:
 
 ```sh
-npm install drizzle-orm bcrypt pg           # Postgres
-npm install drizzle-orm bcrypt better-sqlite3   # SQLite
-npm install drizzle-orm bcrypt @libsql/client   # libSQL
+npm install drizzle-orm bcrypt pg                        # Postgres on a server
+npm install drizzle-orm bcrypt pg @electric-sql/pglite   # PGlite, in process: development and tests
 ```
+
+`pg` is needed with PGlite too: the adapter imports it either way.
 
 `drizzle-kit` goes in `devDependencies`: it generates migrations, it does not run them.
 
@@ -513,7 +515,7 @@ When you execute `npm run dev` the server is restarted whenever a .js/.ts file i
 ```sh
 npm test                  # every suite: core, data layer, migrations
 npm run test:lib          # the core alone
-npm run test:db           # the data layer, on SQLite in memory
+npm run test:db           # the data layer, on PGlite in memory
 npm run test:migrations   # the migration runner
 npm run test:e2e:mt:pg    # the isolation bench, against a real Postgres
 npm run coverage          # measures, and fails under the floor (runs in CI, in the `test` job)
@@ -546,7 +548,7 @@ down in [COVERAGE.md](COVERAGE.md).
 
 ### The suites that need a real database say so
 
-`test/db` runs on SQLite in memory and needs nothing. The suites that want Postgres **skip** instead of failing
+`test/db` runs on PGlite in memory and needs nothing. The suites that want a Postgres server **skip** instead of failing
 when `DATABASE_URL` is absent, so a green run without that variable does not mean what it looks like. To run
 everything:
 
@@ -557,11 +559,6 @@ docker run -d --name vm-pg -e POSTGRES_USER=volcanic -e POSTGRES_PASSWORD=volcan
 DATABASE_URL=postgres://volcanic:volcanic@127.0.0.1:55432/volcanic npm test
 DATABASE_URL=postgres://volcanic:volcanic@127.0.0.1:55432/volcanic npm run test:e2e:mt:pg
 ```
-
-The libSQL suite runs offline against a local file. Its **remote** half — a Turso database —
-skips unless `LIBSQL_TEST_URL` (and `LIBSQL_TEST_TOKEN`) are set, and says so when it does: a
-suite reporting green for something it never reached is worse than one that is honestly
-incomplete.
 
 ### The isolation bench
 
@@ -617,7 +614,7 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `ADMIN_PASSWORD`               | Password for the founder created from `ADMIN_EMAIL`; if unset, a strong one is generated and printed to stdout. | No |    |
 | `HIDE_ERROR_DETAILS`           | Prevent error details (message) from being sent in response. Honoured by every error path, the `onError` hook included. |    No    | `true` (prod)       |
 | `CORS_ORIGINS`                 | Comma-separated allowlist of origins allowed to call the API. Credentials are granted only against a real allowlist. | **Yes**⁴ |          |
-| `CONTROL_ENGINE`               | Engine of the control plane (`postgres`, `sqlite`, `libsql`, `pglite`). Feeds `control.engine`. |    No    | `postgres`          |
+| `CONTROL_ENGINE`               | Engine of the control plane (`postgres`, `pglite`). Feeds `control.engine`. |    No    | `postgres`          |
 | `DATABASE_URL`                 | Control-plane connection. Wins over the discrete `DB_*` variables. Feeds `control.url`. |    No    |                     |
 | `DB_HOST` `DB_PORT` `DB_USERNAME` `DB_PASSWORD` `DB_NAME` | Discrete form of the above.          |    No    | `127.0.0.1` `5432` `vminds` ×3 |
 | `DB_POOL_MAX`                  | Control-plane pool size. Feeds `control.pool.max`.                      |    No    | `10`                |
@@ -627,7 +624,6 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `MFA_DB_SECRET`                | Key the MFA secrets are encrypted with. Falls back to `JWT_SECRET`.     |    No    |                     |
 | `BCRYPT_COST`                  | Password work factor. **Never below 12**, whatever is written; measure it with `npm run tune`. |    No    | `12`                |
 | `TENANT_CONTAINERS_MAX_OPEN`   | LRU bound on live tenant containers.                                    |    No    | `20`                |
-| `TENANT_CONTAINERS_DIR`        | Where per-tenant files live (file-per-container engines).               |    No    | `./data/tenants`    |
 | `VOLCANIC_MAX_PAGE_SIZE`       | Upper clamp on `_pageSize`.                                             |    No    | `100`               |
 | `DESTRUCTION_TOKEN_TTL`        | Seconds a container-destruction request stays valid.                    |    No    | `600`               |
 | `IMPERSONATION_TTL`            | Seconds an impersonation token lasts. Hard maximum 14400.               |    No    | `1800`              |
@@ -637,9 +633,9 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `MANIFEST_DUMP_EXIT`           | With `MANIFEST_DUMP`, exit after writing instead of listening.          |    No    | `false`             |
 | `MANIFEST_DUMP_PLANE`          | Which console's manifest `MANIFEST_DUMP` writes: `tenant` (`/admin/manifest`) or `control` (`/system/manifest`, only with tenants). |    No    | `tenant`            |
 
-Four of the variables above — `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`,
-`TENANT_CONTAINERS_DIR`, `DESTRUCTION_TOKEN_TTL` — were documented from the start of v5 and read
-by **nobody** until T-9.4 found it. That is defect D-11 in another shape, and the invariant it
+Three of the variables above (`VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`,
+`DESTRUCTION_TOKEN_TTL`) were documented from the start of v5 and read by **nobody** until T-9.4
+found it. That is defect D-11 in another shape, and the invariant it
 breaks is explicit: the declared default is what the code does, and no field is typed,
 documented and never read. They are wired now, each through one helper that falls back loudly
 rather than silently.
@@ -938,10 +934,10 @@ through one door:
 ```typescript
 import { access } from '@volcanicminds/backend/db'
 
-const { db, dialect, locator, execute, transaction } = access(container)
+const { db, locator, execute, transaction } = access(container)
 ```
 
-`locator` is the load-bearing field: it is the schema (or the file) this handle addresses, and it is what your
+`locator` is the load-bearing field: it is the schema this handle addresses, and it is what your
 own table objects must be built for.
 
 ---
@@ -1144,7 +1140,7 @@ export async function find(req: FastifyRequest, reply: FastifyReply) {
   // why it is a call and not `req.tenant ?? req.control` written out.
   const container = dataContext(req)
 
-  const { db, dialect } = access(container)
+  const { db } = access(container)
 
   // Your table, built FOR THIS CONTAINER: Drizzle prints the schema name into the SQL, so a
   // table object is the choice of container. Cache them keyed by locator — two tenants
@@ -1152,7 +1148,6 @@ export async function find(req: FastifyRequest, reply: FastifyReply) {
   const { product } = tablesFor(container)
 
   const { headers, records } = await executeFind({ db }, product, req.data(), {
-    dialect,
     // Never returned, and never filterable either: filtering a hash is an oracle.
     sensitiveFields: ['secret'],
     // A restriction the caller cannot relax. It is AND-ed after everything the URL asked
@@ -1245,9 +1240,8 @@ import { start, access, executeFind, executeCount, uuidv7 } from '@volcanicminds
 Install its optional **peer dependencies**, only the ones your engine needs:
 
 ```sh
-npm install drizzle-orm bcrypt pg                # Postgres
-npm install drizzle-orm bcrypt better-sqlite3    # SQLite
-npm install drizzle-orm bcrypt @libsql/client    # libSQL
+npm install drizzle-orm bcrypt pg                        # Postgres on a server
+npm install drizzle-orm bcrypt pg @electric-sql/pglite   # PGlite, in process: development and tests
 ```
 
 The full options are in [docs/CONFIGURATION_V5.md](docs/CONFIGURATION_V5.md), the tables in
@@ -1265,7 +1259,7 @@ export default {
   name: 'general',
   options: {
     control: {
-      engine: 'postgres',            // 'postgres' | 'sqlite' | 'libsql'
+      engine: 'postgres',            // 'postgres' | 'pglite'
       url: process.env.DATABASE_URL,
       schema: 'public',              // Postgres only: explicit, never inferred
       pool: { max: 10 }
@@ -1295,8 +1289,7 @@ customers' rows.
 | `postgres` | absent | single tenant |
 | `postgres` | `strategy: 'schema'`, `engine: 'postgres'` | many tenants, one database, a schema each |
 | `postgres` | `strategy: 'container'`, `engine: 'postgres'` | one database per tenant |
-| `postgres` | `strategy: 'container'`, `engine: 'sqlite'` / `libsql` | one file per tenant |
-| `sqlite` / `libsql` | absent, or `strategy: 'container'` | serverless processes: CLI, agents, desktop |
+| `pglite` | absent | single tenant, Postgres inside the process: development and tests |
 
 MongoDB is gone. Its multi-tenant path was fail-open — the context switch logged a warning and returned, and
 the caller worked on the whole database with no isolation at all.
@@ -1407,8 +1400,7 @@ refuses a half-aliased query rather than guessing which conditions it meant.
 question: an unparseable `_logic` (v4 fell back to an AND of everything), a range written with `:`
 (v4 split it into five parts and dropped the condition), an unknown sort field (v4 skipped it), an empty
 value (v4 searched for the literal `notFound`), a filter on a password hash (v4 allowed it, and it was an
-oracle), an operator the engine cannot honour (400 `QUERY_OPERATOR_NOT_SUPPORTED_BY_ENGINE`, named, never
-emulated with a slower approximation).
+oracle).
 
 **`:raw` is removed, with no replacement by design.** It interpolated a caller-supplied SQL fragment into the
 query; with a tenant container in reach that is a way across the boundary. The environment flag that gated it
@@ -1447,15 +1439,15 @@ allowed to read. Pass `sensitiveFields` in the query options to extend the list 
 | | |
 |---|---|
 | `start(options?)` | opens the data layer; returns the managers, the provider, `migrations` and `migrateTenants`. Reads `global.config.options` when called with nothing |
-| `access(handle)` | the inside of a handle: `db`, `dialect`, `tenantId`, `locator`, `execute`, `transaction` |
+| `access(handle)` | the inside of a handle: `db`, `tenantId`, `locator`, `execute`, `transaction` |
 | `executeFind(handle, table, params, options)` | find and count in one call: `{ records, headers }` |
 | `executeCount(handle, table, params, options)` | how many rows match, ignoring the page |
 | `parseQuery(table, params, options)` | the translation alone, for a query you assemble yourself |
 | `uuidv7()` | a time-ordered identifier, minted in process: no round trip to find a free one |
 | `encrypt` / `decrypt` | AES-256-GCM with per-record derivation. **Async** in v5: the v4 pair blocked the event loop for 82 ms per call, on the MFA login path |
 
-`QueryOptions` carries `dialect`, `sensitiveFields`, `maxPageSize`, `defaultPageSize`, `allowWithDeleted`,
-`allowedRelations`, `logicLimits` and **`extraWhere`** — a condition AND-ed after everything the URL asked for,
+`QueryOptions` carries `sensitiveFields`, `maxPageSize`, `defaultPageSize`, `allowWithDeleted`,
+`allowedRelations`, `logicLimits` and **`extraWhere`**: a condition AND-ed after everything the URL asked for,
 `_logic` included, for row-level security a caller cannot argue with.
 
 ### Useful scripts
@@ -1471,33 +1463,15 @@ both are gone in v5.
 ```sh
 npm run db:generate                 # control, Postgres: registry, platform identities, app tables
 npm run db:generate:tenant          # tenant, Postgres: what lives inside a customer's container
-npm run db:generate:sqlite          # the same control set, in SQLite's language
-npm run db:generate:tenant:sqlite   # the same tenant set, in SQLite's language
 ```
 
-`drizzle-kit` emits **plain SQL** into `lib/database/migrations/<set>/<dialect>/`, and it is
+`drizzle-kit` emits **plain SQL** into `lib/database/migrations/<set>/pg/`, and it is
 committed and reviewed like any other code: what runs against a customer's database is what a
 reviewer reads, in the language the database speaks. Your own tables' migrations go in
-`./migrations/<set>/<dialect>/` in your project; the framework applies both, its own folder
-first.
+`./migrations/<set>/pg/` in your project; the framework applies both, its own folder first.
 
-### Two dialects, because the SQL is genuinely different
-
-`pg` and `sqlite` (libSQL reads the `sqlite` set — it speaks the same language). A
-`timestamp with time zone` is an integer of epoch milliseconds there, a `boolean` is 0/1, an
-array is JSON text, and `USING btree` is nothing at all. Translating one into the other on the
-way to the database would put a statement **nobody has read** in front of a customer's data,
-which is the whole reason migrations are committed SQL rather than a description of a change.
-
-The two dialects of a set carry the **same migration names**, so a review pairs them up and
-`npm run check:migration-sets` fails when one gains a migration the other does not. That check
-is the point: a migration added to Postgres and forgotten on SQLite breaks nothing at all until
-someone deploys the serverless combination, and then it breaks on the first query against a
-table that was never created.
-
-A set that does not exist for the engine in use is **fatal**, never an empty set applied
-successfully. "This container has nothing pending" and "no migrations exist for this engine"
-are different facts, and answering the second with the first reports success to a deployment
+A set that does not exist is **fatal**, never an empty set applied successfully. "This
+container has nothing pending" and "no migrations exist for this set" are different facts, and answering the second with the first reports success to a deployment
 whose tables were never created.
 
 ### Two sets, because they have different lives
@@ -1634,39 +1608,9 @@ the ORM (`EVO_FRAMEWORK.md` appendix A.3): at `max_connections = 100`, 150 conta
 holding one connection fail with *sorry, too many clients already*. Discovering that at the
 two-hundredth tenant means discovering it in production.
 
-On **SQLite and libSQL** a container is a file, and the same two limits apply for the same
-reason with a different resource: the bound is on open descriptors, and a container nobody has
-touched for `idleTimeoutMs` is closed. Creation policy, permissions, names and confinement are
-the ones of the file engine (a file per container, `0600`, always resolved inside the
-configured directory). The Magic Query operators that Postgres has and SQLite does not answer
-**400** rather than degrading quietly: `docs/MAGIC_QUERY_V5.md` lists which.
-
 Reference sizing: **50 to 300 tenants per instance**. Above about a hundred, put **PgBouncer in
 transaction mode** in front of it. The framework holds no session state on a connection (T-3.1),
 so it is already compatible with that mode: nothing has to survive between transactions.
-
-### Continuous replication
-
-A file container can be replicated continuously, to S3 or anywhere else Litestream accepts:
-
-```ts
-tenants: { containers: { directory: './data/tenants', replica: { url: 's3://backups/tenants' } } }
-```
-
-The framework does not replicate anything itself: it supervises **Litestream**, which has been
-shipping WAL frames, tracking generations and getting restores right for years. Writing that
-again would mean getting it wrong on the day it matters. What the framework owns is the port,
-so a deployment that needs something else replaces an adapter and not a design.
-
-- replication starts when a container is created and stops before it is destroyed;
-- **a missing binary is fatal.** A container the deployment believes is being copied, and is
-  not, is worse than one nobody promised to copy;
-- a replicator that dies is reported as stopped, not as running;
-- a restore refuses to write over an existing container: that is not a restore, it is a
-  destruction with an extra step.
-
-Page-encrypted containers are out of scope: Litestream cannot do it, and a port that pretended
-otherwise would be a promise the adapter cannot keep.
 
 ## Exporting a container
 
@@ -1674,8 +1618,8 @@ otherwise would be a promise the adapter cannot keep.
 POST /tenants/:id/export        capability `tenants:export`
 ```
 
-Writes one customer's container to a file: `pg_dump --schema` on Postgres, a WAL checkpoint
-followed by a copy on SQLite and libSQL. The response says where it landed, how big it is, and
+Writes one customer's container to a file with `pg_dump --schema`. The response says where it
+landed, how big it is, and
 **which schema version it was taken at**, read from the container itself rather than from the
 registry row.
 

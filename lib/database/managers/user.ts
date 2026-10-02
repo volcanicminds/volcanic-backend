@@ -39,17 +39,16 @@ const DUMMY_PASSWORD_HASH = '$2b$12$4sLKI6Ag4n6KjUBPqA4oJuAthEdYgbwUj7oIR8yj7Iek
 // layer from pulling a runtime value out of the core.
 const EMAIL_TAKEN_CODE = 'EMAIL_ALREADY_REGISTERED'
 
-// Every engine we support names a unique violation somewhere in the code or the message:
-// Postgres answers 23505, better-sqlite3 and libSQL answer SQLITE_CONSTRAINT_UNIQUE. Drizzle
-// wraps what the driver throws in its own "Failed query" error, so the answer is searched down
-// the cause chain, a few links deep. The test is deliberately loose because it is not what
-// decides: the lookup that follows it is.
+// Postgres names a unique violation with the code 23505, and in the message. Drizzle wraps what
+// the driver throws in its own "Failed query" error, so the answer is searched down the cause
+// chain, a few links deep. The test is deliberately loose because it is not what decides: the
+// lookup that follows it is.
 export function isUniqueViolation(err: unknown): boolean {
   let link = err as { code?: unknown; message?: unknown; cause?: unknown } | undefined
   for (let depth = 0; link && depth < 5; depth++, link = link.cause as typeof link) {
     const code = String(link.code ?? '')
     const message = String(link.message ?? '').toLowerCase()
-    if (code === '23505' || code.startsWith('SQLITE_CONSTRAINT') || message.includes('unique')) return true
+    if (code === '23505' || message.includes('unique')) return true
   }
   return false
 }
@@ -149,11 +148,10 @@ export function createUserManager(): UserManagement {
           .returning()
         return rows[0]
       } catch (err) {
-        // Which constraint fired is spelled differently by every engine, so the answer comes
-        // from asking the table rather than from parsing a message: if a row now holds that
-        // address, the address is why the insert failed. Anything else is rethrown as it is,
-        // because a caller that reads a taken address into a broken migration is worse off
-        // than one that sees the real error.
+        // Which constraint fired is answered by asking the table rather than by parsing the
+        // error: if a row now holds that address, the address is why the insert failed.
+        // Anything else is rethrown as it is, because a caller that reads a taken address into
+        // a broken migration is worse off than one that sees the real error.
         if (isUniqueViolation(err)) {
           const existing = await one(ctx, 'createUser', eq(column(user, 'email'), email as never))
           if (existing) {
@@ -302,12 +300,12 @@ export function createUserManager(): UserManagement {
 
     async countQuery(ctx: DataHandle, data: VQuery) {
       const { handle, user } = users(ctx, 'countQuery')
-      return await executeCount(handle, user, data as never, { dialect: handle.dialect })
+      return await executeCount(handle, user, data as never)
     },
 
     async findQuery(ctx: DataHandle, data: VQuery) {
       const { handle, user } = users(ctx, 'findQuery')
-      return (await executeFind(handle, user, data as never, { dialect: handle.dialect })) as never
+      return (await executeFind(handle, user, data as never)) as never
     },
 
     // --- MFA ---------------------------------------------------------------------

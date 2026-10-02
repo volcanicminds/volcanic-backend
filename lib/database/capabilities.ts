@@ -14,10 +14,6 @@ type Support = Record<TenantStrategy | 'none', boolean>
 const MATRIX: Record<Engine, Support> = {
   // strategy →           none   schema  container
   postgres: { none: true, schema: true, container: true },
-  // No schemas exist here. Emulating them with table prefixes would be the `row` strategy
-  // under another name, and the framework does not promise an isolation it cannot impose.
-  sqlite: { none: true, schema: false, container: true },
-  libsql: { none: true, schema: false, container: true },
   // One connection, shared by every request: usable for development and unit tests, never
   // for isolation. Refused with tenants declared in production.
   pglite: { none: true, schema: false, container: false }

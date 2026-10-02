@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-2.4, against a container migrated on PGlite: the right rows where the capability exists,
-// a 400 with the right code where it does not (docs/MAGIC_QUERY_V5.md §11).
+// T-2.4, against a container migrated on PGlite: the right rows for a query it accepts, a 400
+// with the right code for one it refuses (docs/MAGIC_QUERY_V5.md §11).
 //
 // The error cases carry most of the value here. Each one of them is a v4 behaviour that
 // answered a different question instead of refusing: a skipped sort field, a degraded
@@ -10,17 +10,13 @@
 //
 import { eq, sql } from 'drizzle-orm'
 import { expect } from 'expect'
-import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
 import { PgDialect } from 'drizzle-orm/pg-core'
-import { appTables as sqliteTables } from '../../lib/database/schema/sqlite.js'
 import { appTables as pgTables } from '../../lib/database/schema/pg.js'
 import { parseQuery, executeFind, executeCount } from '../../lib/database/query/index.js'
 import { migratedPglite, type Migrated } from './fixtures/migrated.js'
 
-const lite = sqliteTables()
 const pg = pgTables('public')
-const options = { dialect: 'postgres' as const, allowWithDeleted: false }
-const onSqlite = { dialect: 'sqlite' as const, allowWithDeleted: false }
+const options = { allowWithDeleted: false }
 
 let db: Migrated
 let handle: any
@@ -219,21 +215,13 @@ describe('database/query (T-2.4)', () => {
     })
   })
 
-  describe('engines', () => {
-    it('uses ILIKE on postgres and folded LIKE on sqlite for the same operator', () => {
-      const onPg = parseQuery(pg.user, { 'email:containsi': 'acme' }, { dialect: 'postgres' })
-      const onLite = parseQuery(lite.user, { 'email:containsi': 'acme' }, onSqlite)
-      expect(new PgDialect().sqlToQuery(onPg.where!).sql).toContain('ilike')
-      expect(new SQLiteSyncDialect().sqlToQuery(onLite.where!).sql).toContain('lower')
+  describe('operators', () => {
+    it('matches case-insensitively with ILIKE', () => {
+      const parsed = parseQuery(pg.user, { 'email:containsi': 'acme' }, options)
+      expect(new PgDialect().sqlToQuery(parsed.where!).sql).toContain('ilike')
     })
 
-    it('offers array and json operators on postgres', () => {
-      expect(codeOf(() => parseQuery(pg.user, { 'roles:arrayContains': 'admin' }, { dialect: 'postgres' }))).toBe(
-        'NO_ERROR'
-      )
-    })
-
-    it('refuses them on sqlite by name, instead of emulating them differently', () => {
+    it('offers the array and json operators', () => {
       for (const operator of [
         'arrayContains',
         'arrayContainedBy',
@@ -242,9 +230,7 @@ describe('database/query (T-2.4)', () => {
         'jsonHasAllKeys',
         'jsonHasAnyKey'
       ]) {
-        expect(codeOf(() => parseQuery(lite.user, { [`roles:${operator}`]: 'admin' }, onSqlite))).toBe(
-          'QUERY_OPERATOR_NOT_SUPPORTED_BY_ENGINE'
-        )
+        expect(codeOf(() => parseQuery(pg.user, { [`roles:${operator}`]: 'admin' }, options))).toBe('NO_ERROR')
       }
     })
 

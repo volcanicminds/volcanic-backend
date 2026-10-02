@@ -11,13 +11,7 @@ import { queryError } from './errors.js'
 // the worst incoherence of the old syntax, and the reason this one is a property of the
 // operator, visible in the URL.
 //
-// Every operator declares the engines it exists on. One that does not exist answers 400 with
-// its name and the engine, and is never emulated with a different semantics.
-//
-export type Dialect = 'postgres' | 'sqlite'
-
 export interface OperatorContext {
-  dialect: Dialect
   column: Column
   /** The raw string from the query string, already checked for emptiness. */
   raw: string
@@ -25,7 +19,6 @@ export interface OperatorContext {
 
 export interface Operator {
   name: string
-  engines: Dialect[]
   build(ctx: OperatorContext): SQL
 }
 
@@ -81,17 +74,11 @@ const boolValue = (ctx: OperatorContext): boolean => {
   throw queryError('QUERY_INVALID_VALUE', `'${ctx.column.name}' with this operator takes true or false`)
 }
 
-// --- text matching, per dialect -------------------------------------------------------
+// --- text matching --------------------------------------------------------------------
 const likeSensitive = (ctx: OperatorContext, pattern: string): SQL =>
   sql`${ctx.column} like ${pattern} escape '\\'`
 
-const likeInsensitive = (ctx: OperatorContext, pattern: string): SQL =>
-  ctx.dialect === 'postgres'
-    ? sql`${ctx.column} ilike ${pattern} escape '\\'`
-    : // SQLite has no ILIKE, and its LIKE is case-insensitive only for ASCII and only while
-      // `case_sensitive_like` is off — which the adapter turns ON so the base operators mean
-      // what they say. Folding both sides is explicit and independent of that pragma.
-      sql`lower(${ctx.column}) like lower(${pattern}) escape '\\'`
+const likeInsensitive = (ctx: OperatorContext, pattern: string): SQL => sql`${ctx.column} ilike ${pattern} escape '\\'`
 
 const patterns = {
   contains: (v: string) => `%${escapeLike(v)}%`,
@@ -105,7 +92,6 @@ type PatternKind = keyof typeof patterns
 function textOperator(name: string, kind: PatternKind, insensitive: boolean, negated: boolean): Operator {
   return {
     name,
-    engines: ['postgres', 'sqlite'],
     build(ctx) {
       const pattern = patterns[kind](ctx.raw)
       const condition = insensitive ? likeInsensitive(ctx, pattern) : likeSensitive(ctx, pattern)
@@ -114,50 +100,42 @@ function textOperator(name: string, kind: PatternKind, insensitive: boolean, neg
   }
 }
 
-// --- postgres-only array and json operators -------------------------------------------
+// --- array and json operators ---------------------------------------------------------
 const arrayOperator = (name: string, operator: string): Operator => ({
   name,
-  engines: ['postgres'],
   build: (ctx) => sql`${ctx.column} ${sql.raw(operator)} ${ctx.raw.split(',')}::text[]`
 })
 
 const jsonKeyOperator = (name: string, operator: string, many: boolean): Operator => ({
   name,
-  engines: ['postgres'],
   build: (ctx) =>
     many
       ? sql`${ctx.column} ${sql.raw(operator)} ${ctx.raw.split(',')}::text[]`
       : sql`${ctx.column} ${sql.raw(operator)} ${ctx.raw}`
 })
 
-const both: Dialect[] = ['postgres', 'sqlite']
-
 export const OPERATORS: Record<string, Operator> = {
   // null and empty
-  null: { name: 'null', engines: both, build: (ctx) => (boolValue(ctx) ? isNull(ctx.column) : isNotNull(ctx.column)) },
-  empty: {
-    name: 'empty',
-    engines: both,
-    build: (ctx) => (boolValue(ctx) ? eq(ctx.column, '' as never) : ne(ctx.column, '' as never))
-  },
+  null: { name: 'null', build: (ctx) => (boolValue(ctx) ? isNull(ctx.column) : isNotNull(ctx.column)) },
+  empty: { name: 'empty', build: (ctx) => (boolValue(ctx) ? eq(ctx.column, '' as never) : ne(ctx.column, '' as never)) },
 
   // equality and set membership
-  eq: { name: 'eq', engines: both, build: (ctx) => eq(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  neq: { name: 'neq', engines: both, build: (ctx) => ne(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  eqi: { name: 'eqi', engines: both, build: (ctx) => likeInsensitive(ctx, escapeLike(ctx.raw)) },
-  neqi: { name: 'neqi', engines: both, build: (ctx) => not(likeInsensitive(ctx, escapeLike(ctx.raw))) as SQL },
-  in: { name: 'in', engines: both, build: (ctx) => inArray(ctx.column, list(ctx) as never[]) },
-  nin: { name: 'nin', engines: both, build: (ctx) => notInArray(ctx.column, list(ctx) as never[]) },
+  eq: { name: 'eq', build: (ctx) => eq(ctx.column, coerce(ctx.column, ctx.raw) as never) },
+  neq: { name: 'neq', build: (ctx) => ne(ctx.column, coerce(ctx.column, ctx.raw) as never) },
+  eqi: { name: 'eqi', build: (ctx) => likeInsensitive(ctx, escapeLike(ctx.raw)) },
+  neqi: { name: 'neqi', build: (ctx) => not(likeInsensitive(ctx, escapeLike(ctx.raw))) as SQL },
+  in: { name: 'in', build: (ctx) => inArray(ctx.column, list(ctx) as never[]) },
+  nin: { name: 'nin', build: (ctx) => notInArray(ctx.column, list(ctx) as never[]) },
 
   // comparison
-  gt: { name: 'gt', engines: both, build: (ctx) => gt(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  ge: { name: 'ge', engines: both, build: (ctx) => gte(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  lt: { name: 'lt', engines: both, build: (ctx) => lt(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  le: { name: 'le', engines: both, build: (ctx) => lte(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  between: { name: 'between', engines: both, build: (ctx) => range(ctx, false) },
-  nbetween: { name: 'nbetween', engines: both, build: (ctx) => range(ctx, true) },
+  gt: { name: 'gt', build: (ctx) => gt(ctx.column, coerce(ctx.column, ctx.raw) as never) },
+  ge: { name: 'ge', build: (ctx) => gte(ctx.column, coerce(ctx.column, ctx.raw) as never) },
+  lt: { name: 'lt', build: (ctx) => lt(ctx.column, coerce(ctx.column, ctx.raw) as never) },
+  le: { name: 'le', build: (ctx) => lte(ctx.column, coerce(ctx.column, ctx.raw) as never) },
+  between: { name: 'between', build: (ctx) => range(ctx, false) },
+  nbetween: { name: 'nbetween', build: (ctx) => range(ctx, true) },
 
-  // arrays and json, postgres only
+  // arrays and json
   arrayContains: arrayOperator('arrayContains', '@>'),
   arrayContainedBy: arrayOperator('arrayContainedBy', '<@'),
   arrayOverlaps: arrayOperator('arrayOverlaps', '&&'),
@@ -184,7 +162,7 @@ for (const kind of ['contains', 'starts', 'ends', 'like'] as PatternKind[]) {
   OPERATORS[`n${kind}i`] = textOperator(`n${kind}i`, kind, true, true)
 }
 
-export function operatorFor(name: string, dialect: Dialect): Operator {
+export function operatorFor(name: string): Operator {
   const operator = OPERATORS[name]
   if (!operator) {
     // Names are matched exactly, case included. The message used to say "lowercase", which the
@@ -196,12 +174,6 @@ export function operatorFor(name: string, dialect: Dialect): Operator {
       meant
         ? `'${name}' is not an operator: names are matched exactly, did you mean '${meant}'?`
         : `'${name}' is not an operator (names are matched exactly, case included)`
-    )
-  }
-  if (!operator.engines.includes(dialect)) {
-    throw queryError(
-      'QUERY_OPERATOR_NOT_SUPPORTED_BY_ENGINE',
-      `'${name}' does not exist on ${dialect}: it is available on ${operator.engines.join(', ')}`
     )
   }
   return operator

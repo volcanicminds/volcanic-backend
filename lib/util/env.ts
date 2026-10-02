@@ -4,12 +4,12 @@
 // Reading a number out of the environment, once and in one place.
 //
 // The rule this file serves is an invariant, not a preference: **the declared default is what
-// the code does**, and no field is typed, documented and never read. That was defect D-11 —
-// `resolver: 'subdomain'` documented as the default of a resolver nothing consulted — and it
-// came back anyway, in another shape: `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`,
-// `TENANT_CONTAINERS_DIR` and `DESTRUCTION_TOKEN_TTL` were all in the documented environment
-// table and read by nobody. Found by T-9.4, which set out to MEASURE the values these
-// variables carry and discovered there was nowhere to put the answer.
+// the code does**, and no field is typed, documented and never read. That was defect D-11
+// (`resolver: 'subdomain'` documented as the default of a resolver nothing consulted), and it
+// came back anyway, in another shape: `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`
+// and `DESTRUCTION_TOKEN_TTL` were all in the documented environment table and read by nobody.
+// Found by T-9.4, which set out to MEASURE the values these variables carry and discovered
+// there was nowhere to put the answer.
 //
 // So a helper, and its whole job is refusing to be clever: a value that does not parse falls
 // back to the default and **says so**, because the failure mode of silence here is a limit
@@ -41,10 +41,4 @@ export function envInt(name: string, fallback: number, opts: { min?: number; max
     return max
   }
   return value
-}
-
-/** A non-empty string from the environment, or the default. */
-export function envString(name: string, fallback: string): string {
-  const raw = process.env[name]
-  return raw === undefined || String(raw).trim() === '' ? fallback : String(raw).trim()
 }

@@ -2,7 +2,7 @@
 //
 // T-1.4: the capability matrix refuses, at boot, every combination the framework cannot
 // isolate. Each of these ran as a warning in v4 and then served traffic without isolation
-// (D-04). `onFatal` is injected so a refusal does not kill the test process — the same
+// (D-04). `onFatal` is injected so a refusal does not kill the test process, the same
 // pattern lib/util/secret.ts already uses.
 //
 import { expect } from 'expect'
@@ -19,15 +19,17 @@ describe('database/capabilities', () => {
     expect(refusal({ control: { engine: 'postgres' } })).toBeNull()
     expect(refusal({ control: { engine: 'postgres' }, tenants: { strategy: 'schema', engine: 'postgres' } })).toBeNull()
     expect(refusal({ control: { engine: 'postgres' }, tenants: { strategy: 'container', engine: 'postgres' } })).toBeNull()
-    expect(refusal({ control: { engine: 'postgres' }, tenants: { strategy: 'container', engine: 'sqlite' } })).toBeNull()
-    expect(refusal({ control: { engine: 'libsql' } })).toBeNull()
+    expect(refusal({ control: { engine: 'pglite' } })).toBeNull()
   })
 
-  it('refuses schema-per-tenant where schemas do not exist', () => {
+  it('refuses the file engines by name, instead of starting on Postgres', () => {
+    // Postgres is the only engine (F58): a configuration written for SQLite or libSQL stops the
+    // boot rather than run against a database it never named.
     for (const engine of ['sqlite', 'libsql']) {
-      const message = refusal({ control: { engine: 'postgres' }, tenants: { strategy: 'schema', engine } })
-      expect(message).toContain(engine)
-      expect(message).toContain('schema')
+      expect(refusal({ control: { engine } })).toContain(`unknown engine '${engine}'`)
+      expect(refusal({ control: { engine: 'postgres' }, tenants: { strategy: 'container', engine } })).toContain(
+        `unknown engine '${engine}'`
+      )
     }
   })
 
@@ -38,8 +40,8 @@ describe('database/capabilities', () => {
   })
 
   it('refuses a pglite control plane under tenancy in production', () => {
-    // Reachable combination: the tenants live in files, the registry would live in pglite.
-    const options = { control: { engine: 'pglite' }, tenants: { strategy: 'container', engine: 'sqlite' } }
+    // Reachable combination: the tenants name Postgres, the registry would live in pglite.
+    const options = { control: { engine: 'pglite' }, tenants: { strategy: 'schema', engine: 'postgres' } }
     expect(refusal(options, { prod: true })).toContain('single shared connection')
     // Outside production it is a legitimate development setup, so it must NOT be refused.
     expect(refusal(options, { prod: false })).toBeNull()
@@ -53,7 +55,7 @@ describe('database/capabilities', () => {
   })
 
   it('suggests a way out, not just a refusal', () => {
-    const message = refusal({ control: { engine: 'postgres' }, tenants: { strategy: 'schema', engine: 'sqlite' } })
+    const message = refusal({ control: { engine: 'postgres' }, tenants: { strategy: 'schema', engine: 'pglite' } })
     expect(message).toContain('Supported combinations')
     expect(message).toContain('postgres + schema')
   })
@@ -65,8 +67,7 @@ describe('database/capabilities', () => {
 
   it('is a property of the code: the matrix is not configurable', () => {
     expect(supports('postgres', 'schema')).toBe(true)
-    expect(supports('sqlite', 'schema')).toBe(false)
-    expect(supportedCombinations()).toContain('sqlite + container')
-    expect(supportedCombinations()).not.toContain('sqlite + schema')
+    expect(supports('pglite', 'schema')).toBe(false)
+    expect(supportedCombinations()).toEqual(['postgres + none', 'postgres + schema', 'postgres + container', 'pglite + none'])
   })
 })

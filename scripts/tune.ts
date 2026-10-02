@@ -220,25 +220,27 @@ async function tuneConnections(): Promise<any> {
   }
 }
 
-/** What a page costs as it grows, which is what the ceiling on `_pageSize` is for. */
+/**
+ * What a page costs as it grows, which is what the ceiling on `_pageSize` is for.
+ *
+ * Measured on PGlite, in memory: the shape of the curve is the point, and PGlite gives it
+ * without a server. The absolute numbers are not those of a networked Postgres.
+ */
 async function tunePageSize(): Promise<any> {
-  const Database = await import('better-sqlite3').catch(() => null)
-  if (!Database) return { skipped: 'better-sqlite3 is not installed' }
+  const pglite = await import('@electric-sql/pglite').catch(() => null)
+  if (!pglite) return { skipped: '@electric-sql/pglite is not installed' }
 
-  const db = new (Database as any).default(':memory:')
-  db.exec('create table probe (id integer primary key, a text, b text, c text)')
-  const insert = db.prepare('insert into probe (a, b, c) values (?, ?, ?)')
-  const many = db.transaction((n: number) => {
-    for (let i = 0; i < n; i++) insert.run(`a-${i}`, `b-${i}`, 'c'.repeat(64))
-  })
-  many(20_000)
+  const db = new pglite.PGlite()
+  await db.exec('create table probe (id serial primary key, a text, b text, c text)')
+  await db.exec(
+    "insert into probe (a, b, c) select 'a-' || g, 'b-' || g, repeat('c', 64) from generate_series(1, 20000) g"
+  )
 
   const pages: Record<number, Sample> = {}
   for (const size of [25, 100, 500, 1000]) {
-    const statement = db.prepare('select * from probe limit ? offset ?')
-    pages[size] = await measure(() => statement.all(size, 5_000), 9)
+    pages[size] = await measure(() => db.query('select * from probe limit $1 offset $2', [size, 5_000]), 9)
   }
-  db.close()
+  await db.close()
 
   // The clamp is about the cost a single caller can ask the server to pay, so the number worth
   // reporting is where it stops being linear.

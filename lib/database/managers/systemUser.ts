@@ -183,12 +183,12 @@ export function createSystemUserManager(): SystemUserManagement {
 
     async countQuery(ctx: ControlHandle, data: VQuery) {
       const { handle, user } = users(ctx, 'countQuery')
-      return await executeCount(handle, user, data as never, { dialect: handle.dialect })
+      return await executeCount(handle, user, data as never)
     },
 
     async findQuery(ctx: ControlHandle, data: VQuery) {
       const { handle, user } = users(ctx, 'findQuery')
-      return (await executeFind(handle, user, data as never, { dialect: handle.dialect })) as never
+      return (await executeFind(handle, user, data as never)) as never
     }
   }
 }

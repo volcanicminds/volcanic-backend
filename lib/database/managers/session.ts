@@ -44,9 +44,9 @@ export function createSessionManager(): SessionManagement {
   /**
    * The state of a row, decided in TypeScript and not in SQL.
    *
-   * The two dialects store time differently (timestamptz against epoch milliseconds), so a
-   * comparison written once in SQL would be a comparison written twice, subtly. Reading one row
-   * and judging it here is the same answer on both engines.
+   * A condition in the WHERE clause would answer found or not found, and `findBySecret` owes
+   * the caller which of revoked, expired or live the credential is: the row is read whole and
+   * judged here.
    */
   const stateOf = (row: Session, now: Date): 'live' | 'revoked' | 'expired' => {
     if (asDate(row.revokedAt)) return 'revoked'
@@ -136,7 +136,7 @@ export function createSessionManager(): SessionManagement {
         .set({
           secretHash: hashSecret(String(next.secret)),
           // The generation being spent becomes the previous one, read from the row itself: an
-          // UPDATE assigns from the OLD values on both engines, so the two columns shift by one
+          // UPDATE assigns from the OLD values, so the two columns shift by one
           // in a single statement and the caller never has to hand back the secret it consumed.
           previousSecretHash: sql`${column(session, 'secretHash')}`,
           generation: generation + 1,

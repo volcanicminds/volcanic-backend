@@ -9,7 +9,7 @@ module.exports = {
       // nome del pacchetto: scritte come `^(drizzle-orm|…)$` quella metà della regola non scattava
       // mai, e il confine reggeva solo per `lib/database/` e `db.ts`.
       to: {
-        path: '^lib/database/|^db\\.ts$|(^|/)node_modules/(drizzle-orm|better-sqlite3|@libsql/client|bcrypt|pg)(/|$)'
+        path: '^lib/database/|^db\\.ts$|(^|/)node_modules/(drizzle-orm|@electric-sql/pglite|bcrypt|pg)(/|$)'
       }
     },
     {

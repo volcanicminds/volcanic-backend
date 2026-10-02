@@ -132,14 +132,13 @@ export abstract class BaseService<K extends keyof AppTables> {
     if (!this.handle) {
       throw new Error(`[${this.constructor.name}] used without a container. Call service.on(dataContext(req)).`)
     }
-    const { db, dialect } = access(this.handle, this.constructor.name)
-    return { db, table: tablesFor(this.handle)[this.tableName], options: { dialect } as QueryOptions }
+    const { db } = access(this.handle, this.constructor.name)
+    return { db, table: tablesFor(this.handle)[this.tableName], options: {} as QueryOptions }
   }
 }
 ```
 
-`access(handle)` is what opens a handle: it returns `db`, `dialect`, `locator`, `execute` and
-`transaction`. It is exported from the data layer subpath, `@volcanicminds/backend/db`, and it is
+`access(handle)` is what opens a handle: it returns `db`, `locator`, `execute` and `transaction`. It is exported from the data layer subpath, `@volcanicminds/backend/db`, and it is
 the only supported way in: without it the alternative was a cast, and a cast is how a typed seam
 stops being one.
 

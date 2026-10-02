@@ -80,7 +80,7 @@ export function createImpersonationManager(): ImpersonationManagement {
 
     async findQuery(ctx: ControlHandle, data: VQuery) {
       const { handle, impersonation } = records(ctx, 'findQuery')
-      return (await executeFind(handle, impersonation, data as never, { dialect: handle.dialect })) as never
+      return (await executeFind(handle, impersonation, data as never)) as never
     }
   }
 }

@@ -8,10 +8,9 @@ code disagree, the code wins.
 
 | Profile | Control plane database | Tenant databases | Notes |
 |---|---|---|---|
-| Single tenant | Postgres (production); SQLite or libSQL (CLI, agents, desktop); pglite for development only | none: the control plane database is the only one | `control.engine` defaults to `postgres` |
-| Multi-tenant, one schema per tenant | Postgres | Postgres, same database | `strategy: 'schema'`; not available on SQLite or libSQL, which have no schemas |
+| Single tenant | Postgres (production); pglite for development only | none: the control plane database is the only one | `control.engine` defaults to `postgres` |
+| Multi-tenant, one schema per tenant | Postgres | Postgres, same database | `strategy: 'schema'` |
 | Multi-tenant, one database per tenant | Postgres | Postgres | `strategy: 'container'` |
-| Multi-tenant, one file per tenant | Postgres, or SQLite/libSQL | SQLite or libSQL | `strategy: 'container'` |
 | Refused at boot | pglite with a `tenants` block in production; MongoDB anywhere | | pglite hands out one shared connection, so it cannot isolate tenants |
 
 The capability matrix is `lib/database/capabilities.ts`; the configuration blocks are in

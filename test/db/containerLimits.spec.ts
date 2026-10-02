@@ -2,12 +2,12 @@
 //
 // T-10.9: the container limits, read along the path a real boot takes.
 //
-// T-9.4 wired `TENANT_CONTAINERS_MAX_OPEN` and `TENANT_CONTAINERS_DIR` back into the adapters as
+// T-9.4 wired `TENANT_CONTAINERS_MAX_OPEN` back into the adapter as
 // `configured ?? environment ?? default`, and its tests proved the environment helper. What no
 // test followed was the value from the loader to the adapter: `normalizeOptions` filled
-// `tenants.containers.maxOpen` and `.directory` with the defaults for every deployment that
-// declared tenants, so "configured" was always true and the `??` never reached the
-// environment. The variables were unread again, in the one case where they matter.
+// `tenants.containers.maxOpen` with the default for every deployment that declared tenants,
+// so "configured" was always true and the `??` never reached the environment. The variable
+// was unread again, in the one case where it matters.
 //
 // So these tests start where a boot starts, from `normalizeOptions`, and read what the provider
 // ended up with. Constructing a provider opens nothing: the pools are lazy.
@@ -15,7 +15,6 @@
 import { expect } from 'expect'
 import { normalizeOptions } from '../../lib/loader/general.js'
 import { createPostgresProvider } from '../../lib/database/adapters/postgres/index.js'
-import { createSqliteProvider } from '../../lib/database/adapters/sqlite/index.js'
 
 ;(global as any).log = (global as any).log || {}
 
@@ -67,17 +66,6 @@ describe('container limits · from the loader to the adapter (T-10.9)', () => {
       } finally {
         await provider.shutdown()
       }
-    })
-  })
-
-  it('reads TENANT_CONTAINERS_DIR for the per-tenant files on SQLite', async () => {
-    await withEnv('TENANT_CONTAINERS_DIR', '/tmp/volcanic-t-10-9', () => {
-      const options: any = normalizeOptions({
-        control: { engine: 'sqlite', url: ':memory:' },
-        tenants: { strategy: 'container', engine: 'sqlite' }
-      } as any)
-      const provider: any = createSqliteProvider(options)
-      expect(provider.directory).toBe('/tmp/volcanic-t-10-9')
     })
   })
 })

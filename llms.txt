@@ -20,7 +20,7 @@
 > | `page`, `pageSize`, `sort=f:desc` | `_page`, `_pageSize`, `_sort=-f` |
 > | `:raw`, `:eqs`, `:isEmpty`, `:notNull` | removed. `:eq`, `:empty=true`, `:null=false` |
 > | `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP`, `POST /tool/synchronize-schemas` | committed migrations |
-> | MongoDB, PGlite as a deployment engine | Postgres, SQLite, libSQL |
+> | MongoDB, PGlite as a deployment engine | Postgres |
 
 > **Core Paradigms (MANDATORY)**:
 > 1. **Framework**: Node.js (v24+ required), Fastify v5, pure ESM (`NodeNext`).
@@ -60,8 +60,8 @@ runs.
 - **The Data Layer** (subpath `@volcanicminds/backend/db`) — Magic Query, the framework's own tables, per-tenant
   containers, versioned migrations, and the concrete **managers** you inject into the core. Drizzle is what is
   behind it and is nobody's business: in v4 the subpath was `/typeorm`, so the ORM was part of the public API and
-  replacing it broke every consumer. Its deps (`drizzle-orm`, `pg` or `better-sqlite3`/`@libsql/client`, `bcrypt`)
-  are **optional peer dependencies**.
+  replacing it broke every consumer. Its deps (`drizzle-orm`, `pg`, `bcrypt`, and `@electric-sql/pglite`
+  for PGlite) are **optional peer dependencies**.
 
 The two layers meet at exactly **one seam**: the data layer's `start()` returns the managers, and you hand those
 to the core's `start(decorators)`. They are values you own, not singletons imported from a subpath, which is what
@@ -105,10 +105,10 @@ To reach inside a handle — for your own tables, or a query an ORM has no busin
 
 ```ts
 import { access } from '@volcanicminds/backend/db'
-const { db, dialect, locator, execute, transaction } = access(container)
+const { db, locator, execute, transaction } = access(container)
 ```
 
-`locator` is the load-bearing field: it is the schema (or file) this handle addresses, and what
+`locator` is the load-bearing field: it is the schema this handle addresses, and what
 your own table objects must be built for.
 
 **Decision shortcuts:**
@@ -141,7 +141,7 @@ your own table objects must be built for.
     - **2.3 Never redefine a framework table** (add your own, keyed by `user.id`)
     - **2.4 Enums and domain vocabularies** (a frozen list, plus a CHECK)
     - **2.5 Relations** (declared in the query, not as eager/lazy on the model)
-    - **2.6 Migrations own the shape** (two sets, two dialects, forward only)
+    - **2.6 Migrations own the shape** (two sets, forward only)
     - **2.7 Modeling Best Practices**
 
 3.  **[Part 3: Magic Queries & Data Access](#part-3-magic-queries--data-access)**
@@ -285,8 +285,8 @@ The framework is an **opinionated** system composed of three modular packages wo
     - Introduces **"Magic Queries"**: a translation engine that turns a query string (filters, sort, pagination,
       boolean logic) into SQL — and answers **400 with a code** wherever v4 degraded into a different query.
     - Owns the framework's own tables, per-tenant containers, and versioned migrations.
-    - **Optional and decoupled, not bundled into the core**: its dependencies (`drizzle-orm`, `bcrypt`, and `pg`
-      or `better-sqlite3`/`@libsql/client`) are *optional peer dependencies*, so a project using only the HTTP
+    - **Optional and decoupled, not bundled into the core**: its dependencies (`drizzle-orm`, `bcrypt`, `pg`, and
+      `@electric-sql/pglite` for PGlite) are *optional peer dependencies*, so a project using only the HTTP
       core never installs them. The boundary is **enforced in CI**: the core may not import `lib/database/**`,
       and the data layer may import only *types* from the core. It is also **replaceable** — the managers are
       values you hand to `startServer()`, so an alternative implementation is a parameter. Full reference in
@@ -358,8 +358,8 @@ The framework uses an **autodiscovery** system based on `glob` patterns. Adherin
 
 # and, beside src/:
 ├── migrations
-│   ├── control/{pg,sqlite}   # your migrations for the control plane
-│   └── tenant/{pg,sqlite}    # your migrations for a tenant container
+│   ├── control/pg            # your migrations for the control plane
+│   └── tenant/pg             # your migrations for a tenant container
 └── drizzle.config.ts         # how they are generated
 ```
 
@@ -431,7 +431,7 @@ export default {
   name: 'general',
   options: {
     control: {
-      engine: 'postgres',                 // 'postgres' | 'sqlite' | 'libsql'
+      engine: 'postgres',                 // 'postgres' | 'pglite'
       url: process.env.DATABASE_URL,      // or the discrete DB_* variables
       schema: process.env.DB_SCHEMA || 'public',   // Postgres only: explicit, never inferred
       pool: { max: Number(process.env.DB_POOL_MAX) || 10, idleTimeoutMs: 30_000 }
@@ -462,8 +462,7 @@ alternative is starting and mixing two customers' rows.
 | `postgres` | absent | single tenant |
 | `postgres` | `strategy: 'schema'`, `engine: 'postgres'` | many tenants, one database, a schema each |
 | `postgres` | `strategy: 'container'`, `engine: 'postgres'` | one database per tenant |
-| `postgres` | `strategy: 'container'`, `engine: 'sqlite' \| 'libsql'` | one file per tenant |
-| `sqlite` / `libsql` | absent, or `strategy: 'container'` | serverless processes: CLI, agents, desktop |
+| `pglite` | absent | single tenant, Postgres inside the process: development and tests |
 
 **No naming strategy to configure.** Columns are declared explicitly (`text('first_name')`), so
 `snake_case` in the database and `camelCase` in TypeScript is written down rather than derived
@@ -515,7 +514,6 @@ An example `.env` for production.
 | `BCRYPT_COST`                  | Password work factor. **Never below 12**, whatever is written. Measure it with `npm run tune`. |    No    | `12`  |
 | `VOLCANIC_MAX_PAGE_SIZE`       | Upper clamp on `_pageSize`.                                             |    No    | `100`               |
 | `TENANT_CONTAINERS_MAX_OPEN`   | LRU bound on live tenant containers.                                    |    No    | `20`                |
-| `TENANT_CONTAINERS_DIR`        | Where per-tenant files live (file-per-container engines).               |    No    | `./data/tenants`    |
 | `DESTRUCTION_TOKEN_TTL`        | Seconds a container-destruction request stays valid.                    |    No    | `600`               |
 | `IMPERSONATION_TTL`            | Seconds an impersonation token lasts. Hard maximum 14400.               |    No    | `1800`              |
 
@@ -530,9 +528,9 @@ is versioned migrations now, applied as a deploy step), `VOLCANIC_CUSTOM_QUERY_O
 `:raw` operator is gone), `VOLCANIC_CASE_INSENSITIVE_DEFAULT` (case sensitivity is a property of
 the operator, so one URL cannot mean two things on two servers).
 
-> Four of the variables above — `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`,
-> `TENANT_CONTAINERS_DIR`, `DESTRUCTION_TOKEN_TTL` — were documented from the start of v5 and
-> read by **nobody** until T-9.4 found it, which is defect D-11 in another shape. If you are
+> Three of the variables above (`VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`,
+> `DESTRUCTION_TOKEN_TTL`) were documented from the start of v5 and read by **nobody** until
+> T-9.4 found it, which is defect D-11 in another shape. If you are
 > generating configuration, the rule the framework holds itself to is: the declared default is
 > what the code does, and no field is typed, documented and never read.
 
@@ -821,8 +819,7 @@ export type AppTables = ReturnType<typeof appTables>
 
 - `snake_case` in the database, `camelCase` in TypeScript, **written out**. No naming strategy to
   configure and no convention a future ORM version might read differently.
-- `timestamptz`, never a naive timestamp. On SQLite the same value is an integer of epoch
-  **milliseconds**, always UTC — no local time ever reaches the database.
+- `timestamptz`, never a naive timestamp: no local time ever reaches the database.
 - Identifiers minted in process with `uuidv7()`: time-ordered, so inserts stay local in the
   b-tree instead of scattering, and a row carries its creation instant. v4 looked up a free id
   with a `do/while` around a SELECT — a round trip per insert, to solve a collision that does not
@@ -841,8 +838,7 @@ import { appTables, type AppTables } from './pg.js'
 const cache = new Map<string, AppTables>()
 
 export function tablesFor(handle: DataHandle): AppTables {
-  const { dialect, locator } = access(handle, 'tablesFor')
-  if (dialect !== 'postgres') throw new Error(`this project's tables are Postgres; container speaks '${dialect}'`)
+  const { locator } = access(handle, 'tablesFor')
 
   const key = locator || 'public'
   if (!cache.has(key)) cache.set(key, appTables(key))
@@ -915,12 +911,9 @@ npm run db:generate:tenant   # tenant, Postgres
 npm run db:migrate           # apply — a deploy step, not a boot step
 ```
 
-Two sets (`control`, `tenant`) because the two have different lives, and two dialects (`pg`,
-`sqlite`) because the SQL genuinely differs: `timestamp with time zone` against an integer of
-epoch milliseconds, `USING btree` against nothing at all. Translating one into the other at apply
-time would put a statement **nobody has read** in front of a customer's data, which is the whole
-reason migrations are committed SQL. The two dialects of a set carry the **same names**, and
-`npm run check:migration-sets` fails when one gains a migration the other does not.
+Two sets (`control`, `tenant`) because the two have different lives. `npm run
+check:migration-sets` fails when a platform table reaches the tenant set, when a table both need
+is missing from one of them, or when a file name is used by both.
 
 Forward only: `drizzle-kit` generates no `down`, and a `down` on a destructive migration restores
 the form and not the data — a promise that fails exactly when it is called on. Reversibility lives
@@ -947,7 +940,7 @@ in expand/contract releases.
 
 ## 3.1 Translation Layer: URL to SQL
 
-`HTTP query string` → `parseQuery()` → SQL, built for the dialect the handle speaks.
+`HTTP query string` → `parseQuery()` → SQL.
 
 ```typescript
 // src/api/products/controller/product.ts
@@ -961,11 +954,10 @@ export async function find(req: FastifyRequest, reply: FastifyReply) {
   // exists to remove.
   const container = dataContext(req)
 
-  const { db, dialect } = access(container)
+  const { db } = access(container)
   const { product } = tablesFor(container)
 
   const { headers, records } = await executeFind({ db }, product, req.data(), {
-    dialect,
     sensitiveFields: ['secret'],       // never returned, and never filterable either
     extraWhere: onlyMine(req)          // row-level security the URL cannot argue with
   })
@@ -1092,9 +1084,6 @@ manifest is for.
   value nobody is allowed to read. v4 allowed it.
 - **`extraWhere` is AND-ed last**, after everything the URL asked for and `_logic` included, so no
   expression a client can write reaches around a row-level-security rule.
-- **Operators an engine cannot honour answer 400** `QUERY_OPERATOR_NOT_SUPPORTED_BY_ENGINE`,
-  naming the operator and the engine — never silently ignored, never emulated with a slower
-  approximation that returns different rows.
 - **`:raw` is removed**, and so is the environment flag that gated it.
 
 ## 3.8 Data layer API reference
@@ -1102,15 +1091,15 @@ manifest is for.
 | | |
 |---|---|
 | `start(options?)` | opens the data layer; returns the managers, `provider`, `migrations`, `migrateTenants`, `shutdown`. Reads `global.config.options` when called with nothing |
-| `access(handle)` | the inside of a handle: `db`, `dialect`, `tenantId`, `locator`, `execute`, `transaction` |
+| `access(handle)` | the inside of a handle: `db`, `tenantId`, `locator`, `execute`, `transaction` |
 | `executeFind(handle, table, params, options)` | find and count in one call: `{ records, headers }` |
 | `executeCount(handle, table, params, options)` | how many rows match, ignoring the page |
 | `parseQuery(table, params, options)` | the translation alone, for a query you assemble yourself |
 | `uuidv7()` | a time-ordered identifier, minted in process |
 | `encrypt` / `decrypt` | AES-256-GCM, per-record derivation. **Async** in v5: the v4 pair blocked the event loop for 82 ms per call, on the MFA login path (D-14) |
-| `migrationSets()`, `migrationDialect(engine)` | where migrations are read from, per set and dialect |
+| `migrationSets()` | where migrations are read from, per set |
 
-`QueryOptions`: `dialect`, `sensitiveFields`, `maxPageSize`, `defaultPageSize`,
+`QueryOptions`: `sensitiveFields`, `maxPageSize`, `defaultPageSize`,
 `allowWithDeleted`, `allowedRelations`, `logicLimits`, `extraWhere`.
 
 Replaced from v4: `executeFindQuery` → `executeFind`, `executeCountQuery` → `executeCount`,
@@ -1123,7 +1112,7 @@ Replaced from v4: `executeFindQuery` → `executeFind`, `executeCountQuery` → 
 
 ```typescript
 import { parseQuery } from '@volcanicminds/backend/db'
-const { where, orderBy, limit, offset } = parseQuery(product, req.query, { dialect: 'postgres' })
+const { where, orderBy, limit, offset } = parseQuery(product, req.query)
 ```
 
 ## 3.10 Multi-tenancy in one paragraph
@@ -1541,11 +1530,11 @@ export abstract class BaseService<K extends keyof AppTables> {
     if (!this.handle) {
       throw new Error(`[${this.constructor.name}] used without a container. Call service.on(dataContext(req)).`)
     }
-    const { db, dialect } = access(this.handle, this.constructor.name)
+    const { db } = access(this.handle, this.constructor.name)
     return {
       db,
       table: tablesFor(this.handle)[this.tableName] as unknown as Table,
-      options: { dialect, sensitiveFields: this.sensitiveFields } as QueryOptions
+      options: { sensitiveFields: this.sensitiveFields } as QueryOptions
     }
   }
 
@@ -1815,12 +1804,6 @@ schema. One owner, one release, and no session state to undo.
 **A rollback that fails does not replace the error that caused it.** The first says what went
 wrong; the second only says the connection is worse off.
 
-**Engine note.** better-sqlite3 refuses an async callback outright (its driver is synchronous), so
-the adapter drives `begin`/`commit`/`rollback` by statement there, while libSQL needs the driver's
-own `transaction()` because every `execute` is otherwise its own implicit transaction. Both are
-behind the same `transaction(fn)`, and a caller never sees the difference — but it is why the
-adapter branches.
-
 ---
 
 ## 5.5 Globals vs Dependency Injection
@@ -1831,8 +1814,8 @@ adapter branches.
   `@volcanicminds/backend`. Bind a service to it with `service.on(container)`. This is the only
   data-access path, single or multi tenant. Not `req.tenant ?? req.control`: that expression
   substitutes the control plane where `dataContext` raises `NoDataContextError`.
-- **`access(handle)`**: the way inside a handle — `db`, `dialect`, `locator`, `execute`,
-  `transaction` — for your own tables and the occasional hand-written query.
+- **`access(handle)`**: the way inside a handle (`db`, `locator`, `execute`, `transaction`) for
+  your own tables and the occasional hand-written query.
 - **`global.connection`, `global.entity`, `global.repository`**: **gone**. Not deprecated, not
   guarded: absent. All three were ways to reach a container without being handed one, and that is
   how a request read another tenant's schema (D-01, D-06). In v4 the forbidden one had to be
@@ -2972,7 +2955,7 @@ produced a 500 from the database, or worse, was silently ignored.
 **Solution:** declare it, in the route's query options:
 
 ```typescript
-executeFind({ db }, order, req.data(), { dialect, allowedRelations: ['client'] })
+executeFind({ db }, order, req.data(), { allowedRelations: ['client'] })
 ```
 
 ### 2. `needs a data handle: pass dataContext(req), never nothing`
@@ -3011,10 +2994,8 @@ rather than serving a half-shaped schema.
 
 1.  Postgres columns are `timestamptz`. Never a naive `timestamp` — an offset the database does not
     know is an offset that gets guessed later.
-2.  On SQLite the same value is an integer of epoch **milliseconds**, always UTC. Same guarantee,
-    different storage.
-3.  Node works in UTC; the client converts for display.
-4.  A date filter with all digits means epoch milliseconds, not a year: `new Date('1500')` would
+2.  Node works in UTC; the client converts for display.
+3.  A date filter with all digits means epoch milliseconds, not a year: `new Date('1500')` would
     otherwise mean the year 1500, and a client sending a timestamp would get eight centuries of
     nonsense back with no error.
 
@@ -3507,7 +3488,7 @@ by rotating its `externalId` (Part 6.1).
 
 ### F. Multi-tenant (turns any of A–E/G tenant-aware)
 
-**Use when:** one deployment serves isolated tenants — a schema, a database or a file each.
+**Use when:** one deployment serves isolated tenants: a schema or a database each.
 **Add:** the `tenants` block in `src/config/general.ts`. **Declaring it is what enables tenancy**;
 there is no flag, and **nothing in the bootstrap changes**:
 

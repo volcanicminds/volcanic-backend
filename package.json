@@ -75,13 +75,11 @@
     "check:session-state": "node scripts/check-session-state.mjs",
     "check:migration-sets": "node scripts/check-migration-sets.mjs",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate-control.ts",
-    "db:generate": "cross-env MIGRATION_SET=control MIGRATION_DIALECT=pg drizzle-kit generate",
-    "db:generate:tenant": "cross-env MIGRATION_SET=tenant MIGRATION_DIALECT=pg drizzle-kit generate",
+    "db:generate": "cross-env MIGRATION_SET=control drizzle-kit generate",
+    "db:generate:tenant": "cross-env MIGRATION_SET=tenant drizzle-kit generate",
     "test:migrations": "cross-env NODE_ENV=memory mocha --import=tsx ./test/migrations/**/*.spec.ts -t 30000 --exit",
     "check-all": "npm run lint && npm run type-check && npm run depcruise && npm run check:session-state && npm run check:migration-sets && npm run check:refusals",
     "combine": "node combine.js",
-    "db:generate:sqlite": "cross-env MIGRATION_SET=control MIGRATION_DIALECT=sqlite drizzle-kit generate",
-    "db:generate:tenant:sqlite": "cross-env MIGRATION_SET=tenant MIGRATION_DIALECT=sqlite drizzle-kit generate",
     "coverage": "npm run coverage:report && node scripts/check-coverage.mjs",
     "coverage:report": "c8 --config .c8rc.json cross-env NODE_ENV=memory AUTH_MODE=BEARER mocha --import=tsx \"./test/lib/**/*.spec.ts\" \"./test/db/**/*.spec.ts\" \"./test/migrations/**/*.spec.ts\" -t 30000 --exit",
     "check:refusals": "node scripts/check-refusals.mjs",
@@ -117,21 +115,13 @@
   "peerDependencies": {
     "@electric-sql/pglite": "0.5.3",
     "@electric-sql/pglite-pgvector": "^0.0.4",
-    "@libsql/client": "^0.18.0",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^12.11.1",
     "drizzle-orm": "^0.45.2",
     "openid-client": "^6.8.8",
     "pg": "^8.13.0"
   },
   "peerDependenciesMeta": {
     "drizzle-orm": {
-      "optional": true
-    },
-    "better-sqlite3": {
-      "optional": true
-    },
-    "@libsql/client": {
       "optional": true
     },
     "@electric-sql/pglite": {
@@ -154,9 +144,7 @@
     "@electric-sql/pglite": "0.5.3",
     "@electric-sql/pglite-pgvector": "^0.0.4",
     "@eslint/js": "^9.39.2",
-    "@libsql/client": "^0.18.0",
     "@types/bcrypt": "^6.0.0",
-    "@types/better-sqlite3": "^9.6.0",
     "@types/i18n": "^0.13.12",
     "@types/lodash": "^4.17.25",
     "@types/mocha": "^10.0.10",
@@ -165,7 +153,6 @@
     "@types/semver": "^7.7.1",
     "autocannon": "^8.0.0",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^12.11.1",
     "c8": "^12.0.0",
     "cross-env": "^10.1.0",
     "dependency-cruiser": "^18.0.0",

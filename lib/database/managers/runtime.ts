@@ -1,5 +1,4 @@
 import type { Column, Table } from 'drizzle-orm'
-import type { Dialect } from '../query/index.js'
 
 //
 // The runtime side of a handle.
@@ -13,18 +12,16 @@ import type { Dialect } from '../query/index.js'
 // reading whatever container the pool happened to hand over (D-06).
 //
 /**
- * The Drizzle instance of either dialect. The managers run one query code path over Postgres and
- * SQLite against tables looked up by name, and the two database classes share no callable
- * supertype for `select`/`insert`/`update` over a `Table` chosen at runtime.
+ * The Drizzle instance of a handle, on node-postgres or on PGlite. The managers look their tables
+ * up by name, as a plain `Table`, and the typed `select`/`insert`/`update` accept only a `PgTable`.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type CrossDialectDb = any
+export type UntypedDb = any
 
 export interface RuntimeHandle {
   kind: 'control' | 'tenant'
-  dialect: Dialect
   tenantId?: string
-  db: CrossDialectDb
+  db: UntypedDb
   tables: Record<string, Table>
   registry?: Record<string, Table>
 }

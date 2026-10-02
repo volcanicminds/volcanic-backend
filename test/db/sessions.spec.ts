@@ -66,8 +66,8 @@ describe('database/managers · the session registry (T-11.5)', () => {
 
     expect(rotated.generation).toBe(2)
     expect(rotated.secretHash).toBe(hashSecret('gen-2'))
-    // The UPDATE assigns from the OLD row on both engines, which is what lets one statement move
-    // the credential down a step instead of the caller handing back what it just consumed.
+    // The UPDATE assigns from the OLD row, which is what lets one statement move the credential
+    // down a step instead of the caller handing back what it just consumed.
     expect(rotated.previousSecretHash).toBe(hashSecret('gen-1'))
     expect((await sessions.findBySecret(handle, 'gen-2', 10)).outcome).toBe('current')
   })

@@ -13,7 +13,6 @@ import { expect } from 'expect'
 import {
   exportPath,
   exportPostgresSchema,
-  exportSqliteFile,
   ExportFailedError,
   ExportToolMissingError,
   DEFAULT_EXPORT_DIRECTORY
@@ -76,59 +75,38 @@ describe('export · where the file goes (T-6.2)', () => {
   })
 })
 
-describe('export · a file container (T-6.2)', () => {
+describe('export · the refusals, without a server (T-6.2)', () => {
   let dir: string
-  let source: string
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-export-lite-'))
-    source = path.join(dir, 'acme.db')
-    fs.writeFileSync(source, 'SQLite format 3, pretend this is a database')
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-export-refusal-'))
   })
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
 
-  it('checkpoints before copying, and says how big the result is', async () => {
-    let checkpointed = false
-    const result = await exportSqliteFile(ACME, { directory: dir, schemaVersion: '0001_init' }, source, async () => {
-      checkpointed = true
-    })
-
-    // Without the checkpoint the copy is the database as of the last one, and everything
-    // written since lives only in the -wal companion.
-    expect(checkpointed).toBe(true)
-    expect(fs.existsSync(result.path)).toBe(true)
-    expect(result.bytes).toBeGreaterThan(0)
-    expect(result.schemaVersion).toBe('0001_init')
-  })
-
-  it('fails, and leaves nothing behind, when the checkpoint fails', async () => {
-    const before = fs.readdirSync(dir).length
-    await expect(
-      exportSqliteFile(ACME, { directory: dir, schemaVersion: null }, source, async () => {
-        throw new Error('database is locked')
-      })
-    ).rejects.toThrow(ExportFailedError)
-
-    expect(
-      await codeOfRejection(
-        exportSqliteFile(ACME, { directory: dir, schemaVersion: null }, source, async () => {
-          throw new Error('database is locked')
-        })
+  it('refuses, and writes nothing, when pg_dump is not there', async () => {
+    // An empty PATH is a machine without the client: the export fails instead of becoming a
+    // smaller one. The tool-missing refusal carries its own code, because a deployment must
+    // tell "I cannot export" from "the export failed": only one is fixable by retrying.
+    const saved = process.env.PATH
+    process.env.PATH = dir
+    try {
+      expect(await codeOfRejection(exportPostgresSchema(ACME, { directory: dir, schemaVersion: null }))).toBe(
+        'EXPORT_TOOL_MISSING'
       )
-    ).toBe('EXPORT_FAILED')
-    // The tool-missing refusal carries its own code: a deployment without the binary must be
-    // able to tell "I cannot export" from "the export failed", because only one is fixable
-    // by retrying.
-    expect(new ExportToolMissingError('pg_dump').code).toBe('EXPORT_TOOL_MISSING')
-
-    // A truncated dump is a trap, not a partial result.
-    expect(fs.readdirSync(dir).length).toBe(before)
+    } finally {
+      process.env.PATH = saved
+    }
+    expect(fs.readdirSync(dir)).toEqual([])
   })
 
-  it('refuses to export a container that is not there', async () => {
-    await expect(
-      exportSqliteFile(ACME, { directory: dir, schemaVersion: null }, path.join(dir, 'missing.db'), async () => {})
-    ).rejects.toThrow(/does not exist/)
+  it('fails, and leaves nothing behind, when pg_dump cannot reach the server', async function () {
+    // Nothing listens on port 1: pg_dump starts, fails, and exits non-zero.
+    const request = { directory: dir, schemaVersion: null, url: 'postgres://nobody@127.0.0.1:1/none' }
+    const code = await codeOfRejection(exportPostgresSchema(ACME, request))
+    if (code === 'EXPORT_TOOL_MISSING') return this.skip() // no pg_dump on this machine
+    expect(code).toBe('EXPORT_FAILED')
+    // A truncated dump is a trap, not a partial result.
+    expect(fs.readdirSync(dir)).toEqual([])
   })
 })
 

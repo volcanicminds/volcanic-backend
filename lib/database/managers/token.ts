@@ -99,12 +99,12 @@ export function createTokenManager(): TokenManagement {
 
     async countQuery(ctx: DataHandle, data: VQuery) {
       const { handle, token } = tokens(ctx, 'countQuery')
-      return await executeCount(handle, token, data as never, { dialect: handle.dialect })
+      return await executeCount(handle, token, data as never)
     },
 
     async findQuery(ctx: DataHandle, data: VQuery) {
       const { handle, token } = tokens(ctx, 'findQuery')
-      return (await executeFind(handle, token, data as never, { dialect: handle.dialect })) as never
+      return (await executeFind(handle, token, data as never)) as never
     }
   }
 }

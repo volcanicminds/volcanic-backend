@@ -84,8 +84,7 @@ describe('migrations · the format (T-5.1)', () => {
           },
           transaction: async () => undefined
         },
-        locator: 'public',
-        dialect: 'postgres' as const
+        locator: 'public'
       }),
       { control: { name: 'control', folders: [dir] }, tenant: { name: 'tenant', folders: [dir] } }
     )
@@ -96,6 +95,21 @@ describe('migrations · the format (T-5.1)', () => {
     await expect(unreachable.pending({ locator: 'public' })).rejects.toThrow(/ECONNREFUSED/)
     await expect(unreachable.version({ locator: 'public' })).rejects.toThrow(/ECONNREFUSED/)
     fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('refuses a set it has no migrations for, instead of applying none and reporting success', async () => {
+    // The failure this guards against is not an exception, it is a SUCCESS: a missing set would
+    // load zero files, apply zero of them, and answer "done" to a deployment whose tables were
+    // never created. The first query then fails somewhere else, saying something unrelated.
+    const orphan = createMigrationRunner(
+      async () => {
+        throw new Error('a container was opened for a set that does not exist')
+      },
+      { control: { name: 'control', folders: [] } }
+    )
+
+    await expect(orphan.apply({ tenantId: 'x', locator: 'tenant_x' })).rejects.toThrow(/No 'tenant' migrations exist/)
+    expect(() => orphan.expected({ tenantId: 'x', locator: 'tenant_x' })).toThrow(/npm run db:generate:tenant/)
   })
 
   it('refuses two migrations with the same name across folders', () => {
@@ -124,7 +138,7 @@ suite('migrations · applying a set (T-5.1)', function () {
       const handle: any = container.tenantId
         ? await provider.forLocator(container.locator, container.tenantId)
         : provider.control()
-      return { handle, locator: container.locator, dialect: 'postgres' as const }
+      return { handle, locator: container.locator }
     }, SET())
 
   before(async () => {
@@ -233,8 +247,7 @@ suite('migrations · applying a set (T-5.1)', function () {
     const runner = createMigrationRunner(
       async (container) => ({
         handle: await provider.forLocator(container.locator, container.tenantId as string),
-        locator: container.locator,
-        dialect: 'postgres' as const
+        locator: container.locator
       }),
       { tenant: { name: 'tenant', folders: [broken] }, control: { name: 'control', folders: [broken] } }
     )

@@ -49,8 +49,6 @@ export interface RawRows<T = Record<string, unknown>> {
 
 export interface PostgresHandle {
   readonly kind: 'control' | 'tenant'
-  /** The dialect the Magic Query builds for: a handle knows its engine, callers do not ask. */
-  readonly dialect: 'postgres'
   readonly tenantId?: string
   /** The schema this handle addresses, when it addresses one. Raw SQL is run inside it. */
   readonly locator?: string
@@ -227,7 +225,6 @@ export class PostgresProvider {
 
     return {
       kind,
-      dialect: 'postgres',
       tenantId,
       locator,
       db,
@@ -375,7 +372,6 @@ export class PostgresProvider {
   private buildContainerHandle(db: NodePgDatabase, tables: AppTables, tenantId: string): PostgresHandle {
     return {
       kind: 'tenant',
-      dialect: 'postgres',
       tenantId,
       db,
       tables,

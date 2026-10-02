@@ -132,20 +132,16 @@ separator and with any ISO timestamp: `createdAt:between=2026-01-01T00:00:00Z:20
 split into five parts and the condition was **silently dropped**. A malformed range now responds
 400.
 
-### 4.5 Arrays and JSON, Postgres only
+### 4.5 Arrays and JSON
 
-| Operator | SQL | Engines |
-|---|---|---|
-| `:arrayContains` | `@>` | Postgres |
-| `:arrayContainedBy` | `<@` | Postgres |
-| `:arrayOverlaps` | `&&` | Postgres (renamed from `:overlap`) |
-| `:jsonHasKey` | `?` | Postgres |
-| `:jsonHasAllKeys` | `?&` | Postgres |
-| `:jsonHasAnyKey` | `?\|` | Postgres |
-
-On SQLite and libSQL these respond **400** with `QUERY_OPERATOR_NOT_SUPPORTED_BY_ENGINE`, naming
-the operator and the engine. They are never silently ignored and never emulated with a slower
-approximation: an application that needs them declares Postgres.
+| Operator | SQL |
+|---|---|
+| `:arrayContains` | `@>` |
+| `:arrayContainedBy` | `<@` |
+| `:arrayOverlaps` | `&&`, renamed from `:overlap` |
+| `:jsonHasKey` | `?` |
+| `:jsonHasAllKeys` | `?&` |
+| `:jsonHasAnyKey` | `?\|` |
 
 ### 4.6 Removed
 
@@ -234,7 +230,7 @@ Errors use the framework's standard error body with a stable machine-readable `c
 ```
 QUERY_UNKNOWN_FIELD · QUERY_UNKNOWN_OPERATOR · QUERY_INVALID_VALUE · QUERY_EMPTY_VALUE
 QUERY_SENSITIVE_FIELD · QUERY_RELATION_NOT_ALLOWED · QUERY_INVALID_RANGE
-QUERY_OPERATOR_NOT_SUPPORTED_BY_ENGINE · QUERY_LOGIC_INVALID · QUERY_LOGIC_TOO_COMPLEX
+QUERY_LOGIC_INVALID · QUERY_LOGIC_TOO_COMPLEX
 QUERY_LOGIC_UNKNOWN_ALIAS · QUERY_LOGIC_UNUSED_ALIAS · QUERY_LOGIC_MISSING_ALIAS
 QUERY_DUPLICATE_CONDITION · QUERY_WITH_DELETED_NOT_ALLOWED
 ```
@@ -244,19 +240,11 @@ error string that could be reflected.
 
 ---
 
-## 8. Engine portability
+## 8. Engine
 
-| Capability | Postgres | SQLite / libSQL |
-|---|---|---|
-| equality, set membership, comparison, ranges | yes | yes |
-| `contains` / `starts` / `ends` / `like`, case-sensitive | yes | yes, via `PRAGMA case_sensitive_like = ON` set per connection |
-| the `i` variants | `ILIKE`, locale-aware | `lower(col) LIKE lower(?)`, **ASCII only** unless the ICU extension is loaded |
-| array operators | yes | **400** |
-| JSON key-existence operators | yes | **400** |
-| `_logic`, `_sort`, `_fields`, `_relations`, pagination | yes | yes |
-
-The ASCII-only case folding on SQLite is a real limit and must appear in the README next to the
-SQLite adapter, not only here.
+One engine, Postgres: on a server, or PGlite inside the process, which runs the same SQL. Every
+operator of §4 exists on both, so none is refused for the engine. The `i` variants are `ILIKE`,
+locale-aware.
 
 ---
 
@@ -302,8 +290,7 @@ Two explicit accessors exist for code that must not guess: `req.queryData()` and
 
 ## 11. Implementation notes for T-2.4
 
-1. One catalogue module declares, for each operator: name, arity, accepted column types,
-   supported engines, and the builder per dialect. The HTTP layer never sees a dialect.
+1. One catalogue module declares, for each operator, its name and its builder.
 2. The parser rejects before it builds. Validation order: reserved parameters, then field
    existence, then operator, then value coercion, then `_logic`. The first error wins and it is
    the one reported.
@@ -312,5 +299,5 @@ Two explicit accessors exist for code that must not guess: `req.queryData()` and
 4. Views (`executeFindView` in v4) keep the same guard as entity queries: without an explicit
    handle in multi-tenant mode the call **throws** (defect D-06). There is no global fallback to
    fall back to any more.
-5. The test suite runs the same battery against Postgres and SQLite, asserting identical results
-   where the capability exists and a 400 with the right `code` where it does not.
+5. The test suite runs the battery on PGlite: the rows a query returns, and the 400 with the
+   right `code` when it is refused.

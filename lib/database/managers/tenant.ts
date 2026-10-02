@@ -44,7 +44,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
 
     async listTenants(ctx: ControlHandle, query?: VQuery) {
       const { handle, tenant } = registry(ctx, 'listTenants')
-      return (await executeFind(handle, tenant, (query ?? {}) as never, { dialect: handle.dialect })) as never
+      return (await executeFind(handle, tenant, (query ?? {}) as never)) as never
     },
 
     async getTenant(ctx: ControlHandle, id: string) {
@@ -82,7 +82,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
           name: String(data.name),
           slug: String(data.slug),
           strategy: String(data.strategy ?? 'schema'),
-          engine: String(data.engine ?? handle.dialect),
+          engine: String(data.engine ?? 'postgres'),
           // Sanitised once, before it is stored, by the caller (docs/SCHEMA_V5.md §4): the
           // stored value and the used value are the same string, which v4 did not guarantee.
           locator: String(data.locator ?? data.slug),

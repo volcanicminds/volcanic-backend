@@ -40,11 +40,9 @@ export function runnerOf(db: Migrated) {
   return createMigrationRunner(
     async (container) => ({
       handle: (container.tenantId ? db.raw : db.control) as never,
-      locator: container.locator,
-      dialect: 'postgres'
+      locator: container.locator
     }),
-    migrationSets(),
-    { control: 'pg', tenant: 'pg' }
+    migrationSets()
   )
 }
 

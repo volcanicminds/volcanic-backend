@@ -15,12 +15,12 @@ const TENANTS_DEFAULTS = {
   resolver: 'header',
   headerKey: 'x-tenant-id',
   subdomainLevel: 1,
-  // `maxOpen` and `directory` are deliberately absent (T-10.9). Each has an environment
-  // variable, `TENANT_CONTAINERS_MAX_OPEN` and `TENANT_CONTAINERS_DIR`, and the adapters read
-  // `configured ?? environment ?? default`. Filling them here made "configured" true for
-  // everyone, so the `??` never reached the environment: the variables T-9.4 wired back in
-  // were unread again on every normal boot. Their defaults (20, './data/tenants') live once,
-  // next to the environment read, in `lib/database/adapters/*/index.ts`.
+  // `maxOpen` is deliberately absent (T-10.9). It has an environment variable,
+  // `TENANT_CONTAINERS_MAX_OPEN`, and the adapter reads `configured ?? environment ?? default`.
+  // Filling it here made "configured" true for everyone, so the `??` never reached the
+  // environment: the variable T-9.4 wired back in was unread again on every normal boot. Its
+  // default (20) lives once, next to the environment read, in
+  // `lib/database/adapters/postgres/index.ts`.
   containers: {
     idleTimeoutMs: 300000,
     poolMax: 2

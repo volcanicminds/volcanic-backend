@@ -3,17 +3,17 @@
 // T-9.4: reading a tunable out of the environment.
 //
 // The rule this serves is an invariant: **the declared default is what the code does**, and no
-// field is typed, documented and never read. That was defect D-11, and it came back anyway —
-// `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN`, `TENANT_CONTAINERS_DIR` and
-// `DESTRUCTION_TOKEN_TTL` were all in the documented environment table and consulted by
-// nobody. Found by the tuning bench, which set out to MEASURE what those variables carry and
-// discovered there was nowhere to put the answer.
+// field is typed, documented and never read. That was defect D-11, and it came back anyway:
+// `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN` and `DESTRUCTION_TOKEN_TTL` were all
+// in the documented environment table and consulted by nobody. Found by the tuning bench, which
+// set out to MEASURE what those variables carry and discovered there was nowhere to put the
+// answer.
 //
 // What is worth pinning is the refusals, because the failure mode of getting them wrong is
 // quiet: a limit nobody set behaving like a limit somebody chose.
 //
 import { expect } from 'expect'
-import { envInt, envString } from '../../lib/util/env.js'
+import { envInt } from '../../lib/util/env.js'
 
 const warnings: string[] = []
 let savedLog: any
@@ -79,13 +79,6 @@ describe('util/env · reading a tunable (T-9.4)', () => {
     }
   })
 
-  it('reads a string, trimming it, and treats blank as absent', () => {
-    withEnv('PROBE_STR', './data/tenants', () => expect(envString('PROBE_STR', './fallback')).toBe('./data/tenants'))
-    withEnv('PROBE_STR', '  ./padded  ', () => expect(envString('PROBE_STR', './fallback')).toBe('./padded'))
-    withEnv('PROBE_STR', '   ', () => expect(envString('PROBE_STR', './fallback')).toBe('./fallback'))
-    withEnv('PROBE_STR', undefined, () => expect(envString('PROBE_STR', './fallback')).toBe('./fallback'))
-  })
-
   it('does not need a logger to exist, because a migration script has none', () => {
     // `log?.w` still throws when `log` is undeclared — optional chaining guards a property,
     // not an identifier — which is the bug T-9.1 found across the whole data layer.
@@ -105,17 +98,17 @@ describe('util/env · the variables that were documented and unread (T-9.4)', ()
     // layer applies. The route's own option still wins — the variable is the deployment's
     // ceiling, not a way to raise a limit a route deliberately lowered.
     const { parseQuery } = await import('../../lib/database/query/index.js')
-    const { appTables } = await import('../../lib/database/schema/sqlite.js')
-    const { user } = appTables()
+    const { appTables } = await import('../../lib/database/schema/pg.js')
+    const { user } = appTables('public')
 
     withEnv('VOLCANIC_MAX_PAGE_SIZE', '10', () => {
-      expect(parseQuery(user, { _pageSize: '500' }, { dialect: 'sqlite' }).pageSize).toBe(10)
+      expect(parseQuery(user, { _pageSize: '500' }).pageSize).toBe(10)
       // The route asked for less: the variable does not raise it.
-      expect(parseQuery(user, { _pageSize: '500' }, { dialect: 'sqlite', maxPageSize: 5 }).pageSize).toBe(5)
+      expect(parseQuery(user, { _pageSize: '500' }, { maxPageSize: 5 }).pageSize).toBe(5)
     })
 
     withEnv('VOLCANIC_MAX_PAGE_SIZE', undefined, () => {
-      expect(parseQuery(user, { _pageSize: '500' }, { dialect: 'sqlite' }).pageSize).toBe(100)
+      expect(parseQuery(user, { _pageSize: '500' }).pageSize).toBe(100)
     })
   })
 })

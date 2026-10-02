@@ -15,7 +15,7 @@ import type {
   SessionScope
 } from '../../../types/global.js'
 import { encrypt, decrypt } from '../crypto.js'
-import { runtime, table, column, type CrossDialectDb, type RuntimeHandle } from './runtime.js'
+import { runtime, table, column, type UntypedDb, type RuntimeHandle } from './runtime.js'
 import { hashSecret } from './session.js'
 import { isUniqueViolation } from './user.js'
 
@@ -70,7 +70,7 @@ interface FlowRow {
   expiresAt: Date | string
 }
 
-type Transactional = RuntimeHandle & { transaction<T>(fn: (tx: CrossDialectDb) => Promise<T>): Promise<T> }
+type Transactional = RuntimeHandle & { transaction<T>(fn: (tx: UntypedDb) => Promise<T>): Promise<T> }
 
 /** HMAC-SHA256 keyed by the flow secret: the table alone cannot test a guess. */
 export function challengeMac(secret: string, code: string): string {
@@ -299,10 +299,9 @@ export function createAuthFlowManager(options: { sendWindowSeconds?: number } = 
 
     /**
      * Spends one send under both ceilings in a single conditional UPDATE: the per-flow count in
-     * the row, the per-subject sums as subqueries over every flow of the subject. On Postgres the
-     * statement runs under a transaction-scoped advisory lock on the subject, because under READ
+     * the row, the per-subject sums as subqueries over every flow of the subject. With a subject,
+     * the statement runs under a transaction-scoped advisory lock on it, because under READ
      * COMMITTED two flows of one subject would otherwise each see the other's send as not yet made.
-     * SQLite has one writer, so the statement alone is enough there.
      *
      * The wrong-code counter is not reset by a new send: five wrong codes per flow, not per code.
      */
@@ -333,7 +332,7 @@ export function createAuthFlowManager(options: { sendWindowSeconds?: number } = 
             conditions.push(sql`${sendsSince(handle, flows, subject, row.scope, since)} < ${window.max}`)
           }
         }
-        const send = (db: CrossDialectDb) =>
+        const send = (db: UntypedDb) =>
           db
             .update(flows)
             .set({
@@ -346,13 +345,12 @@ export function createAuthFlowManager(options: { sendWindowSeconds?: number } = 
             .where(and(...conditions))
             .returning()
 
-        const rows: FlowRow[] =
-          handle.dialect === 'postgres' && subject
-            ? await (handle as Transactional).transaction(async (tx) => {
-                await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`auth_flow:${row.scope}:${subject}`}, 0))`)
-                return await send(tx)
-              })
-            : await send(handle.db)
+        const rows: FlowRow[] = subject
+          ? await (handle as Transactional).transaction(async (tx) => {
+              await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`auth_flow:${row.scope}:${subject}`}, 0))`)
+              return await send(tx)
+            })
+          : await send(handle.db)
 
         if (rows[0]) {
           const sends = Number(rows[0].challengeSends)

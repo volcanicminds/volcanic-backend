@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { DataHandle } from '../../types/global.js'
-import type { Dialect } from './query/index.js'
 import { runtime } from './managers/runtime.js'
 import type { SQLWrapper } from 'drizzle-orm'
 
@@ -23,12 +22,9 @@ import type { SQLWrapper } from 'drizzle-orm'
 
 export interface DataAccess {
   readonly kind: 'control' | 'tenant'
-  /** The engine this handle speaks, for a consumer that keeps one schema module per dialect. */
-  readonly dialect: Dialect
   readonly tenantId?: string
   /**
-   * What this handle addresses: a Postgres schema, or a SQLite file. `undefined` where the
-   * engine has no such thing to name — on Postgres under the `container` strategy the
+   * The Postgres schema this handle addresses. `undefined` under the `container` strategy: the
    * container **is** the database the connection is attached to, so nothing is qualified.
    */
   readonly locator?: string
@@ -47,11 +43,8 @@ export function access(handle: DataHandle, what = 'this operation'): DataAccess 
   const h = runtime(handle, what) as any
   return {
     kind: h.kind,
-    dialect: h.dialect,
     tenantId: h.tenantId,
-    // Postgres names a schema, SQLite names a file: both are "the thing this handle
-    // addresses", and a consumer keying a table cache by it wants one field, not two.
-    locator: h.locator ?? h.file,
+    locator: h.locator,
     db: h.db,
     execute: (query: SQLWrapper | string) => h.execute(query),
     transaction: <T>(fn: (tx: any) => Promise<T>) => h.transaction(fn)

@@ -59,11 +59,11 @@ export abstract class BaseService<K extends keyof AppTables> {
     if (!this.handle) {
       throw new Error(`[${this.constructor.name}] used without a container. Call service.on(dataContext(req)).`)
     }
-    const { db, dialect } = access(this.handle, this.constructor.name)
+    const { db } = access(this.handle, this.constructor.name)
     return {
       db,
       table: tablesFor(this.handle)[this.tableName] as unknown as Table,
-      options: { dialect, sensitiveFields: this.sensitiveFields } as QueryOptions
+      options: { sensitiveFields: this.sensitiveFields } as QueryOptions
     }
   }
 

@@ -57,9 +57,6 @@ const NOT_A_REFUSAL = new Set([
   'JWT_REFRESH_SECRET',
   'COOKIE_SECRET',
   'MFA_DB_SECRET',
-  'SQLITE_CONSTRAINT', // read from the driver, never emitted
-  'EEXIST',
-  'SIGTERM',
   'OPTIONAL',
   'MANDATORY',
   'ONE_WAY',
@@ -71,7 +68,11 @@ const NOT_A_REFUSAL = new Set([
 // against the old contract still branches on them, so one coming back would revive a path the
 // client believes is gone.
 const RETIRED = new Map([
-  ['MFA_REQUIRED', 'the pre-auth token left with F36 (T-12.35): the second factor is a stage of the login flow']
+  ['MFA_REQUIRED', 'the pre-auth token left with F36 (T-12.35): the second factor is a stage of the login flow'],
+  [
+    'QUERY_OPERATOR_NOT_SUPPORTED_BY_ENGINE',
+    'one engine since F58 (T-14.3): every operator of the catalogue exists on Postgres'
+  ]
 ])
 
 const emitted = new Map() // code -> Set of files

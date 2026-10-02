@@ -43,9 +43,8 @@ export interface MigrationSet {
 export interface MigrationTarget {
   /** The handle of the container to migrate. */
   handle: any
-  /** Postgres only: the schema to run inside. Absent for a file-per-container engine. */
-  locator?: string
-  dialect: 'postgres' | 'sqlite'
+  /** The schema to run inside. */
+  locator: string
 }
 
 export class MigrationMismatchError extends Error {
@@ -85,22 +84,21 @@ export function loadSet(set: MigrationSet): MigrationFile[] {
 /**
  * Whether a failure means "this container has no migration table yet".
  *
- * Postgres says `42P01`, SQLite says so in words. **Only these two are answers**: every other
- * failure is rethrown, because a database that cannot be reached is not a database with
- * nothing applied. Swallowing the difference makes `pending()` list the whole set against an
+ * Postgres says `42P01`, and says so in words. **Only that is an answer**: every other failure
+ * is rethrown, because a database that cannot be reached is not a database with nothing
+ * applied. Swallowing the difference makes `pending()` list the whole set against an
  * unreachable server and `version()` report null, which is the most dangerous shape a
  * migration tool can take: it says "you have not migrated yet" to a system that has.
  */
 function isMissingTable(error: unknown): boolean {
   const e = error as { code?: string; message?: string }
   if (e?.code === '42P01') return true
-  const message = String(e?.message ?? '')
-  return /relation .* does not exist/i.test(message) || /no such table/i.test(message)
+  return /relation .* does not exist/i.test(String(e?.message ?? ''))
 }
 
 /** What a container has already applied, of one set, oldest first. */
 async function applied(target: MigrationTarget, set: string): Promise<Array<{ name: string; hash: string }>> {
-  const table = target.locator ? `${assertLocator(target.locator)}.migration` : 'migration'
+  const table = `${assertLocator(target.locator)}.migration`
   try {
     const rows: any = await target.handle.execute(
       sql.raw(`select name, hash from ${table} where "set" = '${set.replace(/'/g, "''")}' order by name asc`)
@@ -123,9 +121,7 @@ async function applied(target: MigrationTarget, set: string): Promise<Array<{ na
  */
 async function applyOne(target: MigrationTarget, set: string, file: MigrationFile): Promise<void> {
   await target.handle.transaction(async (tx: any) => {
-    if (target.locator) {
-      await tx.execute(sql.raw(`set local search_path to ${assertLocator(target.locator)}`))
-    }
+    await tx.execute(sql.raw(`set local search_path to ${assertLocator(target.locator)}`))
     for (const statement of statementsOf(file)) {
       await tx.execute(sql.raw(statement))
     }
@@ -138,41 +134,25 @@ async function applyOne(target: MigrationTarget, set: string, file: MigrationFil
   })
 }
 
-/** Which dialect each plane's migrations are written for. Both default to Postgres. */
-export interface MigrationDialects {
-  control: 'pg' | 'sqlite'
-  tenant: 'pg' | 'sqlite'
-}
-
 export function createMigrationRunner(
   open: (container: ContainerRef) => Promise<MigrationTarget>,
-  sets: Record<string, MigrationSet>,
-  dialects: MigrationDialects = { control: 'pg', tenant: 'pg' }
+  sets: Record<string, MigrationSet>
 ): MigrationRunner {
   /**
-   * Which set applies, and it depends on the dialect because the SQL differs by engine
-   * (T-9.1).
-   *
-   * The dialect comes from the configuration and not from an opened handle, on purpose:
-   * `expected()` answers without touching a database — that is what lets the boot check run
-   * before anything serves and the per-request check run without a query — so it cannot
-   * afford to open a container to find out which language its schema is written in. A
-   * deployment declares one engine for the control plane and one for its containers, and
-   * those two answers are all this needs.
+   * Which set applies: `tenant` to a container, `control` to the control plane.
    *
    * A missing set is fatal, never an empty one. "This container has nothing pending" and "no
-   * migrations exist for this engine" are different facts, and answering the second with the
-   * first reports success to a deployment whose tables were never created — which then fails
-   * on the first query, somewhere else, saying something unrelated.
+   * migrations exist" are different facts, and answering the second with the first reports
+   * success to a deployment whose tables were never created, which then fails on the first
+   * query, somewhere else, saying something unrelated.
    */
   const setFor = (container: ContainerRef): MigrationSet => {
     const name = container.tenantId ? 'tenant' : 'control'
-    const dialect = container.tenantId ? dialects.tenant : dialects.control
-    const set = sets[`${name}:${dialect}`] ?? sets[name]
+    const set = sets[name]
     if (!set) {
       throw new Error(
-        `No '${name}' migrations exist for dialect '${dialect}'. ` +
-          'Generate them (`npm run db:generate:sqlite`) rather than starting without a schema.'
+        `No '${name}' migrations exist. ` +
+          `Generate them (\`npm run db:generate${name === 'tenant' ? ':tenant' : ''}\`) rather than starting without a schema.`
       )
     }
     return set

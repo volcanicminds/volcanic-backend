@@ -30,7 +30,7 @@ export interface ExportRequest {
   directory?: string
   /** The version the container is at, read before the dump starts. */
   schemaVersion: string | null
-  /** Connection string, for the engines that need one. */
+  /** Connection string handed to `pg_dump`. */
   url?: string
 }
 
@@ -130,35 +130,5 @@ export async function exportPostgresSchema(tenant: Tenant, request: ExportReques
     throw new ExportFailedError('pg_dump produced an empty file')
   }
 
-  return { path: file, bytes: size, schemaVersion: request.schemaVersion }
-}
-
-/**
- * A file container: checkpoint the WAL, then copy.
- *
- * Without the checkpoint the copy is the database as of the last checkpoint, and the writes
- * that live only in the `-wal` companion are missing: a file that opens cleanly and is quietly
- * out of date, which is the worst shape a backup can have.
- */
-export async function exportSqliteFile(
-  tenant: Tenant,
-  request: ExportRequest,
-  source: string,
-  checkpoint: () => Promise<void>
-): Promise<ExportResult> {
-  if (!fs.existsSync(source)) {
-    throw new ExportFailedError(`the container file ${source} does not exist`)
-  }
-
-  const file = exportPath(tenant, request, 'db')
-  try {
-    await checkpoint()
-    fs.copyFileSync(source, file)
-  } catch (error: any) {
-    discard(file)
-    throw new ExportFailedError(String(error?.message || error))
-  }
-
-  const { size } = fs.statSync(file)
   return { path: file, bytes: size, schemaVersion: request.schemaVersion }
 }

@@ -4,11 +4,11 @@ import type { DataRequestScope } from '../../types/global.js'
 // Who is using which container, right now (T-3.1, point 4).
 //
 // Two things need this. The LRU that bounds live containers must not evict one a request is
-// still holding: on SQLite that would close the file descriptor under it, on Postgres it
-// would only churn the table cache, but the rule is the same and having it in one place is
-// how it stays the same. And the release path needs to know what a request took, because
-// "release everything this request borrowed" has to be answerable in one call: v4 released
-// in two places, in the wrong order, and that is D-01.
+// still holding: under the `container` strategy that would end the pool under a running
+// query, under `schema` it would only churn the table cache, but the rule is the same and
+// having it in one place is how it stays the same. And the release path needs to know what a
+// request took, because "release everything this request borrowed" has to be answerable in one
+// call: v4 released in two places, in the wrong order, and that is D-01.
 //
 // Deliberately not a refcount per container: the unit is the request, so a leaked
 // decrement cannot pin a container forever. The scope is released once, whole, by the

@@ -63,10 +63,9 @@ describe('lib/loader/general · normalizeOptions', () => {
     expect(options.tenants.headerKey).toBe('x-tenant-id')
     expect(options.tenants.containers.poolMax).toBe(2)
     expect(options.tenants.migrations.checkOnResolve).toBe(true)
-    // Not filled on purpose (T-10.9): these two have an environment variable, and a value
-    // written here would be "configured" for everyone, so the variable would never be read.
+    // Not filled on purpose (T-10.9): it has an environment variable, and a value written here
+    // would be "configured" for everyone, so the variable would never be read.
     expect(options.tenants.containers.maxOpen).toBeUndefined()
-    expect(options.tenants.containers.directory).toBeUndefined()
   })
 
   it('does not overwrite what the consumer declared', () => {

@@ -74,8 +74,7 @@ suite('fleet · twenty-four containers (T-5.3)', function () {
     createMigrationRunner(
       async (container) => ({
         handle: await provider.forLocator(container.locator, container.tenantId as string),
-        locator: container.locator,
-        dialect: 'postgres' as const
+        locator: container.locator
       }),
       { tenant: { name: 'tenant', folders: [folder] }, control: { name: 'control', folders: [folder] } }
     )

@@ -118,7 +118,7 @@ connessione contro cento connessioni.
   (D-17) gira sull'indice unico creato dalle migrazioni. La concorrenza di `authFlow` resta su
   Postgres con `DATABASE_URL`: PGlite serve tutto su una sessione. `docs/TESTING_V5.md` §1, riga
   del data layer, allineata; la riga Magic Query di §3 parla ancora di SQLite e va con T-14.3.
-- [ ] **T-14.3** Via SQLite e libSQL (F58, F59). Codice: `adapters/sqlite`, `schema/sqlite.ts`,
+- [x] **T-14.3** Via SQLite e libSQL (F58, F59). Codice: `adapters/sqlite`, `schema/sqlite.ts`,
   `schema/entry/*.sqlite.ts`, `containers/replica.ts`, `exportSqliteFile`, i due insiemi `sqlite`,
   i rami di `db.ts`, `runner.ts`, `files.ts`, `query/operators.ts`, `managers/user.ts`,
   `access.ts`, `leases.ts`, `capabilities.ts`. Tipi: `Engine`, `ContainersConfig.directory` e
@@ -132,6 +132,40 @@ connessione contro cento connessioni.
   gira su SQLite. Resta la coda della sentinella di rag su `node:sqlite`: è la coda locale di uno
   strumento da scrivania, non un motore del framework. Evidenza: `grep -rniE "sqlite|libsql"` sui
   repository, con l'elenco di ciò che resta e perché.
+  Fatto il 2 ottobre 2026. Nel backend 90 file oltre a queste note: 33 tolti e 57 modificati,
+  511 righe aggiunte e 17576 tolte, quasi tutte istantanee delle migrazioni SQLite. Fuori dal backend:
+  `volcanic-backend-sample@ead18cd`, `volcanic-admin@6407c80`, `volcanic-rag@8dffaba`. Il sample
+  voleva più dei commenti: `access()` non restituisce più `dialect` e `QueryOptions` non lo prende
+  più, quindi `tsc` falliva su `base.service.ts` e 2 prove su 13 rispondevano 500 («the container
+  speaks 'undefined'»); se ne vanno le due guardie sul dialetto e l'opzione passata a Magic Query.
+  Cinque commenti motivavano una scelta con i due motori senza nominare SQLite, e il grep non li
+  vedeva (`managers/session.ts` due volte, `managers/setting.ts`, `managers/user.ts`,
+  `test/db/sessions.spec.ts`): riscritti sull'unico motore. Prove su Node 26.10.0, senza
+  `DATABASE_URL`: `check-all` verde (insiemi `control` 6 e `tenant` 5, 94 rifiuti, 2 ritirati);
+  `npm run coverage` 830 verdi e 30 saltate, prima 865 e 31. I 36 casi in meno: 29 nelle quattro
+  suite tolte (`libsql`, `replica`, `sqlite`, `sqliteMigrations`) e 7 netti nelle altre, dove
+  escono i casi del secondo motore (parità di tabelle, colonne e indici, istanti in millisecondi,
+  LIKE ripiegato, operatori rifiutati per motore, checkpoint del file, `TENANT_CONTAINERS_DIR` col
+  suo `envString`) e nascono tre prove: i motori a file rifiutati per nome, un `engine` diverso da
+  `postgres` rifiutato prima di creare il tenant (F59), un insieme senza migrazioni rifiutato invece
+  di riuscire vuoto. Istruzioni 88,04% (3475 su 3947; prima 88,07%), rami 90,27%, funzioni 93,14%,
+  righe 88,72%. Con un Postgres 14.22 usa e getta e `DATABASE_URL`: `npm test` 933 verdi e 1
+  saltata (vuole un `pg_dump` più vecchio del server), banco multi-tenant 25 verdi. Difetti
+  piantati, presi e ritirati: `sqlite` nell'enum `engine` dell'API (1 prova rossa), una riga
+  `sqlite` nella matrice (2), la cartella del consumer senza `pg` (1), `ilike` diventato `like` (2,
+  su PGlite). Consumer sullo stesso Postgres: sample `check-all` senza errori, 13 prove più le 4
+  della ricerca semantica; `volcanic-rag-sample` `tsc` pulito e 63 prove; admin `tsc` ed `eslint`
+  sui due file verdi. `npm prune` toglie dal `node_modules` del backend i pacchetti SQLite rimasti;
+  la lockfile non cambia. Cosa resta di `sqlite|libsql`, fuori da `node_modules`, `.git` e build:
+  nel backend `lib/` 0 file (29 il 1° ottobre); `docs/`, README e `llms.txt` 1 file (erano 10),
+  `docs/PGLITE.md`, documento v4 col cartello di sostituzione; `test/` 2 (24 il 1° ottobre), le
+  guardie che rifiutano i motori a file per nome (`capabilities.spec.ts`,
+  `tenantProvisioning.spec.ts`); i file `EVO_*`, storia e piano; nella lockfile i peer opzionali
+  di `drizzle-orm`; fuori da git `OUTPUT.md`, `.playwright-mcp/` e `docs/_BRAINSTORMING_STACK.md`.
+  Nelle lockfile di sample, rag e rag-sample restano i metadati del backend di prima (peer e
+  devDependencies), che il prossimo `npm install` riallinea. In rag la coda della sentinella su
+  `node:sqlite` (`src/sentinel/queue.ts`, `llms.txt`, `README.md`, `TASKS.md`), che resta. Admin e
+  tools 0, salvo la build della demo (`dist-demo`, ignorata da git).
 - [ ] **T-14.4** Statement preparati sui percorsi caldi (F62): banco prima, poi i preparati, poi lo
   stesso banco. L'evidenza riporta mediane e dispersione per percorso e motore; un preparato senza
   guadagno misurato non entra.
