@@ -265,5 +265,6 @@ Declared optional; install only what the chosen engines need.
 | the same with PGlite | `drizzle-orm`, `pg` (the adapter imports it either way), `@electric-sql/pglite`, `bcrypt` |
 | development | `drizzle-kit` |
 | a plane that lists `oidc` in `config/authFlows.ts` | `openid-client` `^6`: loaded on first use, and its absence refuses the boot |
+| OpenTelemetry: `OTEL_*` asks for it, or an SDK was started with `--import` | `@opentelemetry/sdk-node`, `@fastify/otel`, `@opentelemetry/instrumentation-undici`: loaded by `preload()`, and their absence refuses the boot. `@opentelemetry/api` is a regular dependency: without an SDK it does nothing |
 
 `typeorm`, `reflect-metadata` and `pluralize` are no longer peer dependencies of anything.

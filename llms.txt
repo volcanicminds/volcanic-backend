@@ -495,6 +495,7 @@ An example `.env` for production.
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
 | `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format (`pretty` only).                  |    No    | `true`              |
 | `LOG_FASTIFY`                  | Write Fastify's per-request lines (incoming request, request completed). `req.log` always works. |    No    | `false`             |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`  | Turns on tracing and metrics over OTLP, as does a trace or metric exporter other than `none`; the SDK reads the other `OTEL_*` variables. Needs the optional peers `@opentelemetry/sdk-node`, `@fastify/otel`, `@opentelemetry/instrumentation-undici`, or the boot refuses. |    No    | off                 |
 | `BODY_LIMIT`                   | Largest request body Fastify parses, in bytes; also the default `fileSize` of a multipart upload. |    No    | `1048576`           |
 | `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `true`              |
 | `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
@@ -640,6 +641,10 @@ LOG_COLORIZE=false
 LOG_TIMESTAMP=true
 LOG_TIMESTAMP_READABLE=true
 LOG_FASTIFY=false
+
+# --- OpenTelemetry (off unless an OTLP endpoint or an exporter is set) ---
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+# OTEL_SERVICE_NAME=my-api
 ```
 
 ---
@@ -2303,6 +2308,23 @@ if (log.e) log.error({ err: errorObject }, 'Payment gateway unreachable')
 
 // 4. Debug/Trace: Full payloads (dev only)
 if (log.d) log.debug('Incoming payload:', JSON.stringify(data))
+```
+
+### Tracing and metrics (OpenTelemetry)
+
+Turned on by the standard `OTEL_*` variables (an OTLP endpoint, or an exporter other than `none`) and started by `preload()`, with no `--import`. It records a span per request named `METHOD /route`, a span per SQL statement (literals replaced by `?`) under the request that issued it, a span per outgoing `fetch`, the `http.server.request.duration` histogram, and `trace_id`/`span_id` on every log line written inside a span. No span and no log line carries a URL's query string. Nothing to write in application code: a span of your own goes through `@opentelemetry/api`, which the framework depends on and an application that imports it lists among its own dependencies.
+
+```typescript
+import { trace } from '@opentelemetry/api'
+
+const tracer = trace.getTracer('my-api')
+await tracer.startActiveSpan('invoice.render', async (span) => {
+  try {
+    return await render(invoice)
+  } finally {
+    span.end()
+  }
+})
 ```
 
 ### Mailer

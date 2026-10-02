@@ -204,7 +204,34 @@ connessione contro cento connessioni.
   istruzioni 88,11% (3484 su 3954), rami 90,32%, funzioni 93,23%, righe 88,81%. Con un Postgres
   14.22 usa e getta e `DATABASE_URL`: `npm test` 936 verdi e 1 saltata (prima 933), banco
   multi-tenant 25 verdi.
-- [ ] **T-14.5** pino e OpenTelemetry nel backend (F63, F64).
+- [x] **T-14.5** pino e OpenTelemetry nel backend (F63, F64, F68). **Fatto il 2 ottobre 2026**, in
+  due commit. Pino (`83b3c68`): JSON in produzione e `pino-pretty` altrove (`LOG_FORMAT` vince,
+  un valore sconosciuto rifiuta l'avvio), un solo logger anche per Fastify (`loggerInstance`, così
+  `req.log` scrive dove scrive `log`), `redact` sulle credenziali che le rotte portano, e la query
+  string fuori da ogni riga di log del framework (una prova scandisce i sorgenti). OpenTelemetry:
+  spento finché gli `OTEL_*` standard non lo chiedono; lo avvia `preload()`, senza `--import`; tre
+  peer opzionali (`@opentelemetry/sdk-node`, `@fastify/otel`, `@opentelemetry/instrumentation-undici`),
+  la cui assenza rifiuta l'avvio; `@opentelemetry/api` è una dipendenza normale. Registra uno span
+  per richiesta (`METHOD /route`), uno per statement del data layer, su Postgres e su PGlite, sotto
+  lo span che l'ha emesso e con i letterali sostituiti da `?` (`queryTrace.ts`, nello stesso punto
+  della guardia di sessione), uno per `fetch` in uscita, l'istogramma
+  `http.server.request.duration` e `trace_id`/`span_id` su ogni riga di log scritta dentro uno
+  span. Un SDK avviato prima con `--import` viene usato com'è. Trovati e chiusi: `@fastify/otel`
+  scrive la query string in `url.path` (corretto con `requestHook`); a runtime gli span delle
+  chiamate in uscita la portavano in `url.full` e `url.query` (corretto con `startSpanHook`); un
+  client consegnato dalla coda d'attesa di `pg-pool` arriva nel contesto di chi l'ha rilasciato, e
+  lo span della query prendeva come padre l'altra richiesta (corretto con `context.bind`). Prove:
+  `test/db/queryTrace.spec.ts` (7 casi, 2 solo con `DATABASE_URL`) e `test/lib/telemetry.spec.ts`
+  (7). Difetti piantati, presi e ritirati: niente `context.bind` (1 rossa), niente sostituzione dei
+  letterali (2), niente override di `url.path` (1), niente `trace_id` nei log (1), niente
+  `startSpanHook` (1). A runtime: server vero con OTLP/HTTP JSON verso un collector finto, span di
+  richiesta con le query sotto l'handler, propagazione dal `fetch` al server, metrica e flush su
+  `server.close()` con ritardo di batch a 60 s; zero occorrenze della query string in log ed export.
+  Banco: A/B su PGlite con e senza span di query tra 0,989 e 1,003, dentro la dispersione; lo
+  scarto di 3-5% su PGlite contro la baseline di T-14.4 è deriva della macchina. `check-all` verde;
+  con un Postgres 14.22 usa e getta e `DATABASE_URL`, `npm run coverage` 963 verdi e 1 saltata,
+  istruzioni 88,45% (3679 su 4159), rami 90,41%, funzioni 94,18%, righe 89,22%; banco
+  multi-tenant 25 verdi. Non fatto, perché non deciso: l'id del tenant sugli span.
 - [ ] **T-14.6** AI SDK 7 e `ToolLoopAgent` in `volcanic-tools` (F65).
 - [ ] **T-14.7** MCP (F66): `defineTool` e adattatori in `volcanic-tools`, il server nel backend,
   poi rag T-7.6.
@@ -226,3 +253,12 @@ fida della lista: difetto piantato, 1 rosso su 12). Banco contro il giro senza n
 52,1 → 28,5 a concorrenza 10 (0,55), ora pari a `tenant.bySlug` (178,5; 70,9; 24,2); gli altri
 percorsi dentro la dispersione della baseline. Verde: `check-all`, coverage 832 test,
 `npm test` con Postgres 937 test, `test:e2e:mt:pg` 25 test.
+
+La genesi senza `ADMIN_EMAIL` non arriva al suo messaggio: trovato il 2 ottobre 2026 durante la
+prova a runtime di T-14.5, non corretto. `ensureGenesisAdmin` (`lib/loader/genesis.ts:74`)
+conta gli amministratori con `countQuery(ctx, { 'roles:in': adminCode })`, ma `roles` è una
+colonna `text[]`: Drizzle passa `'admin'` al mapper dell'array e l'avvio cade con
+`TypeError: value.map is not a function`, con o senza amministratori nel database. Lo vede ogni
+avvio con un data layer vero e senza `ADMIN_EMAIL`; i test passano perché la genesi vi gira con
+`ADMIN_EMAIL` o con un manager finto. L'operatore che il catalogo offre per questo è
+`roles:arrayContains`.

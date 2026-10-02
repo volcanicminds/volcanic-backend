@@ -20,6 +20,12 @@
 //
 // Every spelling, including `SET LOCAL`: outside a transaction that one is a silent no-op
 // in Postgres, and a statement that does nothing is a belief about the code that is wrong.
+//
+// The same choke point emits the query spans (queryTrace.ts): a statement the guard refuses never
+// reaches the wire, so it has no span.
+import { context } from '@opentelemetry/api'
+import { endingCallback, settleInSpan, startQuerySpan } from './queryTrace.js'
+
 const SESSION_SEARCH_PATH = /(?:^|[\s;(])set\s+(?:session\s+|local\s+)?search_path\b/i
 const LOCAL_SEARCH_PATH = /(?:^|[\s;(])set\s+local\s+search_path\b/i
 const BEGIN = /^\s*(?:begin|start\s+transaction)\b/i
@@ -59,6 +65,26 @@ const PATCHED = Symbol.for('volcanic.pg.guarded')
 const DEPTH = Symbol.for('volcanic.pg.txDepth')
 
 /**
+ * A `pg` client statement inside its span, in every shape the driver accepts. The pool's own
+ * `query` checks a client out and lands here with a callback, so it is not traced twice.
+ * A Submittable (a cursor, a stream) reports through its own events and goes untraced.
+ */
+function tracedClientQuery(client: any, original: any, text: string, config: any, values: any, cb: any) {
+  if (typeof config?.submit === 'function') return original(config, values, cb)
+  const span = startQuerySpan(text, client)
+  if (!span) return original(config, values, cb)
+  if (typeof values === 'function') return original(config, endingCallback(span, values))
+  if (typeof cb === 'function') return original(config, values, endingCallback(span, cb))
+  return settleInSpan(span, () => original(config, values))
+}
+
+/** A PGlite statement inside its span. */
+function tracedPglite(text: string, run: () => any) {
+  const span = startQuerySpan(text)
+  return span ? settleInSpan(span, run) : run()
+}
+
+/**
  * Wraps a checked-out client so it knows whether it is inside a transaction.
  *
  * The depth is reset at every checkout rather than tracked across them: a connection coming
@@ -74,7 +100,7 @@ function guardClient(client: any): any {
       assertNoSessionState(text, (client[DEPTH] || 0) > 0)
       if (BEGIN.test(text)) client[DEPTH] = (client[DEPTH] || 0) + 1
       else if (END.test(text)) client[DEPTH] = Math.max(0, (client[DEPTH] || 0) - 1)
-      return original(config, values, cb)
+      return tracedClientQuery(client, original, text, config, values, cb)
     }
   }
   client[DEPTH] = 0
@@ -103,8 +129,13 @@ export function guardPool<T extends { query: any; connect: any }>(pool: T): T {
   }
 
   anyPool.connect = function (cb?: any) {
-    // Callback form: the driver never uses it, but a consumer might.
-    if (typeof cb === 'function') return originalConnect((err: any, client: any, release: any) => cb(err, client && guardClient(client), release))
+    // Callback form: the pool's own `query` uses it, and so might a consumer. Bound to the
+    // caller's context: a client handed out from the waiting queue arrives in the context of
+    // whoever released it, and its query span would take that other request as its parent.
+    if (typeof cb === 'function') {
+      const done = context.bind(context.active(), cb)
+      return originalConnect((err: any, client: any, release: any) => done(err, client && guardClient(client), release))
+    }
     return Promise.resolve(originalConnect()).then(guardClient)
   }
 
@@ -116,12 +147,14 @@ function guardPgliteTransaction(tx: any): any {
   const originalQuery = tx.query.bind(tx)
   const originalExec = tx.exec.bind(tx)
   tx.query = (text: any, params?: any, options?: any) => {
-    assertNoSessionState(queryTextOf(text), true)
-    return originalQuery(text, params, options)
+    const sql = queryTextOf(text)
+    assertNoSessionState(sql, true)
+    return tracedPglite(sql, () => originalQuery(text, params, options))
   }
   tx.exec = (text: any, options?: any) => {
-    assertNoSessionState(queryTextOf(text), true)
-    return originalExec(text, options)
+    const sql = queryTextOf(text)
+    assertNoSessionState(sql, true)
+    return tracedPglite(sql, () => originalExec(text, options))
   }
   return tx
 }
@@ -146,12 +179,14 @@ export function guardPglite<T extends { query: any; exec: any; transaction: any 
   const originalTransaction = client.transaction.bind(client)
 
   anyClient.query = (text: any, params?: any, options?: any) => {
-    assertNoSessionState(queryTextOf(text), false)
-    return originalQuery(text, params, options)
+    const sql = queryTextOf(text)
+    assertNoSessionState(sql, false)
+    return tracedPglite(sql, () => originalQuery(text, params, options))
   }
   anyClient.exec = (text: any, options?: any) => {
-    assertNoSessionState(queryTextOf(text), false)
-    return originalExec(text, options)
+    const sql = queryTextOf(text)
+    assertNoSessionState(sql, false)
+    return tracedPglite(sql, () => originalExec(text, options))
   }
   anyClient.transaction = (callback: (tx: any) => Promise<unknown>) =>
     originalTransaction((tx: any) => callback(guardPgliteTransaction(tx)))

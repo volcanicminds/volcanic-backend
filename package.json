@@ -98,6 +98,7 @@
     "@fastify/static": "^10.1.3",
     "@fastify/swagger": "^9.6.1",
     "@fastify/swagger-ui": "^6.1.1",
+    "@opentelemetry/api": "^1.9.1",
     "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
     "fastify": "^5.6.2",
@@ -116,6 +117,9 @@
   "peerDependencies": {
     "@electric-sql/pglite": "0.5.3",
     "@electric-sql/pglite-pgvector": "^0.0.4",
+    "@fastify/otel": "^0.21.1",
+    "@opentelemetry/instrumentation-undici": "^0.32.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
     "bcrypt": "^6.0.0",
     "drizzle-orm": "^0.45.2",
     "openid-client": "^6.8.8",
@@ -139,12 +143,24 @@
     },
     "openid-client": {
       "optional": true
+    },
+    "@fastify/otel": {
+      "optional": true
+    },
+    "@opentelemetry/instrumentation-undici": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-node": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.3",
     "@electric-sql/pglite-pgvector": "^0.0.4",
     "@eslint/js": "^9.39.2",
+    "@fastify/otel": "^0.21.1",
+    "@opentelemetry/instrumentation-undici": "^0.32.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
     "@types/bcrypt": "^6.0.0",
     "@types/i18n": "^0.13.12",
     "@types/lodash": "^4.17.25",

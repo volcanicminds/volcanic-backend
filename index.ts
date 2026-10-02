@@ -23,6 +23,7 @@ import { ensureGenesisAdmin } from './lib/loader/genesis.js'
 import { assertControlSchemaCurrent } from './lib/loader/schemaVersion.js'
 import * as loaderSchedules from './lib/loader/schedules.js'
 import * as loaderTenant from './lib/loader/tenant.js'
+import { registerTelemetry, startTelemetry } from './lib/loader/telemetry.js'
 
 import fastify, { FastifyBaseLogger, FastifyInstance, LogController } from 'fastify'
 import jwtValidator from '@fastify/jwt'
@@ -188,6 +189,8 @@ async function addFastifySchedule(server: FastifyInstance) {
 }
 
 const preload = async () => {
+  // First, so the data layer started after preload() already has a tracer to write to (F68).
+  await startTelemetry()
   global.config = await loaderConfig.load()
   global.t = loaderTranslation.load()
   global.roles = await loaderRoles.load()
@@ -254,6 +257,7 @@ const start = async (decorators: StartOptions = {}) => {
     bodyLimit
   })
   global.server = server
+  await registerTelemetry(server)
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230' } = process.env
   // One hour, not fifteen days (T-10.39): the browser session renews itself from the refresh

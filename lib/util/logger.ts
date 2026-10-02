@@ -10,6 +10,7 @@
 // `LOG_LEVEL`, `LOG_FORMAT` or `NODE_ENV` that lives in `.env`.
 //
 
+import { isSpanContextValid, trace } from '@opentelemetry/api'
 import pino, { type DestinationStream, type LoggerOptions } from 'pino'
 import yn from './yn.js'
 
@@ -43,7 +44,18 @@ export function getLogFormat(): LogFormat {
 
 // The credentials the framework's own routes carry, at the top of a logged object and one level
 // down. `code` is not here on purpose: it is the refusal code of every framework error.
-const SECRET_KEYS = ['password', 'oldPassword', 'newPassword', 'token', 'refreshToken', 'secret', 'clientSecret', 'otp', 'authorization', 'cookie']
+const SECRET_KEYS = [
+  'password',
+  'oldPassword',
+  'newPassword',
+  'token',
+  'refreshToken',
+  'secret',
+  'clientSecret',
+  'otp',
+  'authorization',
+  'cookie'
+]
 
 /** What pino replaces with `[redacted]` before a line is written. */
 export const REDACTED_PATHS = [
@@ -64,13 +76,34 @@ export function withoutQuery(url: string | undefined): string {
 }
 
 /** Fastify's request serializer, with the URL as a log may show it. The instance's serializers win over Fastify's own. */
-function serializeRequest(req: { method?: string; url?: string; host?: string; ip?: string; socket?: { remotePort?: number } }) {
+function serializeRequest(req: {
+  method?: string
+  url?: string
+  host?: string
+  ip?: string
+  socket?: { remotePort?: number }
+}) {
   return {
     method: req.method,
     url: withoutQuery(req.url),
     host: req.host,
     remoteAddress: req.ip,
     remotePort: req.socket?.remotePort
+  }
+}
+
+/**
+ * The active span's ids on a line written inside it, under the names OpenTelemetry's own pino
+ * instrumentation uses, so a collector joins a log line to its trace (F68). Without an SDK there
+ * is no active span and the line is unchanged.
+ */
+export function traceFields(): Record<string, string> {
+  const spanContext = trace.getActiveSpan()?.spanContext()
+  if (!spanContext || !isSpanContextValid(spanContext)) return {}
+  return {
+    trace_id: spanContext.traceId,
+    span_id: spanContext.spanId,
+    trace_flags: `0${spanContext.traceFlags.toString(16)}`
   }
 }
 
@@ -88,7 +121,8 @@ export function createLogger(destination?: DestinationStream) {
     timestamp: yn(process.env.LOG_TIMESTAMP, true),
     redact: { paths: REDACTED_PATHS, censor: '[redacted]' },
     // Listing serializers replaces pino's defaults, so `err` is named again.
-    serializers: { err: pino.stdSerializers.err, req: serializeRequest }
+    serializers: { err: pino.stdSerializers.err, req: serializeRequest },
+    mixin: traceFields
   }
   if (format === 'pretty') {
     options.transport = {

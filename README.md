@@ -321,6 +321,8 @@ npm install drizzle-orm bcrypt pg @electric-sql/pglite   # PGlite, in process: d
 
 `drizzle-kit` goes in `devDependencies`: it generates migrations, it does not run them.
 
+Tracing and metrics need three more optional peers: see [Tracing and metrics](#tracing-and-metrics-opentelemetry).
+
 ### Minimal Working Example
 
 This example demonstrates how to set up a basic server with a single endpoint.
@@ -480,6 +482,10 @@ LOG_TIMESTAMP=true
 LOG_TIMESTAMP_READABLE=true
 LOG_FASTIFY=false
 
+# OpenTelemetry: off unless an OTLP endpoint or an exporter is set
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+# OTEL_SERVICE_NAME=my-api
+
 SWAGGER=true
 SWAGGER_HOST=myawesome.backend.com
 SWAGGER_TITLE=API Documentation
@@ -597,6 +603,7 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
 | `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format (`pretty` only).                  |    No    | `true`              |
 | `LOG_FASTIFY`                  | Write Fastify's per-request lines (incoming request, request completed). `req.log` always works. |    No    | `false`             |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`  | Turns on tracing and metrics over OTLP, as does a trace or metric exporter other than `none`; the SDK reads the other `OTEL_*` variables. See [Tracing and metrics](#tracing-and-metrics-opentelemetry). |    No    | off                 |
 | `BODY_LIMIT`                   | Largest request body Fastify parses, in bytes; also the default `fileSize` of a multipart upload. |    No    | `1048576`           |
 | `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `false`             |
 | `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
@@ -724,6 +731,26 @@ Other settings:
 - **LOG_FASTIFY** (bool): Fastify's per-request lines. Fastify always logs through the same instance, so `req.log` writes where `log` does, with the request id
 
 Before a line is written, pino replaces with `[redacted]` the credentials the framework's routes carry, at the top of a logged object and one level down (`password`, `token`, `refreshToken`, `secret`, `clientSecret`, `otp`, `authorization`, `cookie` and a few more; the list is `REDACTED_PATHS` in [logger.ts](./lib/util/logger.ts)). A logged request keeps its path and loses its query string, where a provider sends back its authorization code. Redaction cannot reach inside a message that is already a string, so a log line of your own that names a URL should leave its query string out, as the framework's own lines do.
+
+## Tracing and metrics (OpenTelemetry)
+
+Off unless the deployment asks for it with the standard `OTEL_*` variables: an OTLP endpoint (`OTEL_EXPORTER_OTLP_ENDPOINT`, or the one for traces or metrics), or an `OTEL_TRACES_EXPORTER` or `OTEL_METRICS_EXPORTER` other than `none`. `OTEL_SDK_DISABLED=true` turns it off again. It needs three optional peers, and a deployment that asks for telemetry without them refuses to boot, naming what to install:
+
+```sh
+npm install @opentelemetry/sdk-node @fastify/otel @opentelemetry/instrumentation-undici
+```
+
+`preload()` starts the SDK, so no `--import` flag is needed; the SDK reads the other `OTEL_*` variables by itself (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_PROTOCOL`, headers, sampler). What it records:
+
+- one span per request, named `METHOD /route`, with the hooks and the handler inside it (`@fastify/otel`; `OTEL_FASTIFY_IGNORE_PATHS` leaves paths out, a health check for instance);
+- one span per statement the data layer sends, on Postgres and on PGlite, under the span that issued it, with the SQL text and every literal replaced by `?`;
+- one span per outgoing `fetch`;
+- the `http.server.request.duration` histogram, by method, route and status;
+- `trace_id` and `span_id` on every log line written inside a span.
+
+No span and no log line carries the query string of a URL, incoming or outgoing: a provider sends back its authorization code there, and many APIs take their key there. `server.close()` flushes what is still buffered.
+
+An SDK started earlier with `--import`, to instrument other libraries, is used as it is: the framework adds its own instrumentations and leaves that SDK's lifecycle to whoever started it. That SDK must not instrument Fastify or undici as well, or their spans come twice.
 
 ## Tokens and secrets
 
