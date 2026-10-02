@@ -16,8 +16,6 @@
  * omission.
  */
 
-import logger from './logger.js'
-
 export type CorsOrigin = boolean | string | string[]
 
 export type CorsCheck = { ok: boolean; fatal: boolean; reason?: string }
@@ -131,9 +129,9 @@ export function assertCorsOptions(options: CorsOptionsLike | null | undefined, o
   const hint = 'Set CORS_ORIGINS to the comma-separated list of origins allowed to call this API.'
 
   if (fatal) {
-    if (logger.f) logger.fatal(`Startup Security: CORS is unsafe — ${reason}. ${hint}`)
+    if (globalThis.log?.f) globalThis.log.fatal(`Startup Security: CORS is unsafe: ${reason}. ${hint}`)
     process.exit(1)
-  } else if (logger.w) {
-    logger.warn(`Startup Security: CORS is unsafe — ${reason}. Refused in production. ${hint}`)
+  } else if (globalThis.log?.w) {
+    globalThis.log.warn(`Startup Security: CORS is unsafe: ${reason}. Refused in production. ${hint}`)
   }
 }

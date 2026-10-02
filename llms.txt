@@ -489,11 +489,12 @@ An example `.env` for production.
 | `SESSION_IDLE_TTL`             | Seconds without a renewal before a session ends.                        |    No    | `2592000`           |
 | `SESSION_ABSOLUTE_TTL`         | Seconds a session may live, however often it renews.                    |    No    | `15552000`          |
 | `SESSION_GRACE_SECONDS`        | Seconds the just-rotated credential stays acceptable.                   |    No    | `10`                |
-| `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`). |    No    | `info`              |
-| `LOG_COLORIZE`                 | Enable colorized log output.                                            |    No    | `true`              |
+| `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent`). |    No    | `info` in production, `debug` otherwise |
+| `LOG_FORMAT`                   | `json` (one JSON object per line, for a collector) or `pretty` (`pino-pretty`). Any other value refuses to boot. |    No    | `json` in production, `pretty` otherwise |
+| `LOG_COLORIZE`                 | Enable colorized log output (`pretty` only).                            |    No    | `true`              |
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
-| `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format.                                  |    No    | `true`              |
-| `LOG_FASTIFY`                  | Enable Fastify's built-in logger.                                       |    No    | `false`             |
+| `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format (`pretty` only).                  |    No    | `true`              |
+| `LOG_FASTIFY`                  | Write Fastify's per-request lines (incoming request, request completed). `req.log` always works. |    No    | `false`             |
 | `BODY_LIMIT`                   | Largest request body Fastify parses, in bytes; also the default `fileSize` of a multipart upload. |    No    | `1048576`           |
 | `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `true`              |
 | `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
@@ -2698,9 +2699,8 @@ TENANT_CONTAINERS_MAX_OPEN=20
 CORS_ORIGINS=https://app.example.com
 
 # --- LOGGING ---
-# In production 'info' reduces I/O. Use 'false' for colorize for parsers (Datadog/ELK)
+# In production 'info' reduces I/O; the lines are JSON for a collector unless LOG_FORMAT=pretty
 LOG_LEVEL=info
-LOG_COLORIZE=false
 ```
 
 ### Docker Startup Script

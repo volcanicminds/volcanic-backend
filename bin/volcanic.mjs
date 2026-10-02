@@ -77,8 +77,7 @@ async function main() {
     process.exit(known && flag('help') ? 0 : 1)
   }
 
-  const logger = (await load('lib/util/logger.js')).default
-  globalThis.log = logger
+  globalThis.log = (await load('lib/util/logger.js')).createLogger()
 
   const config = await (await load('lib/loader/general.js')).load()
   globalThis.config = config

@@ -158,6 +158,13 @@ describe('hooks/onResponse · the log level follows the status (T-9.5)', () => {
     expect(message).toContain('GET /x 200')
     expect(message).toMatch(/\(\d+ms\)/)
   })
+
+  it('leaves the query string out, where a provider sends back its code (F63)', async () => {
+    lines.length = 0
+    await onResponse({ method: 'GET', url: '/auth/flow/return/oidc?code=c0de&state=st4te', startedAt: new Date() } as any, { statusCode: 303 } as any)
+    expect(lines[0][1]).toContain('GET /auth/flow/return/oidc 303')
+    expect(lines[0][1]).not.toMatch(/c0de|st4te/)
+  })
 })
 
 describe('util/errors · TranslatedError falls back rather than losing the message (T-9.5)', () => {

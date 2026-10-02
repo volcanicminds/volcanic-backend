@@ -10,6 +10,7 @@
 // state to undo anyway (T-3.1). Logging a response is this file's whole job.
 //
 import type { FastifyReply, FastifyRequest } from 'fastify'
+import { withoutQuery } from '../util/logger.js'
 
 export default async (req: FastifyRequest, reply: FastifyReply) => {
   let extraMessage = ''
@@ -23,7 +24,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
     extraMessage += `[${reqSize}${replySize} bytes]`
   }
 
-  const message = () => `${req.method} ${req.url} ${reply.statusCode} ${extraMessage}`.trim()
+  const message = () => `${req.method} ${withoutQuery(req.url)} ${reply.statusCode} ${extraMessage}`.trim()
   if (reply.statusCode < 300) {
     log.info(message())
   } else if (reply.statusCode < 400) {

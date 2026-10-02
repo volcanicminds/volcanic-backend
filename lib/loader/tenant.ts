@@ -6,6 +6,7 @@ import { migrationChecks, migrationsOf } from './schemaVersion.js'
 import { credentialOf, REFRESH_TYP } from '../util/credential.js'
 import { parseFlowState } from '../util/flowCredential.js'
 import { httpError } from '../util/httpError.js'
+import { withoutQuery } from '../util/logger.js'
 
 //
 // The data context of a request: what it gets, and where it gives it back.
@@ -126,7 +127,7 @@ export async function apply(server: FastifyInstance) {
       if (!routing) return reply.code(400).send(httpError(400, 'This return carries no flow state', 'FLOW_REQUIRED'))
       tenant = await tm.getTenant(req.control, routing)
       if ((declared && tenant?.slug !== declared) || (claimed && claimed !== routing)) {
-        if (log.w) log.warn(`Tenancy: the flow state and the request name different tenants on ${req.url}`)
+        if (log.w) log.warn(`Tenancy: the flow state and the request name different tenants on ${withoutQuery(req.url)}`)
         return reply.code(403).send(httpError(403, 'The flow does not belong to the declared tenant', 'TENANT_MISMATCH'))
       }
     } else if (claimed) {
@@ -136,7 +137,7 @@ export async function apply(server: FastifyInstance) {
       if (declared) {
         const named = await tm.getTenantBySlug(req.control, declared)
         if (!named || named.id !== claimed) {
-          if (log.w) log.warn(`Tenancy: token and ${tenants?.resolver ?? 'header'} name different tenants on ${req.url}`)
+          if (log.w) log.warn(`Tenancy: token and ${tenants?.resolver ?? 'header'} name different tenants on ${withoutQuery(req.url)}`)
           return reply.code(403).send(httpError(403, 'The token does not belong to the declared tenant', 'TENANT_MISMATCH'))
         }
         tenant = named

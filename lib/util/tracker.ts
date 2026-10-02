@@ -2,6 +2,7 @@
 import dayjs from 'dayjs'
 import type { FastifyRequest, FastifyReply } from '../../types/global.js'
 import { dataContext } from './tenancy.js'
+import { withoutQuery } from './logger.js'
 
 //
 // The audit trail, and what happens when it cannot be written (T-3.5).
@@ -87,7 +88,7 @@ export async function track(req: FastifyRequest, reply: FastifyReply, payload: a
     if (!id) {
       // Not a tracking failure: the response carries no identifier, so there is nothing to
       // attach a change to. It stays a log line even in strict mode.
-      if (log.w) log.warn(`Tracking changes: no ${tc.primaryKey} in the response of ${req.method} ${req.url}`)
+      if (log.w) log.warn(`Tracking changes: no ${tc.primaryKey} in the response of ${req.method} ${withoutQuery(req.url)}`)
       return
     }
 

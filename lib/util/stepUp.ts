@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { httpError } from './httpError.js'
+import { withoutQuery } from './logger.js'
 
 //
 // Step-up (EVO_FASE_13.md, F50 to F56): a route marked `freshAuth: true` answers only to a
@@ -57,6 +58,6 @@ export function finishFreshness(req: FastifyRequest, reply: FastifyReply, claims
   const authTime = claims.auth_time
   if (typeof authTime === 'number' && Date.now() - authTime * 1000 <= maxAge * 1000) return
   if (!claims.sid) return notAvailable()
-  if (log.i) log.info(`Step-up required for ${req.method} ${req.url}`)
+  if (log.i) log.info(`Step-up required for ${req.method} ${withoutQuery(req.url)}`)
   return reply.status(403).send({ ...httpError(403, 'Confirm your identity to continue', 'STEP_UP_REQUIRED'), maxAge })
 }

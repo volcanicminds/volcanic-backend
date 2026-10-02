@@ -250,6 +250,8 @@ same URL cannot mean two things on two servers).
 | MFA policy | one value for the whole deployment, read only by the tenant routes | three levels (deployment floor, control plane, tenant), enforced on both planes | `MANDATORY` obliged every customer's users and none of the operators who can destroy a customer (T-10.19) |
 | refresh token | a second JWT, verified and never consumed: one string from the login to its expiry | an opaque credential against the `session` registry, rotated at every renewal, with reuse detection | a credential that cannot be spent cannot be revoked: the theft of one was invisible, `logout` cleared cookies while the copy kept renewing, and rotating `external_id` was the only revocation there was (T-11.8) |
 | renewal without a data layer | a refresh token that verified and renewed for ever | the renewal routes answer `404` | a refresh credential nobody can consume never expires; F28 prefers no renewal to one that only looks like a session |
+| log format | `pino-pretty` always, production included | JSON lines in production, `pino-pretty` otherwise; `LOG_FORMAT` wins | a collector parses JSON; colours and padding are for a console (F63) |
+| Fastify's logger | its own, off unless `LOG_FASTIFY`, so `req.log` wrote nowhere | the framework's instance, with the redaction; `LOG_FASTIFY` only adds the per-request lines | an error a route logged with `req.log` was lost (F63) |
 
 ---
 

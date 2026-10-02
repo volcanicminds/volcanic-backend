@@ -5,7 +5,7 @@ dotenv.config()
 
 import yn from './lib/util/yn.js'
 import { envInt } from './lib/util/env.js'
-import logger from './lib/util/logger.js'
+import { createLogger } from './lib/util/logger.js'
 import * as mark from './lib/util/mark.js'
 import { TranslatedError } from './lib/util/errors.js'
 import * as loaderPlugins from './lib/loader/plugins.js'
@@ -24,7 +24,7 @@ import { assertControlSchemaCurrent } from './lib/loader/schemaVersion.js'
 import * as loaderSchedules from './lib/loader/schedules.js'
 import * as loaderTenant from './lib/loader/tenant.js'
 
-import fastify, { FastifyInstance } from 'fastify'
+import fastify, { FastifyBaseLogger, FastifyInstance, LogController } from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import swagger from '@fastify/swagger'
 import swaggerUI from '@fastify/swagger-ui'
@@ -94,17 +94,10 @@ import { buildAuthenticatorRegistry } from './lib/auth/registry.js'
 import { authFlowProblems, canImport, isImplemented, listsMethod, OIDC, OIDC_LIBRARY } from './lib/auth/validate.js'
 import { captureDeploymentSecrets } from './lib/auth/providers.js'
 
+// Here and not at import: ESM evaluates every import above before `dotenv.config()` runs, and the
+// logger has to see the `LOG_*` and `NODE_ENV` that live in `.env`.
+const logger = createLogger()
 global.log = logger
-
-// The logger was built while the imports above were evaluated, which is BEFORE `dotenv.config()`
-// ran: ESM hoists every import above the body of the module. A `LOG_LEVEL` or `NODE_ENV` that
-// lives in `.env` was therefore invisible to it, and production defaulted to `debug`. Now that
-// the file is loaded, the level is asked again. After `global.log`, because the logger's
-// level-change listener writes through it.
-if (logger.level !== logger.getLogLevel()) {
-  logger.level = logger.getLogLevel()
-  logger.updateLevel()
-}
 
 async function addFastifyRouting(server: FastifyInstance) {
   log.trace('Add server routes')
@@ -250,13 +243,16 @@ const start = async (decorators: StartOptions = {}) => {
   global.tracking = tracking
   global.trackingConfig = trackingConfig
 
-  // Fastify's own request logger, off unless asked for (T-10.10). `LOG_FASTIFY` was in the
-  // README's environment table while the only line reading it was commented out, so setting
-  // it did nothing: a documented variable read by nobody, which is D-11 again.
+  // Fastify logs through the framework's logger (F63), so `req.log` writes where `log` does, with
+  // the request id. Its per-request lines stay off unless `LOG_FASTIFY` asks for them (T-10.10).
   // Written out rather than left to Fastify's default (S16), so the ceiling on a JSON body is a
   // number the deployment can read and change. Transfers do not go through it: they stream.
   const bodyLimit = envInt('BODY_LIMIT', 1048576)
-  const server: FastifyInstance = fastify({ logger: yn(process.env.LOG_FASTIFY, false), bodyLimit })
+  const server: FastifyInstance = fastify({
+    loggerInstance: logger as FastifyBaseLogger,
+    logController: new LogController({ disableRequestLogging: !yn(process.env.LOG_FASTIFY, false) }),
+    bodyLimit
+  })
   global.server = server
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230' } = process.env

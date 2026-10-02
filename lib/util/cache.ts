@@ -35,6 +35,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { NormalizedRouteCache, RouteCache } from '../../types/global.js'
 import { isTenancyEnabled } from './tenancy.js'
+import { withoutQuery } from './logger.js'
 
 interface Entry {
   value: any
@@ -273,10 +274,10 @@ export function buildCacheHooks(routeCache: NormalizedRouteCache) {
           for (const [h, v] of Object.entries(hit.headers as Record<string, any>)) reply.header(h, v as any)
           HITS.add(req)
           reply.code(hit.statusCode)
-          if (log?.d) log.debug(`Cache 🧊 hit ${keyGroup} ${req.method} ${req.url}`)
+          if (log?.d) log.debug(`Cache 🧊 hit ${keyGroup} ${req.method} ${withoutQuery(req.url)}`)
           return reply.send(hit.payload)
         }
-        if (log?.d) log.debug(`Cache 🧊 miss ${keyGroup} ${req.method} ${req.url}`)
+        if (log?.d) log.debug(`Cache 🧊 miss ${keyGroup} ${req.method} ${withoutQuery(req.url)}`)
       }
     : undefined
 

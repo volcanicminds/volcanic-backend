@@ -11,7 +11,7 @@ import path from 'node:path'
 import { rmSync } from 'node:fs'
 import type { FastifyInstance } from 'fastify'
 import type { Authenticator } from '../../types/global.js'
-import type logger from '../../lib/util/logger.js'
+import type { VolcanicLogger } from '../../lib/util/logger.js'
 
 const GLOBAL_KEYS = ['log', 'config', 'roles', 'systemRoles', 't', 'server', 'tracking', 'trackingConfig', 'cache', 'transferPath', 'authFlows']
 const ENV_KEYS = ['JWT_SECRET', 'MANIFEST_DUMP', 'MANIFEST_DUMP_EXIT', 'AUTH_MODE']
@@ -28,7 +28,7 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
   let preload: () => Promise<void>
   let level: string
   // The instance the entry wrote to `global.log`: under tsx an import from here can be a second copy.
-  const log = () => bag.log as typeof logger
+  const log = () => bag.log as VolcanicLogger
 
   before(async () => {
     for (const key of GLOBAL_KEYS) savedGlobals[key] = bag[key]
@@ -38,17 +38,14 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
     process.env.MANIFEST_DUMP = dump
     process.env.MANIFEST_DUMP_EXIT = 'true'
     const entry = await import('../../index.js')
-    // After the import: the level-change listener writes through `global.log`, which the entry sets.
     level = log().level
     log().level = 'silent'
-    log().updateLevel()
     start = entry.start as Start
     preload = entry.preload
   })
 
   after(() => {
     log().level = level
-    log().updateLevel()
     for (const key of GLOBAL_KEYS) bag[key] = savedGlobals[key]
     for (const key of ENV_KEYS) {
       if (savedEnv[key] === undefined) delete process.env[key]

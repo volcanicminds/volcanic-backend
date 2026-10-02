@@ -473,6 +473,8 @@ COOKIE_SECRET=yourCookieSecret
 
 # LOG_LEVEL: trace, debug, info, warn, error, fatal
 LOG_LEVEL=info
+# LOG_FORMAT: json, pretty (json in production, pretty otherwise)
+LOG_FORMAT=json
 LOG_COLORIZE=true
 LOG_TIMESTAMP=true
 LOG_TIMESTAMP_READABLE=true
@@ -590,10 +592,11 @@ The framework is configured via `.env` variables. Below is a comprehensive list:
 | `AUTH_OTP_MAX_ATTEMPTS`        | Wrong codes before a login ends. The account is never locked by them.   |    No    | `5`                 |
 | `AUTH_OTP_MAX_SENDS`           | Codes sent within one login.                                            |    No    | `3`                 |
 | `LOG_LEVEL`                    | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent`). Unset or unknown falls back to the default, which follows `NODE_ENV`. |    No    | `info` in production, `debug` otherwise |
-| `LOG_COLORIZE`                 | Enable colorized log output.                                            |    No    | `true`              |
+| `LOG_FORMAT`                   | `json` (one JSON object per line, for a collector) or `pretty` (`pino-pretty`). Any other value refuses to boot. |    No    | `json` in production, `pretty` otherwise |
+| `LOG_COLORIZE`                 | Enable colorized log output (`pretty` only).                            |    No    | `true`              |
 | `LOG_TIMESTAMP`                | Enable timestamps in logs.                                              |    No    | `true`              |
-| `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format.                                  |    No    | `true`              |
-| `LOG_FASTIFY`                  | Enable Fastify's built-in logger.                                       |    No    | `false`             |
+| `LOG_TIMESTAMP_READABLE`       | Use a human-readable timestamp format (`pretty` only).                  |    No    | `true`              |
+| `LOG_FASTIFY`                  | Write Fastify's per-request lines (incoming request, request completed). `req.log` always works. |    No    | `false`             |
 | `BODY_LIMIT`                   | Largest request body Fastify parses, in bytes; also the default `fileSize` of a multipart upload. |    No    | `1048576`           |
 | `SWAGGER`                      | Enable Swagger/OpenAPI documentation.                                   |    No    | `false`             |
 | `SWAGGER_HOST`                 | The base URL for the API, used in Swagger docs.                         |    No    | `localhost:2230`    |
@@ -714,17 +717,13 @@ log.f && log.fatal('print a message')
 
 Other settings:
 
+- **LOG_FORMAT** (`json` or `pretty`): JSON lines in production, for a collector; `pino-pretty` anywhere else. Any other value refuses to boot
 - **LOG_TIMESTAMP** (bool): add timestamp in each line
-- **LOG_TIMESTAMP_READABLE** (bool): if timestamp is enabled this specify a human-readable format (worst performance)
-- **LOG_COLORIZE** (bool): add a bit of colors
+- **LOG_TIMESTAMP_READABLE** (bool, `pretty` only): a human-readable timestamp (worst performance)
+- **LOG_COLORIZE** (bool, `pretty` only): add a bit of colors
+- **LOG_FASTIFY** (bool): Fastify's per-request lines. Fastify always logs through the same instance, so `req.log` writes where `log` does, with the request id
 
-Defaults, see [logger.ts](./lib/util/logger.ts):
-
-```ts
-const logColorize = yn(LOG_COLORIZE, true)
-const logTimestamp = yn(LOG_TIMESTAMP, true)
-const logTimestampReadable = yn(LOG_TIMESTAMP_READABLE, true)
-```
+Before a line is written, pino replaces with `[redacted]` the credentials the framework's routes carry, at the top of a logged object and one level down (`password`, `token`, `refreshToken`, `secret`, `clientSecret`, `otp`, `authorization`, `cookie` and a few more; the list is `REDACTED_PATHS` in [logger.ts](./lib/util/logger.ts)). A logged request keeps its path and loses its query string, where a provider sends back its authorization code. Redaction cannot reach inside a message that is already a string, so a log line of your own that names a URL should leave its query string out, as the framework's own lines do.
 
 ## Tokens and secrets
 

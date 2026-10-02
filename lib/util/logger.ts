@@ -1,84 +1,132 @@
 'use strict'
 
-/**
- * Minimal logger (thanks Pino)
- */
+//
+// The framework's logger (F63): pino, JSON lines in production, `pino-pretty` on a developer's
+// machine. Fastify receives the same instance as `loggerInstance`, so `req.log` writes where
+// `log` does.
+//
+// Built by a factory and not at import: ESM evaluates every import before the body of the entry
+// module, which is where `.env` is loaded, so a logger built at import time could not see a
+// `LOG_LEVEL`, `LOG_FORMAT` or `NODE_ENV` that lives in `.env`.
+//
 
-// log.debug('test log test log test log')
-// log.error('test log test log test log')
-// log.warn('test log test log test log')
-// log.info('test log test log test log')
-// log.fatal('test log test log test log')
-// log.trace('test log test log test log')
-
-import pino from 'pino'
+import pino, { type DestinationStream, type LoggerOptions } from 'pino'
 import yn from './yn.js'
 
-// `silent` is pino's own level for "nothing". It was missing, so `LOG_LEVEL=silent` (which the
-// framework's own e2e script sets) was an unknown value and fell back to the default.
+// `silent` is pino's own level for "nothing". The framework's own e2e script sets it.
 const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']
-
-const { LOG_COLORIZE, LOG_TIMESTAMP, LOG_TIMESTAMP_READABLE } = process.env
 
 /**
  * The level to log at: `LOG_LEVEL` when it names one, otherwise a default that depends on where
  * the process runs. `debug` on a developer's machine, `info` in production: a production default
  * of `debug` writes every query and every resolved subject into logs that outlive the request,
  * and nobody chose it, because nobody set anything.
- *
- * Read at call time and not at import: `index.ts` loads `.env` after its imports have run, so a
- * value captured here at import would ignore a `LOG_LEVEL` or `NODE_ENV` that lives in `.env`.
- * `index.ts` calls this again once the file is loaded.
  */
-function getLogLevel(): string {
+export function getLogLevel(): string {
   const declared = process.env.LOG_LEVEL?.toLowerCase()
   if (declared && logLevels.includes(declared)) return declared
   return process.env.NODE_ENV === 'production' ? 'info' : 'debug'
 }
 
-const logColorize = yn(LOG_COLORIZE, true)
-const logTimestamp = yn(LOG_TIMESTAMP, true)
-const logTimestampReadable = yn(LOG_TIMESTAMP_READABLE, true)
+export type LogFormat = 'json' | 'pretty'
 
-const loggerConfig = {
-  level: getLogLevel(),
-  timestamp: logTimestamp,
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      translateTime: logTimestampReadable ? 'yyyymmdd HH:MM:ss.l' : false,
-      colorize: logColorize
-    }
+/**
+ * `json` in production, where a collector parses the lines, `pretty` anywhere else. `LOG_FORMAT`
+ * wins, and a value that is neither stops the boot: a typo must not silently pick a format.
+ */
+export function getLogFormat(): LogFormat {
+  const declared = process.env.LOG_FORMAT?.trim().toLowerCase()
+  if (!declared) return process.env.NODE_ENV === 'production' ? 'json' : 'pretty'
+  if (declared === 'json' || declared === 'pretty') return declared
+  throw new Error(`LOG_FORMAT must be json or pretty, not '${process.env.LOG_FORMAT}'`)
+}
+
+// The credentials the framework's own routes carry, at the top of a logged object and one level
+// down. `code` is not here on purpose: it is the refusal code of every framework error.
+const SECRET_KEYS = ['password', 'oldPassword', 'newPassword', 'token', 'refreshToken', 'secret', 'clientSecret', 'otp', 'authorization', 'cookie']
+
+/** What pino replaces with `[redacted]` before a line is written. */
+export const REDACTED_PATHS = [
+  ...SECRET_KEYS.flatMap((key) => [key, `*.${key}`]),
+  'req.headers.authorization',
+  'req.headers.cookie',
+  '*["set-cookie"]',
+  'res.headers["set-cookie"]'
+]
+
+/**
+ * A URL as a log line may show it: the path, never the query string. A provider sends its
+ * authorization code and its state back there (`returnFrom` in lib/auth/http.ts), and `redact`
+ * cannot reach inside a message that is already a string.
+ */
+export function withoutQuery(url: string | undefined): string {
+  return typeof url === 'string' ? url.split('?')[0] : ''
+}
+
+/** Fastify's request serializer, with the URL as a log may show it. The instance's serializers win over Fastify's own. */
+function serializeRequest(req: { method?: string; url?: string; host?: string; ip?: string; socket?: { remotePort?: number } }) {
+  return {
+    method: req.method,
+    url: withoutQuery(req.url),
+    host: req.host,
+    remoteAddress: req.ip,
+    remotePort: req.socket?.remotePort
   }
 }
 
-const logger = pino(loggerConfig)
-const logLevel = logger.levels.values[loggerConfig.level]
+/**
+ * A logger configured from the environment as it is now. With a `destination`, the lines go
+ * there as JSON whatever `LOG_FORMAT` says: pretty printing is for a console, and pino runs it in
+ * a worker that cannot share a caller's stream.
+ */
+export function createLogger(destination?: DestinationStream) {
+  const level = getLogLevel()
+  const format = destination ? 'json' : getLogFormat()
 
-// Level:	trace	debug	info	warn	error	fatal	silent
-// Value:	10	20	30	40	50	60	Infinity
-
-const loggerExt = Object.assign(logger, {
-  t: logLevel < 11,
-  d: logLevel < 21,
-  i: logLevel < 31,
-  w: logLevel < 41,
-  e: logLevel < 51,
-  f: logLevel < 61,
-  getLogLevel: getLogLevel,
-  loggerConfig: loggerConfig,
-  updateLevel: () => {
-    loggerExt.t = loggerExt.levelVal < 11
-    loggerExt.d = loggerExt.levelVal < 21
-    loggerExt.i = loggerExt.levelVal < 31
-    loggerExt.w = loggerExt.levelVal < 41
-    loggerExt.e = loggerExt.levelVal < 51
-    loggerExt.f = loggerExt.levelVal < 61
+  const options: LoggerOptions = {
+    level,
+    timestamp: yn(process.env.LOG_TIMESTAMP, true),
+    redact: { paths: REDACTED_PATHS, censor: '[redacted]' },
+    // Listing serializers replaces pino's defaults, so `err` is named again.
+    serializers: { err: pino.stdSerializers.err, req: serializeRequest }
   }
-})
+  if (format === 'pretty') {
+    options.transport = {
+      target: 'pino-pretty',
+      options: {
+        translateTime: yn(process.env.LOG_TIMESTAMP_READABLE, true) ? 'yyyymmdd HH:MM:ss.l' : false,
+        colorize: yn(process.env.LOG_COLORIZE, true)
+      }
+    }
+  }
 
-loggerExt.on('level-change', () => {
-  log.trace('Log level changed')
-})
+  const logger = destination ? pino(options, destination) : pino(options)
 
-export default loggerExt
+  // Level:	trace	debug	info	warn	error	fatal	silent
+  // Value:	10	20	30	40	50	60	Infinity
+  const loggerExt = Object.assign(logger, {
+    format,
+    t: false,
+    d: false,
+    i: false,
+    w: false,
+    e: false,
+    f: false,
+    updateLevel: () => {
+      loggerExt.t = loggerExt.levelVal < 11
+      loggerExt.d = loggerExt.levelVal < 21
+      loggerExt.i = loggerExt.levelVal < 31
+      loggerExt.w = loggerExt.levelVal < 41
+      loggerExt.e = loggerExt.levelVal < 51
+      loggerExt.f = loggerExt.levelVal < 61
+    }
+  })
+  loggerExt.updateLevel()
+  loggerExt.on('level-change', () => {
+    loggerExt.updateLevel()
+    loggerExt.trace('Log level changed')
+  })
+  return loggerExt
+}
+
+export type VolcanicLogger = ReturnType<typeof createLogger>

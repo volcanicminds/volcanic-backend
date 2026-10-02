@@ -18,6 +18,7 @@ type SessionClaims = {
 import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
 import { credentialOf, isCookieMode, REFRESH_TYP } from '../util/credential.js'
 import { finishFreshness } from '../util/stepUp.js'
+import { withoutQuery } from '../util/logger.js'
 
 /** A refusal the catch below answers as 401, or tolerates on a public route. */
 const refusal = (message: string, authCode: string) => Object.assign(new Error(message), { authCode })
@@ -136,7 +137,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         // platform route is not "an admin who is admin enough", it is an identity from
         // another plane, and there is no path where it becomes one.
         if (controlIdentity && tokenData.scp !== 'control') {
-          if (log.w) log.warn(`Security Block: a tenant token was presented on the control route ${req.url}`)
+          if (log.w) log.warn(`Security Block: a tenant token was presented on the control route ${withoutQuery(req.url)}`)
           return reply.status(403).send(httpError(403, 'A tenant token cannot act on the platform', 'SCOPE_MISMATCH'))
         }
 
@@ -161,7 +162,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           // rare by construction.
           const session = await im.getImpersonation(req.control as ControlHandle, tokenData.imp)
           if (!session) {
-            if (log.w) log.warn(`Impersonation ${tokenData.imp} is revoked or expired: refusing ${req.method} ${req.url}`)
+            if (log.w) log.warn(`Impersonation ${tokenData.imp} is revoked or expired: refusing ${req.method} ${withoutQuery(req.url)}`)
             return reply.status(403).send(httpError(403, 'This impersonation session is over', 'IMPERSONATION_ENDED'))
           }
           if (session.tenantId !== req.tenantInfo?.id) {
@@ -171,7 +172,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           req.impersonation = session
           // Every request made under it is logged with the record id, so the trail is not
           // only "a session was opened" but "these are the things it did".
-          if (log.i) log.info(`Impersonation ${session.id}: ${req.method} ${req.url}`)
+          if (log.i) log.info(`Impersonation ${session.id}: ${req.method} ${withoutQuery(req.url)}`)
         }
 
         // The platform's own identity, read from the control plane through its own manager:
@@ -239,7 +240,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         // Said out loud even when it is tolerated. A public route treats a bad token as no
         // token, which is right, but swallowing the reason turns "the subject could not be
         // resolved" into an unexplained 401 from a middleware three layers down.
-        if (log.w) log.warn(`Authentication: ${(error as any)?.message} on ${req.method} ${req.url}`)
+        if (log.w) log.warn(`Authentication: ${(error as any)?.message} on ${req.method} ${withoutQuery(req.url)}`)
         if (!isRoutePublic) {
           return reply
             .status(401)

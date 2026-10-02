@@ -11,10 +11,10 @@
 //   npm run db:migrate            apply
 //   npm run db:migrate -- --dry   list what would be applied, touch nothing
 //
-import logger from '../lib/util/logger.js'
+import { createLogger } from '../lib/util/logger.js'
 import * as loaderConfig from '../lib/loader/general.js'
 
-global.log = logger as never
+global.log = createLogger() as never
 
 async function main() {
   const dry = process.argv.includes('--dry')

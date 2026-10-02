@@ -15,8 +15,6 @@
  *      - non-production -> warning (tolerated, must be fixed before deploy)
  */
 
-import logger from './logger.js'
-
 export const MIN_SECRET_LENGTH = 32
 const MIN_DISTINCT_CHARS = 8
 
@@ -102,11 +100,11 @@ export function assertSecretStrength(name: string, value: string | undefined, op
 
   // Missing is always fatal; weak is fatal only in production.
   if (missing || opts.prod) {
-    if (logger.f) logger.fatal(`Startup Security: ${name} is ${reason}. ${hint}`)
+    if (globalThis.log?.f) globalThis.log.fatal(`Startup Security: ${name} is ${reason}. ${hint}`)
     process.exit(1)
   } else {
-    if (logger.w)
-      logger.warn(
+    if (globalThis.log?.w)
+      globalThis.log.warn(
         `Startup Security: ${name} is ${reason}. Tolerated in non-production but MUST be fixed before deploying. ${hint}`
       )
   }
