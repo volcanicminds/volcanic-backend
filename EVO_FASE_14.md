@@ -254,11 +254,16 @@ fida della lista: difetto piantato, 1 rosso su 12). Banco contro il giro senza n
 percorsi dentro la dispersione della baseline. Verde: `check-all`, coverage 832 test,
 `npm test` con Postgres 937 test, `test:e2e:mt:pg` 25 test.
 
-La genesi senza `ADMIN_EMAIL` non arriva al suo messaggio: trovato il 2 ottobre 2026 durante la
-prova a runtime di T-14.5, non corretto. `ensureGenesisAdmin` (`lib/loader/genesis.ts:74`)
-conta gli amministratori con `countQuery(ctx, { 'roles:in': adminCode })`, ma `roles` è una
-colonna `text[]`: Drizzle passa `'admin'` al mapper dell'array e l'avvio cade con
-`TypeError: value.map is not a function`, con o senza amministratori nel database. Lo vede ogni
-avvio con un data layer vero e senza `ADMIN_EMAIL`; i test passano perché la genesi vi gira con
-`ADMIN_EMAIL` o con un manager finto. L'operatore che il catalogo offre per questo è
-`roles:arrayContains`.
+~~La genesi senza `ADMIN_EMAIL` non arriva al suo messaggio.~~ **Corretto il 3 ottobre 2026**, su
+ok del manutentore. Trovato il 2 ottobre durante la prova a runtime di T-14.5: `ensureGenesisAdmin`
+contava gli amministratori con `roles:in`, ma `roles` è una colonna `text[]` e l'avvio cadeva con
+`TypeError: value.map is not a function`, con o senza amministratori; i test passavano perché la
+genesi vi girava con `ADMIN_EMAIL` o con un manager finto. Ora conta con `roles:arrayContains`. La
+correzione ha scoperto il guasto sotto: i tre operatori array e i due json a più chiavi
+(`jsonHasAllKeys`, `jsonHasAnyKey`) legavano i valori come lista, `($1)::text[]`, e fallivano su
+ogni database (`malformed array literal`, o `cannot cast type record to text[]` con due valori),
+mentre i test ne verificavano solo il parsing. In `lib/database/query/operators.ts` i valori vanno
+ora come un solo parametro. Prove: `test/db/genesis.spec.ts` (senza `ADMIN_EMAIL`, su PGlite e
+Postgres) e due test di esecuzione in `test/db/query.spec.ts`; difetto piantato, 5 rossi. A runtime
+su Postgres 14, schema vuoto: exit 1 con il messaggio su `ADMIN_EMAIL`; con un amministratore:
+`/health` 200. Verde: `check-all`, `npm test` con Postgres 971 test.

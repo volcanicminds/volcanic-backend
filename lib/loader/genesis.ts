@@ -71,7 +71,8 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
   const email = process.env.ADMIN_EMAIL?.trim()
 
   if (!email) {
-    const count = Number(await um.countQuery(ctx, { 'roles:in': adminCode }))
+    // `roles` is an array column: `in` compares the column itself and fails on a scalar value.
+    const count = Number(await um.countQuery(ctx, { 'roles:arrayContains': adminCode }))
     if (count === 0) {
       onFatal('Startup: no admin exists and ADMIN_EMAIL is not set to bootstrap one. Set ADMIN_EMAIL.')
     }

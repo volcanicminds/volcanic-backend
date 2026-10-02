@@ -11,7 +11,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { expect } from 'expect'
 import { PgDialect } from 'drizzle-orm/pg-core'
-import { appTables as pgTables } from '../../lib/database/schema/pg.js'
+import { appTables as pgTables, registryTables } from '../../lib/database/schema/pg.js'
 import { parseQuery, executeFind, executeCount } from '../../lib/database/query/index.js'
 import { migratedPglite, type Migrated } from './fixtures/migrated.js'
 
@@ -232,6 +232,36 @@ describe('database/query (T-2.4)', () => {
       ]) {
         expect(codeOf(() => parseQuery(pg.user, { [`roles:${operator}`]: 'admin' }, options))).toBe('NO_ERROR')
       }
+    })
+
+    it('runs the array operators against a text[] column', async () => {
+      // Parsing alone said nothing: the values were bound as a list, `($1)::text[]`, and every
+      // one of these failed on the database (genesis without ADMIN_EMAIL used one).
+      await handle.execute(sql`update "user" set roles = '{admin,public}' where id = '1'`)
+      await handle.execute(sql`update "user" set roles = '{public}' where id = '2'`)
+      const ids = async (params: any) => (await find(params)).records.map((r: any) => r.id).sort()
+
+      expect(await ids({ 'roles:arrayContains': 'admin' })).toEqual(['1'])
+      expect(await ids({ 'roles:arrayContains': 'public,admin' })).toEqual(['1'])
+      expect(await ids({ 'roles:arrayContainedBy': 'public' })).toEqual(['2', '3'])
+      expect(await ids({ 'roles:arrayOverlaps': 'editor,admin' })).toEqual(['1'])
+      expect(await executeCount(handle, pg.user, { 'roles:arrayContains': 'admin' }, options)).toBe(1)
+    })
+
+    it('runs the json key operators against a jsonb column', async () => {
+      const registry = registryTables('public')
+      await handle.execute(sql`
+        insert into "tenant" (id, name, slug, strategy, engine, locator, config) values
+          ('t1', 'One', 'one', 'schema', 'pg', 'one', '{"region": "eu", "tier": "pro"}'),
+          ('t2', 'Two', 'two', 'schema', 'pg', 'two', '{"region": "us"}')
+      `)
+      const ids = async (params: any) =>
+        (await executeFind(handle, registry.tenant, params, options)).records.map((r: any) => r.id).sort()
+
+      expect(await ids({ 'config:jsonHasKey': 'tier' })).toEqual(['t1'])
+      expect(await ids({ 'config:jsonHasAllKeys': 'region,tier' })).toEqual(['t1'])
+      expect(await ids({ 'config:jsonHasAnyKey': 'tier,plan' })).toEqual(['t1'])
+      expect(await ids({ 'config:jsonHasAnyKey': 'region' })).toEqual(['t1', 't2'])
     })
 
     it('does not carry :raw over from v4', () => {

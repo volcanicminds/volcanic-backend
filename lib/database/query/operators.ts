@@ -101,16 +101,20 @@ function textOperator(name: string, kind: PatternKind, insensitive: boolean, neg
 }
 
 // --- array and json operators ---------------------------------------------------------
+// A JS array interpolated into `sql` becomes a list, `($1, $2)`, which no cast turns into an
+// array: the values go as ONE parameter, which the driver sends as an array literal.
+const textArray = (raw: string): SQL => sql`${sql.param(raw.split(','))}::text[]`
+
 const arrayOperator = (name: string, operator: string): Operator => ({
   name,
-  build: (ctx) => sql`${ctx.column} ${sql.raw(operator)} ${ctx.raw.split(',')}::text[]`
+  build: (ctx) => sql`${ctx.column} ${sql.raw(operator)} ${textArray(ctx.raw)}`
 })
 
 const jsonKeyOperator = (name: string, operator: string, many: boolean): Operator => ({
   name,
   build: (ctx) =>
     many
-      ? sql`${ctx.column} ${sql.raw(operator)} ${ctx.raw.split(',')}::text[]`
+      ? sql`${ctx.column} ${sql.raw(operator)} ${textArray(ctx.raw)}`
       : sql`${ctx.column} ${sql.raw(operator)} ${ctx.raw}`
 })
 

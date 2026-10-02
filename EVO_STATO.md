@@ -152,7 +152,8 @@ log JSON in produzione con un solo logger e la redazione delle credenziali; Open
 dagli `OTEL_*` standard e avviato da `preload()` senza `--import`, con span di richiesta, di query
 (Postgres e PGlite) e di `fetch`, la durata delle richieste e `trace_id` nei log; nessuna query
 string in log e span, entrata o uscita. La prova a runtime ha trovato, fuori compito, la genesi
-che cade senza `ADMIN_EMAIL` (`EVO_FASE_14.md` §3).
+che cadeva senza `ADMIN_EMAIL` e, sotto, gli operatori array e json di Magic Query rotti su ogni
+database: corretti il 3 ottobre 2026 (`EVO_FASE_14.md` §3).
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
