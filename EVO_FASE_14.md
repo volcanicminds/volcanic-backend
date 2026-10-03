@@ -75,6 +75,7 @@ connessione contro cento connessioni.
 | F70 | Precisa F66: il server MCP accetta **sessioni e token d'integrazione** (`/token`), le credenziali che esistono già. Niente `oidc-provider` per ora: OAuth 2.1 per i connettori di terzi è un compito a parte, se servirà | un client di terzi (connettore di Claude.ai o ChatGPT) è l'unico caso che lo richiede; ok del manutentore, 2 ottobre 2026 |
 | F71 | Precisa F69: l'identità del chiamante entra nel cablaggio dell'agente con T-14.7, insieme a `defineTool`, non con T-14.6 | l'identità serve ai tool, che agiscono a nome di chi chiama (F66): senza `defineTool` non avrebbe un consumatore; ok del manutentore, 3 ottobre 2026 |
 | F72 | Telemetria AI in `volcanic-tools`: la prima chiamata del modulo (`createModel`, `createEmbedder`, `createAgent`, `embedText`, `embedTexts`) registra l'integrazione OpenTelemetry dell'AI SDK, una volta per processo, solo se `@ai-sdk/otel` (peer opzionale) è installato; `AI_TELEMETRY=false` la spegne; se l'applicazione ne ha registrata una, non se ne aggiunge un'altra. Il **contenuto** (prompt, istruzioni, risposte, argomenti e risultati dei tool, testi da vettorizzare) è **spento di default**: lo accende `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`, e vince il `recordInputs`/`recordOutputs` della singola chiamata o dell'agente | l'SDK registra il contenuto se nessuno dice di no, e prompt e risposte portano dati personali; la variabile è il nome che usano le instrumentazioni GenAI (verificato nel README di `@elastic/opentelemetry-instrumentation-openai` 0.5.1, non in quello di `@opentelemetry/instrumentation-openai` 0.20.0); ok del manutentore, 3 ottobre 2026 |
+| F73 | Precisa F66: **il backend non sa niente di MCP**, né codice né peer. Il server MCP è un adattatore di `defineTool` in `volcanic-tools`, con `@modelcontextprotocol/sdk` peer opzionale; il consumer lo monta come una sua rotta autenticata (nel sample `/mcp`) e sceglie i tool uno per uno con `defineTool`, senza campi MCP nella configurazione delle rotte del framework. Il tool chiama l'API con la credenziale del chiamante attraverso una funzione di chiamata data dal consumer (nel sample `server.inject`), quindi nemmeno tools dipende da Fastify. Sessioni e token d'integrazione (F70) li verificano gli hook del backend come su ogni rotta; una rotta con `freshAuth` risponde col suo rifiuto di step-up (`lib/util/stepUp.ts`) e il tool lo restituisce come errore | il framework resta agnostico e i consumer importano tools (sample, rag); un campo di rotta o un rifiuto all'avvio legati a MCP rimetterebbero MCP nel backend; ok del manutentore, 3 ottobre 2026 |
 
 ## 2. Compiti
 
@@ -255,8 +256,36 @@ connessione contro cento connessioni.
   build verde, `npm audit --omit=dev --audit-level=high` pulito (4 moderate da `minio`). Nessun
   consumer chiama ancora `createAgent`: il sample usa `tools/ai` solo per gli embeddings, rag non
   lo importa. L'identità del chiamante passa a T-14.7 (F71).
-- [ ] **T-14.7** MCP (F66, F70, F71): `defineTool` e adattatori in `volcanic-tools`, l'identità del
-  chiamante nel cablaggio dell'agente, il server nel backend, poi rag T-7.6.
+- [ ] **T-14.7** MCP (F66, F70, F71, F73). Quattro passi, in quest'ordine; il backend non cambia.
+  1. **`defineTool` in `volcanic-tools`.** Il contratto: `name`, `description`, uno schema
+     d'ingresso ed `execute(input, ctx)`, dove `ctx.call` è l'API già legata alla credenziale del
+     chiamante. `defineTool` e l'adattatore per l'AI SDK in `./ai`; il server MCP in un subpath
+     nuovo, `./mcp`, con `@modelcontextprotocol/sdk` peer opzionale (1.32.0, MIT, `npm view` del
+     3 ottobre 2026), così chi usa solo l'agente non carica l'SDK MCP. Da decidere all'inizio del
+     passo: il linguaggio dello schema, uno che entrambi gli SDK accettino senza conversione (l'SDK
+     MCP dipende da `zod` `^3.25 || ^4.0`; per l'AI SDK 7 va verificato). **Chiuso quando** un
+     tool definito una volta dà, dai due adattatori, lo stesso risultato e lo stesso errore sullo
+     stesso ingresso, con un difetto piantato preso.
+  2. **L'identità nell'agente (F71).** L'agente si costruisce una volta e l'identità arriva a ogni
+     chiamata con il `toolsContext` dell'SDK (nei tipi di `ai` 7.0.127 è tipato per insieme di tool
+     e arriva all'esecuzione), mai nella costruzione: un agente condiviso fra richieste non si porta
+     dietro la credenziale di nessuno. **Chiuso quando** due chiamate concorrenti con identità
+     diverse vedono ciascuna la propria, e una chiamata senza identità non esegue tool; difetto
+     piantato: l'identità salvata sull'agente fa cadere la prova.
+  3. **Il server nel sample** (`volcanic-backend-sample`). Una rotta `/mcp` autenticata, con
+     sessione o token d'integrazione (F70), che passa `req.raw` e `reply.raw` al trasporto
+     Streamable HTTP senza stato dopo `reply.hijack()`. `call` è `server.inject` con il `cookie` o
+     l'`Authorization` del chiamante, mai una credenziale di servizio. Il controllo dell'header
+     `Origin` contro il DNS rebinding, che la specifica MCP chiede per Streamable HTTP: da rileggere
+     sul testo vigente prima di scriverlo. Pochi tool, su rotte che il sample ha già. **Chiuso
+     quando**, con il client dell'SDK MCP contro il sample avviato: due utenti vedono ciascuno i
+     propri dati, un token d'integrazione funziona, una rotta con `freshAuth` restituisce lo step-up
+     come errore del tool; difetto piantato: `call` con una credenziale fissa fa cadere la prova dei
+     due utenti. README del sample e di tools nello stesso cambio.
+  4. **rag T-7.6** (`volcanic-rag/TASKS.md`). Oggi rag non dipende da tools (`package.json`: solo
+     `@volcanicminds/backend`), quindi il passo comincia aggiungendolo; la ricerca diventa un tool di
+     `defineTool` e la clearance resta quella dell'API. Il criterio di chiusura è quello di rag: un
+     assistente collegato vede esattamente ciò che vedrebbe quella persona.
 
 ## 3. Segnalato, non toccato
 
