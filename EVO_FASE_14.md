@@ -266,6 +266,26 @@ connessione contro cento connessioni.
      MCP dipende da `zod` `^3.25 || ^4.0`; per l'AI SDK 7 va verificato). **Chiuso quando** un
      tool definito una volta dà, dai due adattatori, lo stesso risultato e lo stesso errore sullo
      stesso ingresso, con un difetto piantato preso.
+     **Fatto il 3 ottobre 2026** (`volcanic-tools`, commit locale): il contratto in
+     `lib/ai/tool.ts`, senza import a runtime; `toAiTools` e `callerContext` in `./ai`;
+     `createMcpHandler` in `./mcp`. Schema: Standard Schema più Standard JSON Schema, cioè Zod 4.2
+     o successivo (verificato: la 4.6.5 espone `~standard.jsonSchema`, la 4.1.13 no; Zod 3 escluso),
+     e tools non dipende da `zod` a runtime. SDK MCP: `@modelcontextprotocol/server` 2.3.0
+     (Apache-2.0, dipende solo da `zod` e `@modelcontextprotocol/core`, handler web standard con un
+     server per richiesta) al posto di `@modelcontextprotocol/sdk` 1.32.0 scritto in F73, che si
+     porta dietro express, hono, jose e ajv; F73 va allineato, con l'ok del manutentore. Prove:
+     `test/unit/tool.spec.ts`, 11 casi (stesso risultato e stesso errore dai due adattatori, errore
+     interno nascosto, percorso che nomina un altro host rifiutato, due chiamanti concorrenti per
+     adattatore, una chiamata AI senza chiamante non esegue tool); cinque difetti piantati, ognuno
+     preso dalla sua prova (guardia del percorso, normalizzazione degli errori, `contextSchema`
+     tolto, chiamante fissato al primo nel server MCP e nel tool set AI). Tools: `check-all` verde
+     (5 avvisi `any` preesistenti), 101 prove verdi, build, publint e
+     `npm audit --omit=dev --audit-level=high` puliti (4 moderate da `minio`); dal pacchetto
+     impacchettato, in Node 26 senza tsx e senza `ai` installato, il client MCP vede alice e bob
+     ciascuno coi propri dati. Osservato per il passo 2: nei tipi di `ai` 7.0.127
+     `ToolLoopAgentSettings` vuole `toolsContext` alla costruzione quando un tool ha un contesto
+     obbligatorio, e `agent.generate` non lo accetta (a runtime passa); la via tipizzata per
+     chiamata è `callOptionsSchema` con `prepareCall`.
   2. **L'identità nell'agente (F71).** L'agente si costruisce una volta e l'identità arriva a ogni
      chiamata con il `toolsContext` dell'SDK (nei tipi di `ai` 7.0.127 è tipato per insieme di tool
      e arriva all'esecuzione), mai nella costruzione: un agente condiviso fra richieste non si porta
