@@ -153,7 +153,13 @@ dagli `OTEL_*` standard e avviato da `preload()` senza `--import`, con span di r
 (Postgres e PGlite) e di `fetch`, la durata delle richieste e `trace_id` nei log; nessuna query
 string in log e span, entrata o uscita. La prova a runtime ha trovato, fuori compito, la genesi
 che cadeva senza `ADMIN_EMAIL` e, sotto, gli operatori array e json di Magic Query rotti su ogni
-database: corretti il 3 ottobre 2026 (`EVO_FASE_14.md` §3).
+database: corretti il 3 ottobre 2026 (`EVO_FASE_14.md` §3). T-14.6 fatto il 3 ottobre:
+`volcanic-tools` passa all'AI SDK 7, `createAgent()` restituisce il `ToolLoopAgent` dell'SDK e
+Mastra esce; la `apiKey` configurata di un provider si perdeva in silenzio (le istanze di default
+leggono l'ambiente), corretto con una fabbrica unica. Con `@ai-sdk/otel` installato le
+chiamate AI finiscono negli span, senza il contenuto salvo
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` (F72). L'identità del chiamante passa a
+T-14.7 (F71).
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

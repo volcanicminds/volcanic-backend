@@ -73,6 +73,8 @@ connessione contro cento connessioni.
 | F68 | Precisa F64: l'SDK di OpenTelemetry lo avvia il framework in `preload()` quando è configurato, **senza `--import` obbligatorio**. Span HTTP da `@fastify/otel` (un plugin, non una patch), span delle query emessi dal data layer, `fetch` in uscita dall'instrumentazione di undici su `diagnostics_channel`. Il `--import` resta facoltativo, per l'auto-instrumentazione di librerie di terzi | `import-in-the-middle` 3.5.2 documenta solo `module.register()`, che su Node 26.10 stampa `DEP0205` (provato il 2 ottobre 2026); ok del manutentore lo stesso giorno |
 | F69 | Precisa F65: `createAgent()` in `volcanic-tools` resta come **cablaggio** (modello da config ed env, tool di `defineTool`, identità del chiamante, span) e restituisce il `ToolLoopAgent` dell'SDK così com'è, senza un tipo suo. `ai` resta peer (`^7`): il consumer lo dichiara, come i provider `@ai-sdk/*`. Lo usano rag e il sample | un involucro dell'API di `ai` (messaggi, tool, stream, errori) insegue ogni minor, come TypeORM dentro il backend; una dipendenza interna darebbe due copie e tool non riconosciuti fra l'una e l'altra; ok del manutentore, 2 ottobre 2026 |
 | F70 | Precisa F66: il server MCP accetta **sessioni e token d'integrazione** (`/token`), le credenziali che esistono già. Niente `oidc-provider` per ora: OAuth 2.1 per i connettori di terzi è un compito a parte, se servirà | un client di terzi (connettore di Claude.ai o ChatGPT) è l'unico caso che lo richiede; ok del manutentore, 2 ottobre 2026 |
+| F71 | Precisa F69: l'identità del chiamante entra nel cablaggio dell'agente con T-14.7, insieme a `defineTool`, non con T-14.6 | l'identità serve ai tool, che agiscono a nome di chi chiama (F66): senza `defineTool` non avrebbe un consumatore; ok del manutentore, 3 ottobre 2026 |
+| F72 | Telemetria AI in `volcanic-tools`: la prima chiamata del modulo (`createModel`, `createEmbedder`, `createAgent`, `embedText`, `embedTexts`) registra l'integrazione OpenTelemetry dell'AI SDK, una volta per processo, solo se `@ai-sdk/otel` (peer opzionale) è installato; `AI_TELEMETRY=false` la spegne; se l'applicazione ne ha registrata una, non se ne aggiunge un'altra. Il **contenuto** (prompt, istruzioni, risposte, argomenti e risultati dei tool, testi da vettorizzare) è **spento di default**: lo accende `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`, e vince il `recordInputs`/`recordOutputs` della singola chiamata o dell'agente | l'SDK registra il contenuto se nessuno dice di no, e prompt e risposte portano dati personali; la variabile è il nome che usano le instrumentazioni GenAI (verificato nel README di `@elastic/opentelemetry-instrumentation-openai` 0.5.1, non in quello di `@opentelemetry/instrumentation-openai` 0.20.0); ok del manutentore, 3 ottobre 2026 |
 
 ## 2. Compiti
 
@@ -232,9 +234,29 @@ connessione contro cento connessioni.
   con un Postgres 14.22 usa e getta e `DATABASE_URL`, `npm run coverage` 963 verdi e 1 saltata,
   istruzioni 88,45% (3679 su 4159), rami 90,41%, funzioni 94,18%, righe 89,22%; banco
   multi-tenant 25 verdi. Non fatto, perché non deciso: l'id del tenant sugli span.
-- [ ] **T-14.6** AI SDK 7 e `ToolLoopAgent` in `volcanic-tools` (F65).
-- [ ] **T-14.7** MCP (F66): `defineTool` e adattatori in `volcanic-tools`, il server nel backend,
-  poi rag T-7.6.
+- [x] **T-14.6** AI SDK 7 e `ToolLoopAgent` in `volcanic-tools` (F65, F69, F72). Fatto il 3
+  ottobre 2026. `volcanic-tools@848c066`: `createAgent()` restituisce il `ToolLoopAgent` dell'SDK
+  così com'è, con il modello da config o già costruito e `name` come `id` e `functionId`; Mastra
+  esce; `ai` `^7`, i provider `^4` e `@ai-sdk/otel` `^1` sono peer opzionali. Una sola fabbrica
+  dei provider (`lib/ai/provider.ts`) per chat ed embeddings, sempre con `create*`. Trovato e
+  chiuso: le istanze di default di openai, google e anthropic leggono la propria variabile
+  d'ambiente, e la `apiKey` configurata si perdeva in silenzio (`provider.spec.ts`: l'header di
+  autenticazione porta la chiave di config, non quella d'ambiente, sui quattro provider, più l'host
+  di ollama e la rotta degli embeddings). `volcanic-tools@118699d`: telemetria (F72), sei scenari,
+  ognuno in un processo nuovo perché il registro dell'SDK è per processo
+  (`test/unit/ai-telemetry.spec.ts`). Difetti piantati, presi e ritirati: niente controllo di
+  `AI_TELEMETRY`, `recordInputs` della chiamata ignorato, integrazione dell'applicazione doppiata,
+  peer mancante rilanciato come errore, niente proxy sul default del contenuto. A runtime, sul
+  `dist` in ESM nativo senza tsx: agente con un tool in due passi, istanza dell'SDK, `functionId`
+  col nome; una sola integrazione, span `invoke_agent`, `step 1` e `chat`, `gen_ai.agent.name`
+  col nome, il prompt assente dagli attributi e presente con la variabile a `true`.
+  `volcanic-backend-sample@99ec5f4`: il README dice che gli embeddings veri vogliono `ai` e un
+  provider installati. Tools: `check-all` verde (5 avvisi `any` preesistenti), 90 prove verdi,
+  build verde, `npm audit --omit=dev --audit-level=high` pulito (4 moderate da `minio`). Nessun
+  consumer chiama ancora `createAgent`: il sample usa `tools/ai` solo per gli embeddings, rag non
+  lo importa. L'identità del chiamante passa a T-14.7 (F71).
+- [ ] **T-14.7** MCP (F66, F70, F71): `defineTool` e adattatori in `volcanic-tools`, l'identità del
+  chiamante nel cablaggio dell'agente, il server nel backend, poi rag T-7.6.
 
 ## 3. Segnalato, non toccato
 

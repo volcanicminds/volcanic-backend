@@ -98,7 +98,7 @@ A synthetic overview of the out-of-the-box (OOTB) capabilities of this opinionat
 | **Resumable uploads (TUS)** | (mount) | ✅ | — | TUS route mounted from injected `transferManager` |
 | **Mailer** | — | ✅ | — | Email sending via tools |
 | **Object storage** | — | ✅ | — | S3 / MinIO storage via tools |
-| **AI utilities** | — | ✅ | — | AI helpers (Mastra) via tools |
+| **AI utilities** |  | ✅ |  | Models, agents (AI SDK 7 `ToolLoopAgent`) and embeddings via tools |
 
 ## Runtime requirements & notable behavior
 
@@ -749,6 +749,8 @@ npm install @opentelemetry/sdk-node @fastify/otel @opentelemetry/instrumentation
 - `trace_id` and `span_id` on every log line written inside a span.
 
 No span and no log line carries the query string of a URL, incoming or outgoing: a provider sends back its authorization code there, and many APIs take their key there. `server.close()` flushes what is still buffered.
+
+The AI calls made through `@volcanicminds/tools/ai` (models, agents, embeddings) land in the same SDK when the application installs `@ai-sdk/otel`: one span per agent run, per step and per model call, with the agent's name. Prompts, responses and embedded texts stay out unless `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`; `AI_TELEMETRY=false` turns these spans off. The details are in the tools README.
 
 An SDK started earlier with `--import`, to instrument other libraries, is used as it is: the framework adds its own instrumentations and leaves that SDK's lifecycle to whoever started it. That SDK must not instrument Fastify or undici as well, or their spans come twice.
 
