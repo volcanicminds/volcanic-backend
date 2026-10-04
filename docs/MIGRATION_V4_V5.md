@@ -748,13 +748,19 @@ container, and a second destruction answered 403 instead of `alreadyDestroyed`.
 - `status` has a fourth value, `destroyed`. Update, suspend, restore, delete, export and a new
   destruction request on such a tenant answer 409 `TENANT_DESTROYED`.
 
-## 33. Integration tokens: the bearer is shown once
+## 33. Integration tokens: the bearer is shown once, and its expiry is written down
 
 v4 kept the bearer of an integration token on its row and returned it from every read of
 `/token`. In v5 the row keeps only the `externalId` the bearer resolves to: `POST /token` answers
 with the row and its `token`, and no other route returns it, because none can.
 
+v4 took an optional `expiresIn` (a duration) and, without it, signed the bearer with no expiry at
+all. v5 takes `expiresAt` instead, required: a date, stored on the row and signed into the bearer
+as `exp`, or `null` for a token that never expires.
+
 **What a client has to change.**
 
 - Save `token` from the answer of `POST /token`. `GET /token` and `GET /token/:id` no longer carry
   it; a lost bearer is replaced by a new token.
+- Send `expiresAt` instead of `expiresIn`: an ISO date in the future, or `null`. Without it the
+  answer is 400; a past date is 400 `TOKEN_EXPIRY_INVALID`.

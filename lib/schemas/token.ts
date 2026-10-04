@@ -1,11 +1,13 @@
 export const tokenCreateBodySchema = {
   $id: 'tokenCreateBodySchema',
   type: 'object',
-  nullable: true,
+  required: ['name', 'expiresAt'],
   properties: {
     name: { type: 'string' },
     description: { type: 'string' },
-    expiresIn: { type: 'string', default: undefined },
+    // `null` for a token that never expires: a machine credential without an expiry is a choice
+    // the caller writes down, not a field it forgot (docs/API_V5.md §4).
+    expiresAt: { type: 'string', format: 'date-time', nullable: true },
     requiredRoles: { type: 'array', items: { type: 'string' } }
   }
 }
@@ -30,6 +32,7 @@ export const tokenSchema = {
     externalId: { type: 'string' },
     name: { type: 'string' },
     description: { type: 'string' },
+    expiresAt: { type: 'string', format: 'date-time', nullable: true },
     roles: { type: 'array', items: { type: 'string' } }
   }
 }

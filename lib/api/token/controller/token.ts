@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { includesRole } from '../../../util/authz.js'
 import { dataContext } from '../../../util/tenancy.js'
+import { httpError } from '../../../util/httpError.js'
 
 // Rule A: only an admin may grant a token the admin role, and only with
 // allow_multiple_admin — otherwise a `tokens` capability holder could mint an admin
@@ -38,6 +39,16 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'Token name not valid' })
   }
 
+  // Only an explicit `null` means no expiry. A missing field is refused here as well as by the
+  // schema, which a project may replace: a permanent credential is never the default.
+  const expiresAt = data.expiresAt === null ? null : new Date(data.expiresAt)
+  if (expiresAt && !(expiresAt.getTime() > Date.now())) {
+    return reply
+      .status(400)
+      .send(httpError(400, 'expiresAt must be a future date, or null for a token that never expires', 'TOKEN_EXPIRY_INVALID'))
+  }
+  data.expiresAt = expiresAt
+
   // public is the default
   const publicRole = global.roles?.public?.code || 'public'
   data.roles = (data.requiredRoles || []).map((r: string) => global.roles[r]?.code).filter((r?: string) => !!r)
@@ -54,11 +65,11 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not registered' })
   }
 
+  // The bearer expires when the row says, and only then: `expiresIn: undefined` replaces the
+  // session lifetime (JWT_EXPIRES_IN) that @fastify/jwt would otherwise apply.
   const bearerToken = await reply.jwtSign(
-    { sub: token.externalId },
-    {
-      sign: { expiresIn: data?.expiresIn || undefined }
-    }
+    expiresAt ? { sub: token.externalId, exp: Math.floor(expiresAt.getTime() / 1000) } : { sub: token.externalId },
+    { sign: { expiresIn: undefined } }
   )
   if (!bearerToken) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not signed' })

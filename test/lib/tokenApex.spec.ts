@@ -34,7 +34,10 @@ function fakeReply() {
     headers() {
       return reply
     },
-    jwtSign: async (payload: any) => (payload?.sub ? `signed:${payload.sub}` : ''),
+    jwtSign: async (payload: any, options: any) => {
+      sent.signed = { payload, options }
+      return payload?.sub ? `signed:${payload.sub}` : ''
+    },
     sent
   }
   return reply
@@ -107,7 +110,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
   it('always carries `public`, so a token is never a credential with no roles at all', async () => {
     ;(global as any).config = { options: {} }
-    const { req, calls, reply } = request({ data: { name: 'ci', requiredRoles: ['editor'] } })
+    const { req, calls, reply } = request({ data: { name: 'ci', expiresAt: null, requiredRoles: ['editor'] } })
 
     await create(req, reply)
     expect(calls[0][1].roles).toEqual(['editor', 'public'])
@@ -117,7 +120,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     // A role that resolves to nothing at authorization time is worse than an absent one: it
     // reads like a grant and behaves like a gap.
     ;(global as any).config = { options: {} }
-    const { req, calls, reply } = request({ data: { name: 'ci', requiredRoles: ['editor', 'invented'] } })
+    const { req, calls, reply } = request({ data: { name: 'ci', expiresAt: null, requiredRoles: ['editor', 'invented'] } })
 
     await create(req, reply)
     expect(calls[0][1].roles).toEqual(['editor', 'public'])
@@ -125,7 +128,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
   it('refuses to mint an admin token for a caller who is not an admin', async () => {
     ;(global as any).config = { options: { allow_multiple_admin: true } }
-    const { req, calls, reply } = request({ callerRoles: ['editor'], data: { name: 'ci', requiredRoles: ['admin'] } })
+    const { req, calls, reply } = request({ callerRoles: ['editor'], data: { name: 'ci', expiresAt: null, requiredRoles: ['admin'] } })
 
     await create(req, reply)
     expect(reply.sent.code).toBe(403)
@@ -134,7 +137,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
   it('refuses it for an admin caller too when the deployment declares a single apex', async () => {
     ;(global as any).config = { options: { allow_multiple_admin: false } }
-    const { req, calls, reply } = request({ callerRoles: ['admin'], data: { name: 'ci', requiredRoles: ['admin'] } })
+    const { req, calls, reply } = request({ callerRoles: ['admin'], data: { name: 'ci', expiresAt: null, requiredRoles: ['admin'] } })
 
     await create(req, reply)
     expect(reply.sent.code).toBe(403)
@@ -154,7 +157,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     // The bearer exists in the answer and nowhere else: a write after the signature would put
     // a working credential in a table every `tokens` reader can list.
     ;(global as any).config = { options: {} }
-    const { req, calls, reply } = request({ data: { name: 'ci' } })
+    const { req, calls, reply } = request({ data: { name: 'ci', expiresAt: null } })
 
     const created: any = await create(req, reply)
     expect(calls.map((c) => c[0])).toEqual(['createToken'])
@@ -162,9 +165,39 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     expect(created.externalId).toBe('t-ext-new')
   })
 
+  it('refuses a missing, unreadable or past expiry, before writing anything', async () => {
+    // A missing `expiresAt` is not `null`: a permanent credential is written down, never assumed.
+    ;(global as any).config = { options: {} }
+    for (const expiresAt of [undefined, 'not a date', new Date(Date.now() - 1000).toISOString()]) {
+      const { req, calls, reply } = request({ data: { name: 'ci', expiresAt } })
+
+      await create(req, reply)
+      expect(reply.sent.code).toBe(400)
+      expect(reply.sent.body.code).toBe('TOKEN_EXPIRY_INVALID')
+      expect(calls.length).toBe(0)
+    }
+  })
+
+  it('signs the expiry of the row into the bearer, and no session lifetime into a permanent one', async () => {
+    ;(global as any).config = { options: {} }
+    const at = new Date(Date.now() + 3600_000)
+    const dated = request({ data: { name: 'ci', expiresAt: at.toISOString() } })
+
+    await create(dated.req, dated.reply)
+    expect(dated.calls[0][1].expiresAt).toEqual(at)
+    expect(dated.reply.sent.signed.payload.exp).toBe(Math.floor(at.getTime() / 1000))
+
+    // `expiresIn` is named and undefined: absent, @fastify/jwt would apply JWT_EXPIRES_IN.
+    const permanent = request({ data: { name: 'ci', expiresAt: null } })
+    await create(permanent.req, permanent.reply)
+    expect(permanent.calls[0][1].expiresAt).toBeNull()
+    expect(permanent.reply.sent.signed.payload.exp).toBeUndefined()
+    expect(permanent.reply.sent.signed.options.sign).toHaveProperty('expiresIn', undefined)
+  })
+
   it('reports a row it could not write, instead of signing a bearer for nothing', async () => {
     ;(global as any).config = { options: {} }
-    const { req, calls, reply } = request({ data: { name: 'ci' }, createFails: true })
+    const { req, calls, reply } = request({ data: { name: 'ci', expiresAt: null }, createFails: true })
 
     await create(req, reply)
     expect(reply.sent.code).toBe(400)

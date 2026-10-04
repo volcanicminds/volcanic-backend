@@ -278,7 +278,7 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | GET | `/token` | capability `tokens` | |
 | GET | `/token/count` | capability `tokens` | |
 | GET | `/token/:id` | capability `tokens` | |
-| POST | `/token` | capability `tokens` | `expiresAt` is required in the body; `null` must be explicit. Answers with the row and `token`, the bearer: shown here once and never stored (MIGRATION §33) |
+| POST | `/token` | capability `tokens` | `expiresAt` is required in the body: a future date, or an explicit `null` for no expiry; a past or unreadable date is 400 `TOKEN_EXPIRY_INVALID`. The bearer carries the same expiry as `exp`, and a `null` one has none, whatever `JWT_EXPIRES_IN` says. Answers with the row and `token`, the bearer: shown here once and never stored (MIGRATION §33) |
 | PUT | `/token/:id` | capability `tokens` | |
 | DELETE | `/token/:id` | capability `tokens` | |
 | POST | `/token/:id/block` | capability `tokens` | **path changed**: v4 was `/token/block/:id` |
