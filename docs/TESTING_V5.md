@@ -9,13 +9,13 @@
 
 | Suite | Directory | Engine | Command | Port |
 |---|---|---|---|---|
-| unit, core | `test/unit`, `test/lib`, `test/common` | none | `npm run test:lib` | — |
-| core end-to-end | `test/e2e` | PGlite | `npm run test:e2e:pglite` | 2234 |
-| multi-tenant, logic | `test/e2e-mt` | PGlite | `npm run test:e2e:mt:pglite` | 2235 |
-| cookie mode, no-refresh, MFA, rate limit, fixtures | `test/e2e-*` | PGlite | one script each | 2236-2240 |
+| unit, core | `test/lib` | none; PGlite in `telemetry.spec.ts` | `npm run test:lib` | none |
 | data layer | `test/db`, `test/migrations` | PGlite; Postgres too with `DATABASE_URL` | `npm run test:db`, `npm run test:migrations` | none |
-| **isolation, black box** | **`test/e2e-mt-pg` (new)** | **real Postgres** | **`npm run test:e2e:mt:pg`** | **2241** |
-| performance | `test/perf` | PGlite | `npm run test:perf` | 2233 |
+| OIDC, network off | `test/lib/oidcRoutes.spec.ts`, `test/db/oidc.spec.ts` | PGlite | `npm run test:oidc:offline` | none |
+| **isolation, black box** | **`test/e2e-mt-pg`** | **real Postgres** | **`npm run test:e2e:mt:pg`** | **2241** |
+
+`npm test` runs `test:lib`, `test:db` and `test:migrations` (`scripts/run-tests.mjs`). Performance
+is measured, not tested: `npm run bench:paths` and `npm run tune` (`docs/TUNING.md`).
 
 Every suite runs in **its own mocha process**: they own singletons (`global.config`,
 `global.server`, the shared PGlite instance) and cannot share one.
