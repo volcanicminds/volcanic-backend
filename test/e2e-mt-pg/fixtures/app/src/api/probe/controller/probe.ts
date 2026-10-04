@@ -21,3 +21,7 @@ export async function tenantRead(req: any, _reply: any) {
 export async function controlRead(req: any, _reply: any) {
   return { scope: 'control', tenant: req.tenantInfo?.slug ?? null, tag: await readTag(req.control) }
 }
+
+export async function subject(req: any, _reply: any) {
+  return { tenant: req.tenantInfo?.slug ?? null, user: req.user?.id ?? null, token: req.token?.id ?? null }
+}

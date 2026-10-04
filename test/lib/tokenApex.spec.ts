@@ -7,9 +7,8 @@
 // `admin` by another route — the capability was granted to manage machine credentials, and it
 // would have become a way to grant yourself everything. The rule was written and never fired.
 //
-// The other property worth pinning is the ORDER inside create: the row is written, then the
-// bearer is signed, then the row is updated with it. A token row without its bearer is a
-// credential nobody can use and nobody can see is broken.
+// The other property worth pinning is what create writes: the row, and nothing after the
+// signature. The bearer goes back in the answer and is not stored anywhere.
 //
 import { expect } from 'expect'
 import { create, update, remove, findOne, block, unblock } from '../../lib/api/token/controller/token.js'
@@ -151,16 +150,16 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     expect(calls.length).toBe(0)
   })
 
-  it('writes the row, signs the bearer, then stores it on the row', async () => {
-    // The order is the assertion. A row written without its bearer is a credential that
-    // exists, cannot be used, and looks fine in a list.
+  it('writes the row, signs the bearer for it, and returns the bearer without storing it', async () => {
+    // The bearer exists in the answer and nowhere else: a write after the signature would put
+    // a working credential in a table every `tokens` reader can list.
     ;(global as any).config = { options: {} }
     const { req, calls, reply } = request({ data: { name: 'ci' } })
 
     const created: any = await create(req, reply)
-    expect(calls.map((c) => c[0])).toEqual(['createToken', 'updateTokenById'])
-    expect(calls[1][2].token).toBe('signed:t-ext-new')
+    expect(calls.map((c) => c[0])).toEqual(['createToken'])
     expect(created.token).toBe('signed:t-ext-new')
+    expect(created.externalId).toBe('t-ext-new')
   })
 
   it('reports a row it could not write, instead of signing a bearer for nothing', async () => {

@@ -28,6 +28,17 @@ export default {
       roles: [{ code: 'public' }],
       handler: 'probe.controlRead',
       config: { title: 'Read on the control plane' }
+    },
+    {
+      // Names the subject the credential resolved to. The two routes above are public and take
+      // a credential they cannot verify as no credential at all, so a 200 there proves nothing
+      // about who called.
+      method: 'GET',
+      path: '/subject',
+      roles: [],
+      handler: 'probe.subject',
+      middlewares: ['global.isAuthenticated'],
+      config: { title: 'The authenticated subject' }
     }
   ]
 }

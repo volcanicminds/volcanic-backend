@@ -30,7 +30,17 @@ export const tokenSchema = {
     externalId: { type: 'string' },
     name: { type: 'string' },
     description: { type: 'string' },
-    token: { type: 'string' },
     roles: { type: 'array', items: { type: 'string' } }
+  }
+}
+
+// The answer to a creation, and only to it: the bearer is not stored, so no other route can
+// return it.
+export const tokenCreatedSchema = {
+  $id: 'tokenCreatedSchema',
+  type: 'object',
+  properties: {
+    ...tokenSchema.properties,
+    token: { type: 'string' }
   }
 }

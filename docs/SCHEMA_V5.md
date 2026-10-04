@@ -118,7 +118,7 @@ index on `reset_password_token`, index on `confirmation_token`, index on `delete
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
 | `id` | uuid | no | generated | |
-| `external_id` | text | no | generated | the credential presented by the client |
+| `external_id` | text | no | generated | the `sub` of the bearer the client presents. **The bearer itself is never stored**: `POST /token` returns it once |
 | `name` | text | no | | |
 | `description` | text | yes | | |
 | `blocked` | boolean | no | `false` | |

@@ -75,8 +75,8 @@ export default {
         body: { $ref: 'tokenCreateBodySchema' },
         response: {
           200: {
-            description: 'Default response',
-            $ref: 'tokenSchema#'
+            description: 'The token, with its bearer: shown here once, never stored',
+            $ref: 'tokenCreatedSchema#'
           }
         }
       }

@@ -49,7 +49,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot assign the admin role to a token' })
   }
 
-  let token = await req.server['tokenManager'].createToken(dataContext(req), data)
+  const token = await req.server['tokenManager'].createToken(dataContext(req), data)
   if (!token || !token.id || !token.externalId) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not registered' })
   }
@@ -64,8 +64,10 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not signed' })
   }
 
-  token = await req.server['tokenManager'].updateTokenById(dataContext(req), token.id, { token: bearerToken })
-  return token
+  // The bearer is returned here once and never stored: the row keeps the `externalId` it
+  // resolves to, so whoever reads the table holds no credential, and a lost bearer is replaced
+  // by a new token, not read back.
+  return { ...token, token: bearerToken }
 }
 
 export async function remove(req: FastifyRequest, reply: FastifyReply) {
