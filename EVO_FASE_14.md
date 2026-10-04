@@ -322,6 +322,34 @@ connessione contro cento connessioni.
      propri dati, un token d'integrazione funziona, una rotta con `freshAuth` restituisce lo step-up
      come errore del tool; difetto piantato: `call` con una credenziale fissa fa cadere la prova dei
      due utenti. README del sample e di tools nello stesso cambio.
+     **Fatto il 4 ottobre 2026** (commit locali). Tools (`7f323fc`): `createMcpHandler` vuole
+     `allowedOrigins`, origini esatte; un `Origin` fuori elenco riceve 403 prima di ogni tool, una
+     richiesta senza `Origin` passa (client desktop o lato server). Sample (`af9c22f`): `POST /mcp`
+     con tre tool (`my_profile`, `find_partners`, `delete_partner`), `call` è `server.inject` con il
+     `cookie` o l'`Authorization` della richiesta; le origini ammesse sono quelle di `CORS_ORIGINS`,
+     `*` escluso; `GET` e `DELETE /mcp` rispondono 405 dall'SDK; `freshAuth` sulle due `DELETE` dei
+     partner. Il backend è cambiato, su ok del manutentore: `POST /token` riscriveva il JWT su una
+     colonna che la tabella v5 non ha e rispondeva senza, quindi nessun token d'integrazione
+     funzionava (`bf8fec5`: il JWT si restituisce una volta e non si salva); `expiresAt` ora è
+     obbligatorio come già diceva `docs/API_V5.md` §4, e finisce nel claim `exp`, perché senza
+     `expiresIn` il JWT usciva senza scadenza (`49aa834`, 400 `TOKEN_EXPIRY_INVALID`). Prove: nel
+     sample `test/e2e/mcp.ts`, 7 casi col client dell'SDK contro il sample avviato (due utenti in
+     parallelo coi propri dati, token d'integrazione entro i suoi ruoli, rifiuto dell'API come
+     errore del tool, `STEP_UP_NOT_AVAILABLE` del token come errore del tool senza cancellare,
+     sessione fresca che cancella, origine estranea 403 e richiesta senza credenziale 401); in
+     modalità cookie, a mano sul sample avviato, la sessione nel cookie, l'origine ammessa 200,
+     l'estranea 403 e una sessione di 65 secondi con `STEP_UP_MAX_AGE=60` che riceve
+     `STEP_UP_REQUIRED`. Nel backend `test/e2e-mt-pg/integrationToken.e2e.spec.ts`, 5 casi su
+     Postgres (il JWT autentica nel suo tenant e non in un altro, nessuna colonna lo contiene, `null`
+     esplicito e mai di default, un token che scade dopo due secondi è rifiutato dopo), con la rotta
+     `/probe/subject` nella fixture, perché le sonde pubbliche trattano una credenziale non
+     verificabile come anonima. Difetti piantati, ognuno preso: controllo dell'Origin spento in
+     tools; `call` con la prima credenziale riusata per tutti (cadono i due utenti e le tre prove
+     che dipendono dall'identità); il JWT salvato in una colonna; il codice originale di
+     `POST /token`; il soggetto sbagliato nel JWT; il default di sessione sul token senza scadenza.
+     Verde: backend `check-all`, `npm test` con Postgres (973, 1 saltata), banco multi-tenant (30);
+     sample `check-all` (2 avvisi `any` preesistenti) e `npm test` (20); tools `tool.spec.ts` (14).
+     Suite girate su Node 24.11, non 26.
   4. **rag T-7.6** (`volcanic-rag/TASKS.md`). Oggi rag non dipende da tools (`package.json`: solo
      `@volcanicminds/backend`), quindi il passo comincia aggiungendolo; la ricerca diventa un tool di
      `defineTool` e la clearance resta quella dell'API. Il criterio di chiusura è quello di rag: un
