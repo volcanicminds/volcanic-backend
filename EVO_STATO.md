@@ -161,7 +161,8 @@ chiamate AI finiscono negli span, senza il contenuto salvo
 `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` (F72). L'identità del chiamante passa a
 T-14.7 (F71). T-14.7, passo 1 fatto il 3 ottobre: `defineTool` in `volcanic-tools`, servito
 dall'AI SDK e da un server MCP (`./mcp`) con lo stesso risultato e lo stesso errore; il backend
-non cambia (F73).
+non cambia (F73). Passo 2 fatto il 4 ottobre: l'agente di `createAgent` si costruisce una volta e
+riceve il chiamante a ogni chiamata, `options: { caller }` (F74).
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

@@ -75,7 +75,8 @@ connessione contro cento connessioni.
 | F70 | Precisa F66: il server MCP accetta **sessioni e token d'integrazione** (`/token`), le credenziali che esistono già. Niente `oidc-provider` per ora: OAuth 2.1 per i connettori di terzi è un compito a parte, se servirà | un client di terzi (connettore di Claude.ai o ChatGPT) è l'unico caso che lo richiede; ok del manutentore, 2 ottobre 2026 |
 | F71 | Precisa F69: l'identità del chiamante entra nel cablaggio dell'agente con T-14.7, insieme a `defineTool`, non con T-14.6 | l'identità serve ai tool, che agiscono a nome di chi chiama (F66): senza `defineTool` non avrebbe un consumatore; ok del manutentore, 3 ottobre 2026 |
 | F72 | Telemetria AI in `volcanic-tools`: la prima chiamata del modulo (`createModel`, `createEmbedder`, `createAgent`, `embedText`, `embedTexts`) registra l'integrazione OpenTelemetry dell'AI SDK, una volta per processo, solo se `@ai-sdk/otel` (peer opzionale) è installato; `AI_TELEMETRY=false` la spegne; se l'applicazione ne ha registrata una, non se ne aggiunge un'altra. Il **contenuto** (prompt, istruzioni, risposte, argomenti e risultati dei tool, testi da vettorizzare) è **spento di default**: lo accende `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`, e vince il `recordInputs`/`recordOutputs` della singola chiamata o dell'agente | l'SDK registra il contenuto se nessuno dice di no, e prompt e risposte portano dati personali; la variabile è il nome che usano le instrumentazioni GenAI (verificato nel README di `@elastic/opentelemetry-instrumentation-openai` 0.5.1, non in quello di `@opentelemetry/instrumentation-openai` 0.20.0); ok del manutentore, 3 ottobre 2026 |
-| F73 | Precisa F66: **il backend non sa niente di MCP**, né codice né peer. Il server MCP è un adattatore di `defineTool` in `volcanic-tools`, con `@modelcontextprotocol/sdk` peer opzionale; il consumer lo monta come una sua rotta autenticata (nel sample `/mcp`) e sceglie i tool uno per uno con `defineTool`, senza campi MCP nella configurazione delle rotte del framework. Il tool chiama l'API con la credenziale del chiamante attraverso una funzione di chiamata data dal consumer (nel sample `server.inject`), quindi nemmeno tools dipende da Fastify. Sessioni e token d'integrazione (F70) li verificano gli hook del backend come su ogni rotta; una rotta con `freshAuth` risponde col suo rifiuto di step-up (`lib/util/stepUp.ts`) e il tool lo restituisce come errore | il framework resta agnostico e i consumer importano tools (sample, rag); un campo di rotta o un rifiuto all'avvio legati a MCP rimetterebbero MCP nel backend; ok del manutentore, 3 ottobre 2026 |
+| F73 | Precisa F66: **il backend non sa niente di MCP**, né codice né peer. Il server MCP è un adattatore di `defineTool` in `volcanic-tools`, con `@modelcontextprotocol/server` (SDK MCP 2, Apache-2.0) peer opzionale; il consumer lo monta come una sua rotta autenticata (nel sample `/mcp`) e sceglie i tool uno per uno con `defineTool`, senza campi MCP nella configurazione delle rotte del framework. Il tool chiama l'API con la credenziale del chiamante attraverso una funzione di chiamata data dal consumer (nel sample `server.inject`), quindi nemmeno tools dipende da Fastify. Sessioni e token d'integrazione (F70) li verificano gli hook del backend come su ogni rotta; una rotta con `freshAuth` risponde col suo rifiuto di step-up (`lib/util/stepUp.ts`) e il tool lo restituisce come errore | il framework resta agnostico e i consumer importano tools (sample, rag); un campo di rotta o un rifiuto all'avvio legati a MCP rimetterebbero MCP nel backend; ok del manutentore, 3 ottobre 2026. Il pacchetto: `@modelcontextprotocol/server` 2.3.0 al posto di `@modelcontextprotocol/sdk` 1.32.0, che si porta dietro express, hono, jose e ajv; ok del manutentore, 4 ottobre 2026 |
+| F74 | Precisa F71: con i tool di `defineTool` l'agente di `createAgent` riceve il chiamante come **opzione di chiamata** dell'SDK (`agent.generate({ prompt, options: { caller } })`), che il suo `prepareCall` passa ai tool, non come `toolsContext` | nei tipi di `ai` 7.0.127 `agent.generate` non accetta `toolsContext`, e `ToolLoopAgentSettings` lo vuole alla costruzione quando un tool ha un contesto obbligatorio, cioè la credenziale di qualcuno sull'agente condiviso; ok del manutentore, 4 ottobre 2026 |
 
 ## 2. Compiti
 
@@ -256,7 +257,7 @@ connessione contro cento connessioni.
   build verde, `npm audit --omit=dev --audit-level=high` pulito (4 moderate da `minio`). Nessun
   consumer chiama ancora `createAgent`: il sample usa `tools/ai` solo per gli embeddings, rag non
   lo importa. L'identità del chiamante passa a T-14.7 (F71).
-- [ ] **T-14.7** MCP (F66, F70, F71, F73). Quattro passi, in quest'ordine; il backend non cambia.
+- [ ] **T-14.7** MCP (F66, F70, F71, F73, F74). Quattro passi, in quest'ordine; il backend non cambia.
   1. **`defineTool` in `volcanic-tools`.** Il contratto: `name`, `description`, uno schema
      d'ingresso ed `execute(input, ctx)`, dove `ctx.call` è l'API già legata alla credenziale del
      chiamante. `defineTool` e l'adattatore per l'AI SDK in `./ai`; il server MCP in un subpath
@@ -273,7 +274,7 @@ connessione contro cento connessioni.
      e tools non dipende da `zod` a runtime. SDK MCP: `@modelcontextprotocol/server` 2.3.0
      (Apache-2.0, dipende solo da `zod` e `@modelcontextprotocol/core`, handler web standard con un
      server per richiesta) al posto di `@modelcontextprotocol/sdk` 1.32.0 scritto in F73, che si
-     porta dietro express, hono, jose e ajv; F73 va allineato, con l'ok del manutentore. Prove:
+     porta dietro express, hono, jose e ajv; F73 allineato il 4 ottobre 2026. Prove:
      `test/unit/tool.spec.ts`, 11 casi (stesso risultato e stesso errore dai due adattatori, errore
      interno nascosto, percorso che nomina un altro host rifiutato, due chiamanti concorrenti per
      adattatore, una chiamata AI senza chiamante non esegue tool); cinque difetti piantati, ognuno
@@ -286,15 +287,34 @@ connessione contro cento connessioni.
      `ToolLoopAgentSettings` vuole `toolsContext` alla costruzione quando un tool ha un contesto
      obbligatorio, e `agent.generate` non lo accetta (a runtime passa); la via tipizzata per
      chiamata è `callOptionsSchema` con `prepareCall`.
-  2. **L'identità nell'agente (F71).** L'agente si costruisce una volta e l'identità arriva a ogni
-     chiamata con il `toolsContext` dell'SDK (nei tipi di `ai` 7.0.127 è tipato per insieme di tool
-     e arriva all'esecuzione), mai nella costruzione: un agente condiviso fra richieste non si porta
-     dietro la credenziale di nessuno. **Chiuso quando** due chiamate concorrenti con identità
+  2. **L'identità nell'agente (F71, F74).** L'agente si costruisce una volta e l'identità arriva a
+     ogni chiamata come opzione di chiamata (`options: { caller }`), che il `prepareCall` scritto da
+     `createAgent` passa ai tool, mai nella costruzione: un agente condiviso fra richieste non si
+     porta dietro la credenziale di nessuno. **Chiuso quando** due chiamate concorrenti con identità
      diverse vedono ciascuna la propria, e una chiamata senza identità non esegue tool; difetto
      piantato: l'identità salvata sull'agente fa cadere la prova.
+     **Fatto il 4 ottobre 2026** (`volcanic-tools`, commit locale): `createAgent` con
+     `tools: [definizioni]` (`CallerAgentConfig`) restituisce un `ToolLoopAgent<CallerContext, …>`;
+     rifiuta una configurazione con `prepareCall`, `callOptionsSchema` o `toolsContext`, che
+     andrebbero persi; una chiamata senza chiamante fallisce prima del modello. Niente
+     `callOptionsSchema`: l'SDK valida le opzioni solo quando la chiamata ne passa
+     (`ToolLoopAgent.prepareCall` in `ai` 7.0.127), quindi il controllo sta tutto nel `prepareCall`.
+     Un agente prende tool di `defineTool` (una lista) o tool dell'SDK (un record), non entrambi.
+     Prove: `test/unit/agent.spec.ts`, 4 casi nuovi (tre chiamate, due concorrenti, ognuna col suo
+     chiamante; `stream` come `generate`; senza chiamante, chiamante vuoto o non funzione nessuna
+     chiamata al modello; cablaggio rifiutato); difetti piantati, ognuno preso dalla sua prova:
+     chiamante fissato al primo (bob e carol ricevono alice), controllo del chiamante tolto (il
+     modello parte e il tool cade solo dopo, sul `contextSchema`), rifiuto del cablaggio tolto. Tipi,
+     da un consumer: `generate` senza `options`, un chiamante non funzione e `toolsContext` o
+     `prepareCall` nella configurazione non compilano (`@ts-expect-error`), l'output di un tool
+     resta tipato; difetto piantato preso (`ToolLoopAgent<never, …>` come ritorno). Tools:
+     `check-all` verde (5 avvisi `any` preesistenti), 105 prove verdi, build e publint puliti; dal
+     pacchetto impacchettato, in Node 26.10 senza tsx, un agente e quattro chiamate concorrenti
+     vedono ciascuna il proprio utente, e senza chiamante il modello non viene chiamato.
   3. **Il server nel sample** (`volcanic-backend-sample`). Una rotta `/mcp` autenticata, con
-     sessione o token d'integrazione (F70), che passa `req.raw` e `reply.raw` al trasporto
-     Streamable HTTP senza stato dopo `reply.hijack()`. `call` è `server.inject` con il `cookie` o
+     sessione o token d'integrazione (F70), che passa la richiesta come `Request` web standard a
+     `handler.fetch(request, { caller, parsedBody })` di `createMcpHandler` e risponde con la sua
+     `Response` (SDK MCP 2, F73). `call` è `server.inject` con il `cookie` o
      l'`Authorization` del chiamante, mai una credenziale di servizio. Il controllo dell'header
      `Origin` contro il DNS rebinding, che la specifica MCP chiede per Streamable HTTP: da rileggere
      sul testo vigente prima di scriverlo. Pochi tool, su rotte che il sample ha già. **Chiuso
