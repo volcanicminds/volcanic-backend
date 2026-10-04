@@ -349,7 +349,12 @@ connessione contro cento connessioni.
      `POST /token`; il soggetto sbagliato nel JWT; il default di sessione sul token senza scadenza.
      Verde: backend `check-all`, `npm test` con Postgres (973, 1 saltata), banco multi-tenant (30);
      sample `check-all` (2 avvisi `any` preesistenti) e `npm test` (20); tools `tool.spec.ts` (14).
-     Suite girate su Node 24.11, non 26.
+     Suite girate su Node 24.11, non 26. Poi, su ok del manutentore (`a220ff6`): un token bloccato
+     o cancellato autenticava ancora, perché `isValidToken` guardava solo il nome; ora rifiuta
+     `blocked` e `deletedAt` (403 `TOKEN_NOT_VALID` alla richiesta dopo), e blocco e sblocco
+     stanno su `/token/:id/block` e `/token/:id/unblock` come in `docs/API_V5.md`. Sesto caso nel
+     banco, preso da due difetti piantati (solo il nome; senza `deletedAt`). Verde: `check-all`,
+     `npm test` con Postgres (973, 1 saltata), banco multi-tenant (31), sample `npm test` (20).
   4. **rag T-7.6** (`volcanic-rag/TASKS.md`). Oggi rag non dipende da tools (`package.json`: solo
      `@volcanicminds/backend`), quindi il passo comincia aggiungendolo; la ricerca diventa un tool di
      `defineTool` e la clearance resta quella dell'API. Il criterio di chiusura è quello di rag: un

@@ -165,7 +165,8 @@ non cambia (F73). Passo 2 fatto il 4 ottobre: l'agente di `createAgent` si costr
 riceve il chiamante a ogni chiamata, `options: { caller }` (F74). Passo 3 fatto il 4 ottobre: il
 server MCP nel sample (`POST /mcp`, tre tool chiamati con la credenziale di chi chiede, Origin
 controllato in tools); nel backend `POST /token` restituisce il JWT una volta senza salvarlo e
-vuole `expiresAt` (`EVO_FASE_14.md`, T-14.7). Resta il passo 4, rag T-7.6.
+vuole `expiresAt`; un token bloccato o cancellato smette alla richiesta dopo, e il blocco sta su
+`/token/:id/block` (`EVO_FASE_14.md`, T-14.7). Resta il passo 4, rag T-7.6.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
