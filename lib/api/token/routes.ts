@@ -117,7 +117,7 @@ export default {
     },
     {
       method: 'POST',
-      path: '/block/:id',
+      path: '/:id/block',
       requireCapability: 'tokens',
       handler: 'token.block',
       middlewares: ['global.isAuthenticated'],
@@ -133,7 +133,7 @@ export default {
     },
     {
       method: 'POST',
-      path: '/unblock/:id',
+      path: '/:id/unblock',
       requireCapability: 'tokens',
       handler: 'token.unblock',
       middlewares: ['global.isAuthenticated'],

@@ -764,3 +764,9 @@ as `exp`, or `null` for a token that never expires.
   it; a lost bearer is replaced by a new token.
 - Send `expiresAt` instead of `expiresIn`: an ISO date in the future, or `null`. Without it the
   answer is 400; a past date is 400 `TOKEN_EXPIRY_INVALID`.
+- Block and unblock at `POST /token/:id/block` and `/token/:id/unblock`, as for users; v4 had
+  `/token/block/:id` and `/token/unblock/:id`.
+
+**What a custom `tokenManager` has to do.** `isValidToken` is asked at every request and is the
+only check on the row: it refuses a blocked token and a removed one (`deletedAt`), or blocking and
+removing a token change nothing for its bearer. The expiry is the bearer's `exp`, checked by the core.

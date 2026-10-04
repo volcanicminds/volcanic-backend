@@ -167,7 +167,9 @@ export interface TokenManagement {
 ```
 
 A token whose `expires_at` is in the past is rejected at authentication time by the core, not by
-the manager.
+the manager: `POST /token` signs `expires_at` into the bearer as `exp`. `isValidToken` is asked at
+every request with the row and is the only check on it: it must refuse a blocked token and a
+removed one (`deletedAt`), or blocking and removing change nothing for the bearer.
 
 ---
 

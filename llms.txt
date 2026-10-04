@@ -3234,7 +3234,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Users | `POST /users/:id/block` · `/unblock` | `users` cap⁵ | **yes** | `userManager` |
 | Users | `POST /users/:id/mfa/reset` · `/password/reset`⁶ | `users` cap (admin-only)⁶ | **yes** | `userManager` |
 | Token | `GET /token` · `/count` · `/:id` | `tokens` cap | (read)³ | `tokenManager` |
-| Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/block/:id` · `/unblock/:id` | `tokens` cap⁵ | **yes** | `tokenManager` |
+| Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/:id/block` · `/:id/unblock` | `tokens` cap⁵ | **yes** | `tokenManager` |
 | Tenants | `GET /tenants` · `GET /tenants/:id` | `tenants:read` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants` · `PUT /tenants/:id` · `POST /tenants/:id/suspend` · `/restore` · `DELETE /tenants/:id` | `tenants` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants/:id/export` | `tenants` cap | **yes** | `provider.exportContainer` |
@@ -3503,10 +3503,11 @@ Everything else (managers, routes, RBAC) is identical to C.
 ### E. Machine-to-machine — API tokens
 
 **Use when:** other services authenticate without a user/password.
-**Managers:** `tokenManager` (with or without `userManager`). Admins (or a role with the `tokens` capability) create tokens via `POST /token`;
-the subject is resolved in `onRequest` through `tokenManager.retrieveTokenByExternalId`, so the bearer of an API
-token populates `req.token` (not `req.user`) and is gated by the token's roles. Revoke via `/token/block/:id` or
-by rotating its `externalId` (Part 6.1).
+**Managers:** `tokenManager` (with or without `userManager`). Admins (or a role with the `tokens` capability) create tokens via `POST /token`
+with a required `expiresAt` (a date, or `null` for no expiry); the answer carries the bearer once, and it is never stored.
+The subject is resolved in `onRequest` through `tokenManager.retrieveTokenByExternalId`, so the bearer of an API
+token populates `req.token` (not `req.user`) and is gated by the token's roles. Revoke via `POST /token/:id/block`
+(reversible) or `DELETE /token/:id`: `isValidToken` reads the row at every request, so both take effect at once.
 
 ### F. Multi-tenant (turns any of A–E/G tenant-aware)
 

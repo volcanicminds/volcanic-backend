@@ -82,4 +82,24 @@ describe('Integration tokens on real Postgres (T-14.7)', function () {
     await new Promise((resolve) => setTimeout(resolve, at.getTime() - Date.now() + 1000))
     expect((await inject({ method: 'GET', url: '/probe/subject', headers: bearer(short.token, ACME.slug) })).statusCode).toBe(401)
   })
+
+  it('stops at the next request once blocked or removed, and a block can be lifted', async () => {
+    const revocable = body(await mint({ name: 'revocable', expiresAt: null }))
+    const use = () => inject({ method: 'GET', url: '/probe/subject', headers: bearer(revocable.token, ACME.slug) })
+    const manage = (method: string, url: string, payload?: any) =>
+      inject({ method, url, headers: bearer(admin, ACME.slug), payload })
+
+    expect((await manage('POST', `/token/${revocable.id}/block`, { reason: 'leaked' })).statusCode).toBe(200)
+    const blocked = await use()
+    expect(blocked.statusCode).toBe(403)
+    expect(body(blocked).code).toBe('TOKEN_NOT_VALID')
+
+    expect((await manage('POST', `/token/${revocable.id}/unblock`)).statusCode).toBe(200)
+    expect((await use()).statusCode).toBe(200)
+
+    expect((await manage('DELETE', `/token/${revocable.id}`)).statusCode).toBe(200)
+    const removed = await use()
+    expect(removed.statusCode).toBe(403)
+    expect(body(removed).code).toBe('TOKEN_NOT_VALID')
+  })
 })

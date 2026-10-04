@@ -27,7 +27,11 @@ export function createTokenManager(): TokenManagement {
 
   return {
     isImplemented: () => true,
-    isValidToken: (data: { name?: unknown } | null | undefined) => !!data?.name,
+    // The row decides at every request, so a block or a removal takes effect at once (the expiry
+    // is the bearer's `exp`, verified by the core). Blocking cannot rotate `externalId` as it does
+    // for a user: the bearer is shown once, and an unblocked token would be left without one.
+    isValidToken: (data: { name?: unknown; blocked?: unknown; deletedAt?: unknown } | null | undefined) =>
+      !!data?.name && data.blocked !== true && !data.deletedAt,
 
     async createToken(
       ctx: DataHandle,
