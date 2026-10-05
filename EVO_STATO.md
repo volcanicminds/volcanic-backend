@@ -176,9 +176,10 @@ con `/rag/search`. Lo stesso giorno l'audit S13: il reset MFA d'emergenza all'av
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
 `ERR_HTTP_HEADERS_SENT` del sample è chiuso (26 settembre 2026, tabella «Fuori piano»). Restano
-tre azioni esterne. Il push del solo `v5` nei sei repository (`git push -u origin v5`), a fine
-T-14.7: ok del manutentore il 4 ottobre 2026; `develop` e `main` non si spingono. La pubblicazione
-su npm di backend, tools e admin, approvata lo stesso giorno, quando il manutentore lo chiede. Dopo
+due azioni esterne. Il push del solo `v5` nei sei repository è fatto il 5 ottobre 2026, a fine
+T-14.7 (`origin/v5` uguale al locale in tutti e sei); `develop` e `main` non si spingono. La
+pubblicazione su npm di backend, tools e admin, approvata il 4 ottobre, quando il manutentore lo
+chiede. Dopo
 la pubblicazione, nel sample, backend e tools di nuovo dal registro invece che da
 `file:../volcanic-*`, con `npm install` che riscrive il lock; fino ad allora il sample prende
 backend e tools dai checkout accanto (`volcanic-backend-sample@051721a`).
