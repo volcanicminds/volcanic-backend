@@ -80,13 +80,16 @@ function request(opts: any = {}) {
         },
         blockUserById: async (_c: any, id: string) => {
           calls.push(['blockUserById', id])
-          return { id }
+          return true
         },
         unblockUserById: async (_c: any, id: string) => {
           calls.push(['unblockUserById', id])
-          return { id }
+          return true
         },
-        resetExternalId: async (_c: any, id: string) => ({ id }),
+        resetExternalId: async (_c: any, id: string) => {
+          calls.push(['resetExternalId', id])
+          return 'ext-new'
+        },
         disableMfa: async (_c: any, id: string) => {
           calls.push(['disableMfa', id])
         },
@@ -210,6 +213,19 @@ describe('users · the admin apex (T-9.5)', () => {
       await remove(req, reply)
       expect(reply.sent.code).toBe(200)
       expect(calls[0]).toEqual(['deleteUser', ADMIN.id])
+    })
+
+    it('rotates the identifier of the user it blocks, and says the block and the unblock happened', async () => {
+      const blocked = request({ callerRoles: ['admin'], targetId: EDITOR.id })
+      expect(await block(blocked.req, blocked.reply)).toEqual({ ok: true })
+      expect(blocked.calls).toEqual([
+        ['blockUserById', EDITOR.id],
+        ['resetExternalId', EDITOR.id]
+      ])
+
+      const unblocked = request({ callerRoles: ['admin'], targetId: EDITOR.id })
+      expect(await unblock(unblocked.req, unblocked.reply)).toEqual({ ok: true })
+      expect(unblocked.calls).toEqual([['unblockUserById', EDITOR.id]])
     })
   })
 

@@ -771,7 +771,7 @@ as `exp`, or `null` for a token that never expires.
 only check on the row: it refuses a blocked token and a removed one (`deletedAt`), or blocking and
 removing a token change nothing for its bearer. The expiry is the bearer's `exp`, checked by the core.
 
-## 34. A removed or unregistered user stops at the next request
+## 34. A removed, blocked or unregistered user stops at the next request
 
 `DELETE /users/:id` is a soft delete: it stamps `deletedAt` and rotates nothing. The bundled
 `isValidUser` refuses that row, so the user's next request answers 403 `USER_NOT_VALID` and the
@@ -779,10 +779,12 @@ next renewal closes the session with the reason `subject is no longer valid`. `D
 /system/users/:id` does the same on the control plane, where the core itself refuses the row at
 every door, the emailed code and the identity provider included.
 
-`POST /auth/unregister` blocks the account and now also rotates its `externalId`: the access token
-the user already holds stops at the next request (404 `SUBJECT_NOT_FOUND`) instead of at its expiry.
+`POST /users/:id/block` and `POST /auth/unregister` block the account and rotate its `externalId`:
+the access token the user already holds stops at the next request (404 `SUBJECT_NOT_FOUND`)
+instead of at its expiry. The block and the unblock answer `{ ok: true }`.
 
 **What a custom `userManager` has to do.** `isValidUser` is asked with the row at every request and
 at every renewal: it refuses a removed user (`deletedAt`), or removing a user only stops the next
-login and leaves the sessions already open renewing. A custom `systemUserManager` returns
-`deletedAt` on its rows, or never returns a removed one.
+login and leaves the sessions already open renewing. `blockUserById` and `unblockUserById` answer a
+boolean, not the row as in v4: the route answers `ok` with it and rotates the identifier only on
+`true`. A custom `systemUserManager` returns `deletedAt` on its rows, or never returns a removed one.

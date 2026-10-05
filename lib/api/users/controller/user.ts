@@ -213,9 +213,11 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
     return forbidden(reply, 'Cannot block the last admin')
   }
 
-  let user = await req.server['userManager'].blockUserById(dataContext(req), userId, reason)
-  user = await req.server['userManager'].resetExternalId(dataContext(req), user.id)
-  return { ok: !!user.id }
+  const blocked = await req.server['userManager'].blockUserById(dataContext(req), userId, reason)
+  // The request hook does not read `blocked`: the new identifier is what stops the access tokens
+  // already signed.
+  if (blocked) await req.server['userManager'].resetExternalId(dataContext(req), userId)
+  return { ok: blocked }
 }
 
 /**
@@ -253,8 +255,7 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
     return forbidden(reply, 'Cannot unblock an admin user')
   }
 
-  const user = await req.server['userManager'].unblockUserById(dataContext(req), userId)
-  return { ok: !!user.id }
+  return { ok: await req.server['userManager'].unblockUserById(dataContext(req), userId) }
 }
 
 export async function resetMfaByAdmin(req: FastifyRequest, reply: FastifyReply) {

@@ -169,6 +169,28 @@ describe('Renewal across containers on real Postgres (T-11.11)', function () {
     expect((await renew(ACME.slug, opened.refreshToken)).statusCode).toBe(403)
   })
 
+  it('stops a user blocked by an administrator at the next request, and lets it back in once unblocked', async () => {
+    const admin = (await session(ACME.slug, ACME.adminEmail, ACME.adminPassword)).token
+    const manage = (url: string, payload?: any) => inject({ method: 'POST', url, headers: bearer(admin, ACME.slug), payload })
+    const target = { email: 'suspended@acme.test', password: 'Suspended-pw-12' }
+    const created = await inject({ method: 'POST', url: '/users', headers: bearer(admin, ACME.slug), payload: target })
+    await sql().query(`update "${ACME.locator}"."user" set confirmed = true where email = $1`, [target.email])
+
+    const opened = await session(ACME.slug, target.email, target.password)
+    const me = () => inject({ method: 'GET', url: '/users/me', headers: bearer(opened.token, ACME.slug) })
+    expect((await me()).statusCode).toBe(200)
+
+    const blocked = await manage(`/users/${body(created).id}/block`, { reason: 'suspended' })
+    expect(body(blocked)).toEqual({ ok: true })
+    const after = await me()
+    expect(after.statusCode).toBe(404)
+    expect(body(after).code).toBe('SUBJECT_NOT_FOUND')
+    expect((await renew(ACME.slug, opened.refreshToken)).statusCode).toBe(403)
+
+    expect(body(await manage(`/users/${body(created).id}/unblock`))).toEqual({ ok: true })
+    await session(ACME.slug, target.email, target.password)
+  })
+
   it('stops a removed platform user at the next request, and its session no longer renews', async () => {
     const operator = { email: 'leaver@system.test', password: 'Leaver-pw-12345', roles: ['system:operator'] }
     const created = await inject({ method: 'POST', url: '/system/users', headers: bearer(system), payload: operator })

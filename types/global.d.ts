@@ -559,8 +559,8 @@ export interface UserManagement {
   resetPassword(ctx: DataHandle, user: any, password: string): Promise<any>
   userConfirmation(ctx: DataHandle, user: any): Promise<any>
 
-  blockUserById(ctx: DataHandle, id: string, reason: string): Promise<any>
-  unblockUserById(ctx: DataHandle, id: string): Promise<any>
+  blockUserById(ctx: DataHandle, id: string, reason: string): Promise<boolean>
+  unblockUserById(ctx: DataHandle, id: string): Promise<boolean>
   /** Ends the wait of an account under `approval` (F49); false when it was not waiting. */
   approveUserById(ctx: DataHandle, id: string): Promise<boolean>
 
