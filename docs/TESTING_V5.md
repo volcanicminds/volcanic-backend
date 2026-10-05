@@ -12,12 +12,24 @@
 | unit, core | `test/lib` | none; PGlite in `telemetry.spec.ts` | `npm run test:lib` | none |
 | data layer | `test/db`, `test/migrations` | PGlite; Postgres too with `DATABASE_URL` | `npm run test:db`, `npm run test:migrations` | none |
 | OIDC, network off | `test/lib/oidcRoutes.spec.ts`, `test/db/oidc.spec.ts` | PGlite | `npm run test:oidc:offline` | none |
+| query budget | `test/budget` | PGlite; Postgres too with `DATABASE_URL` | `npm run test:budget` | ephemeral, `127.0.0.1` |
 | **isolation, black box** | **`test/e2e-mt-pg`** | **real Postgres** | **`npm run test:e2e:mt:pg`** | **2241** |
 
-`npm test` runs `test:lib`, `test:db` and `test:migrations` (`scripts/run-tests.mjs`). In CI the
-`test` job runs them without `DATABASE_URL`, and the `test-pg` job runs `test:db`,
-`test:migrations`, `test:oidc:offline` and `test:e2e:mt:pg` against a Postgres service. Performance
-is measured, not tested: `npm run bench:paths` and `npm run tune` (`docs/TUNING.md`).
+`npm test` runs `test:lib`, `test:db`, `test:migrations` and `test:budget`
+(`scripts/run-tests.mjs`). In CI the `test` job runs them without `DATABASE_URL`, and the `test-pg`
+job runs `test:db`, `test:migrations`, `test:budget`, `test:oidc:offline` and `test:e2e:mt:pg`
+against a Postgres service.
+
+Performance is measured, not tested, with one exception. **Time** has no gate: a latency depends on
+the machine and on what else runs on it, so `npm run bench:paths`, `npm run bench:http` and
+`npm run tune` measure on demand and compare against a baseline (`docs/TUNING.md`). **Work** has
+one: `test/budget` counts the statements each request sends, from the query spans, on a server
+started whole and a tenant provisioned through the API (`scripts/httpWorld.ts`, the same world the
+HTTP bench uses). A count is the same on every machine, and a count that grows is an N+1, a lookup
+moved into a loop or a cache that stopped hitting; one that shrinks is lowered in the spec, so the
+next growth is measured from it. It is a suite of its own because it owns `global.server` and
+`lib/api/system/routes.ts` decides at import whether the control plane is mounted: one tenancy
+per process.
 
 Every suite runs in **its own mocha process**: they own singletons (`global.config`,
 `global.server`, the shared PGlite instance) and cannot share one.

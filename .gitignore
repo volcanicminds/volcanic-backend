@@ -126,4 +126,5 @@ OUTPUT.md
 # machine that resembles production, and let its provenance say which.
 tuning.json
 bench-paths.json
+bench-http.json
 .env.before-tune-*

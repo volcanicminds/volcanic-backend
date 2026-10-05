@@ -174,7 +174,12 @@ con `/rag/search`. Lo stesso giorno l'audit S13: il reset MFA d'emergenza all'av
 `mfa.emergency_reset` nel registro degli accessi (`docs/AUDIT_TASKS_TODO.md`). Ancora il 5
 ottobre, dalla revisione dei test: la rotta degli upload (tus) serviva anche una richiesta senza
 credenziale; ora risponde 401 `UNAUTHORIZED` salvo `isValid(req) === true`, e il `TransferManager`
-di tools implementa `getPath` e `isValid` da sé (`docs/MIGRATION_V4_V5.md` §35).
+di tools implementa `getPath` e `isValid` da sé (`docs/MIGRATION_V4_V5.md` §35). Sempre il 5
+ottobre, le prestazioni dell'HTTP: `npm run test:budget` conta gli statement per richiesta (0 per
+`/health`, 2 per `/users/me`, 4 per `/users`, su un tenant creato via API) e fallisce se crescono;
+`npm run bench:http` misura richieste intere con autocannon, a mano e senza cancello, e in CI gira
+solo come prova di funzionamento (`docs/TUNING.md`, `docs/TESTING_V5.md` §1). Vettori, ricerca e
+ingestion restano in rag a T-11.3, T-11.6 e da T-8.2 a T-8.4.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

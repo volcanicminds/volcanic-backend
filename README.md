@@ -265,7 +265,7 @@ has an admin or `ADMIN_EMAIL` at boot.
 documents below go deeper on each subject; where anything disagrees with the package source code, the code
 wins.
 
-- **[Tuning](docs/TUNING.md)**: `npm run tune` measures the work factor, the key derivation, the connection budget and the page cost **on the machine that will run them**, and writes the answers down with their provenance; `npm run bench:paths` times the lookups every authenticated request makes.
+- **[Tuning](docs/TUNING.md)**: `npm run tune` measures the work factor, the key derivation, the connection budget and the page cost **on the machine that will run them**, and writes the answers down with their provenance; `npm run bench:paths` times the lookups every authenticated request makes, and `npm run bench:http` whole requests through the server.
 - **[Migrating from v4](docs/MIGRATION_V4_V5.md)**: every break, why it exists, and the new form beside the old one. Read §1 to §4 before touching a port, and keep §18 and §29 open while porting the login: the routes and the status code changed.
 - **[Authentication flows](docs/AUTH_FLOW_V5.md)**: the login as a flow of stages on both planes, the authenticator contract, identity providers, linking, the access log and every refusal code.
 - **[Magic Query](docs/MAGIC_QUERY_V5.md)**: the URL-to-SQL grammar, the operator catalogue, and the v4 → v5 correspondence table.
@@ -521,10 +521,11 @@ When you execute `npm run dev` the server is restarted whenever a .js/.ts file i
 ## How to test (logic)
 
 ```sh
-npm test                  # every suite: core, data layer, migrations
+npm test                  # every suite: core, data layer, migrations, query budget
 npm run test:lib          # the core alone
 npm run test:db           # the data layer, on PGlite in memory
 npm run test:migrations   # the migration runner
+npm run test:budget       # statements per request, counted; fails when one grows
 npm run test:e2e:mt:pg    # the isolation bench, against a real Postgres
 npm run coverage          # measures, and fails under the floor (runs in CI, in the `test` job)
 npm run check-all         # lint, types, layer boundary, session state, migration sets, refusals

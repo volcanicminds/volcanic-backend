@@ -227,3 +227,46 @@ concurrency 1 (0.52) and 52.1 to 28.5 at concurrency 10 (0.55), level with `tena
 (178.5, 70.9, 24.2); the other paths stayed within the baseline dispersion. A scheduled
 `every-tenant` job reads each row again right before its run, because the fleet list can be
 minutes old: `test/lib/schedules.spec.ts` fails if it trusts the list.
+
+## The whole request: the HTTP bench
+
+```sh
+npm run bench:http                                     # PGlite; Postgres too with BENCH_DATABASE_URL
+npm run bench:http -- --tenancy single                 # without the tenants block (default: schema)
+npm run bench:http -- --out before.json                # where the report goes (bench-http.json)
+npm run bench:http -- --baseline before.json           # every median against an earlier report
+npm run bench:http -- --smoke                          # one round of one second, what CI runs
+```
+
+`bench:paths` times the reads behind a request; `scripts/bench-http.ts` times the request around
+them: the routing, the hooks, the token, the tenant resolution, the serialization, on a real
+socket. The server boots the way a consumer boots it (`preload`, `startDataLayer`, `startServer`,
+in `scripts/httpWorld.ts`), on a tenant provisioned through `POST /tenants` with 1000 users in it,
+and the client is autocannon on a worker thread, so the load it generates does not queue behind the
+server on the same event loop.
+
+| Scenario | Request | Statements (`test/budget`) |
+|---|---|---|
+| `health` | `GET /health`, anonymous | 0 |
+| `users.me` | `GET /users/me` as the tenant admin | 2 |
+| `users.list` | `GET /users?_pageSize=25` as the tenant admin | 4 |
+
+Each scenario gets a one-second warm-up, then 10 rounds of 3 seconds at 10 connections, with the
+first scenario rotating. The report keeps, per scenario, the median of the requests per second, of
+the mean latency and of the p99, with the IQR of the requests per second. The mean latency and not
+the median: autocannon records whole milliseconds, and the median of a route that answers in a
+fraction of one reads 0. It uses the same gate as `tune` (`scripts/machine.ts`); `--force`
+measures anyway and `--smoke` implies it.
+
+Postgres comes from `BENCH_DATABASE_URL` and **never** from `DATABASE_URL`: the bench creates
+`bench_http_control` and `bench_http_t1`, drops them at the end, and refuses to start when one of
+them already exists.
+
+**No gate on time.** CI runs `--smoke` in the `test-pg` job, on PGlite and on its Postgres
+service: it proves that the bench still runs and that every request answers 2xx, nothing more. A
+latency depends on the machine and on what else runs on it; what a build can hold is the work, and
+that is the query budget (`docs/TESTING_V5.md` §1). Read the IQR before reading a ratio.
+
+No result is written down yet: on 5 October 2026 `kerkyra-2.local` stayed between 4 and 6 of load
+over 10 cores, the gate is at 4, and the bench refused. The first baseline comes from a machine
+at rest.
