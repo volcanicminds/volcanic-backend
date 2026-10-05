@@ -166,7 +166,8 @@ riceve il chiamante a ogni chiamata, `options: { caller }` (F74). Passo 3 fatto 
 server MCP nel sample (`POST /mcp`, tre tool chiamati con la credenziale di chi chiede, Origin
 controllato in tools); nel backend `POST /token` restituisce il JWT una volta senza salvarlo e
 vuole `expiresAt`; un token bloccato o cancellato smette alla richiesta dopo, e il blocco sta su
-`/token/:id/block`; lo stesso vale per un utente cancellato (`EVO_FASE_14.md`, T-14.7). Resta il passo 4, rag T-7.6.
+`/token/:id/block`; lo stesso vale per un utente cancellato, su entrambi i piani, e per chi si
+disiscrive (`EVO_FASE_14.md`, T-14.7). Resta il passo 4, rag T-7.6.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

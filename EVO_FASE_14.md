@@ -361,7 +361,14 @@ connessione contro cento connessioni.
      403 con la sessione chiusa). Caso nel banco del rinnovo, preso da due difetti piantati (senza
      `deletedAt`; rinnovo sempre valido). Verde: `check-all`, `npm test` con Postgres (973, 1
      saltata), banco multi-tenant (32), build, sample `npm test` (20); Postgres 14 locale usa e
-     getta, perché il disco della VM Docker è pieno e `vm-pg` non parte.
+     getta, perché il disco della VM Docker è pieno e `vm-pg` non parte. Poi (`a093d83`): lo
+     stesso buco sul piano di controllo, dove ogni porta guardava solo `blocked`; ora tutte
+     (richiesta, rinnovo, flusso, codice via email, IdP) chiedono `systemUserMayLogIn`, che
+     rifiuta anche `deletedAt`. E `POST /auth/unregister` ruota `externalId` dopo il blocco, perché
+     l'hook della richiesta non legge `blocked` e il JWT già firmato valeva fino alla scadenza.
+     Due casi nel banco del rinnovo, presi da due difetti piantati (helper senza `deletedAt`;
+     `unregister` senza rotazione). Verde: `check-all`, `npm test` con Postgres (973, 1 saltata),
+     banco multi-tenant (34), build, sample `npm test` (20).
   4. **rag T-7.6** (`volcanic-rag/TASKS.md`). Oggi rag non dipende da tools (`package.json`: solo
      `@volcanicminds/backend`), quindi il passo comincia aggiungendolo; la ricerca diventa un tool di
      `defineTool` e la clearance resta quella dell'API. Il criterio di chiusura è quello di rag: un
