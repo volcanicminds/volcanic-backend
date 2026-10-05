@@ -62,7 +62,7 @@ devDependencies del consumer: genera le migrazioni, non le applica.
 ```bash
 npm run dev               # tsx watch server.ts
 npm run build             # tsc -> dist/
-npm test                  # test:lib + test:db + test:migrations (scripts/run-tests.mjs)
+npm test                  # test:lib + test:db + test:migrations + test:budget (scripts/run-tests.mjs)
 npm run test:e2e:mt:pg    # banco nero multi-tenant, vuole Postgres reale
 npm run check-all         # lint, type-check, depcruise, check:session-state, check:migration-sets, check:refusals
 npm run coverage          # c8 (backend monocart) + scripts/check-coverage.mjs; gira in CI
