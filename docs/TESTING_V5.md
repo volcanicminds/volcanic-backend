@@ -14,7 +14,9 @@
 | OIDC, network off | `test/lib/oidcRoutes.spec.ts`, `test/db/oidc.spec.ts` | PGlite | `npm run test:oidc:offline` | none |
 | **isolation, black box** | **`test/e2e-mt-pg`** | **real Postgres** | **`npm run test:e2e:mt:pg`** | **2241** |
 
-`npm test` runs `test:lib`, `test:db` and `test:migrations` (`scripts/run-tests.mjs`). Performance
+`npm test` runs `test:lib`, `test:db` and `test:migrations` (`scripts/run-tests.mjs`). In CI the
+`test` job runs them without `DATABASE_URL`, and the `test-pg` job runs `test:db`,
+`test:migrations`, `test:oidc:offline` and `test:e2e:mt:pg` against a Postgres service. Performance
 is measured, not tested: `npm run bench:paths` and `npm run tune` (`docs/TUNING.md`).
 
 Every suite runs in **its own mocha process**: they own singletons (`global.config`,
