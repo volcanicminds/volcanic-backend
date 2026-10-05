@@ -257,7 +257,7 @@ connessione contro cento connessioni.
   build verde, `npm audit --omit=dev --audit-level=high` pulito (4 moderate da `minio`). Nessun
   consumer chiama ancora `createAgent`: il sample usa `tools/ai` solo per gli embeddings, rag non
   lo importa. L'identità del chiamante passa a T-14.7 (F71).
-- [ ] **T-14.7** MCP (F66, F70, F71, F73, F74). Quattro passi, in quest'ordine; il backend non cambia.
+- [x] **T-14.7** MCP (F66, F70, F71, F73, F74). Quattro passi, in quest'ordine; il backend non cambia.
   1. **`defineTool` in `volcanic-tools`.** Il contratto: `name`, `description`, uno schema
      d'ingresso ed `execute(input, ctx)`, dove `ctx.call` è l'API già legata alla credenziale del
      chiamante. `defineTool` e l'adattatore per l'AI SDK in `./ai`; il server MCP in un subpath
@@ -380,6 +380,19 @@ connessione contro cento connessioni.
      `@volcanicminds/backend`), quindi il passo comincia aggiungendolo; la ricerca diventa un tool di
      `defineTool` e la clearance resta quella dell'API. Il criterio di chiusura è quello di rag: un
      assistente collegato vede esattamente ciò che vedrebbe quella persona.
+     **Fatto il 5 ottobre 2026** (commit locali). rag (`c317ccd`): subpath `/tools` con
+     `rag_search` e `rag_document`, che chiamano `/rag/search` e `/rag/documents/:id` con
+     `context.call`; `@volcanicminds/tools` e `zod` peer opzionali, tenuti dentro `/tools` da due
+     regole depcruise. Il server MCP lo monta il consumer (F73): in `volcanic-rag-sample`
+     (`ff882be`) è `/mcp`, cablato come nel sample del backend. Prove: in rag
+     `test/unit/tools.test.ts`, 5 casi; nel sample `test/10-mcp.spec.ts`, 5 casi col client
+     dell'SDK MCP contro il sample avviato, dove per i quattro ruoli quattro ricerche danno dal
+     tool la stessa risposta di `/rag/search` (clearance e risultati), due assistenti in parallelo
+     restano separati, un documento non leggibile è `HTTP 404` anche per il tool, e senza
+     credenziale 401. Difetti piantati, ognuno preso: `call` con la credenziale del primo
+     chiamante (3 rosse su 5); un import di `zod` e di `/tools` da `src/core/` (2 errori
+     depcruise). Verde su Node 26.10 con Postgres 14 locale usa e getta: rag `npm test` (174) e
+     `npm run check`; sample `npm test` (68) e `tsc --noEmit`.
 
 ## 3. Segnalato, non toccato
 

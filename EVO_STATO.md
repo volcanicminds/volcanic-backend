@@ -167,7 +167,11 @@ server MCP nel sample (`POST /mcp`, tre tool chiamati con la credenziale di chi 
 controllato in tools); nel backend `POST /token` restituisce il JWT una volta senza salvarlo e
 vuole `expiresAt`; un token bloccato o cancellato smette alla richiesta dopo, e il blocco sta su
 `/token/:id/block`; lo stesso vale per un utente cancellato, su entrambi i piani, bloccato, o che
-si disiscrive (`EVO_FASE_14.md`, T-14.7). Resta il passo 4, rag T-7.6.
+si disiscrive (`EVO_FASE_14.md`, T-14.7). Passo 4 fatto il 5 ottobre, e con lui T-14.7 e la
+fase 14: rag T-7.6, i tool `rag_search` e `rag_document` nel subpath `/tools` di rag, serviti su
+`/mcp` in `volcanic-rag-sample`, dove ogni ruolo trova dall'assistente esattamente ciò che trova
+con `/rag/search`. Lo stesso giorno l'audit S13: il reset MFA d'emergenza all'avvio scrive
+`mfa.emergency_reset` nel registro degli accessi (`docs/AUDIT_TASKS_TODO.md`).
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
