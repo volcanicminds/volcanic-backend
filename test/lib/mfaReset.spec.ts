@@ -13,20 +13,34 @@ const env = (minutesAhead: number, email = 'admin@acme.test') => ({
   MFA_ADMIN_FORCED_RESET_UNTIL: new Date(NOW.getTime() + minutesAhead * 60_000).toISOString()
 })
 
-function server() {
+function server(options: { auditFails?: boolean } = {}) {
   const calls = { user: [] as string[], system: [] as string[] }
+  const rows: any[] = []
   const users = {
     isImplemented: () => true,
-    retrieveUserByEmail: async (_ctx: any, email: string) => (email === 'admin@acme.test' ? { id: 'u-1' } : null),
+    retrieveUserByEmail: async (_ctx: any, email: string) => (email === 'admin@acme.test' ? { id: 'u-1', externalId: 'x-u-1' } : null),
     forceDisableMfa: async (_ctx: any, id: string) => calls.user.push(id)
   }
   const systemUsers = {
     isImplemented: () => true,
-    retrieveSystemUserByEmail: async (_ctx: any, email: string) => (email === 'admin@acme.test' ? { id: 's-1' } : null),
+    retrieveSystemUserByEmail: async (_ctx: any, email: string) => (email === 'admin@acme.test' ? { id: 's-1', externalId: 'x-s-1' } : null),
     disableMfa: async (_ctx: any, id: string) => calls.system.push(id)
   }
-  const instance: any = { provider: { control: async () => CONTROL }, userManager: users, systemUserManager: systemUsers }
-  return { instance, calls }
+  const accessLog = {
+    isImplemented: () => true,
+    record: async (ctx: any, entry: any) => {
+      if (options.auditFails) throw new Error('relation "access_log" does not exist')
+      rows.push({ ctx, ...entry })
+      return entry
+    }
+  }
+  const instance: any = {
+    provider: { control: async () => CONTROL },
+    userManager: users,
+    systemUserManager: systemUsers,
+    accessLogManager: accessLog
+  }
+  return { instance, calls, rows }
 }
 
 describe('emergency MFA reset at boot', () => {
@@ -69,5 +83,54 @@ describe('emergency MFA reset at boot', () => {
     withTenants(false)
     expect(await emergencyMfaReset(server().instance, { env: {}, now: NOW })).toBe('not-requested')
     expect(await emergencyMfaReset({} as any, { env: env(5), now: NOW })).toBe('no-data-layer')
+  })
+
+  // S13: the reset has no actor and no request, so the access log is the only trace the admin reads.
+  describe('the access log', () => {
+    const row = (scope: string, outcome: string, subjectId: string | null, code?: string) => ({
+      ctx: CONTROL,
+      event: 'mfa.emergency_reset',
+      scope,
+      outcome,
+      subjectId,
+      methods: ['totp'],
+      ...(code ? { code } : {})
+    })
+
+    it('records the reset of a user under the tenant scope of the control container', async () => {
+      withTenants(false)
+      const { instance, rows } = server()
+      expect(await emergencyMfaReset(instance, { env: env(5), now: NOW })).toBe('reset')
+      expect(rows).toEqual([row('tenant', 'success', 'x-u-1')])
+    })
+
+    it('records the reset of a platform identity under the control scope', async () => {
+      withTenants(true)
+      const { instance, rows } = server()
+      expect(await emergencyMfaReset(instance, { env: env(5), now: NOW })).toBe('reset')
+      expect(rows).toEqual([row('control', 'success', 'x-s-1')])
+    })
+
+    it('records an address that matches nobody as a failure without a subject', async () => {
+      withTenants(true)
+      const { instance, rows } = server()
+      expect(await emergencyMfaReset(instance, { env: env(5, 'nobody@acme.test'), now: NOW })).toBe('not-found')
+      expect(rows).toEqual([row('control', 'failure', null, 'NOT_FOUND')])
+    })
+
+    it('writes nothing for a window that never opened', async () => {
+      withTenants(false)
+      const { instance, rows } = server()
+      expect(await emergencyMfaReset(instance, { env: env(-1), now: NOW })).toBe('expired')
+      expect(await emergencyMfaReset(instance, { env: {}, now: NOW })).toBe('not-requested')
+      expect(rows).toEqual([])
+    })
+
+    it('keeps the reset when the row cannot be written', async () => {
+      withTenants(false)
+      const { instance, calls } = server({ auditFails: true })
+      expect(await emergencyMfaReset(instance, { env: env(5), now: NOW })).toBe('reset')
+      expect(calls.user).toEqual(['u-1'])
+    })
   })
 })

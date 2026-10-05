@@ -1389,6 +1389,7 @@ export type AccessEvent =
   | 'account.approved'
   | 'mfa.enrolled'
   | 'mfa.disabled'
+  | 'mfa.emergency_reset'
   | 'step-up.succeeded'
   | 'step-up.failed'
   | 'logout'

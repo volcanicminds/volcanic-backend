@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { FastifyInstance } from 'fastify'
-import type { ControlHandle, DataHandle, DataProvider } from '../../types/global.js'
+import type { AccessLogEntry, AccessLogManagement, ControlHandle, DataHandle, DataProvider } from '../../types/global.js'
 import { isTenancyEnabled } from '../util/tenancy.js'
 
 //
@@ -14,6 +14,12 @@ import { isTenancyEnabled } from '../util/tenancy.js'
 // `user` table of the control container holds nobody who administers anything; without tenants it
 // is a `user` of the control container. Looking in the other table would reset nobody, or someone
 // who shares the address and is not the administrator.
+//
+// A reset, and an address that matches nobody, leave a row in the access log of the control
+// container, `mfa.emergency_reset`, under the scope of the identity looked for: the reset has no
+// actor and no request, so the row is the only trace an auditor reads from the admin. A row that
+// cannot be written does not undo the reset, like every other access (lib/util/accessLog.ts): the
+// process log keeps the line.
 //
 
 /** How far ahead `UNTIL` may be: a reset armed for next week is a door left open. */
@@ -76,16 +82,28 @@ export async function emergencyMfaReset(server: FastifyInstance, options: Emerge
   if (log.w) log.warn(`Startup: executing FORCE MFA RESET for ${platform ? 'platform identity' : 'admin'} ${email}`)
   try {
     const ctx = await provider.control()
+    const audit = managers['accessLogManager'] as AccessLogManagement | undefined
+    const record = async (entry: Omit<AccessLogEntry, 'event' | 'scope' | 'methods'>) => {
+      if (!audit?.isImplemented?.()) return
+      try {
+        await audit.record(ctx as DataHandle, { ...entry, event: 'mfa.emergency_reset', scope: platform ? 'control' : 'tenant', methods: ['totp'] })
+      } catch (error) {
+        if (log.e) log.error(`Startup: MFA reset not written to the access log (${(error as Error)?.message})`)
+      }
+    }
+
     const target = platform
       ? await users.retrieveSystemUserByEmail(ctx as ControlHandle, email)
       : await users.retrieveUserByEmail(ctx as DataHandle, email)
     if (!target?.id) {
       if (log.e) log.error(`Startup: MFA RESET FAILED, no ${platform ? 'platform identity' : 'user'} with address ${email}`)
+      await record({ outcome: 'failure', code: 'NOT_FOUND', subjectId: null })
       return 'not-found'
     }
     if (platform) await users.disableMfa(ctx as ControlHandle, target.id)
     else await users.forceDisableMfa(ctx as DataHandle, target.id)
     if (log.w) log.warn(`Startup: MFA RESET SUCCESSFUL for ${email}`)
+    await record({ outcome: 'success', subjectId: target.externalId ?? null })
     return 'reset'
   } catch (error) {
     if (log.e) log.error(`Startup: MFA RESET FAILED: ${(error as Error)?.message ?? String(error)}`)

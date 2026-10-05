@@ -112,12 +112,15 @@
   - Unlike `tenantManager.switchContext`. Centralize and apply schema sanitization/whitelist everywhere.
   - **Done:** added a `sanitizeSchemaName()` helper in `tenants.ts` with the **same** canonical pattern as `@volcanicminds/typeorm`'s `tenantManager.switchContext` (`replace(/[^a-z0-9_]/gi, '')`); applied in `resolveTargetUser` before the `SET search_path`, with **fail-fast** (`throw 'Invalid target tenant schema'`) if the schema collapses to empty. Added a defense-in-depth guard at the input boundary: `pattern: '^[a-zA-Z0-9_]+$'` on `dbSchema` in `tenantBodySchema`. Verified the other `SET search_path` in BE: either constant (`TO public`) or delegated to the already-safe `tenantManager`. Tests in `test/unit/tenants.ts` (identity on valid names, stripping of injection payloads, nullish input).
 
-- [ ] **S13 — Impersonation: audit not persisted, 24h TTL, no step-up MFA** · `BE`
+- [x] **S13: impersonation audit not persisted, 24h TTL, no step-up MFA** · `BE` ✅ *(2026-10-05)*
   - File: `lib/api/tenants/controller/tenants.ts:141-193`; `index.ts:319-352` (MFA admin reset via env)
   - Persist the audit log; reduce the TTL; consider step-up MFA; mandatory audit on the MFA reset via env.
-  - **Partly done in v5:** the impersonation session is persisted and every request it makes is
-    logged. The step-up is reopened (2026-09-27) as phase 13 (`EVO_FASE_13.md`): the impersonation
-    route asks for a re-authentication younger than five minutes.
+  - **Done in v5:** the impersonation session is persisted and every request it makes is
+    logged; the TTL is 1800 s (`IMPERSONATION_TTL`, `lib/config/general.ts`). The step-up is
+    reopened (2026-09-27) as phase 13 (`EVO_FASE_13.md`): the impersonation route asks for a
+    re-authentication younger than five minutes (`freshAuth` in `lib/api/tenants/routes.ts`).
+    The reset via env writes `mfa.emergency_reset` in the access log of the control container
+    (`lib/loader/mfaReset.ts`), proven in `test/lib/mfaReset.spec.ts` and `test/db/mfaReset.spec.ts`.
 
 - [x] **S14 — Revocation latency: cache on `retrieveUserByExternalId`** · `DB`
   - File: `lib/loader/userManager.ts:208-211` (`cache: global.cacheTimeout`)

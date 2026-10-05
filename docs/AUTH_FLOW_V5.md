@@ -573,9 +573,11 @@ customer's accesses only by impersonating, which leaves its own trace.
 **Events**, a closed list that the manager enforces: `login.succeeded`, `login.failed`,
 `flow.started`, `stage.passed`, `stage.failed`, `challenge.sent`, `challenge.refused`,
 `flow.expired`, `flow.exhausted`, `idp.linked`, `idp.unlinked`, `idp.provisioned`, `idp.rejected`,
-`account.pending`, `account.approved`, `mfa.enrolled`, `mfa.disabled`, `logout`, `session.revoked`,
-`session.reuse_detected`, `tokens.invalidated`, `step-up.succeeded`, `step-up.failed`. A step-up
-writes `step-up.*` where a login would write `login.*`, with the `sid` it confirms. A successful renewal is deliberately not an event:
+`account.pending`, `account.approved`, `mfa.enrolled`, `mfa.disabled`, `mfa.emergency_reset`,
+`logout`, `session.revoked`, `session.reuse_detected`, `tokens.invalidated`, `step-up.succeeded`,
+`step-up.failed`. A step-up writes `step-up.*` where a login would write `login.*`, with the `sid`
+it confirms. `mfa.emergency_reset` is the reset at boot (docs/SECURITY_MFA.md), written without an
+address because no request carries it. A successful renewal is deliberately not an event:
 it happens every hour for every live session, and the session row keeps `last_used_at`.
 
 **Columns**: `id` (UUID v7), `occurred_at`, `scope`, `event`, `outcome` (`success` or `failure`),

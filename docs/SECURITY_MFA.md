@@ -91,6 +91,10 @@ On start, if `UNTIL` is in the future and no more than ten minutes away, the fra
 factor of the identity with that address, looked up where the genesis puts the administrator: with
 a `tenants` block, the **platform identity** (`system_user`) of the control plane; without, the
 **user** of the control container. Further away than ten minutes, the boot stops; in the past, or
-not a date, the variables are ignored. Remove both variables immediately after the recovery. A
+not a date, the variables are ignored. The reset writes an `mfa.emergency_reset` row in the access
+log of the control container, under the scope of the identity it looked for (`control` with
+tenants, `tenant` without): `success` with the subject, or `failure` with `NOT_FOUND` when the
+address matches nobody. A row that cannot be written does not undo the reset; the process log keeps
+the line. Remove both variables immediately after the recovery. A
 tenant's own administrator is not reset this way: another administrator of that tenant resets it
 with `POST /users/:id/mfa/reset`.
