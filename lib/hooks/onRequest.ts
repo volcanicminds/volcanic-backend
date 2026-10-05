@@ -2,7 +2,7 @@
 import { getParams, getData, getQueryData, getBodyData } from '../util/common.js'
 import { httpError } from '../util/httpError.js'
 import type { FastifyContextConfig, FastifyReply, FastifyRequest } from 'fastify'
-import type { AuthenticatedUser, AuthenticatedToken, ControlHandle, Role, TransferManagement } from '../../types/global.js'
+import type { AuthenticatedUser, AuthenticatedToken, ControlHandle, Role } from '../../types/global.js'
 
 /** The claims this framework signs, as opposed to whatever else may verify with the same secret. */
 type SessionClaims = {
@@ -45,25 +45,6 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
   req.queryData = () => getQueryData(req)
   req.bodyData = () => getBodyData(req)
   req.parameters = () => getParams(req)
-
-  if (global.transferPath) {
-    const url = req.url.split('?')[0]
-    const isExact = url === global.transferPath
-    const isSubPath = url.startsWith(global.transferPath + '/')
-
-    if (isExact || isSubPath) {
-      if (req.server['transferManager']) {
-        const tm = req.server['transferManager'] as TransferManagement
-        const isValidTransferRequest = tm.isImplemented() && (await tm.isValid(req))
-
-        if (isValidTransferRequest) {
-          req.roles = () => [roles.public.code]
-          req.hasRole = () => true
-          return
-        }
-      }
-    }
-  }
 
   const { embedded_auth = true } = global.config?.options || {}
 
@@ -254,6 +235,11 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
   }
 }
 
+/** No subject was authenticated on either plane: the request carries only the `public` role. */
+export function isAnonymous(req: FastifyRequest): boolean {
+  return !req.user && !req.token && !req.systemUser
+}
+
 /** The roles, then the freshness a `freshAuth` route asks for (F52): a person who may not act is not asked to prove anything. */
 function finishGates(req: FastifyRequest, reply: FastifyReply, cfg: FastifyContextConfig, claims: SessionClaims | null) {
   const denied = finishRoleGate(req, reply, cfg)
@@ -285,7 +271,7 @@ function finishRoleGate(req: FastifyRequest, reply: FastifyReply, cfg: FastifyCo
   if (!hasPermission) {
     // 401 when there is no authenticated subject (must log in first); 403 when authenticated
     // but lacking the required role.
-    const anonymous = !req.user && !req.token && !req.systemUser
+    const anonymous = isAnonymous(req)
     const who = req.systemUser?.email || req.user?.email || 'anonymous'
     if (log.w) log.warn(`Denied: ${who} cannot call ${method.toUpperCase()} ${url}`)
     return anonymous

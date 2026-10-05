@@ -1445,6 +1445,11 @@ export interface TransferManagement {
   onUploadFinish(callback: TransferCallback): void
   onUploadTerminate(callback: TransferCallback): void
   handle(req: any, res: any): Promise<void>
+  /**
+   * Asked only for a request on the transfer path that authenticated no subject: `true` serves
+   * it anyway (a signed link, say), anything else answers 401. A request with a valid credential
+   * is served without asking.
+   */
   isValid(req: FastifyRequest): Promise<boolean>
 }
 

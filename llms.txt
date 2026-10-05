@@ -3551,8 +3551,10 @@ What changes at runtime (see Part 1.7 for the security rules):
   and inject as `challengeDeliveryManager`; then list `email-otp` in `src/config/authFlows.ts`. The same port
   carries the destruction code of an operator without MFA: compose by `purpose` (`identify`, `verify`,
   `destruction`), and never word a destruction code as a sign-in.
-- **File upload (TUS):** wrap `tools` transfer in a `TransferManagement` adapter and inject as `transferManager`;
-  the core mounts a streaming TUS endpoint at `getPath()`. See Part 1.6 (raw-body/multipart) for related plugins.
+- **File upload (TUS):** inject `TransferManager` from `@volcanicminds/tools/transfer` as `transferManager`;
+  the core mounts a streaming TUS endpoint at `getPath()`. It serves authenticated requests; an anonymous
+  one gets 401 `UNAUTHORIZED` unless `isValid(req)` answers `true` (set with `setAnonymousAccess`, for a
+  signed link). See Part 1.6 (raw-body/multipart) for related plugins.
 - **Mailer / Logger / Storage:** used directly inside your services (no manager needed) — e.g. send the
   forgot-password mail from your `userManager.forgotPassword` implementation. See Part 7.2.
 

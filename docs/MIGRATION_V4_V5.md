@@ -788,3 +788,17 @@ at every renewal: it refuses a removed user (`deletedAt`), or removing a user on
 login and leaves the sessions already open renewing. `blockUserById` and `unblockUserById` answer a
 boolean, not the row as in v4: the route answers `ok` with it and rotates the identifier only on
 `true`. A custom `systemUserManager` returns `deletedAt` on its rows, or never returns a removed one.
+
+## 35. The upload endpoint wants a subject
+
+In v4 the tus route was mounted with no roles, and the role gate lets such a route through: a
+request with no credential at all reached the upload store, unless the application's tus validator
+refused it. `isValid(req) === true` skipped authentication and also answered yes to every
+`hasRole`.
+
+In v5 a request on the transfer path is authenticated like any other. One with a valid credential is
+served; one without, or with a credential that does not verify, answers 401 `UNAUTHORIZED` unless
+`isValid(req)` returns exactly `true`, and then it is served as `public`, with no other role.
+`TransferManager` from `@volcanicminds/tools/transfer` implements `getPath` and `isValid` itself:
+the adapter v4 needed around it goes, and an anonymous upload is opted into with
+`setAnonymousAccess(check)` (docs/MANAGERS_V5.md §8).

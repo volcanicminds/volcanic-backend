@@ -24,6 +24,7 @@ import { assertControlSchemaCurrent } from './lib/loader/schemaVersion.js'
 import * as loaderSchedules from './lib/loader/schedules.js'
 import * as loaderTenant from './lib/loader/tenant.js'
 import { registerTelemetry, startTelemetry } from './lib/loader/telemetry.js'
+import { mountTransfer } from './lib/loader/transfer.js'
 
 import fastify, { FastifyBaseLogger, FastifyInstance, LogController } from 'fastify'
 import jwtValidator from '@fastify/jwt'
@@ -458,44 +459,7 @@ const start = async (decorators: StartOptions = {}) => {
   // Provision/verify the admin apex before serving (single-tenant, data layer present).
   await ensureGenesisAdmin(server)
 
-  if (server['transferManager']) {
-    const tm = server['transferManager'] as TransferManagement
-    let transferPath: string | null = null
-    if (tm?.isImplemented()) {
-      try {
-        transferPath = tm.getPath()
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e)
-        if (log.w) log.error(`Startup: TRANSFER MANAGER FAILED: ${message}`)
-      }
-    } else {
-      if (log.w) log.warn('Transfer Manager 📂 not available')
-    }
-
-    global.transferPath = transferPath
-
-    if (global.transferPath) {
-      if (log.i) log.info(`Transfer Manager 📂 mounted at ${global.transferPath}`)
-
-      // Register TUS route handler logic
-      // Note: We bypass the body parser for this specific path to allow streaming
-      await server.register(
-        async (instance) => {
-          instance.addContentTypeParser('*', (_req, _payload, done) => {
-            done(null)
-          })
-
-          instance.all('*', async (req, reply) => {
-            await tm.handle(req.raw, reply.raw)
-            // We hijack because TUS writes the response directly
-            reply.hijack()
-          })
-        },
-        { prefix: global.transferPath }
-      )
-    }
-  }
-  // ------------------------------------
+  await mountTransfer(server)
 
   // The emergency reset of the administrator's second factor, where the genesis puts the apex:
   // a platform identity with tenants, a user of the control container without (docs/SECURITY_MFA.md).

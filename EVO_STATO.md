@@ -171,7 +171,10 @@ si disiscrive (`EVO_FASE_14.md`, T-14.7). Passo 4 fatto il 5 ottobre, e con lui 
 fase 14: rag T-7.6, i tool `rag_search` e `rag_document` nel subpath `/tools` di rag, serviti su
 `/mcp` in `volcanic-rag-sample`, dove ogni ruolo trova dall'assistente esattamente ciò che trova
 con `/rag/search`. Lo stesso giorno l'audit S13: il reset MFA d'emergenza all'avvio scrive
-`mfa.emergency_reset` nel registro degli accessi (`docs/AUDIT_TASKS_TODO.md`).
+`mfa.emergency_reset` nel registro degli accessi (`docs/AUDIT_TASKS_TODO.md`). Ancora il 5
+ottobre, dalla revisione dei test: la rotta degli upload (tus) serviva anche una richiesta senza
+credenziale; ora risponde 401 `UNAUTHORIZED` salvo `isValid(req) === true`, e il `TransferManager`
+di tools implementa `getPath` e `isValid` da sé (`docs/MIGRATION_V4_V5.md` §35).
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

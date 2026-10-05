@@ -295,8 +295,8 @@ is a different design. Until then, a visible inconsistency beats an invisible on
 
 ## 8. `MfaManagement` and `TransferManagement`
 
-Unchanged from v4 except for being fully `async`. They hold no data handle: `MfaManagement` is
-pure computation, `TransferManagement` owns its own storage.
+They hold no data handle: `MfaManagement` is pure computation, `TransferManagement` owns its own
+storage. Both are fully `async`; `TransferManagement` also changed who reaches the endpoint, below.
 
 ```ts
 export interface MfaManagement {
@@ -304,7 +304,29 @@ export interface MfaManagement {
   /** Returns the matched time-step delta when valid, null when invalid. The delta enables replay rejection. */
   verify(token: string, secret: string): Promise<number | null>
 }
+
+export interface TransferManagement {
+  isImplemented(): boolean
+  /** Where the tus endpoint is mounted, e.g. `/files`. */
+  getPath(): string
+  getServer(): any
+  onUploadCreate(callback: TransferCallback): void
+  onUploadFinish(callback: TransferCallback): void
+  onUploadTerminate(callback: TransferCallback): void
+  handle(req: any, res: any): Promise<void>
+  /** Asked only for a request that authenticated no subject: `true` serves it anyway. */
+  isValid(req: FastifyRequest): Promise<boolean>
+}
 ```
+
+`TransferManager` from `@volcanicminds/tools/transfer` implements it and is injected as it is.
+
+**Who reaches the upload endpoint.** The route is mounted outside the router, so it declares no
+roles of its own; the framework authenticates whoever carries a credential and serves them. A
+request with no credential, or with one that does not verify, is refused with 401 `UNAUTHORIZED`
+unless `isValid(req)` answers exactly `true`, which is how a signed upload link gets through. An
+`isValid` that throws serves nothing. Which authenticated subjects may upload what is the
+application's to decide, in the tus hooks.
 
 ---
 
