@@ -355,6 +355,13 @@ connessione contro cento connessioni.
      stanno su `/token/:id/block` e `/token/:id/unblock` come in `docs/API_V5.md`. Sesto caso nel
      banco, preso da due difetti piantati (solo il nome; senza `deletedAt`). Verde: `check-all`,
      `npm test` con Postgres (973, 1 saltata), banco multi-tenant (31), sample `npm test` (20).
+     Poi, su ok del manutentore (`2162407`): un utente cancellato teneva la sessione e la
+     rinnovava col refresh token, perché `deleteUser` scrive solo `deletedAt` e `isValidUser`
+     guardava email e password; ora lo rifiuta (403 `USER_NOT_VALID` alla richiesta dopo, rinnovo
+     403 con la sessione chiusa). Caso nel banco del rinnovo, preso da due difetti piantati (senza
+     `deletedAt`; rinnovo sempre valido). Verde: `check-all`, `npm test` con Postgres (973, 1
+     saltata), banco multi-tenant (32), build, sample `npm test` (20); Postgres 14 locale usa e
+     getta, perché il disco della VM Docker è pieno e `vm-pg` non parte.
   4. **rag T-7.6** (`volcanic-rag/TASKS.md`). Oggi rag non dipende da tools (`package.json`: solo
      `@volcanicminds/backend`), quindi il passo comincia aggiungendolo; la ricerca diventa un tool di
      `defineTool` e la clearance resta quella dell'API. Il criterio di chiusura è quello di rag: un
