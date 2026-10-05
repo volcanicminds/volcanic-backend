@@ -7,6 +7,7 @@ import { renew as renewSession } from '../../../util/renewal.js'
 import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.js'
 import { absoluteStep } from '../../../util/mfaCounter.js'
 import { recordControlAccess } from '../../../util/accessLog.js'
+import { systemUserMayLogIn } from '../../../auth/subjects.js'
 
 //
 // The account side of the control scope (T-4.1, docs/API_V5.md §5): sessions, renewal and the
@@ -140,7 +141,7 @@ export async function renew(req: FastifyRequest, reply: FastifyReply) {
     claims: (user) => ({ sub: user.externalId, scp: 'control' }),
     loadSubject: async (subjectId: string) => {
       const user = await manager(req).retrieveSystemUserByExternalId(control(req), subjectId)
-      return { subject: user, valid: Boolean(user) && !user?.blocked }
+      return { subject: user, valid: systemUserMayLogIn(user) }
     }
   })
 }

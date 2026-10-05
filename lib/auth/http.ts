@@ -12,7 +12,7 @@ import { recordAccess } from '../util/accessLog.js'
 import { present } from '../api/system/controller/systemAuth.js'
 import * as engine from './engine.js'
 import type { FlowOutcome, FlowPlane } from './engine.js'
-import { mayLogIn, roleCodes, toSubject } from './subjects.js'
+import { mayLogIn, roleCodes, systemUserMayLogIn, toSubject } from './subjects.js'
 import { accountCreationOf } from './accountCreation.js'
 import { PROVIDER_KEY, resolveProvider } from './providers.js'
 import { OIDC } from './validate.js'
@@ -122,7 +122,7 @@ function planeOf(req: FastifyRequest, reply: FastifyReply, plane: AuthPlane): Fl
       policy,
       loadSubject: async (externalId) => {
         const user = await users.retrieveSystemUserByExternalId(control, externalId)
-        return user && !user.blocked ? { record: user, subject: toSubject('control', user) } : null
+        return systemUserMayLogIn(user) ? { record: user, subject: toSubject('control', user) } : null
       },
       issue: async (user, _subject, methods) => {
         // The control plane has its own cookies and its own container, and the token names no tenant.

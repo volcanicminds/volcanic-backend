@@ -19,6 +19,7 @@ import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
 import { credentialOf, isCookieMode, REFRESH_TYP } from '../util/credential.js'
 import { finishFreshness } from '../util/stepUp.js'
 import { withoutQuery } from '../util/logger.js'
+import { systemUserMayLogIn } from '../auth/subjects.js'
 
 /** A refusal the catch below answers as 401, or tolerates on a public route. */
 const refusal = (message: string, authCode: string) => Object.assign(new Error(message), { authCode })
@@ -187,7 +188,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           if (!systemUser) {
             return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
           }
-          if (systemUser.blocked) {
+          if (!systemUserMayLogIn(systemUser)) {
             return reply.status(403).send(httpError(403, 'User is not valid or blocked', 'USER_NOT_VALID'))
           }
 

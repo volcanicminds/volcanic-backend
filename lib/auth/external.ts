@@ -8,7 +8,7 @@ import type {
   ExternalIdentityKey
 } from '../../types/global.js'
 import type { ResolvedProvider } from './providers.js'
-import { mayLogIn, toSubject } from './subjects.js'
+import { mayLogIn, systemUserMayLogIn, toSubject } from './subjects.js'
 
 //
 // Who an identity from a provider is here (F40, T-12.27): the resolution a return from an IdP goes
@@ -56,8 +56,7 @@ const domainOf = (email: string) => email.slice(email.lastIndexOf('@') + 1).toLo
 /** A subject of the plane, when it may log in. */
 async function usable(ctx: AuthContext, row: unknown): Promise<AuthSubject | null> {
   if (!row || typeof row !== 'object') return null
-  const { blocked } = row as { blocked?: unknown }
-  if (ctx.plane === 'control') return blocked ? null : toSubject('control', row)
+  if (ctx.plane === 'control') return systemUserMayLogIn(row) ? toSubject('control', row) : null
   return (await mayLogIn(ctx.managers.userManager, row)) ? toSubject('tenant', row) : null
 }
 

@@ -245,6 +245,11 @@ export interface SystemUserManagement {
 }
 ```
 
+`deleteSystemUser` is a soft delete, like `deleteUser`. The core refuses a row that carries
+`deletedAt` or `blocked` at every door of the control plane (request, renewal, login flow, emailed
+code, identity provider), so a replacement returns `deletedAt` on its rows or never returns a
+removed one.
+
 ---
 
 ## 7. `TrackingManagement` (renamed from `DataBaseManagement`)

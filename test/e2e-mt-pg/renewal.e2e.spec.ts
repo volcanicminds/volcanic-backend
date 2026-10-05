@@ -150,6 +150,46 @@ describe('Renewal across containers on real Postgres (T-11.11)', function () {
     expect((await sessionsIn(ACME.locator)).map((row) => row.revoked_reason)).toContain('subject is no longer valid')
   })
 
+  it('stops a user who unregisters at the next request, with the token already signed', async () => {
+    const admin = (await session(ACME.slug, ACME.adminEmail, ACME.adminPassword)).token
+    const quitter = { email: 'quitter@acme.test', password: 'Quitter-pw-1234' }
+    expect((await inject({ method: 'POST', url: '/users', headers: bearer(admin, ACME.slug), payload: quitter })).statusCode).toBe(200)
+    await sql().query(`update "${ACME.locator}"."user" set confirmed = true where email = $1`, [quitter.email])
+
+    const opened = await session(ACME.slug, quitter.email, quitter.password)
+    const me = () => inject({ method: 'GET', url: '/users/me', headers: bearer(opened.token, ACME.slug) })
+    expect((await me()).statusCode).toBe(200)
+
+    const out = await inject({ method: 'POST', url: '/auth/unregister', headers: bearer(opened.token, ACME.slug), payload: quitter })
+    expect(out.statusCode).toBe(200)
+
+    const after = await me()
+    expect(after.statusCode).toBe(404)
+    expect(body(after).code).toBe('SUBJECT_NOT_FOUND')
+    expect((await renew(ACME.slug, opened.refreshToken)).statusCode).toBe(403)
+  })
+
+  it('stops a removed platform user at the next request, and its session no longer renews', async () => {
+    const operator = { email: 'leaver@system.test', password: 'Leaver-pw-12345', roles: ['system:operator'] }
+    const created = await inject({ method: 'POST', url: '/system/users', headers: bearer(system), payload: operator })
+    expect(created.statusCode).toBe(201)
+
+    const opened = body(
+      await inject({ method: 'POST', url: '/system/auth/flow/start', payload: { method: 'password', email: operator.email, password: operator.password } })
+    )
+    const me = () => inject({ method: 'GET', url: '/system/auth/me', headers: bearer(opened.token) })
+    expect((await me()).statusCode).toBe(200)
+
+    expect((await inject({ method: 'DELETE', url: `/system/users/${body(created).id}`, headers: bearer(system) })).statusCode).toBe(200)
+
+    const after = await me()
+    expect(after.statusCode).toBe(403)
+    expect(body(after).code).toBe('USER_NOT_VALID')
+    const renewed = await inject({ method: 'POST', url: '/system/auth/refresh-token', payload: { refreshToken: opened.refreshToken } })
+    expect(renewed.statusCode).toBe(403)
+    expect((await sessionsIn('public')).map((row) => row.revoked_reason)).toContain('subject is no longer valid')
+  })
+
   it('keeps the platform session in the control plane, renewable there and only there', async () => {
     const res = await inject({
       method: 'POST',

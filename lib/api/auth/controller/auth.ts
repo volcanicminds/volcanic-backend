@@ -161,6 +161,9 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
   if (!blocked) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not valid' })
   }
+  // The request hook does not read `blocked`: without a new identifier every access token already
+  // signed would keep working until its own expiry.
+  await req.server['userManager'].resetExternalId(dataContext(req), user.id)
 
   return { ok: true }
 }

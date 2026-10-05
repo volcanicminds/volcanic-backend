@@ -40,3 +40,11 @@ export async function tenantRefusal(users: UserManagement, user: any): Promise<s
 }
 
 export const mayLogIn = async (users: UserManagement, user: any): Promise<boolean> => (await tenantRefusal(users, user)) === null
+
+/**
+ * Whether a platform user may log in and act: present, not blocked, not removed. A system user has
+ * no confirmation and no approval to wait for, and `deleteSystemUser` only stamps `deletedAt`, so
+ * every door of the control plane asks this one question or a removed administrator keeps its
+ * sessions, its renewals and its emailed codes.
+ */
+export const systemUserMayLogIn = (user: any): boolean => !!user && !user.blocked && !user.deletedAt
