@@ -368,7 +368,14 @@ connessione contro cento connessioni.
      l'hook della richiesta non legge `blocked` e il JWT già firmato valeva fino alla scadenza.
      Due casi nel banco del rinnovo, presi da due difetti piantati (helper senza `deletedAt`;
      `unregister` senza rotazione). Verde: `check-all`, `npm test` con Postgres (973, 1 saltata),
-     banco multi-tenant (34), build, sample `npm test` (20).
+     banco multi-tenant (34), build, sample `npm test` (20). Poi (`e311f5c`): `POST
+     /users/:id/block` rispondeva `{ ok: false }` e non ruotava niente, perché `blockUserById`
+     restituisce un booleano e `resetExternalId` riceveva `true.id`; il token dell'utente bloccato
+     rispondeva ancora 200. Ora ruota con l'id della rotta, e blocco e sblocco rispondono il
+     booleano del manager; il tipo da `Promise<any>` è `Promise<boolean>`, e i doppi del test
+     unitario, che restituivano righe, sono allineati. Caso nel banco e caso unitario, presi dal
+     difetto originale ripiantato. Verde: `check-all`, `npm test` con Postgres (974, 1 saltata),
+     banco multi-tenant (35), build, sample `npm test` (20).
   4. **rag T-7.6** (`volcanic-rag/TASKS.md`). Oggi rag non dipende da tools (`package.json`: solo
      `@volcanicminds/backend`), quindi il passo comincia aggiungendolo; la ricerca diventa un tool di
      `defineTool` e la clearance resta quella dell'API. Il criterio di chiusura è quello di rag: un
