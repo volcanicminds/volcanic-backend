@@ -14,7 +14,7 @@
 // client gets back over HTTP, and what a plain `pg` connection sees in each schema.
 //
 import { expect } from 'expect'
-import { setup, teardown, inject, systemToken, createTenant, sql, ACME, GLOBEX, HEADER } from './harness.js'
+import { setup, teardown, inject, systemToken, createTenant, sql, bearer, ACME, GLOBEX, HEADER } from './harness.js'
 
 const body = (res: any) => JSON.parse(res.body)
 
@@ -127,6 +127,27 @@ describe('Renewal across containers on real Postgres (T-11.11)', function () {
     const res = await renew(ACME.slug, opened.refreshToken)
     expect(res.statusCode).toBe(401)
     expect(body(res).code).toBe('REFRESH_REQUIRED')
+  })
+
+  it('stops a removed user at the next request, and its session no longer renews', async () => {
+    const admin = (await session(ACME.slug, ACME.adminEmail, ACME.adminPassword)).token
+    const leaver = { email: 'leaver@acme.test', password: 'Leaver-pw-12345' }
+    const created = await inject({ method: 'POST', url: '/users', headers: bearer(admin, ACME.slug), payload: leaver })
+    expect(created.statusCode).toBe(200)
+    // An administrator's user starts unconfirmed here: confirmed from outside, as the emailed link would.
+    await sql().query(`update "${ACME.locator}"."user" set confirmed = true where email = $1`, [leaver.email])
+
+    const opened = await session(ACME.slug, leaver.email, leaver.password)
+    const me = () => inject({ method: 'GET', url: '/users/me', headers: bearer(opened.token, ACME.slug) })
+    expect((await me()).statusCode).toBe(200)
+
+    expect((await inject({ method: 'DELETE', url: `/users/${body(created).id}`, headers: bearer(admin, ACME.slug) })).statusCode).toBe(200)
+
+    const after = await me()
+    expect(after.statusCode).toBe(403)
+    expect(body(after).code).toBe('USER_NOT_VALID')
+    expect((await renew(ACME.slug, opened.refreshToken)).statusCode).toBe(403)
+    expect((await sessionsIn(ACME.locator)).map((row) => row.revoked_reason)).toContain('subject is no longer valid')
   })
 
   it('keeps the platform session in the control plane, renewable there and only there', async () => {

@@ -770,3 +770,13 @@ as `exp`, or `null` for a token that never expires.
 **What a custom `tokenManager` has to do.** `isValidToken` is asked at every request and is the
 only check on the row: it refuses a blocked token and a removed one (`deletedAt`), or blocking and
 removing a token change nothing for its bearer. The expiry is the bearer's `exp`, checked by the core.
+
+## 34. A removed user stops at the next request
+
+`DELETE /users/:id` is a soft delete: it stamps `deletedAt` and rotates nothing. The bundled
+`isValidUser` refuses that row, so the user's next request answers 403 `USER_NOT_VALID` and the
+next renewal closes the session with the reason `subject is no longer valid`.
+
+**What a custom `userManager` has to do.** `isValidUser` is asked with the row at every request and
+at every renewal: it refuses a removed user (`deletedAt`), or removing a user only stops the next
+login and leaves the sessions already open renewing.

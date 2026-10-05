@@ -3183,7 +3183,7 @@ behind `/db`:
     isImplemented: () => true,
     async retrieveUserByPassword(ctx: DataHandle, email, password) { /* verify, return user or null */ },
     async retrieveUserByExternalId(ctx: DataHandle, externalId) { return users.get(externalId) ?? null },
-    async isValidUser(user) { return !!user && !user.blocked },
+    async isValidUser(user) { return !!user && !user.blocked && !user.deletedAt },
     async createUser(ctx: DataHandle, data) { /* persist, return user */ }
     // …implement only what the routes you enable call; the rest can throw.
   }

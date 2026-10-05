@@ -136,6 +136,9 @@ export interface UserManagement {
 }
 ```
 
+`isValidUser` is asked with the row at every request and at every renewal of a session: it must
+refuse a removed user (`deletedAt`), or `deleteUser` changes nothing for the sessions already open.
+
 **Changes from v4**: `disableUserById` is removed (it duplicated `blockUserById`);
 `forceDisableMfaForAdmin(email)` becomes `forceDisableMfa(ctx, userId)` (the old name described
 the caller, not the action, and taking an email invited enumeration);

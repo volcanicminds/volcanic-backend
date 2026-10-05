@@ -78,8 +78,10 @@ export function createUserManager(): UserManagement {
   return {
     isImplemented: () => true,
 
-    isValidUser(data: { email?: unknown; password?: unknown } | null | undefined) {
-      return !!data?.email && !!data?.password
+    // Asked at every request and at every renewal (through `mayLogIn`), so a removed user stops at
+    // once: `deleteUser` only stamps `deletedAt`, and nothing else ends the sessions already open.
+    isValidUser(data: { email?: unknown; password?: unknown; deletedAt?: unknown } | null | undefined) {
+      return !!data?.email && !!data?.password && !data.deletedAt
     },
 
     /**
