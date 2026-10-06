@@ -188,8 +188,10 @@ governo, poi in rag T-11.4 e T-11.5. T-15.1 fatto il 6 ottobre: `tenant_id` su o
 solo l'id (F75), provato a runtime su un tenant creato via API. T-15.2 fatto il 6 ottobre: il
 registro di governo (F76), tabella `governance_log` nel piano di controllo, 21 azioni, modifica ed
 evento nella stessa transazione, intento scritto prima di export e distruzione, lettura con la
-capability `governance-log` dell'auditor; provato via HTTP su Postgres reale. Restano in rag T-11.4
-e T-11.5.
+capability `governance-log` dell'auditor; provato via HTTP su Postgres reale. In rag, il 6 ottobre,
+T-11.4 (ramo lessicale: BM25 con `pg_textsearch`, `tsvector` altrove) e T-11.5 (strategia
+`diskann` su pgvectorscale, misurata oltre la RAM: a 250.000 chunk non batte l'HNSW), chiusi in
+`volcanic-rag/TASKS.md`. Fase 15 chiusa.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
