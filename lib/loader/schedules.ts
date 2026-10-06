@@ -7,6 +7,7 @@ import { globSync } from 'glob'
 import path from 'path'
 import require from '../util/require.js'
 import { isTenancyEnabled } from '../util/tenancy.js'
+import { runInTenant } from '../util/requestContext.js'
 
 //
 // Scheduled jobs, and where they run (T-3.4).
@@ -172,7 +173,7 @@ async function inTenant(
   const scope = { requestId: `job:${jobName}:${tenant.id}:${Date.now()}` }
   try {
     const handle = await provider.tenant(tenant, scope)
-    await fn(handle as DataHandle, { jobName, tenant, signal })
+    await runInTenant(tenant.id, () => fn(handle as DataHandle, { jobName, tenant, signal }))
   } finally {
     await provider.releaseRequestScope(scope)
   }

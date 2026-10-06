@@ -8,7 +8,8 @@
 //     inside the request span;
 //   - queries: the data layer, at the driver (lib/database/adapters/postgres/queryTrace.ts);
 //   - outgoing `fetch`: the undici instrumentation, which listens on `diagnostics_channel`;
-//   - trace ids on every log line written inside a span (lib/util/logger.ts).
+//   - trace ids on every log line written inside a span (lib/util/logger.ts);
+//   - the tenant on the spans of a tenant's work (`tenantSpanProcessor`, lib/util/requestContext.ts).
 //
 // An SDK registered earlier with `--import`, for third-party libraries, is used as it is: the
 // framework adds its own instrumentations and leaves the SDK's lifecycle to whoever started it.
@@ -17,6 +18,7 @@
 import { metrics, ProxyTracerProvider, trace, type Attributes, type Span } from '@opentelemetry/api'
 import type { FastifyInstance, FastifyPluginCallback, FastifyRequest } from 'fastify'
 import { withoutQuery } from '../util/logger.js'
+import { currentTenantId, TENANT_ATTRIBUTE } from '../util/requestContext.js'
 import yn from '../util/yn.js'
 
 /** What a deployment installs to turn telemetry on: optional peers, absent by default. */
@@ -104,6 +106,22 @@ function outgoingUrl(request: { origin: string; path: string }): Attributes {
   }
 }
 
+/**
+ * The tenant on every span started while work of a tenant runs (F75): the hooks and the handler
+ * after resolution, the queries, the outgoing calls, the AI calls of tools. Only on an SDK the
+ * framework starts; with one started by `--import`, the request span alone carries it
+ * (`enterTenant`).
+ */
+export const tenantSpanProcessor = {
+  onStart(span: Span): void {
+    const tenantId = currentTenantId()
+    if (tenantId) span.setAttribute(TENANT_ATTRIBUTE, tenantId)
+  },
+  onEnd(): void {},
+  forceFlush: async (): Promise<void> => {},
+  shutdown: async (): Promise<void> => {}
+}
+
 /** Starts telemetry when it is asked for (preload()). A second call does nothing. */
 export async function startTelemetry(): Promise<void> {
   if (running) return
@@ -125,7 +143,18 @@ export async function startTelemetry(): Promise<void> {
   }
 
   const { NodeSDK } = await importPeer('@opentelemetry/sdk-node', () => import('@opentelemetry/sdk-node'))
-  const sdk = new NodeSDK({ instrumentations: [fastify, undici] })
+  // The SDK builds its exporters from `OTEL_TRACES_EXPORTER` only when it is given no processor,
+  // and has no option for one more beside them. The function it calls is reached by its path,
+  // which the peer range pins to one minor. Without exporters, no processor at all, as the SDK
+  // does: a tenant processor alone would record spans that go nowhere. The exporters miss the
+  // SDK's experimental metrics about themselves (`OTEL_NODE_EXPERIMENTAL_SDK_METRICS`): their
+  // meter provider is created inside `start()`.
+  const { getSpanProcessorsFromEnv } = await import('@opentelemetry/sdk-node/build/src/utils.js')
+  const exporting = getSpanProcessorsFromEnv(undefined)
+  const sdk = new NodeSDK({
+    instrumentations: [fastify, undici],
+    spanProcessors: exporting.length ? [tenantSpanProcessor, ...exporting] : []
+  })
   sdk.start()
   running = { fastify, undici, sdk }
   if (log.i)

@@ -11,6 +11,7 @@ import { expect } from 'expect'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { load, runnerFor, start } from '../../lib/loader/schedules.js'
+import { currentTenantId } from '../../lib/util/requestContext.js'
 
 ;(global as any).log = {}
 
@@ -111,6 +112,24 @@ describe('loader/schedules · where a job runs (T-3.4)', () => {
     // Suspended tenants are not part of the fleet a job walks.
     expect(seen.some((s) => s.tenant === 'dormant')).toBe(false)
     expect(server.provider.released.length).toBe(2)
+  })
+
+  it('runs each tenant’s job inside that tenant, so its log lines and spans name it (F75)', async () => {
+    const server = fakeServer()
+    const seen: [string, string | undefined][] = []
+    const fn = async (_ctx: any, run: any) => {
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      seen.push([run.tenant.id, currentTenantId()])
+    }
+    await runnerFor(server, 'sweep', { scope: 'every-tenant', concurrency: 2 } as any, fn, never)()
+    expect(seen.sort()).toEqual([
+      ['id-acme', 'id-acme'],
+      ['id-globex', 'id-globex']
+    ])
+
+    const control: (string | undefined)[] = []
+    await runnerFor(server, 'nightly', {} as any, async () => void control.push(currentTenantId()), never)()
+    expect(control).toEqual([undefined])
   })
 
   it('does not let one tenant cancel the others, and reports them all', async () => {

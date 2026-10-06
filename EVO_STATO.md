@@ -182,6 +182,12 @@ ottobre, le prestazioni dell'HTTP: `npm run test:budget` conta gli statement per
 solo come prova di funzionamento (`docs/TUNING.md`, `docs/TESTING_V5.md` §1). Vettori, ricerca e
 ingestion restano in rag a T-11.3, T-11.6 e da T-8.2 a T-8.4.
 
+**Fase 15 aperta il 6 ottobre 2026** (`EVO_FASE_15.md`): il tenant nella telemetria, il registro di
+governo, poi in rag T-11.4 e T-11.5. T-15.1 fatto il 6 ottobre: `tenant_id` su ogni riga di log e
+`tenant.id` su ogni span del lavoro di un tenant, richiesta dopo la risoluzione o job di un tenant,
+solo l'id (F75), provato a runtime su un tenant creato via API. T-15.2, il registro di governo
+(F76), da fare.
+
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
 `ERR_HTTP_HEADERS_SENT` del sample è chiuso (26 settembre 2026, tabella «Fuori piano»). Restano

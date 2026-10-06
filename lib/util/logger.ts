@@ -12,6 +12,7 @@
 
 import { isSpanContextValid, trace } from '@opentelemetry/api'
 import pino, { type DestinationStream, type LoggerOptions } from 'pino'
+import { tenantFields } from './requestContext.js'
 import yn from './yn.js'
 
 // `silent` is pino's own level for "nothing". The framework's own e2e script sets it.
@@ -122,7 +123,7 @@ export function createLogger(destination?: DestinationStream) {
     redact: { paths: REDACTED_PATHS, censor: '[redacted]' },
     // Listing serializers replaces pino's defaults, so `err` is named again.
     serializers: { err: pino.stdSerializers.err, req: serializeRequest },
-    mixin: traceFields
+    mixin: () => ({ ...traceFields(), ...tenantFields() })
   }
   if (format === 'pretty') {
     options.transport = {

@@ -7,6 +7,7 @@ import { credentialOf, REFRESH_TYP } from '../util/credential.js'
 import { parseFlowState } from '../util/flowCredential.js'
 import { httpError } from '../util/httpError.js'
 import { withoutQuery } from '../util/logger.js'
+import { enterTenant, registerRequestContext } from '../util/requestContext.js'
 
 //
 // The data context of a request: what it gets, and where it gives it back.
@@ -51,6 +52,9 @@ async function release(req: FastifyRequest, error?: Error): Promise<void> {
 }
 
 export async function apply(server: FastifyInstance) {
+  // First, so that the hooks below, the release included, log and trace inside it.
+  if (isTenancyEnabled()) registerRequestContext(server)
+
   // The provider is looked up per request, not here: the data layer is decorated onto the
   // server AFTER the routes are loaded (index.ts), so reading it now would capture nothing
   // and silently leave every request without a control plane.
@@ -171,6 +175,7 @@ export async function apply(server: FastifyInstance) {
     }
 
     req.tenantInfo = tenant
+    enterTenant(req, tenant.id)
     await openTenantContext(req, tenant)
   })
 }

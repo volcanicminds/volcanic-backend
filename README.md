@@ -733,6 +733,8 @@ Other settings:
 
 Before a line is written, pino replaces with `[redacted]` the credentials the framework's routes carry, at the top of a logged object and one level down (`password`, `token`, `refreshToken`, `secret`, `clientSecret`, `otp`, `authorization`, `cookie` and a few more; the list is `REDACTED_PATHS` in [logger.ts](./lib/util/logger.ts)). A logged request keeps its path and loses its query string, where a provider sends back its authorization code. Redaction cannot reach inside a message that is already a string, so a log line of your own that names a URL should leave its query string out, as the framework's own lines do.
 
+In a deployment with tenants, a line written during a tenant's work carries `tenant_id`, the tenant's id: a request from the moment its tenant is resolved, and a job with `scope: 'tenant'` or `'every-tenant'`. The id and never the slug, which often names a customer, and with or without tracing.
+
 ## Tracing and metrics (OpenTelemetry)
 
 Off unless the deployment asks for it with the standard `OTEL_*` variables: an OTLP endpoint (`OTEL_EXPORTER_OTLP_ENDPOINT`, or the one for traces or metrics), or an `OTEL_TRACES_EXPORTER` or `OTEL_METRICS_EXPORTER` other than `none`. `OTEL_SDK_DISABLED=true` turns it off again. It needs three optional peers, and a deployment that asks for telemetry without them refuses to boot, naming what to install:
@@ -747,13 +749,14 @@ npm install @opentelemetry/sdk-node @fastify/otel @opentelemetry/instrumentation
 - one span per statement the data layer sends, on Postgres and on PGlite, under the span that issued it, with the SQL text and every literal replaced by `?`;
 - one span per outgoing `fetch`;
 - the `http.server.request.duration` histogram, by method, route and status;
-- `trace_id` and `span_id` on every log line written inside a span.
+- `trace_id` and `span_id` on every log line written inside a span;
+- `tenant.id` on the request span and on every span a tenant's work starts: the hooks after resolution, the handler, its queries, its outgoing calls and AI calls, a tenant's job. Not on the metrics, where one series per tenant would multiply them.
 
 No span and no log line carries the query string of a URL, incoming or outgoing: a provider sends back its authorization code there, and many APIs take their key there. `server.close()` flushes what is still buffered.
 
 The AI calls made through `@volcanicminds/tools/ai` (models, agents, embeddings) land in the same SDK when the application installs `@ai-sdk/otel`: one span per agent run, per step and per model call, with the agent's name. Prompts, responses and embedded texts stay out unless `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`; `AI_TELEMETRY=false` turns these spans off. The details are in the tools README.
 
-An SDK started earlier with `--import`, to instrument other libraries, is used as it is: the framework adds its own instrumentations and leaves that SDK's lifecycle to whoever started it. That SDK must not instrument Fastify or undici as well, or their spans come twice.
+An SDK started earlier with `--import`, to instrument other libraries, is used as it is: the framework adds its own instrumentations and leaves that SDK's lifecycle to whoever started it. That SDK must not instrument Fastify or undici as well, or their spans come twice. On such an SDK only the request span carries `tenant.id`: the other spans get it from a span processor, and a processor can be added only to an SDK the framework builds.
 
 ## Tokens and secrets
 
