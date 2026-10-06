@@ -23,6 +23,7 @@ import * as tenantSchemas from '../../lib/schemas/tenant.js'
 import { globalParamsSchema } from '../../lib/schemas/global.js'
 import { defaultResponse } from '../../lib/schemas/common.js'
 import * as identityProviders from '../../lib/api/tenants/controller/identityProviders.js'
+import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 const bag = globalThis as any
 bag.log = {}
@@ -201,6 +202,7 @@ describe('tenants · identity provider routes (T-12.26)', () => {
       getTenant: async (_c: any, id: string) => (id === ACME.id || id === ACME.slug ? ACME : null)
     })
     server.decorate('identityProviderManager', manager)
+    server.decorate('governanceLogManager', fakeGovernanceLog())
     server.addHook('onRequest', async (req: any) => {
       req.control = { kind: 'control' }
     })

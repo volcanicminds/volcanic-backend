@@ -14,7 +14,8 @@ import {
   SettingManagement,
   IdentityProviderManagement,
   ChallengeDeliveryManagement,
-  AccessLogManagement
+  AccessLogManagement,
+  GovernanceLogManagement
 } from '../../types/global.js'
 
 //
@@ -111,6 +112,8 @@ const SETTING_METHODS = ['get', 'set', 'remove'] as const
 
 const ACCESS_LOG_METHODS = ['record', 'findQuery', 'countQuery', 'purgeBefore', 'purgeExpired'] as const
 
+const GOVERNANCE_LOG_METHODS = ['record', 'within', 'findQuery', 'countQuery'] as const
+
 const TRANSFER_METHODS = [
   'getPath', 'getServer', 'onUploadCreate', 'onUploadFinish', 'onUploadTerminate', 'handle', 'isValid'
 ] as const
@@ -150,6 +153,12 @@ export const defaultChallengeDeliveryManager = notImplemented<ChallengeDeliveryM
 )
 // Asked with isImplemented() before every write: without it an access is written to the process log only.
 export const defaultAccessLogManager = notImplemented<AccessLogManagement>('accessLogManager', ACCESS_LOG_METHODS)
+// Unlike the access log, never skipped: without it every governance write answers 503, because a
+// change to the registry nobody can account for is the thing the log exists to rule out (F76).
+export const defaultGovernanceLogManager = notImplemented<GovernanceLogManagement>(
+  'governanceLogManager',
+  GOVERNANCE_LOG_METHODS
+)
 // Without a settings store every rule of F49 falls back to the deployment's own values: nothing
 // a tenant or an operator chose at runtime can be read, and nothing can be written.
 export const defaultSettingManager = notImplemented<SettingManagement>('settingManager', SETTING_METHODS)

@@ -48,7 +48,7 @@
   assente sulla lettura del registro e sugli hook di prima; `tenant_id` sulle righe del gestore e
   su `request completed`, assente su `incoming request`. `npm test` 887 prove, 30 saltate senza
   `DATABASE_URL`; `npm run check-all` verde.
-- [ ] **T-15.2** Il registro di governo (F76). Tabella `governance_log` nell'insieme `control`
+- [x] **T-15.2** Il registro di governo (F76). Tabella `governance_log` nell'insieme `control`
   (migrazione generata da drizzle-kit), porta con default Null Object e manager cablato da
   `startDataLayer()`; eventi su tenant (creazione, modifica, sospensione, ripristino,
   cancellazione, richiesta di distruzione, distruzione, export), impersonazione (inizio, fine),
@@ -58,8 +58,30 @@
   una scrittura dell'evento che fallisce annulla la modifica al registro, un export o una
   distruzione senza intento scritto non parte, la riga resta dopo la distruzione del tenant, e
   un auditor la legge mentre un operatore senza capability riceve 403.
+  Fatto: migrazione `0006_governance_log_control`, `lib/database/managers/governanceLog.ts`
+  (21 azioni a catalogo chiuso, IP troncato come nell'access log, nessuna FK, nessuna pulizia),
+  `lib/util/governance.ts` (`governed` per modifica ed evento nella stessa transazione, `intend`
+  e `settle` per export e distruzione), 503 `GOVERNANCE_LOG_NOT_AVAILABLE` senza manager,
+  `GET /system/governance-log` e `/count` con la capability `governance-log` data a
+  `system:auditor`. Evidenza: `test/lib/governanceLog.spec.ts` (8 prove),
+  `test/db/governanceLog.spec.ts` (8, su PGlite e su Postgres), nuove prove in
+  `tenantProvisioning.spec.ts` e `destruction.spec.ts`, `test/e2e-mt-pg/governanceLog.e2e.spec.ts`
+  (4, via HTTP su Postgres 14 usa e getta: tutte e 21 le azioni lasciano la riga, export con
+  intento e poi successo, schema del tenant distrutto e righe rimaste, auditor 200 e operatore
+  403). Sei difetti piantati, uno alla volta, ciascuno fa cadere almeno una prova: `within` senza
+  transazione, `intend` che inghiotte l'errore, l'evento che sovrascrive attore e IP della
+  richiesta, `suspend` senza evento, auditor senza capability, rotta senza `requireCapability`.
+  `npm test` con `DATABASE_URL` 1031 prove, 1 saltata (`pg_dump` più vecchio del server,
+  ambientale); `test:e2e:mt:pg` 39; `npm run coverage` sopra i pavimenti; `npm run check-all`
+  verde. L'e2e ha girato sul database `postgres` del cluster usa e getta, non su un database
+  dedicato.
 
 ## 3. Segnalato, non toccato
+
+Il reset MFA d'emergenza all'avvio (`lib/loader/mfaReset.ts`) scrive solo nell'access log, non in
+`governance_log`: non passa da una rotta e non ha un operatore. Il 409 della distruzione con
+export fallito riporta ancora il messaggio d'errore dell'export, che può citare la stringa di
+connessione; la riga di governo tiene solo il codice.
 
 `docs/_BRAINSTORMING_STACK.md`, non tracciato, è superato in più punti; è la fonte delle due
 richieste di questa fase. `EVO_STATO.md` cita T-11.3 di rag fra i compiti aperti, mentre è chiuso

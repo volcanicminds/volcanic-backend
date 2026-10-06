@@ -72,7 +72,7 @@ their code or capabilities):
 |---|---|---|
 | `system:admin` | superuser of the control scope. Appended to every control route, exactly as `admin` is appended in the tenant scope | all, implicitly |
 | `system:operator` | day-to-day operations: read the registry, create and suspend tenants, impersonate, open the platform console | `tenants`, `tenants:read`, `tenants:impersonate`, `manifest` |
-| `system:auditor` | read-only oversight | `tenants:read`, `manifest`, `access-log` |
+| `system:auditor` | read-only oversight | `tenants:read`, `manifest`, `access-log`, `governance-log` |
 
 A consumer may define further control roles in its own configuration and grant them capabilities
 from the control catalogue. It cannot invent a capability the framework does not honour on a
@@ -103,6 +103,7 @@ The control catalogue is **new and reserved**:
 | `manifest` | read the platform console manifest | `GET /system/manifest` |
 | `system-users` | manage platform identities | `/system/users/*` |
 | `access-log` | read the operators' access log, never a tenant's | `GET /system/access-log`, `GET /system/access-log/count` |
+| `governance-log` | read what the operators did to the platform | `GET /system/governance-log`, `GET /system/governance-log/count` |
 
 `tenants:destroy` is deliberately **not** part of `tenants`: creating a tenant and destroying its
 data are not the same job, and an operator who can do the first must not automatically do the

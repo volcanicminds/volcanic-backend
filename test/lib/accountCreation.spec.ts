@@ -23,6 +23,7 @@ import * as tenantSettings from '../../lib/api/settings/controller/settings.js'
 import { update as updateTenant } from '../../lib/api/tenants/controller/tenants.js'
 import { approve } from '../../lib/api/users/controller/user.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../lib/config/constants.js'
+import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 const bag = globalThis as any
 bag.log = {}
@@ -72,7 +73,7 @@ function fakeRequest(input: { data?: any; params?: any; server?: any; tenantInfo
     tenantInfo: input.tenantInfo ?? null,
     user: input.user,
     systemUser: { externalId: 'op-1' },
-    server: input.server ?? {}
+    server: { governanceLogManager: fakeGovernanceLog(), ...input.server }
   } as any
 }
 

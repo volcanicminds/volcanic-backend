@@ -14,6 +14,7 @@ import { getData, getParams } from '../../lib/util/common.js'
 import { buildAuthenticatorRegistry, createAuthenticatorRegistry } from '../../lib/auth/registry.js'
 import { passwordAuthenticator } from '../../lib/auth/builtins.js'
 import { tenantBodySchema } from '../../lib/schemas/tenant.js'
+import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 ;(global as any).log = {}
 
@@ -24,7 +25,12 @@ async function build(over: any = {}) {
 
   const created: any[] = []
 
+  const started: string[] = []
+  const governance = fakeGovernanceLog()
+
   const server: any = fastify()
+  // A build without one: what a consumer gets by passing no governance log manager.
+  if (over.governance !== false) server.decorate('governanceLogManager', governance)
   server.decorate('tenantManager', {
     isImplemented: () => true,
     getTenant: async (_c: any, id: string) => (id === ACME.id ? ACME : null),
@@ -43,11 +49,13 @@ async function build(over: any = {}) {
   if (over.registry) server.decorate('authRegistry', over.registry)
   server.decorate('migrations', { apply: async () => '0001_init', version: async () => '0001_init' })
   server.decorate('provider', {
-    createContainer: async () => {},
+    createContainer: async (tenant: any) => void started.push(`create ${tenant.locator}`),
     dropContainer: async () => {},
     forLocator: async () => ({ kind: 'tenant' }),
     // A data layer that cannot export: one injected without `exportContainer`.
-    ...(over.canExport === false ? {} : { exportContainer: async () => ({ path: '/tmp/acme.sql', bytes: 2048 }) })
+    ...(over.canExport === false
+      ? {}
+      : { exportContainer: async () => (started.push('export'), { path: '/tmp/acme.sql', bytes: 2048 }) })
   })
 
   server.addHook('onRequest', async (req: any) => {
@@ -65,7 +73,7 @@ async function build(over: any = {}) {
   server.post('/tenants/:id/export', { config: { tenantContext: false } }, exportContainer)
 
   await server.ready()
-  return { server, created }
+  return { server, created, started, governance }
 }
 
 const provision = (server: any, payload: any) => server.inject({ method: 'POST', url: '/tenants', payload })
@@ -92,6 +100,53 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     // Refusing and adjusting look the same from a happy path and differ exactly where D-20
     // lived: adjusting writes one name and uses another.
     expect(created.length).toBe(0)
+    await server.close()
+  })
+
+  it('provisions nothing and exports nothing without a governance log (F76)', async () => {
+    const { server, created, started } = await build({ governance: false })
+    const res = await provision(server, {
+      slug: 'acme',
+      name: 'Acme',
+      locator: 'tenant_acme',
+      admin: { email: 'admin@acme.test', password: 'Str0ng-passw0rd!' }
+    })
+    expect(res.statusCode).toBe(503)
+    expect(JSON.parse(res.body).code).toBe('GOVERNANCE_LOG_NOT_AVAILABLE')
+
+    const exported = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    expect(exported.statusCode).toBe(503)
+    expect(JSON.parse(exported.body).code).toBe('GOVERNANCE_LOG_NOT_AVAILABLE')
+
+    // Refused before the container: a container no row records is one nobody can account for.
+    expect(created).toEqual([])
+    expect(started).toEqual([])
+    await server.close()
+  })
+
+  it('records the export as an intent before it starts, and its outcome after', async () => {
+    const { server, started, governance } = await build()
+    const order: string[] = []
+    const record = governance.record.bind(governance)
+    governance.record = async (ctx, entry) => (order.push(`${entry.action} ${entry.outcome}`), record(ctx, entry))
+    const before = started.length
+
+    expect((await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })).statusCode).toBe(200)
+    expect(started.slice(before)).toEqual(['export'])
+    expect(order).toEqual(['tenant.exported intent', 'tenant.exported success'])
+    const [intent, success] = governance.rows
+    expect(success).toMatchObject({ intentId: intent.id, tenantId: ACME.id, actorId: 'sys-1', detail: { path: '/tmp/acme.sql', bytes: 2048 } })
+    await server.close()
+  })
+
+  it('does not start an export whose intent cannot be written', async () => {
+    const { server, started, governance } = await build()
+    governance.record = async () => {
+      throw new Error('the control plane is gone')
+    }
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    expect(res.statusCode).toBe(500)
+    expect(started).toEqual([])
     await server.close()
   })
 

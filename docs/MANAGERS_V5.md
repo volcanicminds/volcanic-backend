@@ -719,3 +719,29 @@ The core asks `isImplemented()` before writing, and a failed write is logged and
 request it describes. Without tenants both planes write into one container, which is why `scope` is
 a parameter of every read rather than a filter the caller may forget. **Without this manager** the
 accesses reach the process log only, and `/access-log` answers 404.
+
+## 18. `GovernanceLogManagement` (new in v5, phase 15)
+
+What the operators did to the platform (docs/SCHEMA_V5.md §3.6, docs/API_V5.md §5.1). Control
+plane only, and read only where the routes it governs exist, which is with tenants.
+
+```typescript
+interface GovernanceLogManagement {
+  isImplemented(): boolean
+  /** Refuses an action or an outcome outside the vocabulary; truncates the IP like the access log. */
+  record(ctx: ControlHandle, entry: GovernanceLogEntry): Promise<GovernanceLogRecord>
+  /** Runs `change` in one control-plane transaction; the events written through `tx` commit with it. */
+  within<T>(ctx: ControlHandle, change: (tx: ControlHandle) => Promise<T>): Promise<T>
+  findQuery(ctx: ControlHandle, query: VQuery): Promise<VFindResult<GovernanceLogRecord>>
+  countQuery(ctx: ControlHandle, query: VQuery): Promise<number>
+}
+```
+
+The opposite of the access log: a write that fails is not logged and forgotten, it fails the change.
+The core runs every change of the registry through `within` and records the event with the same
+`tx`; every call inside goes through `tx`, because on PGlite a call on the outer handle waits for the
+transaction that waits for it. An export or a destruction records its intent with `record` before it
+starts and its outcome after. `record` refuses an unknown action with
+`GOVERNANCE_ACTION_UNKNOWN` and a malformed entry with `GOVERNANCE_LOG_ENTRY_INVALID`. **Without
+this manager** a build with tenants refuses every governed route with 503
+`GOVERNANCE_LOG_NOT_AVAILABLE`, and `/system/governance-log` answers 404.

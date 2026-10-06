@@ -185,8 +185,11 @@ ingestion restano in rag a T-11.3, T-11.6 e da T-8.2 a T-8.4.
 **Fase 15 aperta il 6 ottobre 2026** (`EVO_FASE_15.md`): il tenant nella telemetria, il registro di
 governo, poi in rag T-11.4 e T-11.5. T-15.1 fatto il 6 ottobre: `tenant_id` su ogni riga di log e
 `tenant.id` su ogni span del lavoro di un tenant, richiesta dopo la risoluzione o job di un tenant,
-solo l'id (F75), provato a runtime su un tenant creato via API. T-15.2, il registro di governo
-(F76), da fare.
+solo l'id (F75), provato a runtime su un tenant creato via API. T-15.2 fatto il 6 ottobre: il
+registro di governo (F76), tabella `governance_log` nel piano di controllo, 21 azioni, modifica ed
+evento nella stessa transazione, intento scritto prima di export e distruzione, lettura con la
+capability `governance-log` dell'auditor; provato via HTTP su Postgres reale. Restano in rag T-11.4
+e T-11.5.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

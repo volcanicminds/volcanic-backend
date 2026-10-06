@@ -13,6 +13,7 @@ import { destructionRequest, destroyData, restore } from '../../lib/api/tenants/
 import { hashToken } from '../../lib/database/managers/destruction.js'
 import { challengeMac } from '../../lib/database/managers/authFlow.js'
 import { getData, getParams } from '../../lib/util/common.js'
+import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 ;(global as any).log = {}
 
@@ -40,6 +41,7 @@ function fakes(over: any = {}) {
     idps,
     deliveries,
     marked,
+    governanceLogManager: fakeGovernanceLog(),
     destructionManager: {
       isImplemented: () => true,
       openRequest: async (_c: any, data: any) => {
@@ -435,6 +437,48 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     // No export, no destruction. Decision 2 of EVO_PUNTI_APERTI.
     expect(dropped).toEqual([])
     expect(steps).toEqual([])
+    await server.close()
+  })
+
+  it('does not export nor drop anything when the intent cannot be written (F76)', async () => {
+    const { server, token, exported, dropped, steps, governanceLogManager } = await open()
+    governanceLogManager.record = async () => {
+      throw new Error('the control plane is gone')
+    }
+    const res = await destroy(server, { token, slug: 'acme', otp: '123456' })
+
+    expect(res.statusCode).toBe(500)
+    expect(exported).toEqual([])
+    expect(dropped).toEqual([])
+    expect(steps).toEqual([])
+    await server.close()
+  })
+
+  it('closes the intent with the failure when the export fails, naming no message', async () => {
+    const { server, token, governanceLogManager } = await open({ exportFails: true })
+    expect((await destroy(server, { token, slug: 'acme', otp: '123456' })).statusCode).toBe(409)
+
+    const rows = governanceLogManager.rows.filter((r) => r.action === 'tenant.destroyed')
+    expect(rows.map((r) => r.outcome)).toEqual(['intent', 'failure'])
+    expect(rows[1]).toMatchObject({ intentId: rows[0].id, tenantId: ACME.id, detail: { reason: 'DESTRUCTION_EXPORT_FAILED' } })
+    // The tool's message may carry a connection string: the row keeps a code.
+    expect(JSON.stringify(rows)).not.toContain('pg_dump')
+    await server.close()
+  })
+
+  it('closes the intent with the success, carrying the request and the export', async () => {
+    const { server, token, governanceLogManager } = await open()
+    expect((await destroy(server, { token, slug: 'acme', otp: '123456' })).statusCode).toBe(200)
+
+    const [requested, intent, success] = governanceLogManager.rows
+    expect(requested).toMatchObject({ action: 'tenant.destruction_requested', outcome: 'success', detail: { factor: 'totp' } })
+    expect(intent).toMatchObject({ action: 'tenant.destroyed', outcome: 'intent', detail: { requestId: requested.detail?.requestId } })
+    expect(success).toMatchObject({
+      action: 'tenant.destroyed',
+      outcome: 'success',
+      intentId: intent.id,
+      detail: { requestId: requested.detail?.requestId, exportRef: '/tmp/acme-0001_init.sql', identityProviders: 2 }
+    })
     await server.close()
   })
 

@@ -81,7 +81,8 @@ async function seedWidget(schema: string, tag: string) {
   await db.query(`insert into "${schema}".widget (tag) values ($1)`, [tag])
 }
 
-export async function setup() {
+/** `extra`: what a consumer wires next to the data layer, a `challengeDeliveryManager` for one. */
+export async function setup(extra: Record<string, unknown> = {}) {
   if (server) return server
 
   await resetDatabase()
@@ -133,7 +134,7 @@ export async function setup() {
   // created them on boot from its entity metadata is exactly what v5 removed.
   await managers.migrations.apply({ locator: 'public' })
 
-  server = await startServer(managers)
+  server = await startServer({ ...managers, ...extra })
   await server.ready()
 
   await seedWidget('public', CONTROL_TAG)

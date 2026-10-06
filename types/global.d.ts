@@ -74,6 +74,7 @@ export type SystemCapability =
   | 'manifest'
   | 'system-users'
   | 'access-log'
+  | 'governance-log'
 
 export interface SystemRole {
   /** Always namespaced: the prefix is what keeps the two catalogues from ever merging. */
@@ -1434,6 +1435,75 @@ export interface AccessLogManagement {
   purgeExpired(ctx: DataHandle, now?: Date): Promise<number>
 }
 
+/** The closed vocabulary of the governance log (F76): what an operator did to the platform. */
+export type GovernanceAction =
+  | 'tenant.created'
+  | 'tenant.updated'
+  | 'tenant.suspended'
+  | 'tenant.restored'
+  | 'tenant.deleted'
+  | 'tenant.exported'
+  | 'tenant.destruction_requested'
+  | 'tenant.destroyed'
+  | 'impersonation.started'
+  | 'impersonation.ended'
+  | 'system_user.created'
+  | 'system_user.updated'
+  | 'system_user.deleted'
+  | 'system_user.blocked'
+  | 'system_user.unblocked'
+  | 'system_user.mfa_reset'
+  | 'identity_provider.created'
+  | 'identity_provider.updated'
+  | 'identity_provider.deleted'
+  | 'account_creation.changed'
+  | 'account_creation.reset'
+
+/**
+ * `success` for a change written in the same transaction as its event. An effect no transaction
+ * reaches (an export, the drop of a container) writes an `intent` first, and then its `success`
+ * or `failure` with `intentId`: an intent with no outcome is an effect that may have happened.
+ */
+export type GovernanceOutcome = 'success' | 'intent' | 'failure'
+
+/** One governance event, as written. Never the value of a secret, a token or a configuration. */
+export interface GovernanceLogEntry {
+  action: GovernanceAction
+  outcome: GovernanceOutcome
+  /** The intent an outcome closes. */
+  intentId?: string | null
+  /** The operator's `id`: the `externalId` is rotated by a revocation, the `id` never changes. */
+  actorId?: string | null
+  tenantId?: string | null
+  /** What the action was done to, when it is not the tenant: an operator, a provider key, a user. */
+  targetId?: string | null
+  /** Field names, counts, references, a stated reason. */
+  detail?: Record<string, unknown> | null
+  requestId?: string | null
+  /** Truncated by the manager (/24, /48), or dropped with `ACCESS_LOG_IP=none`, as in the access log. */
+  ip?: string | null
+}
+
+export interface GovernanceLogRecord extends GovernanceLogEntry {
+  id: string
+  occurredAt: Date | string
+}
+
+export interface GovernanceLogManagement {
+  isImplemented(): boolean
+  /** Refuses an action or an outcome outside the vocabulary. */
+  record(ctx: ControlHandle, entry: GovernanceLogEntry): Promise<GovernanceLogRecord>
+  /**
+   * Runs `change` in one control-plane transaction and hands it a handle bound to it: what is
+   * written through that handle, the events included, commits together or not at all. Every
+   * call inside goes through `tx`; on PGlite a call on the outer handle waits for the transaction
+   * that waits for it.
+   */
+  within<T>(ctx: ControlHandle, change: (tx: ControlHandle) => Promise<T>): Promise<T>
+  findQuery(ctx: ControlHandle, query: VQuery): Promise<VFindResult<GovernanceLogRecord>>
+  countQuery(ctx: ControlHandle, query: VQuery): Promise<number>
+}
+
 // Callback type signature: (uploadOrId, req, res) => void
 export type TransferCallback = (data: any, req: any, res: any) => void
 
@@ -1626,6 +1696,7 @@ declare module 'fastify' {
     identityProviderManager: IdentityProviderManagement
     challengeDeliveryManager: ChallengeDeliveryManagement
     accessLogManager: AccessLogManagement
+    governanceLogManager: GovernanceLogManagement
     settingManager: SettingManagement
     /** Not a manager: the authenticators of both planes, built by `start()` (T-12.3). */
     authRegistry: AuthenticatorRegistry

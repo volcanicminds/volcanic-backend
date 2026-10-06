@@ -2020,7 +2020,9 @@ need a complete session; `enable` issues no session.
   counts (`idp-mfa`) only where the provider is declared trusted for it.
 
 Every step writes the **access log** (`access_log` table, one per container): `GET /access-log` for the tenant's
-`admin`, `GET /system/access-log` with the `access-log` capability.
+`admin`, `GET /system/access-log` with the `access-log` capability. What the operators change on the platform
+goes to the **governance log** (`governance_log`, control plane only, never purged), read at
+`GET /system/governance-log` with the `governance-log` capability; a change it cannot record is not made.
 
 ### Adapter Implementation (`src/services/mfa.adapter.ts`)
 
@@ -3089,12 +3091,13 @@ await start() // 100% valid: the server boots. Public routes work. Any route tha
 The decorator keys (all optional): `userManager`, `tokenManager`, `trackingManager`, `mfaManager`,
 `transferManager`, `tenantManager`, `systemUserManager`, `impersonationManager`,
 `destructionManager`, `sessionManager`, `authFlowManager`, `externalIdentityManager`,
-`identityProviderManager`, `challengeDeliveryManager`, `accessLogManager`, `settingManager`. Each maps 1:1
-to an exported interface (`UserManagement`, `TokenManagement`, `TrackingManagement`, `MfaManagement`,
-`TransferManagement`, `TenantManagement`, `SystemUserManagement`, `ImpersonationManagement`,
-`DestructionManagement`, `SessionManagement`, `AuthFlowManagement`, `ExternalIdentityManagement`,
-`IdentityProviderManagement`, `ChallengeDeliveryManagement`, `AccessLogManagement`,
-`SettingManagement`, all re-exported from `@volcanicminds/backend`). The data layer's `start()` returns all
+`identityProviderManager`, `challengeDeliveryManager`, `accessLogManager`, `governanceLogManager`,
+`settingManager`. Each maps 1:1 to an exported interface (`UserManagement`, `TokenManagement`,
+`TrackingManagement`, `MfaManagement`, `TransferManagement`, `TenantManagement`, `SystemUserManagement`,
+`ImpersonationManagement`, `DestructionManagement`, `SessionManagement`, `AuthFlowManagement`,
+`ExternalIdentityManagement`, `IdentityProviderManagement`, `ChallengeDeliveryManagement`,
+`AccessLogManagement`, `GovernanceLogManagement`, `SettingManagement`, all re-exported from
+`@volcanicminds/backend`). The data layer's `start()` returns all
 of them except `mfaManager`, `transferManager` and `challengeDeliveryManager`, which come from the consumer.
 One more key is not a manager: `authenticators`, the project's own login methods (Part 6.2). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
 resolve a consumer entity by name through `global.entity`, and neither is a thing v5 does.

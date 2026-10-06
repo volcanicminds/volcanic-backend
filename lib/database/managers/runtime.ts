@@ -37,6 +37,30 @@ export function runtime(ctx: unknown, what = 'this operation'): RuntimeHandle {
   return handle
 }
 
+/** A handle as the adapter builds it, with its own transaction. */
+export type TransactionalHandle = RuntimeHandle & {
+  execute(query: unknown): Promise<unknown>
+  transaction<T>(fn: (tx: UntypedDb) => Promise<T>): Promise<T>
+}
+
+/**
+ * Runs `fn` in one transaction of the handle and hands it the same handle bound to that
+ * transaction, so a manager called with it writes inside the transaction without knowing it is in
+ * one. A nested `transaction` is a savepoint. The bound handle must not outlive `fn`.
+ */
+export async function inTransaction<T>(ctx: unknown, what: string, fn: (bound: TransactionalHandle) => Promise<T>): Promise<T> {
+  const handle = runtime(ctx, what) as TransactionalHandle
+  return await handle.transaction(
+    async (tx) =>
+      await fn({
+        ...handle,
+        db: tx,
+        execute: (query) => tx.execute(query),
+        transaction: (inner) => tx.transaction(inner)
+      })
+  )
+}
+
 /** The control plane, demanded explicitly: the registry is not readable from a container. */
 export function control(ctx: unknown, what = 'this operation'): RuntimeHandle {
   const handle = runtime(ctx, what)

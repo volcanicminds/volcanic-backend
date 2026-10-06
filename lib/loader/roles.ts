@@ -23,7 +23,8 @@ export const SYSTEM_CAPABILITIES: readonly SystemCapability[] = [
   'migrations',
   'manifest',
   'system-users',
-  'access-log'
+  'access-log',
+  'governance-log'
 ]
 
 /**

@@ -15,7 +15,7 @@ import type {
   SessionScope
 } from '../../../types/global.js'
 import { encrypt, decrypt } from '../crypto.js'
-import { runtime, table, column, type UntypedDb, type RuntimeHandle } from './runtime.js'
+import { runtime, table, column, type UntypedDb, type RuntimeHandle, type TransactionalHandle } from './runtime.js'
 import { hashSecret } from './session.js'
 import { isUniqueViolation } from './user.js'
 
@@ -69,8 +69,6 @@ interface FlowRow {
   createdAt: Date | string
   expiresAt: Date | string
 }
-
-type Transactional = RuntimeHandle & { transaction<T>(fn: (tx: UntypedDb) => Promise<T>): Promise<T> }
 
 /** HMAC-SHA256 keyed by the flow secret: the table alone cannot test a guess. */
 export function challengeMac(secret: string, code: string): string {
@@ -346,7 +344,7 @@ export function createAuthFlowManager(options: { sendWindowSeconds?: number } = 
             .returning()
 
         const rows: FlowRow[] = subject
-          ? await (handle as Transactional).transaction(async (tx) => {
+          ? await (handle as TransactionalHandle).transaction(async (tx) => {
               await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`auth_flow:${row.scope}:${subject}`}, 0))`)
               return await send(tx)
             })

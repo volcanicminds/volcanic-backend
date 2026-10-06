@@ -12,6 +12,7 @@ import fastify from 'fastify'
 import { create, update, remove, block } from '../../lib/api/system/controller/systemUser.js'
 import { loadSystem } from '../../lib/loader/roles.js'
 import { getData, getParams } from '../../lib/util/common.js'
+import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 ;(global as any).log = {}
 
@@ -29,6 +30,7 @@ async function build(over: any = {}) {
   const blocked: any[] = []
 
   const server: any = fastify()
+  server.decorate('governanceLogManager', fakeGovernanceLog())
   server.decorate('systemUserManager', {
     isImplemented: () => over.systemUsers !== false,
     retrieveSystemUserById: async (_c: any, id: string) => [ROOT, OTHER].find((u) => u.id === id) ?? null,

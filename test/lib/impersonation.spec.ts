@@ -15,6 +15,7 @@ import jwtValidator from '@fastify/jwt'
 import { impersonate, endImpersonation, impersonationTtl } from '../../lib/api/tenants/controller/tenants.js'
 import { getData, getParams } from '../../lib/util/common.js'
 import authHook from '../../lib/hooks/onRequest.js'
+import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 ;(global as any).log = {}
 
@@ -52,6 +53,7 @@ function fakes(over: any = {}) {
 
   return {
     impersonationManager,
+    governanceLogManager: fakeGovernanceLog(),
     tenantManager: {
       isImplemented: () => true,
       getTenant: async (_ctx: any, id: string) => (id === ACME.id ? { ...ACME, ...(over.tenant ?? {}) } : null)
@@ -82,6 +84,7 @@ async function build(over: any = {}) {
   server.decorate('tenantManager', f.tenantManager)
   server.decorate('userManager', f.userManager)
   server.decorate('impersonationManager', f.impersonationManager)
+  server.decorate('governanceLogManager', f.governanceLogManager)
 
   server.addHook('onRequest', async (req: any) => {
     req.data = () => getData(req)

@@ -331,9 +331,28 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/users/:id/mfa/reset` | capability `system-users` | |
 | GET | `/system/access-log` | capability `access-log`, granted to `system:auditor` | Magic Query over the access log of the platform (`scope: 'control'` only, a condition the URL cannot relax) |
 | GET | `/system/access-log/count` | capability `access-log` | |
+| GET | `/system/governance-log` | capability `governance-log`, granted to `system:auditor` | Magic Query over what the operators did to the platform (§5.1): `tenantId`, `action`, `actorId`, `outcome`, `occurredAt`. A build without the governance log manager answers 404 `NOT_FOUND` |
+| GET | `/system/governance-log/count` | capability `governance-log` | |
 | GET | `/system/account-creation` | capability `tenants:read` | the rule for every tenant (§2.5): `allowed`, `default`, `from` (`control` or `deployment`) and the deployment's own rule |
 | PUT | `/system/account-creation` | capability `tenants` | body `{ allowed, default }`, the default inside the set; otherwise 400 `ACCOUNT_CREATION_INVALID` |
 | DELETE | `/system/account-creation` | capability `tenants` | back to the deployment's rule |
+
+### 5.1 The governance log
+
+Every route that changes the platform writes one row of `governance_log` in the control plane
+(docs/SCHEMA_V5.md §3.6): the tenant routes of §6 that create, update, suspend, restore, delete,
+export, ask to destroy or destroy, impersonation start and end, the `/system/users` writes, the
+identity provider writes of §6 and the two writes of `/system/account-creation`. The operator,
+the address and the request id come from the request; the row names fields and reasons, never a
+value, a password or a client secret.
+
+The rule is the opposite of the access log's: a change that cannot be written down is not made.
+A change of the registry and its row share one transaction, so a row that cannot be written
+rolls the change back and the route answers 500. An export and a destruction, which no
+transaction reaches, write their intent first and do not start without it; their outcome
+(`success` or `failure`, with `intentId` pointing at the intent) follows. A build with tenants and
+no governance log manager answers every one of these routes with 503
+`GOVERNANCE_LOG_NOT_AVAILABLE`, before anything is changed.
 
 ---
 

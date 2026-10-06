@@ -22,6 +22,7 @@ import { envInt } from '../../../util/env.js'
 import { ENROLMENT_METHOD, floorEnrollable, isImplemented } from '../../../auth/validate.js'
 import { maskEmail, newCode } from '../../../auth/authenticators/emailOtp.js'
 import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
+import { assertGovernanceLog, failureOf, fieldNames, governed, intend, settle } from '../../../util/governance.js'
 
 //
 // The tenant registry. Control scope: these routes act on the platform, never inside a
@@ -239,6 +240,9 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   if (existing) {
     return reply.status(409).send(httpError(409, 'A tenant with that slug already exists', 'TENANT_EXISTS'))
   }
+  // Before a container is built: the row that records the creation is written last, and a build
+  // with no log to record it in would be undone anyway.
+  assertGovernanceLog(req)
 
   const provider = providerOf(req)
   const migrations = migrationsOf(req)
@@ -278,7 +282,11 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
       isFounder: true
     })
 
-    const created = await managerOf(req).createTenant(control(req), { ...data, locator, schemaVersion })
+    const created = await governed(
+      req,
+      (tx) => managerOf(req).createTenant(tx, { ...data, locator, schemaVersion }),
+      (row) => ({ action: 'tenant.created', tenantId: row.id, detail: { schemaVersion } })
+    )
 
     if (log.i) log.info(`Tenant ${created.slug} provisioned in ${locator} at ${schemaVersion}`)
     return reply.code(201).send(created)
@@ -310,7 +318,11 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   const creationRefusal = refuseAccountCreation(reply, patch.config)
   if (creationRefusal) return creationRefusal
 
-  const tenant = await managerOf(req).updateTenant(control(req), id, patch)
+  const tenant = await governed(
+    req,
+    (tx) => managerOf(req).updateTenant(tx, id, patch),
+    (row) => row && { action: 'tenant.updated', tenantId: row.id, detail: { requested: fieldNames(patch) } }
+  )
   if (!tenant) return await refuseUnchanged(req, reply, id)
   return reply.send(tenant)
 }
@@ -333,7 +345,12 @@ export async function suspend(req: FastifyRequest, reply: FastifyReply) {
 
   const { id } = req.parameters()
   const { reason } = req.data()
-  const done = await managerOf(req).suspendTenant(control(req), id, reason)
+  // The registry row has no column for the reason: this log is where it is kept.
+  const done = await governed(
+    req,
+    (tx) => managerOf(req).suspendTenant(tx, id, reason),
+    (changed) => (changed ? { action: 'tenant.suspended', tenantId: id, detail: reason ? { reason: String(reason) } : null } : null)
+  )
   if (!done) return await refuseUnchanged(req, reply, id)
   return reply.send({ id, status: 'suspended' })
 }
@@ -342,7 +359,11 @@ export async function restore(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const { id } = req.parameters()
-  const done = await managerOf(req).restoreTenant(control(req), id)
+  const done = await governed(
+    req,
+    (tx) => managerOf(req).restoreTenant(tx, id),
+    (changed) => (changed ? { action: 'tenant.restored', tenantId: id } : null)
+  )
   if (!done) return await refuseUnchanged(req, reply, id)
   return reply.send({ id, status: 'active' })
 }
@@ -356,7 +377,11 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const { id } = req.parameters()
-  const done = await managerOf(req).softDeleteTenant(control(req), id)
+  const done = await governed(
+    req,
+    (tx) => managerOf(req).softDeleteTenant(tx, id),
+    (changed) => (changed ? { action: 'tenant.deleted', tenantId: id } : null)
+  )
   if (!done) return await refuseUnchanged(req, reply, id)
   return reply.send({ id, registryRow: 'deleted', data: 'retained', hint: 'container data is destroyed separately' })
 }
@@ -391,10 +416,21 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
     ? await migrations.version({ tenantId: tenant.id, locator: tenant.locator })
     : (tenant.schemaVersion ?? null)
 
-  const result = await provider.exportContainer(tenant, {
-    directory: global.config?.options?.export_directory,
-    schemaVersion
-  })
+  // A dump is a copy of a customer's data leaving the database, and no transaction reaches it: the
+  // intent is written first, and without it the dump does not start.
+  const exported = { action: 'tenant.exported', tenantId: tenant.id } as const
+  const intent = await intend(req, { ...exported, detail: { schemaVersion } })
+  let result: ExportedContainer
+  try {
+    result = await provider.exportContainer(tenant, {
+      directory: global.config?.options?.export_directory,
+      schemaVersion
+    })
+  } catch (error) {
+    await settle(req, intent, 'failure', { ...exported, detail: { reason: failureOf(error) } })
+    throw error
+  }
+  await settle(req, intent, 'success', { ...exported, detail: { path: result.path, bytes: result.bytes, schemaVersion } })
 
   if (log.i) log.info(`Tenant ${tenant.slug}: exported ${result.bytes} bytes at ${schemaVersion ?? 'no migration'}`)
   return reply.send({ tenant: { id: tenant.id, slug: tenant.slug }, ...result })
@@ -472,14 +508,15 @@ export async function destructionRequest(req: FastifyRequest, reply: FastifyRepl
   const expiresAt = new Date(Date.now() + DESTRUCTION_TTL_SECONDS * 1000)
   const code = byEmail ? newCode('verify') : undefined
 
-  const record = await dm.openRequest(control(req), {
-    tenantId: tenant.id,
-    systemUserId: actor.id,
-    token,
-    code,
-    preview,
-    expiresAt
-  })
+  const record = await governed(
+    req,
+    (tx) => dm.openRequest(tx, { tenantId: tenant.id, systemUserId: actor.id, token, code, preview, expiresAt }),
+    (opened) => ({
+      action: 'tenant.destruction_requested',
+      tenantId: tenant.id,
+      detail: { requestId: opened.id, factor: code ? 'email-otp' : 'totp', expiresAt: expiresAt.toISOString() }
+    })
+  )
 
   if (code) {
     try {
@@ -561,6 +598,12 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send(factor.remaining === undefined ? refusal : { ...refusal, remaining: factor.remaining })
   }
 
+  // The intent comes before anything the destruction does, the export included, and without it
+  // nothing starts. Every way out below closes it; the success rides the transaction that marks the row.
+  const destroyed = { action: 'tenant.destroyed', tenantId: tenant.id } as const
+  const intent = await intend(req, { ...destroyed, detail: { requestId: request.id } })
+  const stopped = (reason: string) => settle(req, intent, 'failure', { ...destroyed, detail: { requestId: request.id, reason } })
+
   // The export happens first, and a failure stops everything. Decision 2 of
   // EVO_PUNTI_APERTI: no export, no destruction.
   let exported: ExportedContainer | undefined
@@ -576,18 +619,21 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
     })
   } catch (error) {
     if (log.e) log.error(`Destruction of ${tenant.slug} stopped: the export failed: ${(error as Error)?.message}`)
+    await stopped('DESTRUCTION_EXPORT_FAILED')
     return reply
       .status(409)
       .send(httpError(409, `The export had to succeed first, and it did not: ${(error as Error)?.message}`, 'DESTRUCTION_EXPORT_FAILED'))
   }
 
   if (!exported?.path || !exported?.bytes) {
+    await stopped('DESTRUCTION_EXPORT_FAILED')
     return reply.status(409).send(httpError(409, 'The export produced no file', 'DESTRUCTION_EXPORT_FAILED'))
   }
 
   // Written BEFORE the data goes: afterwards there may be nothing left to write with. A request
   // spent in the meantime by a concurrent call with the same token is that call's destruction.
   if (!(await dm.consumeRequest(control(req), request.id, exported.path))) {
+    await stopped('DESTRUCTION_TOKEN_INVALID')
     return reply.status(403).send(httpError(403, 'That destruction token is not usable', 'DESTRUCTION_TOKEN_INVALID'))
   }
   if (log.w) {
@@ -598,14 +644,33 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
   // does not reach them, and each one carries a client secret of the customer's. They go
   // before the container: a failure here leaves a tenant that can still be destroyed with a
   // new request, while a failure after the drop would leave the secrets behind a spent token.
-  const idps: IdentityProviderManagement | undefined = req.server['identityProviderManager']
-  if (isImplemented(idps)) {
-    const removed = await idps!.removeAll(control(req), tenant.id)
-    if (removed && log.w) log.warn(`Destroying ${tenant.slug}: removed ${removed} identity provider(s)`)
-  }
+  const exportRef = exported.path
+  let removedProviders = 0
+  let dropped = false
+  try {
+    const idps: IdentityProviderManagement | undefined = req.server['identityProviderManager']
+    if (isImplemented(idps)) {
+      removedProviders = await idps!.removeAll(control(req), tenant.id)
+      if (removedProviders && log.w) log.warn(`Destroying ${tenant.slug}: removed ${removedProviders} identity provider(s)`)
+    }
 
-  await provider.dropContainer(tenant.locator)
-  await managerOf(req).markTenantDestroyed(control(req), tenant.id)
+    await provider.dropContainer(tenant.locator)
+    dropped = true
+    await governed(
+      req,
+      (tx) => managerOf(req).markTenantDestroyed(tx, tenant.id),
+      () => ({ ...destroyed, detail: { requestId: request.id, exportRef, identityProviders: removedProviders } }),
+      { intentId: intent }
+    )
+  } catch (error) {
+    // Said with how far it went: a failure after the drop is data that is gone behind a row that
+    // still says otherwise.
+    await settle(req, intent, 'failure', {
+      ...destroyed,
+      detail: { requestId: request.id, reason: failureOf(error), containerDropped: dropped }
+    })
+    throw error
+  }
 
   return reply.send({
     id: tenant.id,
@@ -743,15 +808,25 @@ export async function impersonate(req: FastifyRequest, reply: FastifyReply) {
   if (!target) return reply.status(404).send()
 
   const ttl = impersonationTtl()
-  const record = await im.openImpersonation(control(req), {
-    systemUserId: actor.id,
-    tenantId: tenant.id,
-    targetUserId: target.id,
-    reason: String(reason).trim(),
-    ip: req.ip ?? null,
-    userAgent: (req.headers['user-agent'] as string) ?? null,
-    expiresAt: new Date(Date.now() + ttl * 1000)
-  })
+  const record = await governed(
+    req,
+    (tx) =>
+      im.openImpersonation(tx, {
+        systemUserId: actor.id,
+        tenantId: tenant.id,
+        targetUserId: target.id,
+        reason: String(reason).trim(),
+        ip: req.ip ?? null,
+        userAgent: (req.headers['user-agent'] as string) ?? null,
+        expiresAt: new Date(Date.now() + ttl * 1000)
+      }),
+    (opened) => ({
+      action: 'impersonation.started',
+      tenantId: tenant.id,
+      targetId: target.id,
+      detail: { impersonationId: opened.id, reason: opened.reason, expiresAt: new Date(opened.expiresAt).toISOString() }
+    })
+  )
 
   if (log.w) {
     log.warn(`Impersonation ${record.id}: ${actor.email} acting as ${target.email} in ${tenant.slug}. Reason: ${record.reason}`)
@@ -796,7 +871,21 @@ export async function endImpersonation(req: FastifyRequest, reply: FastifyReply)
     return reply.status(400).send(httpError(400, 'impersonationId is required', 'IMPERSONATION_REQUIRED'))
   }
 
-  const revoked = await im.revokeImpersonation(control(req), String(impersonationId))
+  const revoked = await governed(
+    req,
+    async (tx) => {
+      // Read for the tenant and the user it names; an expired one reads as nothing and is still revoked.
+      const live = await im.getImpersonation(tx, String(impersonationId))
+      return (await im.revokeImpersonation(tx, String(impersonationId))) ? { live } : null
+    },
+    (closed) =>
+      closed && {
+        action: 'impersonation.ended',
+        tenantId: closed.live?.tenantId ?? null,
+        targetId: closed.live?.targetUserId ?? null,
+        detail: { impersonationId: String(impersonationId) }
+      }
+  )
   // 404 whether the record never existed or was already closed: the two answers are the same
   // to a caller and telling them apart would let one probe the register from outside.
   if (!revoked) return reply.status(404).send()

@@ -38,7 +38,7 @@ function behaviours(name: string, open: (upTo?: UpTo) => Promise<Migrated>) {
         )
 
         const runner = runnerOf(db)
-        expect(await runner.apply({ locator: db.schemas.control })).toBe('0005_destruction_code_control')
+        expect(await runner.apply({ locator: db.schemas.control })).toBe('0006_governance_log_control')
         expect(await runner.apply({ locator: db.schemas.tenant, tenantId: 'id-acme' })).toBe('0004_step_up_tenant')
 
         expect(await execute(db, sql`select purpose, session_sid, expected_subject_id from auth_flow`)).toEqual([

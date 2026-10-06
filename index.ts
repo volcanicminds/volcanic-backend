@@ -50,6 +50,7 @@ import { configureCache, cache } from './lib/util/cache.js'
 
 import type {
   AccessLogManagement,
+  GovernanceLogManagement,
   AuthFlowManagement,
   Authenticator,
   ChallengeDeliveryManagement,
@@ -90,6 +91,7 @@ import {
   defaultIdentityProviderManager,
   defaultChallengeDeliveryManager,
   defaultAccessLogManager,
+  defaultGovernanceLogManager,
   defaultSettingManager
 } from './lib/defaults/managers.js'
 import { buildAuthenticatorRegistry } from './lib/auth/registry.js'
@@ -226,6 +228,7 @@ export interface StartOptions {
   identityProviderManager?: IdentityProviderManagement
   challengeDeliveryManager?: ChallengeDeliveryManagement
   accessLogManager?: AccessLogManagement
+  governanceLogManager?: GovernanceLogManagement
   settingManager?: SettingManagement
   authenticators?: readonly Authenticator[]
   [key: string]: unknown
@@ -418,6 +421,7 @@ const start = async (decorators: StartOptions = {}) => {
     identityProviderManager: defaultIdentityProviderManager,
     challengeDeliveryManager: defaultChallengeDeliveryManager,
     accessLogManager: defaultAccessLogManager,
+    governanceLogManager: defaultGovernanceLogManager,
     settingManager: defaultSettingManager,
     ...injected
   }
@@ -626,6 +630,11 @@ export type {
   AccessLogEntry,
   AccessLogRecord,
   AccessLogManagement,
+  GovernanceAction,
+  GovernanceOutcome,
+  GovernanceLogEntry,
+  GovernanceLogRecord,
+  GovernanceLogManagement,
   SettingManagement,
   // What a project's `src/config/authFlows.ts` is typed with (T-12.5).
   AuthFlowsConfig,

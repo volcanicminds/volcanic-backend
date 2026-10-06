@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import type { ControlHandle, SettingManagement } from '../../../../types/global.js'
 import { httpError } from '../../../util/httpError.js'
 import { CONTROL_KEY, checkRule, deploymentRule, globalRule } from '../../../auth/accountCreation.js'
+import { governed } from '../../../util/governance.js'
 
 //
 // The rule of F49 for every tenant, written by the platform: which modes a tenant may choose from,
@@ -34,7 +35,11 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
     return reply
       .status(400)
       .send(httpError(400, `The rule is not valid: ${verdict.message}`, 'ACCOUNT_CREATION_INVALID'))
-  await settings(req).set(req.control as ControlHandle, CONTROL_KEY, verdict.value, req.systemUser?.externalId ?? null)
+  await governed(
+    req,
+    (tx) => settings(req).set(tx, CONTROL_KEY, verdict.value, req.systemUser?.externalId ?? null),
+    () => ({ action: 'account_creation.changed', detail: { allowed: verdict.value.allowed, default: verdict.value.default } })
+  )
   if (log.i)
     log.info(
       `Account creation for every tenant set to ${verdict.value.allowed.join(', ')} (default ${verdict.value.default})`
@@ -44,7 +49,11 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
 
 export async function reset(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
-  await settings(req).remove(req.control as ControlHandle, CONTROL_KEY)
+  await governed(
+    req,
+    (tx) => settings(req).remove(tx, CONTROL_KEY),
+    (removed) => (removed ? { action: 'account_creation.reset' } : null)
+  )
   if (log.i) log.info('Account creation for every tenant back to the deployment rule')
   return reply.send(await shown(req))
 }

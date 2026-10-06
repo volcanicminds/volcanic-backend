@@ -27,6 +27,7 @@ touches them.
 | `impersonation` | control plane only | audit of impersonation sessions |
 | `destruction_request` | control plane only | two-phase tenant data destruction |
 | `identity_provider` | control plane only | a tenant's own identity providers, with the client secret encrypted |
+| `governance_log` | control plane only | what the operators did to the platform, kept after the tenant is gone |
 
 **Rule that decides where a table goes** (invariant 7): outside the customer's container sits
 only what you could publish. The control plane holds identifiers, counters, status and
@@ -434,6 +435,32 @@ tenant.
 **Indexes**: unique on `(tenant_id, key)`. Deleted for real, not soft-deleted: a key must be reusable
 after a removal. Destroying the tenant's data removes all its rows, before the container is dropped
 (docs/API_V5.md §6.2): they live in the control plane, where dropping a container does not reach.
+
+### 3.6 `governance_log`
+
+What the operators did to the platform (docs/API_V5.md §5.1). Append-only like `access_log`, and
+unlike it never purged by the framework: a row has to outlive the tenant, the operator and the
+provider it names, which is also why no column carries a foreign key.
+
+| Column | Type | Null | Default | Notes |
+|---|---|:---:|---|---|
+| `id` | uuid | no | generated | UUID v7, so time-ordered |
+| `occurred_at` | timestamp | no | now | |
+| `action` | text | no | | one of a closed list, enforced by the manager: `tenant.*`, `impersonation.*`, `system_user.*`, `identity_provider.*`, `account_creation.*` |
+| `outcome` | text | no | | `success`, `intent` or `failure` |
+| `intent_id` | text | yes | | on the outcome of an export or a destruction, the `id` of its intent |
+| `actor_id` | text | yes | | the operator's `system_user.id` |
+| `tenant_id` | text | yes | | the tenant concerned, if any |
+| `target_id` | text | yes | | the operator, provider key or impersonated user acted upon |
+| `detail` | jsonb | yes | | names and reasons: the fields a patch carried, a suspension reason, an export path, a failure code |
+| `request_id` | text | yes | | the request that wrote it, to join the process log |
+| `ip` | text | yes | | truncated to /24 or /48, or absent with `ACCESS_LOG_IP=none`, as in `access_log` |
+
+**Indexes**: `occurred_at`, `(tenant_id, occurred_at)`, `(actor_id, occurred_at)`,
+`(action, occurred_at)`.
+
+Never a value written to the registry, a password, a client secret or an error message, which may
+quote a connection string: a failure keeps its code.
 
 ---
 

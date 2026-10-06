@@ -28,6 +28,7 @@ import { parseRefreshCredential } from '../../lib/util/session.js'
 import { fakeSessionStore } from './fixtures/sessionStore.js'
 import { fakeFlowStore } from './fixtures/flowStore.js'
 import { controlStart, decorateAuthRegistry, passwordLogin, tenantStart, useFrameworkFlows } from './fixtures/flowLogin.js'
+import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 const SECRET = 'auth-channels-test-secret-32-chars!!'
 const COOKIE_SECRET = 'auth-channels-cookie-secret-32-chars'
@@ -89,6 +90,7 @@ async function build() {
     getTenant: async (_c: any, id: string) => (id === ACME.id ? ACME : null)
   })
   server.decorate('provider', { tenant: async (row: any) => ({ kind: 'tenant', tenantId: row.id }) })
+  server.decorate('governanceLogManager', fakeGovernanceLog())
   server.decorate('mfaManager', { verify: (code: string) => (code === '123456' ? 1 : null) })
   server.decorate('impersonationManager', {
     isImplemented: () => true,

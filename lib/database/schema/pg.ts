@@ -438,7 +438,36 @@ export function registryTables(schemaName: string) {
     (t) => [uniqueIndex('identity_provider_tenant_key_uq').on(t.tenantId, t.key)]
   )
 
-  return { tenant, systemUser, impersonation, destructionRequest, identityProvider }
+  // The governance log (F76). Append-only and never purged by the framework. No foreign key on
+  // purpose: a row must outlive the tenant, the operator and the provider it names. Never a value
+  // of a secret, a token or a configuration: `detail` names fields and says what happened.
+  const governanceLog = table(
+    'governance_log',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+      action: text('action').notNull(),
+      // 'success' for a change written in the same transaction; an effect no transaction reaches
+      // writes an 'intent' first and then its 'success' or 'failure', pointing back with `intentId`.
+      outcome: text('outcome').notNull(),
+      intentId: text('intent_id'),
+      // The operator's `id`, which never changes; the `externalId` is rotated by a revocation.
+      actorId: text('actor_id'),
+      tenantId: text('tenant_id'),
+      targetId: text('target_id'),
+      detail: jsonb('detail'),
+      requestId: text('request_id'),
+      ip: text('ip')
+    },
+    (t) => [
+      index('governance_log_occurred_idx').on(t.occurredAt),
+      index('governance_log_tenant_idx').on(t.tenantId, t.occurredAt),
+      index('governance_log_actor_idx').on(t.actorId, t.occurredAt),
+      index('governance_log_action_idx').on(t.action, t.occurredAt)
+    ]
+  )
+
+  return { tenant, systemUser, impersonation, destructionRequest, identityProvider, governanceLog }
 }
 
 export type AppTables = ReturnType<typeof appTables>

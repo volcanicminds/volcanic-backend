@@ -26,6 +26,7 @@ import { loadSystem } from '../../lib/loader/roles.js'
 import { accessLogSchema } from '../../lib/schemas/accessLog.js'
 import * as tenantAccessLog from '../../lib/api/access-log/controller/accessLog.js'
 import * as systemAccessLog from '../../lib/api/system/controller/systemAccessLog.js'
+import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 const SECRET = 'access-log-writes-test-secret-32-ch'
 const COOKIE_SECRET = 'access-log-writes-cookie-secret-32c'
@@ -87,6 +88,7 @@ async function build(accessLog?: any) {
     disableMfa: async (_c: any, id: string) => ((operators.find((o) => o.id === id).mfaEnabled = false), true),
     recordMfaCounter: async () => true
   })
+  server.decorate('governanceLogManager', fakeGovernanceLog())
   server.decorate('mfaManager', {
     isImplemented: () => true,
     verify: (code: string, secret: string) => (code === `${secret}-ok` ? 0 : null)

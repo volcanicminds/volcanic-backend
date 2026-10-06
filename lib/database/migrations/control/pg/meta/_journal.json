@@ -43,6 +43,13 @@
       "when": 1790464456155,
       "tag": "0005_destruction_code_control",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791292657213,
+      "tag": "0006_governance_log_control",
+      "breakpoints": true
     }
   ]
 }

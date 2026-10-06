@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import type { ControlHandle, IdentityProvider, IdentityProviderManagement, TenantManagement } from '../../../../types/global.js'
 import { httpError } from '../../../util/httpError.js'
 import { PROVIDER_KEY, providerShapeProblems } from '../../../auth/providers.js'
+import { governed } from '../../../util/governance.js'
 
 //
 // A tenant's own identity providers, written by the platform (T-12.26, F38).
@@ -71,14 +72,19 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   if (await providers(req).get(control(req), tenantId, body.key)) {
     return reply.status(409).send(httpError(409, `This tenant already has a provider '${body.key}'`, 'IDP_KEY_TAKEN'))
   }
-  const created = await providers(req).create(control(req), {
-    tenantId,
-    key: body.key,
-    type: body.type,
-    status: body.status,
-    config: body.config as never,
-    clientSecret: body.clientSecret ?? null
-  })
+  const created = await governed(
+    req,
+    (tx) =>
+      providers(req).create(tx, {
+        tenantId,
+        key: body.key,
+        type: body.type,
+        status: body.status,
+        config: body.config as never,
+        clientSecret: body.clientSecret ?? null
+      }),
+    (row) => ({ action: 'identity_provider.created', tenantId, targetId: row.key, detail: { type: row.type, status: row.status } })
+  )
   if (log.i) log.info(`Identity provider '${body.key}' added to tenant ${tenantId}`)
   return reply.status(201).send(shown(created, Boolean(body.clientSecret)))
 }
@@ -96,11 +102,23 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
     const problems = providerShapeProblems(body.config, { plane: 'tenant' })
     if (problems.length) return invalid(reply, problems)
   }
-  const updated = await providers(req).update(control(req), tenantId, String(key), {
-    status: body.status,
-    config: body.config as never,
-    clientSecret: body.clientSecret
-  })
+  const updated = await governed(
+    req,
+    (tx) =>
+      providers(req).update(tx, tenantId, String(key), {
+        status: body.status,
+        config: body.config as never,
+        clientSecret: body.clientSecret
+      }),
+    // `config` is replaced whole, so it is named whole; a secret is named, never shown.
+    (row) =>
+      row && {
+        action: 'identity_provider.updated',
+        tenantId,
+        targetId: String(key),
+        detail: { requested: Object.keys(body).filter((name) => body[name as keyof typeof body] !== undefined).sort() }
+      }
+  )
   if (!updated) return reply.status(404).send(httpError(404, 'Identity provider not found', 'NOT_FOUND'))
   return reply.send(updated)
 }
@@ -110,7 +128,11 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
   const tenantId = await tenantOf(req, reply)
   if (!tenantId) return
   const { key } = req.params as { key: string }
-  const removed = await providers(req).remove(control(req), tenantId, String(key))
+  const removed = await governed(
+    req,
+    (tx) => providers(req).remove(tx, tenantId, String(key)),
+    (done) => (done ? { action: 'identity_provider.deleted', tenantId, targetId: String(key) } : null)
+  )
   if (!removed) return reply.status(404).send(httpError(404, 'Identity provider not found', 'NOT_FOUND'))
   if (log.i) log.info(`Identity provider '${key}' removed from tenant ${tenantId}`)
   return reply.send({ ok: true })

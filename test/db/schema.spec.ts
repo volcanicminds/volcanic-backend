@@ -70,7 +70,7 @@ describe('database/schema · the tables', () => {
       'accessLog', 'authFlow', 'change', 'externalIdentity', 'migration', 'session', 'setting', 'token', 'user'
     ])
     expect(Object.keys(pgReg).sort()).toEqual([
-      'destructionRequest', 'identityProvider', 'impersonation', 'systemUser', 'tenant'
+      'destructionRequest', 'governanceLog', 'identityProvider', 'impersonation', 'systemUser', 'tenant'
     ])
   })
 
@@ -89,6 +89,8 @@ describe('database/schema · the tables', () => {
     expect(Object.keys(pgApp)).not.toContain('systemUser')
     // A tenant's IdP secret sits in the control plane, never inside the container it serves (F38).
     expect(Object.keys(pgApp)).not.toContain('identityProvider')
+    // The governance log outlives the container it would otherwise be destroyed with (F76).
+    expect(Object.keys(pgApp)).not.toContain('governanceLog')
   })
 
   it('keeps the access log append-only (F44)', () => {

@@ -11,6 +11,7 @@ import { createAuthFlowManager } from './authFlow.js'
 import { createExternalIdentityManager } from './externalIdentity.js'
 import { createIdentityProviderManager } from './identityProvider.js'
 import { createAccessLogManager } from './accessLog.js'
+import { createGovernanceLogManager } from './governanceLog.js'
 import { createSettingManager } from './setting.js'
 
 export {
@@ -26,10 +27,12 @@ export {
   createExternalIdentityManager,
   createIdentityProviderManager,
   createAccessLogManager,
+  createGovernanceLogManager,
   createSettingManager
 }
 export { challengeMac } from './authFlow.js'
 export { truncateIp, type AccessLogIpMode, type AccessLogOptions } from './accessLog.js'
+export type { GovernanceLogOptions } from './governanceLog.js'
 export { runtime, control } from './runtime.js'
 
 //
@@ -63,6 +66,9 @@ export function buildManagers(
     identityProviderManager: createIdentityProviderManager(),
     // Retention and address mode from the `accessLog` block; the environment still wins (F44).
     accessLogManager: createAccessLogManager(options?.accessLog ?? {}),
+    // What the operators did to the platform, in the control plane, never purged (F76). The
+    // address policy is the access log's.
+    governanceLogManager: createGovernanceLogManager({ ip: options?.accessLog?.ip }),
     // Container settings, on both planes: the operator's rules in the control container, a
     // tenant's choices in its own (F49).
     settingManager: createSettingManager()

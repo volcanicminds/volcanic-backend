@@ -6,6 +6,7 @@ import { isSystemRoleCode } from '../../../loader/roles.js'
 import { present } from './systemAuth.js'
 import { controlPolicy } from '../../../util/mfaPolicy.js'
 import { recordControlAccess } from '../../../util/accessLog.js'
+import { fieldNames, governed } from '../../../util/governance.js'
 
 //
 // Platform identities, managed from the control scope (T-4.1).
@@ -52,7 +53,11 @@ export async function resetMfa(req: FastifyRequest, reply: FastifyReply) {
   const target = await manager(req).retrieveSystemUserById(control(req), String(id))
   if (!target) return reply.status(404).send()
 
-  await manager(req).disableMfa(control(req), target.id)
+  await governed(
+    req,
+    (tx) => manager(req).disableMfa(tx, target.id),
+    () => ({ action: 'system_user.mfa_reset', targetId: target.id })
+  )
   await recordControlAccess(req, { event: 'mfa.disabled', outcome: 'success', subjectId: target.externalId ?? null, methods: ['totp'] })
   if (log.i) log.info(`System MFA reset for ${target.email}, policy ${controlPolicy()}`)
   return { ok: true }
@@ -100,7 +105,11 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(409).send(httpError(409, 'A platform administrator with that email already exists'))
   }
 
-  const created = await manager(req).createSystemUser(control(req), data)
+  const created = await governed(
+    req,
+    (tx) => manager(req).createSystemUser(tx, data),
+    (row) => ({ action: 'system_user.created', targetId: row.id, detail: { roles: row.roles ?? [] } })
+  )
   return reply.code(201).send(present(created))
 }
 
@@ -115,7 +124,17 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send(httpError(400, `Not control roles: ${unknown.join(', ')}`, 'ROLE_NOT_IN_SCOPE'))
   }
 
-  const updated = await manager(req).updateSystemUserById(control(req), id, data)
+  // The roles are kept as they became: a grant is the change an auditor looks for first.
+  const updated = await governed(
+    req,
+    (tx) => manager(req).updateSystemUserById(tx, id, data),
+    (row) =>
+      row && {
+        action: 'system_user.updated',
+        targetId: row.id,
+        detail: { requested: fieldNames(data), ...(Array.isArray(data.roles) ? { roles: row.roles } : {}) }
+      }
+  )
   if (!updated) return reply.status(404).send()
   return reply.send(present(updated))
 }
@@ -130,7 +149,11 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(409).send(httpError(409, 'A platform administrator cannot delete itself', 'SELF_DELETE'))
   }
 
-  const done = await manager(req).deleteSystemUser(control(req), id)
+  const done = await governed(
+    req,
+    (tx) => manager(req).deleteSystemUser(tx, id),
+    (changed) => (changed ? { action: 'system_user.deleted', targetId: id } : null)
+  )
   if (!done) return reply.status(404).send()
   return reply.send({ ok: true })
 }
@@ -144,7 +167,13 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(409).send(httpError(409, 'A platform administrator cannot block itself', 'SELF_BLOCK'))
   }
 
-  await manager(req).blockSystemUserById(control(req), id, String(reason ?? ''))
+  // The manager answers true whether or not the row exists: the event is written only for one that does.
+  await governed(
+    req,
+    async (tx) =>
+      (await manager(req).retrieveSystemUserById(tx, id)) && (await manager(req).blockSystemUserById(tx, id, String(reason ?? ''))),
+    (changed) => (changed ? { action: 'system_user.blocked', targetId: id, detail: reason ? { reason: String(reason) } : null } : null)
+  )
   return reply.send(present(await manager(req).retrieveSystemUserById(control(req), id)))
 }
 
@@ -152,6 +181,10 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const { id } = req.parameters()
-  await manager(req).unblockSystemUserById(control(req), id)
+  await governed(
+    req,
+    async (tx) => (await manager(req).retrieveSystemUserById(tx, id)) && (await manager(req).unblockSystemUserById(tx, id)),
+    (changed) => (changed ? { action: 'system_user.unblocked', targetId: id } : null)
+  )
   return reply.send(present(await manager(req).retrieveSystemUserById(control(req), id)))
 }

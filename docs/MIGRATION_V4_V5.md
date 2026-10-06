@@ -802,3 +802,22 @@ served; one without, or with a credential that does not verify, answers 401 `UNA
 `TransferManager` from `@volcanicminds/tools/transfer` implements `getPath` and `isValid` itself:
 the adapter v4 needed around it goes, and an anonymous upload is opted into with
 `setAnonymousAccess(check)` (docs/MANAGERS_V5.md §8).
+
+## 36. What the operators do is written down (F76)
+
+v4 kept no record of what a platform operator changed: the registry row showed the last state, not
+who brought it there. v5 writes every change of the platform into `governance_log`, in the control
+plane (docs/SCHEMA_V5.md §3.6, docs/API_V5.md §5.1), and refuses a change it cannot write down.
+
+**What a deployment has to do.**
+
+- **Apply the new migration**, `0006_governance_log_control`. A build with tenants and no
+  `governanceLogManager` answers every governed route with 503 `GOVERNANCE_LOG_NOT_AVAILABLE`.
+- **Grant `governance-log`** to whoever reads it: `system:auditor` has it, `system:operator` does
+  not. `GET /system/governance-log` and `/count` take the usual Magic Query.
+- **Keep the rows**: the framework never purges them, and they outlive the tenant they name.
+
+**What a custom manager has to do.** `within` runs the change in one transaction and hands it a
+handle bound to it (docs/MANAGERS_V5.md §18). A custom `tenantManager`, `systemUserManager`,
+`impersonationManager`, `destructionManager`, `identityProviderManager` or `settingManager` is called
+with that handle and writes through it, or its write and the event no longer commit together.

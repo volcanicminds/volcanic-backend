@@ -41,6 +41,12 @@ const platformAccessLog = {
   resource: { prefix: 'system/access-log', name: 'systemAccessLog', titleField: 'event', subtitleField: 'occurredAt' }
 }
 
+// What the operators did to the platform (F76), a resource of its own like the access log.
+const governanceLog = {
+  group: 'system',
+  resource: { prefix: 'system/governance-log', name: 'governanceLog', titleField: 'action', subtitleField: 'occurredAt' }
+}
+
 export default {
   config: {
     title: 'Platform administration',
@@ -228,6 +234,34 @@ export default {
         title: 'Count platform access log entries',
         description: 'Count',
         manifest: platformAccessLog,
+        query: { $ref: 'getQueryParamsSchema' },
+        response: { 200: { type: 'number' } }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/governance-log',
+      requireCapability: 'governance-log',
+      handler: 'systemGovernanceLog.find',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Find governance log entries',
+        description: 'Magic Query over the fields of the governance log: tenantId, action, actorId, occurredAt',
+        manifest: governanceLog,
+        query: { $ref: 'getQueryParamsSchema' },
+        response: { 200: { type: 'array', items: { $ref: 'governanceLogSchema#' } } }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/governance-log/count',
+      requireCapability: 'governance-log',
+      handler: 'systemGovernanceLog.count',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Count governance log entries',
+        description: 'Count',
+        manifest: governanceLog,
         query: { $ref: 'getQueryParamsSchema' },
         response: { 200: { type: 'number' } }
       }
