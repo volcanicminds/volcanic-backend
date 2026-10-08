@@ -8,9 +8,11 @@
 // only observable that distinguishes the fix from a comment.
 //
 import { expect } from 'expect'
+import fastify from 'fastify'
+import { fastifySchedule } from '@fastify/schedule'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { load, runnerFor, start } from '../../lib/loader/schedules.js'
+import { closingSignal, load, runnerFor, start } from '../../lib/loader/schedules.js'
 import { currentTenantId } from '../../lib/util/requestContext.js'
 
 ;(global as any).log = {}
@@ -225,7 +227,6 @@ describe('loader/schedules · the cron timezone reaches the scheduler (D-24)', (
   function capture(cron: any) {
     const added: any[] = []
     const server: any = {
-      addHook: () => {},
       scheduler: {
         addCronJob: (job: any) => added.push(job),
         addSimpleIntervalJob: (job: any) => added.push(job)
@@ -237,7 +238,7 @@ describe('loader/schedules · the cron timezone reaches the scheduler (D-24)', (
         schedule: { active: true, type: 'cron', async: false, cron },
         job: () => {}
       }
-    ])
+    ], never)
     return added[0]
   }
 
@@ -250,5 +251,40 @@ describe('loader/schedules · the cron timezone reaches the scheduler (D-24)', (
   it('leaves it undefined when nothing is declared, so the host timezone stays the default', () => {
     const job = capture({ expression: '0 3 * * *' })
     expect(job.schedule.timezone).toBeUndefined()
+  })
+})
+
+describe('loader/schedules · a real server boots with an active job', () => {
+  //
+  // The fake servers above accepted `addHook` at any time, so a hook registered after
+  // `listen()` passed every test while every project with `scheduler: true` and one active
+  // job failed to boot with "Fastify instance is already listening". Only a real Fastify
+  // refuses that, so this test drives one through the order `index.ts` uses.
+  //
+  const previousLog = (global as any).log
+
+  before(() => {
+    ;(global as any).log = { trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }
+  })
+
+  after(() => {
+    ;(global as any).log = previousLog
+  })
+
+  it('attaches the jobs after listen(), and closing the server aborts their signal', async () => {
+    const server = fastify()
+    server.decorate('provider', fakeServer().provider)
+    await server.register(fastifySchedule)
+    const closing = closingSignal(server)
+    await server.listen({ port: 0, host: '127.0.0.1' })
+
+    const { seen, fn } = recorder()
+    const interval = { hours: 1, runImmediately: true }
+    start(server, [{ jobName: 'tick.job', schedule: { active: true, type: 'interval', async: true, interval }, job: fn }], closing)
+    for (let i = 0; i < 50 && !seen.length; i++) await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(seen.map((s) => s.jobName)).toEqual(['tick.job'])
+
+    await server.close()
+    expect(closing.aborted).toBe(true)
   })
 })

@@ -251,21 +251,28 @@ async function activeTenants(tm: TenantManagement, control: DataHandle): Promise
   }
 }
 
-export function start(server: any, jobs: any[]) {
+/**
+ * One signal for the whole scheduler: closing the server stops a fan-out in progress rather
+ * than letting it walk the rest of the fleet against a shutting-down pool.
+ *
+ * Separate from `start` because Fastify refuses `addHook` once the server is ready or
+ * listening, and the jobs are attached only after `listen()`: a failed listen must not leave
+ * timers behind. Call this before `ready()`, `start` after `listen()`.
+ */
+export function closingSignal(server: any): AbortSignal {
+  const closing = new AbortController()
+  server.addHook('onClose', async () => closing.abort())
+  return closing.signal
+}
+
+export function start(server: any, jobs: any[], closing: AbortSignal) {
   if (!jobs || jobs.length === 0) return
 
   log.trace('* Job schedule attach all tasks')
 
-  // One signal for the whole scheduler: closing the server stops a fan-out in progress
-  // rather than letting it walk the rest of the fleet against a shutting-down pool.
-  const closing = new AbortController()
-  if (typeof server.addHook === 'function') {
-    server.addHook('onClose', async () => closing.abort())
-  }
-
   jobs.forEach((job) => {
     const { schedule, job: fn, jobName } = job
-    const run = runnerFor(server, jobName, schedule, fn, closing.signal)
+    const run = runnerFor(server, jobName, schedule, fn, closing)
 
     let task: Task | AsyncTask | null = null
 

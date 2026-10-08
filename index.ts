@@ -397,6 +397,8 @@ const start = async (decorators: StartOptions = {}) => {
   await addFastifySchedule(server)
 
   const schedules = loaderSchedules.load()
+  // Before `ready()` and `listen()`, the only moments Fastify accepts a hook.
+  const closing = loaderSchedules.closingSignal(server)
 
   // `authenticators` is not a manager and is not decorated: it feeds the registry, which is.
   // An `undefined` value keeps the default: `{ ...layer, challengeDeliveryManager: maybe() }` must not
@@ -558,7 +560,7 @@ const start = async (decorators: StartOptions = {}) => {
       }
     })
 
-  await loaderSchedules.start(server, schedules)
+  loaderSchedules.start(server, schedules, closing)
   return server
 }
 
