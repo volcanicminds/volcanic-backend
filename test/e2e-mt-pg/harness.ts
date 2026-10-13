@@ -56,6 +56,8 @@ export const CONTROL_TAG = 'CONTROL PLANE'
 let server: any
 let admin: pg.Pool | null = null
 let originalCwd: string
+let strategy: 'schema' | 'container' = 'schema'
+let shutdownDataLayer: (() => Promise<void>) | null = null
 
 /** A connection to the database from OUTSIDE the application, for setup and inspection. */
 export function sql(): pg.Pool {
@@ -63,28 +65,57 @@ export function sql(): pg.Pool {
   return admin
 }
 
-/** Drops whatever a previous run left behind: every run starts from a known state. */
+/** The URL of another database on the same server: a tenant's, under the `container` strategy. */
+export function databaseUrlOf(database: string): string {
+  const url = new URL(DATABASE_URL)
+  url.pathname = `/${database}`
+  return url.toString()
+}
+
+/** Runs `fn` on a client of a tenant's own database, closed afterwards. */
+export async function inTenantDatabase<T>(locator: string, fn: (client: pg.Client) => Promise<T>): Promise<T> {
+  const client = new pg.Client({ connectionString: databaseUrlOf(locator) })
+  await client.connect()
+  try {
+    return await fn(client)
+  } finally {
+    await client.end()
+  }
+}
+
+/** Drops whatever a previous run left behind, under either strategy: every run starts from a known state. */
 async function resetDatabase() {
   const db = sql()
-  for (const schema of [ACME.locator, GLOBEX.locator]) {
-    await db.query(`drop schema if exists "${schema}" cascade`)
+  for (const locator of [ACME.locator, GLOBEX.locator]) {
+    await db.query(`drop schema if exists "${locator}" cascade`)
+    await db.query(`drop database if exists "${locator}" with (force)`)
   }
   await db.query('drop schema if exists public cascade')
   await db.query('create schema public')
 }
 
 /** The marker row the probe routes read. Same table name in every container. */
-async function seedWidget(schema: string, tag: string) {
-  const db = sql()
-  await db.query(`create table if not exists "${schema}".widget (tag text)`)
-  await db.query(`delete from "${schema}".widget`)
-  await db.query(`insert into "${schema}".widget (tag) values ($1)`, [tag])
+async function seedWidget(locator: string, tag: string) {
+  const seed = async (db: { query: pg.Pool['query'] }, schema: string) => {
+    await db.query(`create table if not exists "${schema}".widget (tag text)`)
+    await db.query(`delete from "${schema}".widget`)
+    await db.query(`insert into "${schema}".widget (tag) values ($1)`, [tag])
+  }
+  if (strategy === 'container' && locator !== 'public') {
+    await inTenantDatabase(locator, (client) => seed(client as never, 'public'))
+    return
+  }
+  await seed(sql(), locator)
 }
 
-/** `extra`: what a consumer wires next to the data layer, a `challengeDeliveryManager` for one. */
-export async function setup(extra: Record<string, unknown> = {}) {
+/**
+ * `extra`: what a consumer wires next to the data layer, a `challengeDeliveryManager` for one.
+ * `options.strategy`: how tenants are kept, a schema each (the default) or a database each.
+ */
+export async function setup(extra: Record<string, unknown> = {}, options: { strategy?: 'schema' | 'container' } = {}) {
   if (server) return server
 
+  strategy = options.strategy ?? 'schema'
   await resetDatabase()
 
   originalCwd = process.cwd()
@@ -99,7 +130,7 @@ export async function setup(extra: Record<string, unknown> = {}) {
     pool: { max: Number(process.env.DB_POOL_MAX) || 1 }
   }
   ;(cfg.options as any).tenants = {
-    strategy: 'schema',
+    strategy,
     engine: 'postgres',
     resolver: 'header',
     headerKey: HEADER
@@ -127,6 +158,7 @@ export async function setup(extra: Record<string, unknown> = {}) {
   }
 
   const managers = await dataLayer.start()
+  shutdownDataLayer = managers.shutdown
 
   // What a deployment does before the first request: bring the control plane to the current
   // schema version (T-5.2, `npm run db:migrate`). Not a workaround for a defect, which this
@@ -143,9 +175,14 @@ export async function setup(extra: Record<string, unknown> = {}) {
 
 export async function teardown() {
   if (server) await server.close()
+  // The server does not own the data layer's pools: left open, they outlive the suite and hold
+  // connections to databases the next suite drops.
+  if (shutdownDataLayer) await shutdownDataLayer()
+  shutdownDataLayer = null
   if (admin) await admin.end()
   admin = null
   server = null
+  strategy = 'schema'
   ;(global as any).config = undefined
   if (originalCwd) process.chdir(originalCwd)
 }
@@ -182,7 +219,7 @@ export async function createTenant(token: string, t: typeof ACME): Promise<any> 
     payload: {
       name: t.name,
       slug: t.slug,
-      strategy: 'schema',
+      strategy,
       engine: 'postgres',
       locator: t.locator,
       admin: { email: t.adminEmail, password: t.adminPassword, adminConfirmed: true }

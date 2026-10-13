@@ -193,6 +193,16 @@ T-11.4 (ramo lessicale: BM25 con `pg_textsearch`, `tsvector` altrove) e T-11.5 (
 `diskann` su pgvectorscale, misurata oltre la RAM: a 250.000 chunk non batte l'HNSW), chiusi in
 `volcanic-rag/TASKS.md`. Fase 15 chiusa.
 
+**Fase 16 aperta il 12 ottobre 2026** (`EVO_FASE_16.md`), da T-7.2 di rag e dalla richiesta di un
+cliente; i due compiti scritti il 12 ottobre e chiusi con i gate del 13. T-16.1: con la strategia `container` il contenitore è davvero un
+database per tenant, creato, migrato, esportato intero ed eliminato con `FORCE`, e una strategia
+diversa da quella del deployment è rifiutata (F77); provato via HTTP su Postgres reale. T-16.2:
+la porta pubblica `TenantLifecycle` (`start({ tenantLifecycles })`), con
+creazione annullata per intero, export con `artifacts` e distruzione che si ferma se un pacchetto
+non rimuove la sua parte, più `access(handle).raw` (F78); provata via HTTP su entrambe le
+strategie. In rag T-7.2, il corpus per tenant su entrambe le strategie e con entrambi i motori,
+chiuso in `volcanic-rag/TASKS.md`. Fase 16 chiusa.
+
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
 `ERR_HTTP_HEADERS_SENT` del sample è chiuso (26 settembre 2026, tabella «Fuori piano»). Restano

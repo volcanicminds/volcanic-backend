@@ -8,8 +8,13 @@
 // a design that keeps one pool per tenant works in every test and stops working on the day
 // the sales team succeeds.
 //
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import pg from 'pg'
 import { expect } from 'expect'
 import { PostgresProvider, databaseUrl } from '../../lib/database/adapters/postgres/index.js'
+import { ExportToolMissingError } from '../../lib/database/containers/export.js'
 
 ;(global as any).log = {}
 
@@ -185,5 +190,123 @@ suite('containers · one database per tenant (T-7.1)', function () {
     // request.
     expect([...(provider as any).openContainers.keys()]).toContain('test_ctr_a')
     await provider.releaseRequestScope(held as never)
+  })
+})
+
+suite('containers · the lifecycle of a database per tenant (T-16.1)', function () {
+  this.timeout(60000)
+
+  const TENANT: any = { id: 'id-life', slug: 'life', locator: 'test_ctr_life', status: 'active', schemaVersion: null }
+  const CONTROL_ROW = 'CONTROL PLANE ROW'
+  // From outside the provider: what is on the server, not what the provider believes.
+  let outside: pg.Pool
+  let provider: PostgresProvider
+  let dir: string
+
+  const databaseExists = async () =>
+    (await outside.query('select 1 from pg_database where datname = $1', [TENANT.locator])).rows.length === 1
+  const live = () => [...(provider as any).openContainers.keys()]
+
+  before(async () => {
+    outside = new pg.Pool({ connectionString: DB_URL, max: 2 })
+    await outside.query(`drop database if exists "${TENANT.locator}" with (force)`)
+    await outside.query('create table if not exists public.test_ctr_life_control (tag text)')
+    await outside.query('insert into public.test_ctr_life_control (tag) values ($1)', [CONTROL_ROW])
+    provider = new PostgresProvider({
+      url: DB_URL,
+      schema: 'public',
+      strategy: 'container',
+      maxOpenContainers: 2,
+      containerPoolMax: 1,
+      containerIdleMs: 0
+    })
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-export-ctr-'))
+  })
+
+  after(async () => {
+    await provider.shutdown()
+    await outside.query(`drop database if exists "${TENANT.locator}" with (force)`)
+    await outside.query('drop table if exists public.test_ctr_life_control')
+    await outside.end()
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('creates a database, and no schema in the control one', async () => {
+    await provider.createContainer(TENANT)
+    expect(await databaseExists()).toBe(true)
+    const schemas = await outside.query('select 1 from information_schema.schemata where schema_name = $1', [TENANT.locator])
+    expect(schemas.rows).toEqual([])
+  })
+
+  it('refuses a database that is already there, instead of adopting it', async () => {
+    // What is inside a database nobody provisioned is not known: it is not handed to a tenant.
+    let code: string | undefined
+    try {
+      await provider.createContainer(TENANT)
+    } catch (e: any) {
+      code = e?.code ?? e?.cause?.code
+    }
+    expect(code).toBe('42P04')
+  })
+
+  it('counts the rows of the tenant tables and sizes its database', async () => {
+    const handle: any = await provider.forLocator(TENANT.locator, TENANT.id)
+    await handle.execute('create table widget (id text primary key, tag text)')
+    await handle.execute("insert into widget (id, tag) values ('w1', 'LIFE PRIVATE ROW'), ('w2', 'other')")
+
+    const preview = await provider.inspectContainer(TENANT)
+    expect(preview.rowCounts).toEqual({ widget: 2 })
+    expect(preview.sizeBytes).toBeGreaterThan(0)
+  })
+
+  it('exports the whole database of the tenant, and nothing of the control one', async function () {
+    let result: any
+    try {
+      result = await provider.exportContainer(TENANT, { directory: dir, schemaVersion: '0001_init' })
+    } catch (e) {
+      if (e instanceof ExportToolMissingError) return this.skip() // no pg_dump as recent as the server
+      throw e
+    }
+    const dump = fs.readFileSync(result.path, 'utf8')
+    expect(dump).toContain('LIFE PRIVATE ROW')
+    expect(dump).not.toContain(CONTROL_ROW)
+    expect(result.schemaVersion).toBe('0001_init')
+  })
+
+  it('survives the server ending an idle connection, and opens a new one', async () => {
+    // What another instance's `DROP DATABASE ... WITH (FORCE)`, or a server restart, does to the
+    // pools here. Unheard, the pool's `error` event ends the process, and mocha reports it.
+    const handle: any = await provider.forLocator(TENANT.locator, TENANT.id)
+    await handle.execute('select 1')
+    const ended = await outside.query(
+      'select pg_terminate_backend(pid) as ok from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()',
+      [TENANT.locator]
+    )
+    expect(ended.rows.length).toBeGreaterThan(0)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect((await handle.execute('select 1 as n')).rows[0].n).toBe(1)
+  })
+
+  it('runs text SQL with bound parameters inside the database (T-16.2)', async () => {
+    const handle: any = await provider.forLocator(TENANT.locator, TENANT.id)
+    expect((await handle.raw.query('select tag from widget where id = $1', ['w1'])).rows).toEqual([{ tag: 'LIFE PRIVATE ROW' }])
+    const counted = await handle.raw.transaction(async (query: any) => {
+      await query('insert into widget (id, tag) values ($1, $2)', ['w3', 'third'])
+      return (await query('select count(*)::int as n from widget')).rows[0].n
+    })
+    expect(counted).toBe(3)
+  })
+
+  it('drops the database with its pool here and the sessions held elsewhere', async () => {
+    expect(live()).toContain(TENANT.locator)
+    // Another process still connected: without FORCE the drop fails on it.
+    const elsewhere = new pg.Client({ connectionString: databaseUrl(DB_URL!, TENANT.locator) })
+    elsewhere.on('error', () => {})
+    await elsewhere.connect()
+
+    await provider.dropContainer(TENANT.locator)
+    expect(await databaseExists()).toBe(false)
+    expect(live()).not.toContain(TENANT.locator)
+    await elsewhere.end().catch(() => {})
   })
 })

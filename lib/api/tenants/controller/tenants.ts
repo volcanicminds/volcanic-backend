@@ -8,9 +8,13 @@ import type {
   ImpersonationManagement,
   MfaManagement,
   SystemUserManagement,
+  ExportedArtifact,
   Tenant,
   TenantHandle,
+  TenantLifecycle,
   TenantManagement,
+  TenantPlace,
+  TenantStrategy,
   UserManagement
 } from '../../../../types/global.js'
 import crypto from 'crypto'
@@ -23,6 +27,7 @@ import { ENROLMENT_METHOD, floorEnrollable, isImplemented } from '../../../auth/
 import { maskEmail, newCode } from '../../../auth/authenticators/emailOtp.js'
 import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
 import { assertGovernanceLog, failureOf, fieldNames, governed, intend, settle } from '../../../util/governance.js'
+import { createInPackages, destroyInPackages, exportFromPackages, undoPackages } from '../../../util/tenantLifecycle.js'
 
 //
 // The tenant registry. Control scope: these routes act on the platform, never inside a
@@ -74,6 +79,7 @@ type ContainerPreview = {
 }
 
 interface ContainerProvider extends DataProvider {
+  readonly strategy: TenantStrategy
   createContainer(tenant: Tenant): Promise<void>
   forLocator(locator: string, tenantId: string): Promise<TenantHandle>
   dropContainer(locator: string): Promise<void>
@@ -100,6 +106,20 @@ const providerOf = (req: FastifyRequest): ContainerProvider | undefined =>
 
 const migrationsOf = (req: FastifyRequest): MigrationPort | undefined =>
   (req.server as unknown as Record<string, MigrationPort | undefined>)['migrations']
+
+const lifecyclesOf = (req: FastifyRequest): readonly TenantLifecycle[] => req.server.tenantLifecycles ?? []
+
+/** The dump of the container, then what each package keeps for the tenant outside it, next to the dump. */
+async function exportTenant(
+  req: FastifyRequest,
+  provider: ContainerProvider,
+  tenant: Tenant,
+  schemaVersion: string | null
+): Promise<ExportedContainer & { artifacts: ExportedArtifact[] }> {
+  const dump = await provider.exportContainer(tenant, { directory: global.config?.options?.export_directory, schemaVersion })
+  const artifacts = await exportFromPackages(lifecyclesOf(req), tenant, dump.path)
+  return { ...dump, artifacts }
+}
 
 function unavailable(req: FastifyRequest, reply: FastifyReply): boolean {
   const tm = managerOf(req)
@@ -249,12 +269,22 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   if (!provider?.createContainer || !migrations?.apply) {
     return reply.status(503).send(httpError(503, 'The data layer cannot provision containers', 'TENANCY_NOT_AVAILABLE'))
   }
+  // The deployment decides how containers are kept; a row that declared another strategy would
+  // describe a container that does not exist in that shape.
+  const strategy = provider.strategy
+  if (data.strategy !== undefined && data.strategy !== strategy) {
+    return reply
+      .status(400)
+      .send(httpError(400, `This deployment keeps tenants with the '${strategy}' strategy`, 'TENANT_STRATEGY_MISMATCH'))
+  }
 
   // The tenant has no identity yet: the registry assigns it when the row is written, which
   // is last. Until then the container is addressed by its locator, which is the only thing
   // that has to be true for the schema to be built and migrated.
   const slug = String(data.slug)
   const draft = { id: locator, locator, slug }
+  const place: TenantPlace = { slug, locator, strategy }
+  const started: TenantLifecycle[] = []
   let built = false
 
   try {
@@ -282,15 +312,22 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
       isFounder: true
     })
 
+    // The packages build their part last before the row, on a container that is already whole.
+    await createInPackages(lifecyclesOf(req), place, container, started)
+
     const created = await governed(
       req,
-      (tx) => managerOf(req).createTenant(tx, { ...data, locator, schemaVersion }),
+      (tx) => managerOf(req).createTenant(tx, { ...data, strategy, locator, schemaVersion }),
       (row) => ({ action: 'tenant.created', tenantId: row.id, detail: { schemaVersion } })
     )
 
     if (log.i) log.info(`Tenant ${created.slug} provisioned in ${locator} at ${schemaVersion}`)
     return reply.code(201).send(created)
   } catch (error) {
+    // Before the container: a package may keep its part outside it, where the drop does not reach.
+    for (const failure of await undoPackages(started, place)) {
+      if (log.e) log.error(`Tenant ${slug}: left behind after a failed creation: ${failure}`)
+    }
     if (built) {
       try {
         await provider.dropContainer(locator)
@@ -420,17 +457,17 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
   // intent is written first, and without it the dump does not start.
   const exported = { action: 'tenant.exported', tenantId: tenant.id } as const
   const intent = await intend(req, { ...exported, detail: { schemaVersion } })
-  let result: ExportedContainer
+  let result: ExportedContainer & { artifacts: ExportedArtifact[] }
   try {
-    result = await provider.exportContainer(tenant, {
-      directory: global.config?.options?.export_directory,
-      schemaVersion
-    })
+    result = await exportTenant(req, provider, tenant, schemaVersion)
   } catch (error) {
     await settle(req, intent, 'failure', { ...exported, detail: { reason: failureOf(error) } })
     throw error
   }
-  await settle(req, intent, 'success', { ...exported, detail: { path: result.path, bytes: result.bytes, schemaVersion } })
+  await settle(req, intent, 'success', {
+    ...exported,
+    detail: { path: result.path, bytes: result.bytes, schemaVersion, artifacts: result.artifacts }
+  })
 
   if (log.i) log.info(`Tenant ${tenant.slug}: exported ${result.bytes} bytes at ${schemaVersion ?? 'no migration'}`)
   return reply.send({ tenant: { id: tenant.id, slug: tenant.slug }, ...result })
@@ -606,17 +643,14 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
 
   // The export happens first, and a failure stops everything. Decision 2 of
   // EVO_PUNTI_APERTI: no export, no destruction.
-  let exported: ExportedContainer | undefined
+  let exported: (ExportedContainer & { artifacts: ExportedArtifact[] }) | undefined
   try {
     const migrations = migrationsOf(req)
     const schemaVersion = migrations?.version
       ? await migrations.version({ tenantId: tenant.id, locator: tenant.locator })
       : (tenant.schemaVersion ?? null)
 
-    exported = await provider.exportContainer(tenant, {
-      directory: global.config?.options?.export_directory,
-      schemaVersion
-    })
+    exported = await exportTenant(req, provider, tenant, schemaVersion)
   } catch (error) {
     if (log.e) log.error(`Destruction of ${tenant.slug} stopped: the export failed: ${(error as Error)?.message}`)
     await stopped('DESTRUCTION_EXPORT_FAILED')
@@ -654,12 +688,18 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
       if (removedProviders && log.w) log.warn(`Destroying ${tenant.slug}: removed ${removedProviders} identity provider(s)`)
     }
 
+    // What the packages keep outside the container goes before it, for the same reason.
+    const lifecycles = lifecyclesOf(req)
+    await destroyInPackages(lifecycles, tenant)
+
     await provider.dropContainer(tenant.locator)
     dropped = true
+    const artifacts = exported.artifacts.map((a) => a.path)
+    const packages = lifecycles.filter((l) => l.destroy).map((l) => l.name)
     await governed(
       req,
       (tx) => managerOf(req).markTenantDestroyed(tx, tenant.id),
-      () => ({ ...destroyed, detail: { requestId: request.id, exportRef, identityProviders: removedProviders } }),
+      () => ({ ...destroyed, detail: { requestId: request.id, exportRef, artifacts, packages, identityProviders: removedProviders } }),
       { intentId: intent }
     )
   } catch (error) {
@@ -677,6 +717,7 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
     slug: tenant.slug,
     destroyed: true,
     exportRef: exported.path,
+    artifacts: exported.artifacts.map((a) => a.path),
     warning: 'The data remains in any backup taken before now, until that backup expires.'
   })
 }

@@ -172,6 +172,7 @@ async function build(over: any = {}) {
     delete (server.provider as any).inspectContainer
   }
   server.decorate('migrations', { version: async () => '0001_init' })
+  if (over.lifecycles) server.decorate('tenantLifecycles', over.lifecycles(f.steps))
 
   server.addHook('onRequest', async (req: any) => {
     req.data = () => getData(req)
@@ -300,6 +301,49 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     // the container does not reach.
     expect(idps).toEqual([{ tenantId: 'id-other', key: 'entra' }])
     expect(steps).toEqual(['removeAll', 'dropContainer', 'markTenantDestroyed'])
+    await server.close()
+  })
+
+  // What a package keeps for the tenant outside the container: exported with it, removed before it.
+  const rag = (failDestroy = false) => (steps: string[]) => [
+    {
+      name: 'rag',
+      export: async (_t: any, target: string) => (steps.push(`rag export ${target}`), 9),
+      destroy: async (place: any) => {
+        steps.push(`rag destroy ${place.locator}`)
+        if (failDestroy) throw new Error('the folder is busy')
+      }
+    }
+  ]
+
+  it('exports and removes what the packages keep, before the container, and records both (T-16.2)', async () => {
+    const { server, token, steps, governanceLogManager } = await open({ lifecycles: rag() })
+    const res = await destroy(server, { token, slug: 'acme', otp: '123456' })
+
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).artifacts).toEqual(['/tmp/acme-0001_init.rag'])
+    expect(steps).toEqual([
+      'rag export /tmp/acme-0001_init.rag',
+      'removeAll',
+      'rag destroy tenant_acme',
+      'dropContainer',
+      'markTenantDestroyed'
+    ])
+    expect(governanceLogManager.rows.at(-1)).toMatchObject({
+      outcome: 'success',
+      detail: { artifacts: ['/tmp/acme-0001_init.rag'], packages: ['rag'] }
+    })
+    await server.close()
+  })
+
+  it('keeps the container when a package cannot remove its part, so it can be destroyed again (T-16.2)', async () => {
+    const { server, token, steps, dropped, governanceLogManager } = await open({ lifecycles: rag(true) })
+    const res = await destroy(server, { token, slug: 'acme', otp: '123456' })
+
+    expect(res.statusCode).toBe(500)
+    expect(dropped).toEqual([])
+    expect(steps).not.toContain('markTenantDestroyed')
+    expect(governanceLogManager.rows.at(-1)).toMatchObject({ outcome: 'failure', detail: { containerDropped: false } })
     await server.close()
   })
 

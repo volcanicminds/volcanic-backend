@@ -32,6 +32,11 @@ export interface ExportRequest {
   schemaVersion: string | null
   /** Connection string handed to `pg_dump`. */
   url?: string
+  /**
+   * The database at `url` is the container (strategy `container`): dumped whole, not one schema
+   * of it. Only correct when nobody else's data lives in that database.
+   */
+  wholeDatabase?: boolean
 }
 
 export class ExportToolMissingError extends Error {
@@ -83,13 +88,14 @@ function discard(file: string): void {
 }
 
 /**
- * A Postgres container, through `pg_dump`, limited to the schema that holds it.
+ * A Postgres container, through `pg_dump`: the schema that holds it, or under the `container`
+ * strategy the database that is it.
  *
- * `--schema` and not a whole-database dump: a container's export must contain that customer's
- * data and no trace of anybody else's, which is invariant 7 applied to a file that will be
- * handed to them.
+ * `--schema` unless the database is the tenant's own: a container's export must contain that
+ * customer's data and no trace of anybody else's, which is invariant 7 applied to a file that
+ * will be handed to them.
  */
-export async function exportPostgresSchema(tenant: Tenant, request: ExportRequest): Promise<ExportResult> {
+export async function exportPostgres(tenant: Tenant, request: ExportRequest): Promise<ExportResult> {
   try {
     await run('pg_dump', ['--version'])
   } catch {
@@ -98,8 +104,7 @@ export async function exportPostgresSchema(tenant: Tenant, request: ExportReques
 
   const file = exportPath(tenant, request, 'sql')
   const args = [
-    '--schema',
-    tenant.locator,
+    ...(request.wholeDatabase ? [] : ['--schema', tenant.locator]),
     '--no-owner',
     '--no-privileges',
     '--file',

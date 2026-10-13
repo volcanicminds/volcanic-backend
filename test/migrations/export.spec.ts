@@ -12,7 +12,7 @@ import path from 'path'
 import { expect } from 'expect'
 import {
   exportPath,
-  exportPostgresSchema,
+  exportPostgres,
   ExportFailedError,
   ExportToolMissingError,
   DEFAULT_EXPORT_DIRECTORY
@@ -90,7 +90,7 @@ describe('export · the refusals, without a server (T-6.2)', () => {
     const saved = process.env.PATH
     process.env.PATH = dir
     try {
-      expect(await codeOfRejection(exportPostgresSchema(ACME, { directory: dir, schemaVersion: null }))).toBe(
+      expect(await codeOfRejection(exportPostgres(ACME, { directory: dir, schemaVersion: null }))).toBe(
         'EXPORT_TOOL_MISSING'
       )
     } finally {
@@ -102,7 +102,7 @@ describe('export · the refusals, without a server (T-6.2)', () => {
   it('fails, and leaves nothing behind, when pg_dump cannot reach the server', async function () {
     // Nothing listens on port 1: pg_dump starts, fails, and exits non-zero.
     const request = { directory: dir, schemaVersion: null, url: 'postgres://nobody@127.0.0.1:1/none' }
-    const code = await codeOfRejection(exportPostgresSchema(ACME, request))
+    const code = await codeOfRejection(exportPostgres(ACME, request))
     if (code === 'EXPORT_TOOL_MISSING') return this.skip() // no pg_dump on this machine
     expect(code).toBe('EXPORT_FAILED')
     // A truncated dump is a trap, not a partial result.
@@ -138,7 +138,7 @@ suite('export · a Postgres container (T-6.2)', function () {
   it('writes a dump of that container, and of nothing else', async function () {
     let result: any
     try {
-      result = await exportPostgresSchema(ACME, { directory: dir, schemaVersion: '0001_init', url: URL })
+      result = await exportPostgres(ACME, { directory: dir, schemaVersion: '0001_init', url: URL })
     } catch (e) {
       // No pg_dump on this machine, or one too old for this server: either way the tool
       // cannot produce the export, and the refusal itself is what the next test asserts.
@@ -159,7 +159,7 @@ suite('export · a Postgres container (T-6.2)', function () {
     // The message names both versions, because "the export failed" sends an operator to look
     // at their schema and "pg_dump 14 cannot dump a server 16" sends them to install a client.
     try {
-      await exportPostgresSchema(ACME, { directory: dir, schemaVersion: null, url: URL })
+      await exportPostgres(ACME, { directory: dir, schemaVersion: null, url: URL })
     } catch (e: any) {
       if (e instanceof ExportToolMissingError) {
         expect(e.message).toMatch(/pg_dump/)
@@ -175,7 +175,7 @@ suite('export · a Postgres container (T-6.2)', function () {
     const ghost: any = { id: 'g', slug: 'ghost', locator: 'test_export_nothing_here' }
 
     try {
-      await exportPostgresSchema(ghost, { directory: dir, schemaVersion: null, url: URL })
+      await exportPostgres(ghost, { directory: dir, schemaVersion: null, url: URL })
       throw new Error('the export should have failed')
     } catch (e: any) {
       if (e instanceof ExportToolMissingError) return this.skip()

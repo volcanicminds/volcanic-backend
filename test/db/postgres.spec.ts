@@ -97,4 +97,32 @@ suite('database/adapters/postgres · against a real database', function () {
     expect(control.registry).toBeDefined()
     expect(tenant.registry).toBeUndefined()
   })
+
+  it('runs text SQL with bound parameters inside the tenant, and leaves the connection as it found it (T-16.2)', async () => {
+    const acme: any = await provider.forLocator(ACME, 'acme-id')
+    // Unqualified, as a package that knows no locator writes it: the tenant's table, never the control plane's.
+    expect((await acme.raw.query('select tag from widget where tag = $1', ['ACME'])).rows).toEqual([{ tag: 'ACME' }])
+
+    const control: any = provider.control()
+    expect((await control.raw.query('select tag from widget')).rows).toEqual([{ tag: 'CONTROL PLANE' }])
+    expect((await control.raw.query(`select current_setting('search_path') as sp`)).rows[0].sp).toBe('public')
+  })
+
+  it('rolls a text SQL transaction back whole, and commits a whole one (T-16.2)', async () => {
+    const acme: any = await provider.forLocator(ACME, 'acme-id')
+    await expect(
+      acme.raw.transaction(async (query: any) => {
+        await query('insert into widget (tag) values ($1)', ['HALF'])
+        throw new Error('stopped halfway')
+      })
+    ).rejects.toThrow('stopped halfway')
+    expect((await acme.raw.query('select count(*)::int as n from widget where tag = $1', ['HALF'])).rows[0].n).toBe(0)
+
+    const counted = await acme.raw.transaction(async (query: any) => {
+      await query('insert into widget (tag) values ($1)', ['WHOLE'])
+      return (await query('select count(*)::int as n from widget')).rows[0].n
+    })
+    expect(counted).toBe(2)
+    await acme.raw.query('delete from widget where tag = $1', ['WHOLE'])
+  })
 })

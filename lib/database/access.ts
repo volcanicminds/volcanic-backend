@@ -2,6 +2,7 @@
 import type { DataHandle } from '../../types/global.js'
 import { runtime } from './managers/runtime.js'
 import type { SQLWrapper } from 'drizzle-orm'
+import type { RawSql } from './adapters/postgres/index.js'
 
 //
 // The inside of a handle, for the code that owns its own tables.
@@ -33,6 +34,12 @@ export interface DataAccess {
   /** Raw SQL inside this container, for the query an ORM has no business expressing. */
   execute(query: SQLWrapper | string): Promise<any>
   transaction<T>(fn: (tx: any) => Promise<T>): Promise<T>
+  /**
+   * Text SQL with bound `$n` parameters inside this container, for a package that writes its own
+   * statements and knows no ORM. The shape `{ query(text, params), transaction(run) }` is the one
+   * such packages already take.
+   */
+  readonly raw: RawSql
 }
 
 /**
@@ -47,6 +54,7 @@ export function access(handle: DataHandle, what = 'this operation'): DataAccess 
     locator: h.locator,
     db: h.db,
     execute: (query: SQLWrapper | string) => h.execute(query),
-    transaction: <T>(fn: (tx: any) => Promise<T>) => h.transaction(fn)
+    transaction: <T>(fn: (tx: any) => Promise<T>) => h.transaction(fn),
+    raw: h.raw
   }
 }

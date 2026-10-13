@@ -6,7 +6,7 @@ import { sql, type SQLWrapper } from 'drizzle-orm'
 import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestScope } from '../../../../types/global.js'
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/pg.js'
 import { RequestLeases } from '../../leases.js'
-import { exportPostgresSchema } from '../../containers/export.js'
+import { exportPostgres } from '../../containers/export.js'
 import { guardPglite, guardPool } from './guard.js'
 import { firstBy } from '../../prepared.js'
 import { envInt } from '../../env.js'
@@ -60,6 +60,23 @@ export interface PostgresHandle {
   readonly registry?: RegistryTables
   execute<T = Record<string, unknown>>(query: SQLWrapper | string): Promise<RawRows<T>>
   transaction<T>(fn: (tx: PgDb) => Promise<T>): Promise<T>
+  /** Text SQL with bound `$n` parameters, inside this container like `execute`. */
+  readonly raw: RawSql
+}
+
+/** One statement of text SQL with its bound parameters. */
+export type RawQuery = <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<RawRows<T>>
+
+/**
+ * SQL written by hand, with bound parameters, for code that owns its own tables and writes its own
+ * statements: a package that is not built on the ORM. Same container rule as `execute`: on a
+ * tenant handle under the `schema` strategy every statement runs in a transaction with `SET LOCAL
+ * search_path`, so an unqualified table is the tenant's and never the control plane's.
+ */
+export interface RawSql {
+  query: RawQuery
+  /** `run` in one transaction: committed if it resolves, rolled back if it throws. */
+  transaction<T>(run: (query: RawQuery) => Promise<T>): Promise<T>
 }
 
 export interface PostgresProviderOptions {
@@ -159,17 +176,21 @@ export class PostgresProvider {
       this.url = connectionStringFrom(options)
       this.pglite = null
 
+      // A pool handed in is the caller's, and so are its listeners.
       const pool =
         options.pool ??
-        new pg.Pool({
-          connectionString: this.url,
-          max: options.poolMax ?? 10,
-          idleTimeoutMillis: options.idleTimeoutMs ?? 30000,
-          // Pinned once, at connect time, identical on every connection: configuration, not
-          // session state. It matters only for the control plane in `public`, which Drizzle
-          // cannot qualify (docs/SCHEMA_V5.md §1).
-          options: `-c search_path=${this.controlSchema}`
-        })
+        reportIdleErrors(
+          new pg.Pool({
+            connectionString: this.url,
+            max: options.poolMax ?? 10,
+            idleTimeoutMillis: options.idleTimeoutMs ?? 30000,
+            // Pinned once, at connect time, identical on every connection: configuration, not
+            // session state. It matters only for the control plane in `public`, which Drizzle
+            // cannot qualify (docs/SCHEMA_V5.md §1).
+            options: `-c search_path=${this.controlSchema}`
+          }),
+          'the control plane'
+        )
 
       // From here on the pool refuses to carry a session `search_path` (T-3.1, point 3).
       // The check sits on the driver rather than on this class so it also covers raw SQL
@@ -223,6 +244,10 @@ export class PostgresProvider {
             }) as never
         : (fn) => db.transaction(fn as never) as never
 
+    // The control handle needs no `SET LOCAL`: its pool is pinned to the control schema already.
+    const inside = kind === 'tenant' ? locator : undefined
+    const raw = this.pglite ? pgliteRawSql(this.pglite, inside) : poolRawSql(this.pool!, inside)
+
     return {
       kind,
       tenantId,
@@ -231,7 +256,8 @@ export class PostgresProvider {
       tables,
       registry: kind === 'control' ? this.registry : undefined,
       execute,
-      transaction
+      transaction,
+      raw
     }
   }
 
@@ -349,15 +375,18 @@ export class PostgresProvider {
       live.usedAt = Date.now()
       this.openContainers.delete(locator)
       this.openContainers.set(locator, live)
-      return this.buildContainerHandle(live.db, live.tables, tenantId)
+      return this.buildContainerHandle(live, tenantId)
     }
 
     const pool = guardPool(
-      new pg.Pool({
-        connectionString: databaseUrl(this.serverUrl('A database per tenant'), locator),
-        max: this.containerPoolMax,
-        idleTimeoutMillis: 10000
-      })
+      reportIdleErrors(
+        new pg.Pool({
+          connectionString: databaseUrl(this.serverUrl('A database per tenant'), locator),
+          max: this.containerPoolMax,
+          idleTimeoutMillis: 10000
+        }),
+        `the container ${locator}`
+      )
     )
 
     const entry = { pool, db: drizzle(pool), tables: appTables('public'), usedAt: Date.now() }
@@ -365,10 +394,13 @@ export class PostgresProvider {
     await this.closeSurplusContainers()
     this.startSweeper()
 
-    return this.buildContainerHandle(entry.db, entry.tables, tenantId)
+    return this.buildContainerHandle(entry, tenantId)
   }
 
-  private buildContainerHandle(db: NodePgDatabase, tables: AppTables, tenantId: string): PostgresHandle {
+  private buildContainerHandle(
+    { pool, db, tables }: { pool: pg.Pool; db: NodePgDatabase; tables: AppTables },
+    tenantId: string
+  ): PostgresHandle {
     return {
       kind: 'tenant',
       tenantId,
@@ -376,7 +408,8 @@ export class PostgresProvider {
       tables,
       registry: undefined,
       execute: (query) => db.execute(query as never) as never,
-      transaction: (fn) => db.transaction(fn as never) as never
+      transaction: (fn) => db.transaction(fn as never) as never,
+      raw: poolRawSql(pool)
     }
   }
 
@@ -471,14 +504,19 @@ export class PostgresProvider {
   }
 
   /**
-   * Takes a customer's data out, through `pg_dump`, limited to their schema (T-6.2).
+   * Takes a customer's data out, through `pg_dump`: their schema, or under the `container`
+   * strategy their whole database (T-6.2).
    *
    * The connection string is the provider's, not the caller's: an export route reachable over
    * HTTP must not decide which database it reads from any more than it decides where it
    * writes. On PGlite there is no server for `pg_dump` to reach, so the export is refused.
    */
   async exportContainer(tenant: Tenant, request: { directory?: string; schemaVersion: string | null }) {
-    return await exportPostgresSchema(tenant, { ...request, url: this.serverUrl('Export (pg_dump)') })
+    const server = this.serverUrl('Export (pg_dump)')
+    if (this.strategy === 'container') {
+      return await exportPostgres(tenant, { ...request, url: databaseUrl(server, tenant.locator), wholeDatabase: true })
+    }
+    return await exportPostgres(tenant, { ...request, url: server })
   }
 
   /**
@@ -491,11 +529,13 @@ export class PostgresProvider {
   async inspectContainer(tenant: Tenant) {
     assertLocator(tenant.locator)
     const handle = await this.forLocator(tenant.locator, tenant.id)
+    // Under `container` the tables sit in the tenant database's own `public`.
+    const schema = this.strategy === 'container' ? 'public' : tenant.locator
 
     const tables = await handle.execute<{ table_name: string }>(
       sql.raw(
         `select table_name from information_schema.tables ` +
-          `where table_schema = '${tenant.locator}' and table_type = 'BASE TABLE' order by table_name`
+          `where table_schema = '${schema}' and table_type = 'BASE TABLE' order by table_name`
       )
     )
 
@@ -509,8 +549,10 @@ export class PostgresProvider {
 
     const size = await this.controlHandle.execute<{ bytes: string | number }>(
       sql.raw(
-        `select coalesce(sum(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))), 0)::bigint as bytes ` +
-          `from pg_tables where schemaname = '${tenant.locator}'`
+        this.strategy === 'container'
+          ? `select pg_database_size('${tenant.locator}')::bigint as bytes`
+          : `select coalesce(sum(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))), 0)::bigint as bytes ` +
+              `from pg_tables where schemaname = '${tenant.locator}'`
       )
     )
 
@@ -529,20 +571,33 @@ export class PostgresProvider {
     return await this.tenant(row)
   }
 
-  /** Creates the container of a tenant that is being provisioned (T-6.1). */
+  /**
+   * Creates the container of a tenant that is being provisioned (T-6.1): a schema, or under the
+   * `container` strategy a database. A database left by an earlier attempt is refused, never
+   * adopted: what is inside it is not known.
+   */
   async createContainer(tenant: Tenant): Promise<void> {
+    if (this.strategy === 'container') {
+      // Outside any transaction, which `CREATE DATABASE` refuses: a pooled query runs alone.
+      await this.db.execute(sql.raw(`create database ${escapeIdentifier(tenant.locator)}`))
+      return
+    }
     await this.createSchema(tenant.locator)
   }
 
   /**
-   * Removes a container that was created moments ago and could not be finished (T-6.1).
-   *
-   * NOT how a tenant's data is destroyed: that is T-6.3, two phases, an export first and a
-   * second factor. This undoes a provisioning that failed before the registry row was
-   * written, so what it drops is a schema that has never held a customer's data and that
-   * nothing points at.
+   * Drops a container: the undo of a provisioning that failed before its registry row, and the
+   * last step of a destruction, which has exported it first (T-6.3). Under `container` the
+   * pool this process holds on the database goes first, and `FORCE` ends the sessions other
+   * processes hold, which would otherwise make the drop fail.
    */
   async dropContainer(locator: string): Promise<void> {
+    if (this.strategy === 'container') {
+      assertLocator(locator)
+      await this.closeContainer_(locator)
+      await this.db.execute(sql.raw(`drop database if exists ${escapeIdentifier(locator)} with (force)`))
+      return
+    }
     await this.dropSchema(locator)
     this.containers.delete(locator)
   }
@@ -610,6 +665,66 @@ export class PostgresProvider {
     for (const locator of [...this.openContainers.keys()]) await this.closeContainer_(locator)
     if (this.pglite) await this.pglite.close()
     else await this.pool?.end()
+  }
+}
+
+/**
+ * Keeps the process alive when the server ends an idle connection: a restart, or
+ * `DROP DATABASE ... WITH (FORCE)` run by another instance on a tenant this one has open. The
+ * pool reports it as an `error` event, and an `error` event nobody listens to ends the process.
+ * The pool has already discarded the connection; the next query opens a new one.
+ */
+function reportIdleErrors<T extends pg.Pool>(pool: T, what: string): T {
+  pool.on('error', (e) => {
+    if (globalThis.log?.w) globalThis.log.warn(`Postgres: an idle connection of ${what} was closed: ${e?.message}`)
+  })
+  return pool
+}
+
+/** What keeps raw SQL inside a tenant's schema, for one transaction and no longer. */
+const enterSchema = (locator: string) => `set local search_path to ${escapeIdentifier(locator)}`
+
+/**
+ * `RawSql` on a `pg` pool. With a `locator` every statement runs in a transaction that entered
+ * that schema; without one a single statement goes to the pool as it is.
+ */
+function poolRawSql(pool: pg.Pool, locator?: string): RawSql {
+  const transaction: RawSql['transaction'] = async (run) => {
+    const client = await pool.connect()
+    try {
+      await client.query('begin')
+      if (locator) await client.query(enterSchema(locator))
+      const result = await run((text, params) => client.query(text, params) as never)
+      await client.query('commit')
+      client.release()
+      return result
+    } catch (error) {
+      // A connection that cannot even roll back is in an unknown state: it leaves the pool
+      // instead of carrying half a transaction to the next borrower.
+      const broken = await client.query('rollback').then(
+        () => undefined,
+        (rollback: Error) => rollback
+      )
+      client.release(broken)
+      throw error
+    }
+  }
+  return {
+    query: locator ? (text, params) => transaction((query) => query(text, params)) : (text, params) => pool.query(text, params) as never,
+    transaction
+  }
+}
+
+/** `RawSql` on PGlite: the same rule, on the one session it has. */
+function pgliteRawSql(pglite: PGlite, locator?: string): RawSql {
+  const transaction: RawSql['transaction'] = (run) =>
+    pglite.transaction(async (tx) => {
+      if (locator) await tx.query(enterSchema(locator))
+      return await run((text, params) => tx.query(text, params) as never)
+    })
+  return {
+    query: locator ? (text, params) => transaction((query) => query(text, params)) : (text, params) => pglite.query(text, params) as never,
+    transaction
   }
 }
 

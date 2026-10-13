@@ -1374,7 +1374,28 @@ tenant B the object naming tenant A's schema, which is the same defect rebuilt i
 
 **Never redefine a framework table.** If `user` lacks a field your application needs, add your own table keyed
 by `user.id`. Subclassing the framework's entity was the v4 way and it collides with every future framework
-migration — at upgrade time, on a deployment already in production.
+migration: at upgrade time, on a deployment already in production.
+
+### What a package keeps outside the container
+
+A package that keeps something for each tenant outside the container, files on a disk or an index of its own,
+hands the framework a `TenantLifecycle`, and that part then follows the tenant as the container does:
+
+```ts
+await startServer({ ...layer, tenantLifecycles: [ragLifecycle()] })
+```
+
+`create(place, handle)` runs after the container is created and migrated, before the registry row, with `handle`
+on the new container; a throw undoes the creation (every package that started, last first, then the container)
+and no row is written. `export(tenant, target)` writes the package's part at `target`, next to the dump, and
+returns the bytes; the export route lists it in `artifacts`, and a throw fails the export and any destruction
+that needed it. `destroy(place)` removes the part before the container is dropped, so a failure leaves a tenant
+that can be destroyed again. `place` is `{ slug, locator, strategy }`: there is no id at creation, because the
+registry assigns it last, and the locator is what a package keys its data by. Names are checked at boot
+(letters, digits, `-` and `_`, each one once), because they end up in the export's file names.
+
+A package that writes its own SQL reaches the container through `access(handle).raw`, `query(text, params)` and
+`transaction(run)`, under the same rule as `execute`: an unqualified table is the tenant's.
 
 ### Query string guide
 
@@ -1471,7 +1492,7 @@ allowed to read. Pass `sensitiveFields` in the query options to extend the list 
 | | |
 |---|---|
 | `start(options?)` | opens the data layer; returns the managers, the provider, `migrations` and `migrateTenants`. Reads `global.config.options` when called with nothing |
-| `access(handle)` | the inside of a handle: `db`, `tenantId`, `locator`, `execute`, `transaction` |
+| `access(handle)` | the inside of a handle: `db`, `tenantId`, `locator`, `execute`, `transaction`, and `raw` (text SQL with `$n` parameters inside the container, for code that does not use the ORM) |
 | `executeFind(handle, table, params, options)` | find and count in one call: `{ records, headers }` |
 | `executeCount(handle, table, params, options)` | how many rows match, ignoring the page |
 | `parseQuery(table, params, options)` | the translation alone, for a query you assemble yourself |
@@ -1650,10 +1671,11 @@ so it is already compatible with that mode: nothing has to survive between trans
 POST /tenants/:id/export        capability `tenants:export`
 ```
 
-Writes one customer's container to a file with `pg_dump --schema`. The response says where it
-landed, how big it is, and
+Writes one customer's container to a file with `pg_dump`: their schema, or under the `container` strategy
+their whole database. The response says where it landed, how big it is, and
 **which schema version it was taken at**, read from the container itself rather than from the
-registry row.
+registry row, then `artifacts`: what each package keeps outside the container for that tenant, written next
+to the dump (see "What a package keeps outside the container").
 
 Three things it will not do:
 
@@ -1664,7 +1686,8 @@ Three things it will not do:
   (`EXPORT_DIRECTORY`, default `./data/exports`) and the file name is generated from the slug,
   the version and the instant. A destination taken from a request is a path traversal with
   extra steps;
-- **include anybody else.** A Postgres export is limited to that tenant's schema.
+- **include anybody else.** A Postgres export is limited to that tenant's schema, or to that tenant's
+  database.
 
 ## Destroying a container
 
@@ -1693,8 +1716,10 @@ path lands in proxy access logs, browser history and tracing systems:
 ```
 
 Then, in this order: the second factor is verified and its step spent, **the container is
-exported** and the file must be real, the event is recorded with the export reference, and only
-then is the data dropped. If the export fails there is no destruction. The registry row stays,
+exported** and the file must be real, the event is recorded with the export reference, the packages
+remove what they keep outside the container, and only then is the data dropped. If the export fails
+there is no destruction; if a package cannot remove its part, the container stays, to be destroyed
+again. The registry row stays,
 marked `destroyed`, and no update, suspension or restore moves it out of that status (409
 `TENANT_DESTROYED`). Calling it again on a tenant that is already gone answers 200 with
 `alreadyDestroyed: true`.

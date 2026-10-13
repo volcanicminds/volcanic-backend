@@ -374,7 +374,7 @@ the destruction. Update, suspend, restore, delete, export and a new destruction 
 exists.
 | GET | `/tenants/migrations` | `migrations` | which container is at which schema version |
 | POST | `/tenants/:id/migrate` | `migrations` | applies the pending migrations to one container |
-| POST | `/tenants/:id/export` | `tenants:export` | |
+| POST | `/tenants/:id/export` | `tenants:export` | the container's dump (`pg_dump` of the schema, or of the whole database under `container`), then `artifacts`: what each package keeps outside the container, `{ name, path, bytes }`, written next to the dump. A package that fails removes the dump and every artifact, and the export fails |
 | POST | `/tenants/:id/impersonate` | `tenants:impersonate` | body: `{ userId, reason }`. `reason` is **required**. Fresh: an operator whose proof is older than `STEP_UP_MAX_AGE` gets 403 `STEP_UP_REQUIRED` (§2.6) |
 | POST | `/tenants/impersonate/end` | `tenants:impersonate` | revokes the impersonation record. Body: `{ impersonationId }`. First written as "authenticated (control)", which on a control route resolves to the superuser alone: whoever can open a session must be able to end one, and that is the capability |
 | POST | `/tenants/:id/destruction-request` | `tenants:destroy` | phase 1, see §6.2 |
@@ -397,8 +397,16 @@ Body: `{ name, slug, strategy, engine, locator?, config?, admin: { email, passwo
 - `admin.adminConfirmed` defaults to **`true`** on this route: a tenant whose administrator
   cannot log in is not provisioned, it is broken (defect D-08). `POST /auth/register` keeps
   creating unconfirmed users: they are different paths with different meanings.
+- `strategy` is the deployment's, `tenants.strategy`: absent, it is taken from there; another one
+  answers 400 `TENANT_STRATEGY_MISMATCH`, because the row would describe a container that does not
+  exist in that shape.
 - The container is created, migrated to the current version, and the version is recorded. If the
-  migration fails, the whole creation is rolled back and the registry row is not written.
+  migration fails, the whole creation is rolled back and the registry row is not written. Under
+  `container` the container is a database named after the locator; one already there is refused,
+  never adopted, because what is inside it is not known.
+- Then the packages given to `start({ tenantLifecycles })` build their part, in order, on the whole
+  container and before the row (`llms.txt` §2.8). A package that throws undoes every package that
+  started, itself included, last first, then the container; no row is written.
 
 ### 6.2 Destruction, two phases
 
@@ -427,6 +435,9 @@ the path lands in proxy access logs, browser history and tracing systems.
 - The framework **exports first** (`tenants:export` path, §6 of `docs/SCHEMA_V5.md`). If the
   export fails, or produces an empty file, the destruction does not happen.
 - The event is written **before** execution, with the export reference.
+- What the packages keep outside the container is exported with it, then removed before the
+  container is dropped, each package in order; one that cannot remove its part stops the
+  destruction with the container still there, so it can be run again.
 - The tenant's own identity providers (`identity_provider`, with their client secrets) are removed
   before the container is dropped; the registry row, the impersonation log and the destruction
   record stay, because they are the platform's audit.

@@ -8,6 +8,7 @@ import { envInt } from './lib/util/env.js'
 import { createLogger } from './lib/util/logger.js'
 import * as mark from './lib/util/mark.js'
 import { TranslatedError } from './lib/util/errors.js'
+import { tenantLifecyclesOf } from './lib/util/tenantLifecycle.js'
 import * as loaderPlugins from './lib/loader/plugins.js'
 import * as loaderRoles from './lib/loader/roles.js'
 import * as loaderRouter from './lib/loader/router.js'
@@ -62,6 +63,7 @@ import type {
   SessionManagement,
   SettingManagement,
   SystemUserManagement,
+  TenantLifecycle,
   TenantManagement,
   TokenManagement,
   TrackingManagement,
@@ -231,6 +233,8 @@ export interface StartOptions {
   governanceLogManager?: GovernanceLogManagement
   settingManager?: SettingManagement
   authenticators?: readonly Authenticator[]
+  /** The packages that follow a tenant's life: created, exported, destroyed with it (T-16.2). */
+  tenantLifecycles?: readonly TenantLifecycle[]
   [key: string]: unknown
 }
 
@@ -401,9 +405,11 @@ const start = async (decorators: StartOptions = {}) => {
   const closing = loaderSchedules.closingSignal(server)
 
   // `authenticators` is not a manager and is not decorated: it feeds the registry, which is.
+  // `tenantLifecycles` is not a manager either: it is checked here and decorated as a list.
   // An `undefined` value keeps the default: `{ ...layer, challengeDeliveryManager: maybe() }` must not
   // replace a Null Object with nothing, which every caller asks `isImplemented()` of.
-  const { authenticators, ...given } = decorators
+  const { authenticators, tenantLifecycles, ...given } = decorators
+  const lifecycles = tenantLifecyclesOf(tenantLifecycles)
   const injected = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined))
 
   // Decorators with Defaults (Null Object Pattern)
@@ -436,6 +442,7 @@ const start = async (decorators: StartOptions = {}) => {
   )
   const authRegistry = buildAuthenticatorRegistry(authenticators ?? [])
   server.decorate('authRegistry', authRegistry)
+  server.decorate('tenantLifecycles', lifecycles)
 
   // After the injection, because a project may bring its own managers and methods: a flow this
   // build cannot run, or a policy that demands a second factor it cannot issue (T-10.19), is a
@@ -657,6 +664,9 @@ export type {
   TenantHandle,
   DataHandle,
   Tenant,
+  TenantPlace,
+  TenantLifecycle,
+  ExportedArtifact,
   JobRun,
   JobScope
 } from './types/global.js'

@@ -7,6 +7,9 @@
 // name a schema that does not exist (D-20). v5 refuses a name that changes under
 // sanitisation rather than quietly adjusting it — a rule whose whole value is that it fires.
 //
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import { expect } from 'expect'
 import fastify from 'fastify'
 import { create, exportContainer } from '../../lib/api/tenants/controller/tenants.js'
@@ -15,6 +18,7 @@ import { buildAuthenticatorRegistry, createAuthenticatorRegistry } from '../../l
 import { passwordAuthenticator } from '../../lib/auth/builtins.js'
 import { tenantBodySchema } from '../../lib/schemas/tenant.js'
 import { fakeGovernanceLog } from './fixtures/governanceLog.js'
+import { tenantLifecyclesOf } from '../../lib/util/tenantLifecycle.js'
 
 ;(global as any).log = {}
 
@@ -36,27 +40,43 @@ async function build(over: any = {}) {
     getTenant: async (_c: any, id: string) => (id === ACME.id ? ACME : null),
     getTenantBySlug: async (_c: any, slug: string) => (over.slugTaken && slug === 'acme' ? ACME : null),
     createTenant: async (_c: any, data: any) => {
+      if (over.rowFails) throw new Error('the registry is gone')
       created.push(data)
       return { ...ACME, ...data }
     }
   })
   server.decorate('userManager', {
     isImplemented: () => true,
-    createUser: async (_c: any, data: any) => ({ id: 'u1', ...data })
+    createUser: async (_c: any, data: any) => {
+      if (over.founderFails) throw new Error('the founder could not be written')
+      started.push('founder')
+      return { id: 'u1', ...data }
+    }
   })
   if (over.mfa) server.decorate('mfaManager', { isImplemented: () => true })
   server.decorate('authFlowManager', { isImplemented: () => over.noFlowStore !== true })
   if (over.registry) server.decorate('authRegistry', over.registry)
   server.decorate('migrations', { apply: async () => '0001_init', version: async () => '0001_init' })
   server.decorate('provider', {
+    strategy: over.strategy ?? 'schema',
     createContainer: async (tenant: any) => void started.push(`create ${tenant.locator}`),
-    dropContainer: async () => {},
-    forLocator: async () => ({ kind: 'tenant' }),
+    dropContainer: async (locator: string) => void started.push(`drop ${locator}`),
+    forLocator: async (locator: string) => ({ kind: 'tenant', locator }),
     // A data layer that cannot export: one injected without `exportContainer`.
     ...(over.canExport === false
       ? {}
-      : { exportContainer: async () => (started.push('export'), { path: '/tmp/acme.sql', bytes: 2048 }) })
+      : {
+          exportContainer: async () => {
+            started.push('export')
+            if (!over.exportDirectory) return { path: '/tmp/acme.sql', bytes: 2048 }
+            // A real file, where a test looks at what is left on the disk.
+            const file = path.join(over.exportDirectory, 'acme-0001_init.sql')
+            fs.writeFileSync(file, 'dump')
+            return { path: file, bytes: 4 }
+          }
+        })
   })
+  if (over.lifecycles) server.decorate('tenantLifecycles', over.lifecycles)
 
   server.addHook('onRequest', async (req: any) => {
     req.data = () => getData(req)
@@ -100,6 +120,21 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     // Refusing and adjusting look the same from a happy path and differ exactly where D-20
     // lived: adjusting writes one name and uses another.
     expect(created.length).toBe(0)
+    await server.close()
+  })
+
+  it("records the deployment's strategy, and refuses a tenant that declares another (T-16.1)", async () => {
+    const { server, created, started } = await build({ strategy: 'container' })
+    const payload = { slug: 'acme', name: 'Acme', locator: 'tenant_acme', admin: { email: 'admin@acme.test', password: 'Str0ng-passw0rd!' } }
+
+    const refused = await provision(server, { ...payload, strategy: 'schema' })
+    expect(refused.statusCode).toBe(400)
+    expect(JSON.parse(refused.body).code).toBe('TENANT_STRATEGY_MISMATCH')
+    expect(started).toEqual([])
+
+    // Silent on the strategy, the row still says how the container is kept: a database.
+    expect((await provision(server, payload)).statusCode).toBe(201)
+    expect(created.map((row) => row.strategy)).toEqual(['container'])
     await server.close()
   })
 
@@ -249,5 +284,132 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     expect(res.statusCode).toBe(503)
     expect(JSON.parse(res.body).code).toBe('EXPORT_NOT_AVAILABLE')
     await server.close()
+  })
+})
+
+describe('tenants · the packages that follow a tenant (T-16.2)', () => {
+  const PAYLOAD = { slug: 'acme', name: 'Acme', locator: 'tenant_acme', admin: { email: 'admin@acme.test', password: 'Str0ng-passw0rd!' } }
+  let dir: string
+
+  // A package that writes down what it is asked to do, in the same list as the data layer.
+  const recording = (name: string, started: string[], over: { create?: boolean; export?: boolean; failOn?: string } = {}) => ({
+    name,
+    ...(over.create === false
+      ? {}
+      : {
+          create: async (place: any, handle: any) => {
+            started.push(`${name} create ${place.slug} ${place.locator} ${place.strategy} ${handle.locator}`)
+            if (over.failOn === 'create') throw new Error('no room')
+          }
+        }),
+    ...(over.export === false
+      ? {}
+      : {
+          export: async (tenant: any, target: string) => {
+            started.push(`${name} export ${tenant.id}`)
+            fs.writeFileSync(target, `${name} data`)
+            if (over.failOn === 'export') throw new Error('disk full')
+            return 9
+          }
+        }),
+    destroy: async (place: any) => void started.push(`${name} destroy ${place.locator}`)
+  })
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-lifecycle-'))
+  })
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true })
+    ;(global as any).config = undefined
+  })
+
+  it('runs every package once the container is whole, and before the row', async () => {
+    const lifecycles: any[] = []
+    const { server, started, created } = await build({ lifecycles })
+    lifecycles.push(recording('rag', started), recording('audit', started))
+
+    expect((await provision(server, PAYLOAD)).statusCode).toBe(201)
+    // The id is the registry's, assigned last: a package keys its data by the locator.
+    expect(started).toEqual([
+      'create tenant_acme',
+      'founder',
+      'rag create acme tenant_acme schema tenant_acme',
+      'audit create acme tenant_acme schema tenant_acme'
+    ])
+    expect(created.length).toBe(1)
+    await server.close()
+  })
+
+  it('undoes every package that started, the failing one included, then the container, and writes no row', async () => {
+    const lifecycles: any[] = []
+    const { server, started, created } = await build({ lifecycles })
+    lifecycles.push(recording('rag', started), recording('audit', started, { failOn: 'create' }), recording('late', started))
+
+    const res = await provision(server, PAYLOAD)
+    expect(res.statusCode).toBe(500)
+    expect(started.slice(2)).toEqual([
+      'rag create acme tenant_acme schema tenant_acme',
+      'audit create acme tenant_acme schema tenant_acme',
+      // Last first, and the one that never started is not asked to undo anything.
+      'audit destroy tenant_acme',
+      'rag destroy tenant_acme',
+      'drop tenant_acme'
+    ])
+    expect(created).toEqual([])
+    await server.close()
+  })
+
+  it('undoes the packages when the row cannot be written', async () => {
+    const lifecycles: any[] = []
+    const { server, started } = await build({ lifecycles, rowFails: true })
+    lifecycles.push(recording('rag', started))
+
+    expect((await provision(server, PAYLOAD)).statusCode).toBe(500)
+    expect(started.slice(-2)).toEqual(['rag destroy tenant_acme', 'drop tenant_acme'])
+    await server.close()
+  })
+
+  it('asks no package anything when the container failed before them', async () => {
+    const lifecycles: any[] = []
+    const { server, started } = await build({ lifecycles, founderFails: true })
+    lifecycles.push(recording('rag', started))
+
+    expect((await provision(server, PAYLOAD)).statusCode).toBe(500)
+    expect(started).toEqual(['create tenant_acme', 'drop tenant_acme'])
+    await server.close()
+  })
+
+  it('exports what each package keeps next to the dump, and records it', async () => {
+    const lifecycles: any[] = []
+    const { server, started, governance } = await build({ lifecycles, exportDirectory: dir })
+    lifecycles.push(recording('rag', started), recording('quiet', started, { export: false }))
+
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    expect(res.statusCode).toBe(200)
+    const artifact = { name: 'rag', path: path.join(dir, 'acme-0001_init.rag'), bytes: 9 }
+    expect(JSON.parse(res.body).artifacts).toEqual([artifact])
+    expect(fs.readFileSync(artifact.path, 'utf8')).toBe('rag data')
+    expect(started).toEqual(['export', `rag export ${ACME.id}`])
+    expect(governance.rows.at(-1)).toMatchObject({ outcome: 'success', detail: { artifacts: [artifact] } })
+    await server.close()
+  })
+
+  it('leaves no part of an export that a package could not finish', async () => {
+    const lifecycles: any[] = []
+    const { server, started, governance } = await build({ lifecycles, exportDirectory: dir })
+    lifecycles.push(recording('rag', started), recording('audit', started, { failOn: 'export' }))
+
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    expect(res.statusCode).toBe(500)
+    // An export missing part of the tenant must not sit in the directory looking like a whole one.
+    expect(fs.readdirSync(dir)).toEqual([])
+    expect(governance.rows.at(-1)).toMatchObject({ outcome: 'failure' })
+    await server.close()
+  })
+
+  it('refuses at boot a name that is not a file name, and a name given twice', () => {
+    expect(() => tenantLifecyclesOf([{ name: 'rag/../x' }])).toThrow(/not a valid name/)
+    expect(() => tenantLifecyclesOf([{ name: 'rag' }, { name: 'rag' }])).toThrow(/given twice/)
+    expect(tenantLifecyclesOf(undefined)).toEqual([])
   })
 })

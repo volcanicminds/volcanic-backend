@@ -31,7 +31,7 @@ export * from './lib/database/migrations/runner.js'
 export * from './lib/database/migrations/fleet.js'
 export { purgeContainers, PURGE_PAGE_SIZE, type PurgeLayer, type PurgeTarget, type PurgeResult } from './lib/database/purge.js'
 export { readMigrations, statementsOf } from './lib/database/migrations/files.js'
-export { PostgresProvider } from './lib/database/adapters/postgres/index.js'
+export { PostgresProvider, type RawSql, type RawQuery } from './lib/database/adapters/postgres/index.js'
 export {
   assertSupported,
   supports,
@@ -138,13 +138,15 @@ function buildMigrationRunner(provider: unknown, options: DataLayerOptions) {
   const controlSchema = options?.control?.schema || 'public'
   const p = provider as {
     control(): unknown
-    forLocator(locator: string, tenantId: string): unknown
+    forLocator(locator: string, tenantId: string): Promise<{ locator?: string }>
   }
 
-  const open = async (container: ContainerRef): Promise<MigrationTarget> => ({
-    handle: container.tenantId ? await p.forLocator(container.locator, container.tenantId) : await p.control(),
-    locator: container.locator || controlSchema
-  })
+  const open = async (container: ContainerRef): Promise<MigrationTarget> => {
+    if (!container.tenantId) return { handle: await p.control(), locator: container.locator || controlSchema }
+    const handle = await p.forLocator(container.locator, container.tenantId)
+    // A tenant handle without a locator is a database of its own: its tables sit in `public`.
+    return { handle, locator: handle.locator ?? 'public' }
+  }
 
   return createMigrationRunner(open, migrationSets())
 }

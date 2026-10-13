@@ -332,6 +332,51 @@ export interface Tenant {
   config?: Record<string, unknown>
 }
 
+/**
+ * What a package may rely on of a tenant at every moment of its life. The creation included,
+ * which is why there is no id: the registry assigns it when the row is written, and that is last.
+ * The locator is final from the start and unique, so it is what a package keys its own data by.
+ */
+export type TenantPlace = Pick<Tenant, 'slug' | 'locator' | 'strategy'>
+
+/**
+ * A package's part in the life of a tenant (T-16.2), passed to `start({ tenantLifecycles })`.
+ *
+ * What a package keeps for a tenant inside the container goes with the container. What it keeps
+ * outside, files on a disk or an index of its own, is invisible to the framework: without this
+ * port an export would leave it out and a destruction would leave it behind. Every method is
+ * optional, and each one runs inside the route that drives that moment, so its failure is the
+ * route's failure.
+ */
+export interface TenantLifecycle {
+  /** Names the package in logs, in the governance log and in the export: letters, digits, `-` and `_`. */
+  readonly name: string
+  /**
+   * After the container is created and migrated, before the registry row. `handle` is the new
+   * container. A throw undoes the creation: `destroy` runs for every package that was created,
+   * the failing one included, and the container is dropped.
+   */
+  create?(tenant: TenantPlace, handle: TenantHandle): Promise<void>
+  /**
+   * Writes what the package keeps for the tenant outside the container at `target`, a path next
+   * to the dump that does not exist yet, as a file or a folder. Returns the bytes written. A throw
+   * fails the export, and with it the destruction that needed it.
+   */
+  export?(tenant: Tenant, target: string): Promise<number>
+  /**
+   * Removes what the package keeps for the tenant outside the container. Runs before the
+   * container is dropped, so a failure leaves a tenant that can still be destroyed again.
+   */
+  destroy?(tenant: TenantPlace): Promise<void>
+}
+
+/** What `export` produced, one per package, recorded with the dump. */
+export interface ExportedArtifact {
+  name: string
+  path: string
+  bytes: number
+}
+
 export interface GeneralConfig {
   name: string
   options: {
@@ -1700,6 +1745,8 @@ declare module 'fastify' {
     settingManager: SettingManagement
     /** Not a manager: the authenticators of both planes, built by `start()` (T-12.3). */
     authRegistry: AuthenticatorRegistry
+    /** Not a manager: the packages that follow a tenant's life, in the order given to `start()` (T-16.2). */
+    tenantLifecycles: readonly TenantLifecycle[]
   }
 }
 

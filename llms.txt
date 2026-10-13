@@ -935,6 +935,34 @@ in expand/contract releases.
 - Never store a tenant identifier in a tenant's own table. The container **is** the tenancy; a
   column repeating it is a second source of truth and the first thing to drift.
 
+## 2.8 What a package keeps outside the container
+
+A package that keeps something for each tenant outside the container, files on a disk or an
+index of its own, hands the framework a `TenantLifecycle` (exported from
+`@volcanicminds/backend`), and that part then follows the tenant as the container does:
+
+```typescript
+await startServer({ ...layer, tenantLifecycles: [ragLifecycle()] })
+```
+
+| Method | When | A throw |
+|---|---|---|
+| `create(place, handle)` | after the container is created and migrated, before the registry row; `handle` is the new container | undoes the creation: every package that started, last first, then the container; no row |
+| `export(tenant, target)` | after the dump; writes at `target`, next to it, and returns the bytes | fails the export, and any destruction that needed it |
+| `destroy(place)` | before the container is dropped | stops the destruction with the container still there, to run again |
+
+`place` is `{ slug, locator, strategy }`: no id at creation, because the registry assigns it last,
+and the locator is what a package keys its data by. Every method is optional; they run in the
+order given to `start()`. Names are checked at boot (letters, digits, `-` and `_`, each one
+once), because they end up in the export's file names: `<dump without extension>.<name>`, listed
+in the response's `artifacts` as `{ name, path, bytes }`.
+
+A package that writes its own SQL instead of using the ORM reaches the container through
+`access(handle).raw`: `query(text, params)` and `transaction(run)`, under the same rule as
+`execute`, so an unqualified table is the tenant's. Under the `container` strategy it runs on the
+tenant database's pool, which the LRU and the idle sweep close: nothing taken from `raw` outlives
+the request or the job that borrowed the container.
+
 ---
 
 # Part 3: Magic Queries & Data Access
@@ -1097,7 +1125,7 @@ manifest is for.
 | | |
 |---|---|
 | `start(options?)` | opens the data layer; returns the managers, `provider`, `migrations`, `migrateTenants`, `shutdown`. Reads `global.config.options` when called with nothing |
-| `access(handle)` | the inside of a handle: `db`, `tenantId`, `locator`, `execute`, `transaction` |
+| `access(handle)` | the inside of a handle: `db`, `tenantId`, `locator`, `execute`, `transaction`, and `raw` (text SQL with `$n` parameters inside the container, §2.8) |
 | `executeFind(handle, table, params, options)` | find and count in one call: `{ records, headers }` |
 | `executeCount(handle, table, params, options)` | how many rows match, ignoring the page |
 | `parseQuery(table, params, options)` | the translation alone, for a query you assemble yourself |
@@ -3099,7 +3127,7 @@ The decorator keys (all optional): `userManager`, `tokenManager`, `trackingManag
 `AccessLogManagement`, `GovernanceLogManagement`, `SettingManagement`, all re-exported from
 `@volcanicminds/backend`). The data layer's `start()` returns all
 of them except `mfaManager`, `transferManager` and `challengeDeliveryManager`, which come from the consumer.
-One more key is not a manager: `authenticators`, the project's own login methods (Part 6.2). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
+Two more keys are not managers: `authenticators`, the project's own login methods (Part 6.2), and `tenantLifecycles`, the packages that follow a tenant's life (§2.8). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
 resolve a consumer entity by name through `global.entity`, and neither is a thing v5 does.
 
 Two more keys the data layer's `start()` returns and the server carries: `provider` (how a request

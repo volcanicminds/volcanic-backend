@@ -143,6 +143,21 @@ describe('database · session state (T-3.1)', () => {
       )
     })
 
+    it('wraps text SQL on a tenant in a transaction that enters the container, and on the control plane in nothing (T-16.2)', async () => {
+      const pool = new RecordingPool()
+      const provider = providerOn(pool)
+      const acme: any = await provider.forLocator('tenant_acme', 'acme-id', scopeOf('r1'))
+
+      await acme.raw.query('select tag from widget where tag = $1', ['ACME'])
+      expect(pool.statements).toEqual(['begin', 'set local search_path to "tenant_acme"', 'select tag from widget where tag = $1', 'commit'])
+      expect(pool.released.length).toBe(1)
+
+      pool.statements.length = 0
+      await (provider.control() as any).raw.query('select 1')
+      expect(pool.statements).toEqual(['select 1'])
+      await refused(() => acme.raw.query('set search_path to tenant_globex'))
+    })
+
     it('does not carry a transaction flag over to the next checkout', async () => {
       const pool = new RecordingPool()
       const guarded: any = guardPool(pool as any)
@@ -194,6 +209,13 @@ describe('database · session state (T-3.1)', () => {
       expect(inside).toEqual([{ tag: 'ACME' }])
       expect((await control.execute(sql.raw('show search_path'))).rows).toEqual([{ search_path: 'public' }])
       await refused(() => control.transaction(async (tx: any) => tx.execute(sql.raw('set search_path to tenant_acme'))))
+    })
+
+    it('runs text SQL with bound parameters inside the tenant schema, and leaves the session as it found it (T-16.2)', async () => {
+      const acme: any = await provider.forLocator('tenant_acme', 'acme-id')
+      expect((await acme.raw.query('select tag from widget where tag = $1', ['ACME'])).rows).toEqual([{ tag: 'ACME' }])
+      expect((await (provider.control() as any).raw.query('show search_path')).rows).toEqual([{ search_path: 'public' }])
+      await refused(() => acme.raw.query('set search_path to tenant_acme'))
     })
   })
 
