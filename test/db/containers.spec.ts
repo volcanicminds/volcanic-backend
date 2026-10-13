@@ -232,21 +232,33 @@ suite('containers · the lifecycle of a database per tenant (T-16.1)', function 
   })
 
   it('creates a database, and no schema in the control one', async () => {
-    await provider.createContainer(TENANT)
+    expect(await provider.createContainer(TENANT)).toBe(true)
     expect(await databaseExists()).toBe(true)
     const schemas = await outside.query('select 1 from information_schema.schemata where schema_name = $1', [TENANT.locator])
     expect(schemas.rows).toEqual([])
   })
 
-  it('refuses a database that is already there, instead of adopting it', async () => {
+  it('refuses a database that is already there, instead of adopting it (T-16.4)', async () => {
     // What is inside a database nobody provisioned is not known: it is not handed to a tenant.
-    let code: string | undefined
+    expect(await provider.createContainer(TENANT)).toBe(false)
+    expect(await databaseExists()).toBe(true)
+  })
+
+  it('refuses a schema that is already there too, and leaves what is in it (T-16.4)', async () => {
+    const schemas = new PostgresProvider({ url: DB_URL, schema: 'public', strategy: 'schema' })
+    const taken: any = { ...TENANT, locator: 'test_ctr_taken' }
     try {
-      await provider.createContainer(TENANT)
-    } catch (e: any) {
-      code = e?.code ?? e?.cause?.code
+      await outside.query(`drop schema if exists "${taken.locator}" cascade`)
+      expect(await schemas.createContainer(taken)).toBe(true)
+      await outside.query(`create table "${taken.locator}".kept (tag text)`)
+      await outside.query(`insert into "${taken.locator}".kept (tag) values ('still here')`)
+
+      expect(await schemas.createContainer(taken)).toBe(false)
+      expect((await outside.query(`select tag from "${taken.locator}".kept`)).rows).toEqual([{ tag: 'still here' }])
+    } finally {
+      await outside.query(`drop schema if exists "${taken.locator}" cascade`)
+      await schemas.shutdown()
     }
-    expect(code).toBe('42P04')
   })
 
   it('counts the rows of the tenant tables and sizes its database', async () => {

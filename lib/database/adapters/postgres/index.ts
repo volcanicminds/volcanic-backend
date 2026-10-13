@@ -573,16 +573,21 @@ export class PostgresProvider {
 
   /**
    * Creates the container of a tenant that is being provisioned (T-6.1): a schema, or under the
-   * `container` strategy a database. A database left by an earlier attempt is refused, never
-   * adopted: what is inside it is not known.
+   * `container` strategy a database. Answers `false`, having touched nothing, when one with that
+   * name is already there, under either strategy: it is never adopted. What is inside it is not
+   * known, it may be another tenant's, and a provisioning that fails later drops the container
+   * it was given.
    */
-  async createContainer(tenant: Tenant): Promise<void> {
-    if (this.strategy === 'container') {
+  async createContainer(tenant: Tenant): Promise<boolean> {
+    const name = escapeIdentifier(tenant.locator)
+    try {
       // Outside any transaction, which `CREATE DATABASE` refuses: a pooled query runs alone.
-      await this.db.execute(sql.raw(`create database ${escapeIdentifier(tenant.locator)}`))
-      return
+      await this.db.execute(sql.raw(this.strategy === 'container' ? `create database ${name}` : `create schema ${name}`))
+      return true
+    } catch (error) {
+      if (sqlStateOf(error) === (this.strategy === 'container' ? DUPLICATE_DATABASE : DUPLICATE_SCHEMA)) return false
+      throw error
     }
-    await this.createSchema(tenant.locator)
   }
 
   /**
@@ -666,6 +671,18 @@ export class PostgresProvider {
     if (this.pglite) await this.pglite.close()
     else await this.pool?.end()
   }
+}
+
+const DUPLICATE_DATABASE = '42P04'
+const DUPLICATE_SCHEMA = '42P06'
+
+/** The SQLSTATE of a failed statement: Drizzle wraps the driver's error, so it is looked for down the cause chain. */
+function sqlStateOf(error: unknown): string | undefined {
+  let link = error as { code?: unknown; cause?: unknown } | undefined
+  for (let depth = 0; link && depth < 5; depth++, link = link.cause as typeof link) {
+    if (typeof link.code === 'string') return link.code
+  }
+  return undefined
 }
 
 /**

@@ -18,7 +18,8 @@ import { firstBy, prepared } from '../prepared.js'
 // missing one.
 //
 export interface TenantProvider {
-  createContainer?(tenant: Tenant): Promise<void>
+  /** `false` when a container with that locator is already there: it is left untouched, never adopted. */
+  createContainer?(tenant: Tenant): Promise<boolean>
   openContainer(tenantId: string): Promise<TenantHandle>
   closeContainer?(handle: TenantHandle): Promise<void>
 }

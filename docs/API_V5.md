@@ -402,8 +402,11 @@ Body: `{ name, slug, strategy, engine, locator?, config?, admin: { email, passwo
   exist in that shape.
 - The container is created, migrated to the current version, and the version is recorded. If the
   migration fails, the whole creation is rolled back and the registry row is not written. Under
-  `container` the container is a database named after the locator; one already there is refused,
-  never adopted, because what is inside it is not known.
+  `container` the container is a database named after the locator, under `schema` a schema. One
+  already there, under either strategy, answers 409 `TENANT_LOCATOR_TAKEN` before anything is
+  built: it is never adopted, because what is inside it is not known, and it may be another
+  tenant's (two slugs can sanitise to one locator), which the undo of a failed creation would
+  drop.
 - Then the packages given to `start({ tenantLifecycles })` build their part, in order, on the whole
   container and before the row (`llms.txt` §2.8). A package that throws undoes every package that
   started, itself included, last first, then the container; no row is written.

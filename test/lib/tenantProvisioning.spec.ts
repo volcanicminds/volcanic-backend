@@ -59,7 +59,11 @@ async function build(over: any = {}) {
   server.decorate('migrations', { apply: async () => '0001_init', version: async () => '0001_init' })
   server.decorate('provider', {
     strategy: over.strategy ?? 'schema',
-    createContainer: async (tenant: any) => void started.push(`create ${tenant.locator}`),
+    createContainer: async (tenant: any) => {
+      if (over.containerTaken) return false
+      started.push(`create ${tenant.locator}`)
+      return true
+    },
     dropContainer: async (locator: string) => void started.push(`drop ${locator}`),
     forLocator: async (locator: string) => ({ kind: 'tenant', locator }),
     // A data layer that cannot export: one injected without `exportContainer`.
@@ -366,6 +370,21 @@ describe('tenants · the packages that follow a tenant (T-16.2)', () => {
 
     expect((await provision(server, PAYLOAD)).statusCode).toBe(500)
     expect(started.slice(-2)).toEqual(['rag destroy tenant_acme', 'drop tenant_acme'])
+    await server.close()
+  })
+
+  it('answers 409 TENANT_LOCATOR_TAKEN to a container already there, and drops nothing (T-16.4)', async () => {
+    // Two slugs can sanitise to one locator, and a declared locator can be another tenant's: the
+    // undo of a failed creation would then drop a container this request never built.
+    const lifecycles: any[] = []
+    const { server, started, created } = await build({ lifecycles, containerTaken: true })
+    lifecycles.push(recording('rag', started))
+
+    const res = await provision(server, PAYLOAD)
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).code).toBe('TENANT_LOCATOR_TAKEN')
+    expect(started).toEqual([])
+    expect(created).toEqual([])
     await server.close()
   })
 

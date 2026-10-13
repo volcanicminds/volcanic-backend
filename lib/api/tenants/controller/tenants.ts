@@ -80,7 +80,7 @@ type ContainerPreview = {
 
 interface ContainerProvider extends DataProvider {
   readonly strategy: TenantStrategy
-  createContainer(tenant: Tenant): Promise<void>
+  createContainer(tenant: Tenant): Promise<boolean>
   forLocator(locator: string, tenantId: string): Promise<TenantHandle>
   dropContainer(locator: string): Promise<void>
   exportContainer(tenant: Tenant, request: { directory?: string; schemaVersion: string | null }): Promise<ExportedContainer>
@@ -288,7 +288,12 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   let built = false
 
   try {
-    await provider.createContainer({ ...data, ...draft } as never)
+    // A container already there may be another tenant's: a slug check does not exclude it, since
+    // two slugs can sanitise to one locator. Refused before anything is built, so the undo below
+    // never drops what this request did not create.
+    if (!(await provider.createContainer({ ...data, ...draft } as never))) {
+      return reply.status(409).send(httpError(409, 'The container for this tenant already exists', 'TENANT_LOCATOR_TAKEN'))
+    }
     built = true
 
     // The schema comes from the migrations, never from entity metadata: a container built by

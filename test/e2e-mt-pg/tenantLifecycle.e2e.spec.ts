@@ -109,6 +109,26 @@ for (const strategy of ['schema', 'container'] as const) {
       expect((await sql().query('select 1 from public.tenant where slug = $1', [INITECH.slug])).rows).toEqual([])
     })
 
+    it("refuses a tenant whose container is another tenant's, and leaves that tenant whole (T-16.4)", async () => {
+      const res = await inject({
+        method: 'POST',
+        url: '/tenants',
+        headers: bearer(system),
+        payload: {
+          name: 'Globex twin',
+          slug: 'globex-twin',
+          strategy,
+          engine: 'postgres',
+          locator: GLOBEX.locator,
+          admin: { email: 'admin@globex-twin.test', password: 'Twin-pw-123456', adminConfirmed: true }
+        }
+      })
+      expect([res.statusCode, body(res).code]).toEqual([409, 'TENANT_LOCATOR_TAKEN'])
+      expect(await notesOf(GLOBEX.locator)).toEqual([{ body: 'globex note' }])
+      expect(fs.readFileSync(path.join(folderOf(GLOBEX.locator), 'note.txt'), 'utf8')).toBe('globex file')
+      expect((await sql().query('select 1 from public.tenant where slug = $1', ['globex-twin'])).rows).toEqual([])
+    })
+
     it("exports the package's folder next to the dump, and its table inside the dump", async () => {
       const res = await inject({ method: 'POST', url: `/tenants/${acmeId}/export`, headers: bearer(system) })
       expect(res.statusCode).toBe(200)
