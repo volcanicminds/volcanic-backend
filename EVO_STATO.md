@@ -207,6 +207,14 @@ porta `tid` come quello di una sessione, e una macchina non nomina più il tenan
 (F80); un token senza `tid` sotto tenancy è 401 `TOKEN_TENANT_MISSING` (F81). In rag T-7.2, il corpus per tenant su entrambe le strategie e con entrambi i motori,
 chiuso in `volcanic-rag/TASKS.md`. Fase 16 chiusa.
 
+**Fase 17 aperta il 13 ottobre 2026** (`EVO_FASE_17.md`), dalla constatazione che l'export di un
+tenant esiste e niente lo ricarica: il pacchetto di un tenant esportato, verificato e
+ripristinato, per il cliente che esce o vuole una copia e per il trasloco. Dieci decisioni del
+proprietario, da F82 a F91: un formato in due profili, cliente e operatore; la chiave di
+cifratura non esce mai e le credenziali viaggiano svuotate; ogni ripristino scrive una riga nuova
+con un id nuovo e cambia l'`external_id` dei token. Otto compiti, da T-17.1 a T-17.8, tutti da
+fare. In rag il `restore` del corpus è da scrivere in `volcanic-rag/TASKS.md`.
+
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
 `ERR_HTTP_HEADERS_SENT` del sample è chiuso (26 settembre 2026, tabella «Fuori piano»). Restano
