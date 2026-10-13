@@ -126,7 +126,9 @@ second.
 **The tenant of a request comes from `tid`, never from a header, whenever a token is present**
 (task T-3.2). The header or the subdomain resolves the tenant only for requests that have no
 token: login and public routes. If a token carries `tid` and the header names another tenant,
-the request is **refused**, not resolved to the more likely one.
+the request is **refused**, not resolved to the more likely one. An integration token (`/token`)
+carries `tid` too, the tenant it was created in (T-16.3): a machine names its tenant the way a
+session does, with the token alone.
 
 **No token carries a `role` claim, and one that does is refused** on every route with 401. v4 signed
 a five-minute token carrying a `role` claim between the password and the second factor, and kept

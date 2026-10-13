@@ -2,9 +2,9 @@
 //
 // Integration tokens on real Postgres (T-14.7).
 //
-// `POST /token` answers with the bearer once. What is observed here: that bearer authenticates in
-// the tenant it was created in and nowhere else, and the row the table keeps holds no copy of it,
-// in any column, for whoever can read the table.
+// `POST /token` answers with the bearer once. What is observed here: that bearer carries the tenant
+// it was created in and authenticates there without a header and nowhere else, and the row the
+// table keeps holds no copy of it, in any column, for whoever can read the table.
 //
 import { expect } from 'expect'
 import { setup, teardown, inject, app, systemToken, createTenant, login, sql, bearer, ACME, GLOBEX } from './harness.js'
@@ -16,13 +16,14 @@ describe('Integration tokens on real Postgres (T-14.7)', function () {
 
   let admin: string
   let created: any
+  let acme: any
 
   const mint = (payload: any) => inject({ method: 'POST', url: '/token', headers: bearer(admin, ACME.slug), payload })
 
   before(async () => {
     await setup()
     const system = await systemToken()
-    await createTenant(system, ACME)
+    acme = await createTenant(system, ACME)
     await createTenant(system, GLOBEX)
     admin = await login(ACME.slug, ACME.adminEmail, ACME.adminPassword)
     const res = await mint({ name: 'ci', expiresAt: null })
@@ -32,19 +33,24 @@ describe('Integration tokens on real Postgres (T-14.7)', function () {
 
   after(async () => await teardown())
 
-  it('returns the bearer once, and the bearer names the row', async () => {
+  it('returns the bearer once, and the bearer names the row and its tenant', async () => {
     expect(created.token).toEqual(expect.any(String))
-    expect(app().jwt.verify(created.token)).toMatchObject({ sub: created.externalId })
+    expect(app().jwt.verify(created.token)).toMatchObject({ sub: created.externalId, tid: acme.id })
   })
 
-  it('authenticates in its own tenant, and is a stranger in another', async () => {
-    const own = await inject({ method: 'GET', url: '/probe/subject', headers: bearer(created.token, ACME.slug) })
-    expect(own.statusCode).toBe(200)
-    expect(body(own)).toEqual({ tenant: ACME.slug, user: null, token: created.id })
+  it('authenticates in its own tenant without naming it, and is refused in another', async () => {
+    // The token decides the tenant, as a session's does: a machine sends it alone.
+    const alone = await inject({ method: 'GET', url: '/probe/subject', headers: bearer(created.token) })
+    expect(alone.statusCode).toBe(200)
+    expect(body(alone)).toEqual({ tenant: ACME.slug, user: null, token: created.id })
 
-    // The row lives in the tenant the token was created in: anywhere else its subject is unknown.
+    const named = await inject({ method: 'GET', url: '/probe/subject', headers: bearer(created.token, ACME.slug) })
+    expect(named.statusCode).toBe(200)
+
+    // A header naming another tenant may only disagree, and is refused before any container opens.
     const elsewhere = await inject({ method: 'GET', url: '/probe/subject', headers: bearer(created.token, GLOBEX.slug) })
-    expect(elsewhere.statusCode).toBe(404)
+    expect(elsewhere.statusCode).toBe(403)
+    expect(body(elsewhere).code).toBe('TENANT_MISMATCH')
   })
 
   it('stores no copy of the bearer, in any column of the row', async () => {

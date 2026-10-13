@@ -51,6 +51,7 @@ function request(opts: any = {}) {
     data: () => opts.data ?? {},
     parameters: () => ({ id: opts.targetId ?? EXISTING.id }),
     control: { kind: 'control' },
+    tenantInfo: opts.tenantInfo,
     routeOptions: { config: { tenantContext: false } },
     hasRole: (r: any) => callerRoles.includes(r?.code),
     roles: () => callerRoles,
@@ -193,6 +194,19 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     expect(permanent.calls[0][1].expiresAt).toBeNull()
     expect(permanent.reply.sent.signed.payload.exp).toBeUndefined()
     expect(permanent.reply.sent.signed.options.sign).toHaveProperty('expiresIn', undefined)
+  })
+
+  it('signs the tenant the row lives in into the bearer, and no tenant without tenants', async () => {
+    // Without `tid` the tenant of a machine's request would come from a header next to a token,
+    // which the resolution refuses to believe for every other token (docs/AUTHORIZATION_V5.md §5).
+    ;(global as any).config = { options: {} }
+    const inTenant = request({ data: { name: 'ci', expiresAt: null }, tenantInfo: { id: 'tenant-acme', slug: 'acme' } })
+    await create(inTenant.req, inTenant.reply)
+    expect(inTenant.reply.sent.signed.payload).toEqual({ sub: 't-ext-new', tid: 'tenant-acme' })
+
+    const single = request({ data: { name: 'ci', expiresAt: new Date(Date.now() + 3600_000).toISOString() } })
+    await create(single.req, single.reply)
+    expect(single.reply.sent.signed.payload).not.toHaveProperty('tid')
   })
 
   it('reports a row it could not write, instead of signing a bearer for nothing', async () => {

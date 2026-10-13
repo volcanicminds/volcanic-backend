@@ -65,12 +65,15 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not registered' })
   }
 
+  // The tenant the row lives in is signed into the bearer, as into a session's: with a token the
+  // tenant of a request comes from `tid`, and a header may only agree with it
+  // (docs/AUTHORIZATION_V5.md §5). Without tenants there is none, and no claim.
+  const claims = { sub: token.externalId, ...(req.tenantInfo && { tid: req.tenantInfo.id }) }
   // The bearer expires when the row says, and only then: `expiresIn: undefined` replaces the
   // session lifetime (JWT_EXPIRES_IN) that @fastify/jwt would otherwise apply.
-  const bearerToken = await reply.jwtSign(
-    expiresAt ? { sub: token.externalId, exp: Math.floor(expiresAt.getTime() / 1000) } : { sub: token.externalId },
-    { sign: { expiresIn: undefined } }
-  )
+  const bearerToken = await reply.jwtSign(expiresAt ? { ...claims, exp: Math.floor(expiresAt.getTime() / 1000) } : claims, {
+    sign: { expiresIn: undefined }
+  })
   if (!bearerToken) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not signed' })
   }

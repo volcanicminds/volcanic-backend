@@ -3536,7 +3536,8 @@ Everything else (managers, routes, RBAC) is identical to C.
 **Use when:** other services authenticate without a user/password.
 **Managers:** `tokenManager` (with or without `userManager`). Admins (or a role with the `tokens` capability) create tokens via `POST /token`
 with a required `expiresAt` (a date, or `null` for no expiry); the answer carries the bearer once, and it is never stored.
-The subject is resolved in `onRequest` through `tokenManager.retrieveTokenByExternalId`, so the bearer of an API
+Under tenants the bearer carries `tid`, the tenant it was created in, as a session does: a machine names no tenant, and a
+header naming another one is 403 `TENANT_MISMATCH`. The subject is resolved in `onRequest` through `tokenManager.retrieveTokenByExternalId`, so the bearer of an API
 token populates `req.token` (not `req.user`) and is gated by the token's roles. Revoke via `POST /token/:id/block`
 (reversible) or `DELETE /token/:id`: `isValidToken` reads the row at every request, so both take effect at once.
 
