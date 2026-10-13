@@ -26,7 +26,6 @@ export const RESERVED = ['_page', '_pageSize', '_sort', '_fields', '_relations',
 export const DEFAULT_SENSITIVE_FIELDS = [
   'password',
   'mfaSecret',
-  'mfaRecoveryCodes',
   'resetPasswordToken',
   'confirmationToken'
 ]

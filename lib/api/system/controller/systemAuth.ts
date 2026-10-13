@@ -29,14 +29,13 @@ function unavailable(req: FastifyRequest, reply: FastifyReply): boolean {
 }
 
 /** The public shape of a system user: the credential columns never leave the process. */
-export function present<T extends { password?: unknown; mfaSecret?: unknown; mfaRecoveryCodes?: unknown }>(
+export function present<T extends { password?: unknown; mfaSecret?: unknown }>(
   user: T | null | undefined
-): Omit<T, 'password' | 'mfaSecret' | 'mfaRecoveryCodes'> | null {
+): Omit<T, 'password' | 'mfaSecret'> | null {
   if (!user) return null
-  const { password, mfaSecret, mfaRecoveryCodes, ...rest } = user
+  const { password, mfaSecret, ...rest } = user
   void password
   void mfaSecret
-  void mfaRecoveryCodes
   return rest
 }
 

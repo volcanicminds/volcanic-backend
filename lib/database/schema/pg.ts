@@ -71,7 +71,6 @@ export function appTables(schemaName: string) {
       mfaEnabled: boolean('mfa_enabled').notNull().default(false),
       mfaSecret: text('mfa_secret'),
       mfaType: text('mfa_type'),
-      mfaRecoveryCodes: text('mfa_recovery_codes').array(),
       // Absolute TOTP step already consumed: rejects a replay inside the validity window.
       mfaLastUsedCounter: integer('mfa_last_used_counter'),
       version: integer('version').notNull().default(1),
@@ -371,7 +370,6 @@ export function registryTables(schemaName: string) {
       mfaEnabled: boolean('mfa_enabled').notNull().default(false),
       mfaSecret: text('mfa_secret'),
       mfaType: text('mfa_type'),
-      mfaRecoveryCodes: text('mfa_recovery_codes').array(),
       mfaLastUsedCounter: integer('mfa_last_used_counter'),
       version: integer('version').notNull().default(1),
       ...stamps()

@@ -170,7 +170,7 @@ export function createSystemUserManager(): SystemUserManagement {
       const { handle, user } = users(ctx, 'disableMfa')
       await handle.db
         .update(user)
-        .set({ mfaEnabled: false, mfaSecret: null, mfaRecoveryCodes: null, mfaLastUsedCounter: null, updatedAt: new Date() })
+        .set({ mfaEnabled: false, mfaSecret: null, mfaLastUsedCounter: null, updatedAt: new Date() })
         .where(eq(column(user, 'id'), userId as never))
       return true
     },

@@ -54,7 +54,6 @@ CREATE TABLE "user" (
 	"mfa_enabled" boolean DEFAULT false NOT NULL,
 	"mfa_secret" text,
 	"mfa_type" text,
-	"mfa_recovery_codes" text[],
 	"mfa_last_used_counter" integer,
 	"version" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,

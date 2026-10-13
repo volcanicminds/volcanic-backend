@@ -29,8 +29,7 @@ const OPERATOR = {
   roles: ['system:operator'],
   blocked: false,
   password: '$2b$12$hash',
-  mfaSecret: 'encrypted-secret',
-  mfaRecoveryCodes: ['code']
+  mfaSecret: 'encrypted-secret'
 }
 const TENANT_USER = { getId: () => 'u1', externalId: 'u-ext-1', email: 'admin@acme.test', roles: ['admin'] }
 
@@ -276,7 +275,7 @@ describe('control scope · the identity behind a platform session (T-10.14)', ()
     const token = server.jwt.sign({ sub: OPERATOR.externalId, scp: 'control' })
 
     const body = JSON.parse((await get(server, '/system/auth/me', token)).body)
-    for (const secret of ['password', 'mfaSecret', 'mfaRecoveryCodes']) expect(body).not.toHaveProperty(secret)
+    for (const secret of ['password', 'mfaSecret']) expect(body).not.toHaveProperty(secret)
     await server.close()
   })
 

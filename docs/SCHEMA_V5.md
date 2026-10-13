@@ -102,7 +102,6 @@ layer on every update. An update whose `version` does not match responds `409`.
 | `mfa_enabled` | boolean | no | `false` | |
 | `mfa_secret` | text | yes | | AES-256-GCM, format `v2:salt:iv:authTag:ciphertext`. Never selected by default |
 | `mfa_type` | text | yes | | `totp` is the only value today |
-| `mfa_recovery_codes` | text[] | yes | | hashed, never plaintext |
 | `mfa_last_used_counter` | integer | yes | | absolute TOTP step already consumed: rejects replay inside the validity window |
 | `version` | integer | no | `1` | optimistic lock |
 | `created_at` | timestamp | no | now | |
@@ -483,7 +482,7 @@ quote a connection string: a failure keeps its code.
 The data layer strips these from every result, at every depth, including nested relations:
 
 ```
-password, mfaSecret, mfaRecoveryCodes, resetPasswordToken, confirmationToken
+password, mfaSecret, resetPasswordToken, confirmationToken
 ```
 
 The list is overridable per application, additively only: an application may add fields, never

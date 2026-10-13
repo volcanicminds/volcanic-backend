@@ -2,10 +2,9 @@
 // The platform's own identities (T-4.1), described so the console can manage them (T-10.20).
 //
 // Two schemas, because the two directions are not the same set. What comes back is whatever
-// `present()` leaves of a row — the credential columns (`password`, `mfaSecret`,
-// `mfaRecoveryCodes`) never leave the process — and what goes in is narrower still: an operator
-// is created with an address, a password and control roles, and nothing else about the row is
-// editable through a generic write.
+// `present()` leaves of a row (the credential columns, `password` and `mfaSecret`, never leave
+// the process), and what goes in is narrower still: an operator is created with an address, a
+// password and control roles, and nothing else about the row is editable through a generic write.
 //
 export const systemUserSchema = {
   $id: 'systemUserSchema',

@@ -117,7 +117,6 @@ describe('manifest · the framework own routes, through the loader', () => {
       // Never readable, never listed: `password` is write-only and the rest never leaves at all.
       expect(fields.find((f: any) => f.name === 'password').readOnly).toBeUndefined()
       expect(names).not.toContain('mfaSecret')
-      expect(names).not.toContain('mfaRecoveryCodes')
       expect(names).not.toContain('externalId')
     })
 

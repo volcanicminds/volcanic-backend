@@ -1489,12 +1489,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "mfa_recovery_codes": {
-          "name": "mfa_recovery_codes",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": false
-        },
         "mfa_last_used_counter": {
           "name": "mfa_last_used_counter",
           "type": "integer",
@@ -1969,12 +1963,6 @@
         "mfa_type": {
           "name": "mfa_type",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "mfa_recovery_codes": {
-          "name": "mfa_recovery_codes",
-          "type": "text[]",
           "primaryKey": false,
           "notNull": false
         },
