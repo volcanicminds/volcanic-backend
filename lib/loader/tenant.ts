@@ -119,6 +119,13 @@ export async function apply(server: FastifyInstance) {
       // worth more than a generic 400.
       return reply.code(403).send(httpError(403, 'A control token cannot act inside a tenant', 'SCOPE_MISMATCH'))
     }
+    if (claimed === UNTENANTED_TOKEN) {
+      // Every token the framework signs inside a tenant carries `tid`, an integration token too.
+      // One without it was signed where there were no tenants: the header next to it would be
+      // the only thing naming the tenant, and a header is never believed over a token
+      // (docs/AUTHORIZATION_V5.md §5).
+      return reply.code(401).send(httpError(401, 'This token names no tenant', 'TOKEN_TENANT_MISSING'))
+    }
 
     let tenant: Tenant | null = null
 
@@ -222,6 +229,8 @@ function stateRouting(req: FastifyRequest): string | undefined {
 
 /** A control token declares its plane and carries no tenant: it is not a missing `tid`. */
 const CONTROL_TOKEN = Symbol('control-token')
+/** A tenant-plane token that verified and carries no `tid`. */
+const UNTENANTED_TOKEN = Symbol('untenanted-token')
 
 /**
  * The tenant the request PROVES, taken from a token whose signature verified.
@@ -235,7 +244,7 @@ const CONTROL_TOKEN = Symbol('control-token')
  * the request then behaves exactly as an anonymous one, which is what it is. Refusing here
  * instead would give a garbage token a different meaning from no token at all.
  */
-function claimedTenant(req: FastifyRequest): string | typeof CONTROL_TOKEN | undefined {
+function claimedTenant(req: FastifyRequest): string | typeof CONTROL_TOKEN | typeof UNTENANTED_TOKEN | undefined {
   const raw = credentialOf(req, 'tenant')?.token
   if (!raw) return undefined
 
@@ -245,7 +254,7 @@ function claimedTenant(req: FastifyRequest): string | typeof CONTROL_TOKEN | und
     // renewal route, from its own cookie or from the body, and never from here.
     if (data?.typ === REFRESH_TYP) return undefined
     if (data?.scp === 'control') return CONTROL_TOKEN
-    return typeof data?.tid === 'string' && data.tid ? data.tid : undefined
+    return typeof data?.tid === 'string' && data.tid ? data.tid : UNTENANTED_TOKEN
   } catch {
     return undefined
   }

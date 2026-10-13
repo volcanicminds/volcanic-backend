@@ -202,7 +202,9 @@ creazione annullata per intero, export con `artifacts` e distruzione che si ferm
 non rimuove la sua parte, più `access(handle).raw` (F78); provata via HTTP su entrambe le
 strategie. T-16.3, aggiunto il 13 ottobre su decisione del proprietario: il token di integrazione
 porta `tid` come quello di una sessione, e una macchina non nomina più il tenant con l'header
-(F79). In rag T-7.2, il corpus per tenant su entrambe le strategie e con entrambi i motori,
+(F79). T-16.4 e T-16.5, lo stesso giorno: un contenitore esistente è rifiutato anche sotto
+`schema`, 409 `TENANT_LOCATOR_TAKEN`, perché l'annullamento non elimini quello di un altro tenant
+(F80); un token senza `tid` sotto tenancy è 401 `TOKEN_TENANT_MISSING` (F81). In rag T-7.2, il corpus per tenant su entrambe le strategie e con entrambi i motori,
 chiuso in `volcanic-rag/TASKS.md`. Fase 16 chiusa.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25

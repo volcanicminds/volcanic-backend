@@ -155,6 +155,19 @@ describe('loader/tenant · resolving which tenant (T-3.2)', () => {
       await server.close()
     })
 
+    it('refuses a token that names no tenant, whatever the header says (T-16.5)', async () => {
+      // Signed where there were no tenants: the header would be the only thing naming the tenant.
+      const { server } = await serverWith({ strategy: 'schema', engine: 'postgres', resolver: 'header', headerKey: HEADER })
+      const res = await server.inject({
+        method: 'GET',
+        url: '/data',
+        headers: { authorization: `Bearer ${tokenFor(server, { sub: 'u1' })}`, [HEADER]: 'acme' }
+      })
+      expect(res.statusCode).toBe(401)
+      expect(body(res).code).toBe('TOKEN_TENANT_MISSING')
+      await server.close()
+    })
+
     it('treats a token that does not verify as no token at all', async () => {
       const { server } = await serverWith({ strategy: 'schema', engine: 'postgres', resolver: 'header', headerKey: HEADER })
       const res = await server.inject({

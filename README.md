@@ -1471,6 +1471,7 @@ meant to catch a mismatch was dead code comparing a field the entity did not hav
 | nothing names a tenant, and tenancy is on | 400 `TENANT_REQUIRED` |
 | the tenant is unknown **or suspended** | 404 — the same answer for both, so the registry cannot be probed from outside |
 | the token's `tid` disagrees with the resolved tenant | 403 `TENANT_MISMATCH` |
+| a tenant-plane token without `tid`, whatever the header says | 401 `TOKEN_TENANT_MISSING` |
 | a control token used inside a tenant, or the reverse | 403 `SCOPE_MISMATCH` |
 | the container is behind its schema version | 503 `SCHEMA_BEHIND`, for that tenant alone |
 

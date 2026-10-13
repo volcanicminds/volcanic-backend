@@ -128,7 +128,9 @@ second.
 token: login and public routes. If a token carries `tid` and the header names another tenant,
 the request is **refused**, not resolved to the more likely one. An integration token (`/token`)
 carries `tid` too, the tenant it was created in (T-16.3): a machine names its tenant the way a
-session does, with the token alone.
+session does, with the token alone. Under tenants, a tenant-plane token without `tid` is refused
+with 401 `TOKEN_TENANT_MISSING` (T-16.5): it was signed where there were no tenants, and the
+header next to it would be the only thing naming one.
 
 **No token carries a `role` claim, and one that does is refused** on every route with 401. v4 signed
 a five-minute token carrying a `role` claim between the password and the second factor, and kept
