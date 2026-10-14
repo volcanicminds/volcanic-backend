@@ -12,25 +12,24 @@ import { firstBy } from '../../prepared.js'
 import { envInt } from '../../env.js'
 
 //
-// Postgres adapter (T-2.2).
+// Postgres adapter.
 //
 // The one idea in this file: **a container is a set of table objects, not a connection
 // setting**. `appTables('tenant_acme')` produces tables that print their own schema into the
 // SQL, so choosing a tenant is choosing an object. Nothing is written to the session, so
-// nothing has to be undone before the connection goes back to the pool — which is why D-01
-// cannot happen here rather than being fixed here.
+// nothing has to be undone before the connection goes back to the pool.
 //
 // The two consequences worth stating:
 //
 //   - a request may be served by any connection of the pool without a preparation step, and
 //     without a reset afterwards. That is also what makes PgBouncer in transaction mode
-//     usable (T-7.1);
+//     usable;
 //   - raw SQL that genuinely needs `search_path` (migrations) runs inside a transaction with
 //     `SET LOCAL`, which the commit or the rollback undoes by definition. Verified against
 //     Postgres 16: inside the transaction the value applies, after it the connection is back
 //     to the pinned one.
 //
-// The same code runs on PGlite (F60): Postgres compiled to WebAssembly, inside the process,
+// The same code runs on PGlite: Postgres compiled to WebAssembly, inside the process,
 // for development and tests. Same dialect, same tables, same migrations, same session guard;
 // what it lacks is a server, so there is no pool to size, no database per tenant, no
 // `pg_dump`.
@@ -84,7 +83,7 @@ export interface PostgresProviderOptions {
   schema?: string
   poolMax?: number
   idleTimeoutMs?: number
-  /** LRU bound on live containers. Only meaningful for the `container` strategy (T-7.1). */
+  /** LRU bound on live containers. Only meaningful for the `container` strategy. */
   maxOpenContainers?: number
   /** `schema` (containers are schemas of one database) or `container` (one database each). */
   strategy?: 'schema' | 'container'
@@ -93,13 +92,13 @@ export interface PostgresProviderOptions {
   /** A container idle for this long is closed and its connections given back. */
   containerIdleMs?: number
   /**
-   * A pool to use instead of opening one. The seam exists so the session-state rule of
-   * T-3.1 can be proved against a double, without a database: a test hands in a recording
-   * pool and reads back every statement the data layer emitted.
+   * A pool to use instead of opening one. The seam exists so the session-state rule can be
+   * proved against a double, without a database: a test hands in a recording pool and reads
+   * back every statement the data layer emitted.
    */
   pool?: pg.Pool
   /**
-   * Drizzle on a PGlite instance, used instead of a pool (F60); `openPglite()` builds one.
+   * Drizzle on a PGlite instance, used instead of a pool; `openPglite()` builds one.
    * The provider owns it from here on: `shutdown()` closes it.
    */
   pglite?: PgliteDb
@@ -141,13 +140,13 @@ export class PostgresProvider {
   private readonly containerIdleMs: number
 
   //
-  // Live container databases, most recently used last (T-7.1).
+  // Live container databases, most recently used last.
   //
   // Only the `container` strategy has these, and only they cost anything: under `schema` a
   // container is a set of table objects on the shared pool, so "open" means nothing. Here an
   // open container is a POOL, which is at least one connection held on the server, and the
-  // measured constraint of appendix A.3 is the connection and not the ORM: at
-  // `max_connections = 100`, 150 containers each holding one fail with "too many clients".
+  // measured constraint is the connection and not the ORM: at `max_connections = 100`, 150
+  // containers each holding one fail with "too many clients".
   //
   // So they are opened on demand, bounded by an LRU well below what the server allows, and
   // closed when idle. Twenty live containers serving three hundred tenants is the shape; one
@@ -168,7 +167,7 @@ export class PostgresProvider {
       this.engine = 'pglite'
       this.url = null
       this.pool = null
-      // The pool's refusal below, on the one session PGlite has (T-3.1, point 3).
+      // The pool's refusal below, on the one session PGlite has.
       this.pglite = guardPglite(options.pglite.$client)
       this.db = options.pglite
     } else {
@@ -192,7 +191,7 @@ export class PostgresProvider {
           'the control plane'
         )
 
-      // From here on the pool refuses to carry a session `search_path` (T-3.1, point 3).
+      // From here on the pool refuses to carry a session `search_path`.
       // The check sits on the driver rather than on this class so it also covers raw SQL
       // written by a consumer through `handle.execute`.
       this.pool = guardPool(pool)
@@ -207,20 +206,18 @@ export class PostgresProvider {
     const db = this.db
 
     //
-    // RAW SQL on a tenant handle runs inside the container, and this is the reason it needs
-    // saying (T-6.1, found by the bench of T-0.2).
+    // RAW SQL on a tenant handle runs inside the container.
     //
     // Choosing a container is choosing table objects, and that works because drizzle prints
     // the schema into the SQL it builds. Raw SQL has no table objects: `execute('select ...
-    // from widget')` is a string, so it resolved against the connection's pinned
-    // `search_path` and read the CONTROL plane, silently, from a handle whose whole meaning
-    // is "inside this customer's data". An implicit context is exactly what this rewrite
-    // exists to remove, and it had grown back in the one place qualification cannot reach.
+    // from widget')` is a string, so on its own it resolves against the connection's pinned
+    // `search_path` and reads the CONTROL plane, silently, from a handle whose whole meaning
+    // is "inside this customer's data". That is the one place qualification cannot reach.
     //
     // So a raw statement on a tenant handle is wrapped in a transaction with `SET LOCAL`,
-    // which is the use of `search_path` T-3.1 sanctions: undone by the commit, never left on
-    // a pooled connection. Statements built from the qualified tables are unaffected, because
-    // they already name their schema.
+    // which is the use of `search_path` the session-state rule allows: undone by the commit,
+    // never left on a pooled connection. Statements built from the qualified tables are
+    // unaffected, because they already name their schema.
     //
     const enter = async (tx: { execute(query: SQLWrapper): Promise<unknown> }) => {
       if (locator) await tx.execute(sql.raw(`set local search_path to ${escapeIdentifier(locator)}`))
@@ -262,12 +259,12 @@ export class PostgresProvider {
   }
 
   /**
-   * Refuses to start when the configured pools cannot fit in the server (T-7.1, point 3).
+   * Refuses to start when the configured pools cannot fit in the server.
    *
-   * The arithmetic is the measured constraint of appendix A.3: what runs out first is
-   * connections, not memory and not ORM objects. `maxOpen` live containers times the pool of
-   * each, plus the control pool, has to fit under `max_connections` with room for everything
-   * else that talks to this server. Discovering that at the two-hundredth tenant means
+   * The arithmetic is the measured constraint: what runs out first is connections, not memory
+   * and not ORM objects. `maxOpen` live containers times the pool of each, plus the control
+   * pool, has to fit under `max_connections` with room for everything else that talks to this
+   * server. Discovering that at the two-hundredth tenant means
    * discovering it in production, so it is checked once, at boot, and it is fatal.
    *
    * The reserve is not a safety blanket: `max_connections` includes superuser slots,
@@ -319,7 +316,7 @@ export class PostgresProvider {
 
   /**
    * A tenant's container. The registry row says where it is, and the caller has just read it:
-   * reading it again here was a second registry query on every request (T-14.4). The tables
+   * reading it again here would be a second registry query on every request. The tables
    * are built once per locator and cached, because they are objects and cost nothing to keep;
    * the LRU bound exists for the `container` strategy, where a live container also means a
    * live pool.
@@ -340,7 +337,7 @@ export class PostgresProvider {
     // Validated BEFORE it is used as a cache key or a database name: it reaches `pgSchema()`,
     // which prints it into every statement built from these tables, and `CREATE DATABASE`,
     // which cannot parameterise it. A locator that has not been through here has no business
-    // being remembered either (T-3.1, "attenzione").
+    // being remembered either.
     assertLocator(locator)
     this.leases.take(scope, locator)
 
@@ -361,7 +358,7 @@ export class PostgresProvider {
   }
 
   /**
-   * One database per tenant: its own pool, opened on demand and closed when idle (T-7.1).
+   * One database per tenant: its own pool, opened on demand and closed when idle.
    *
    * The tables are UNQUALIFIED here, deliberately. Under `schema` the container is a schema
    * name printed into the SQL; under `container` the container is the database the connection
@@ -484,15 +481,14 @@ export class PostgresProvider {
   }
 
   /**
-   * The single release point (T-3.1, point 4).
+   * The single release point.
    *
-   * On this adapter it gives back bookkeeping and nothing else, and that is the whole
-   * result of the task rather than an omission: a container is a set of qualified table
-   * objects, so a request never holds a connection between statements: each one is checked
-   * out and returned by the driver, unchanged. There is no session state to undo, so no
-   * ordering to get right, which is precisely what v4 got wrong (D-01).
+   * On this adapter it gives back bookkeeping and nothing else, by design rather than by
+   * omission: a container is a set of qualified table objects, so a request never holds a
+   * connection between statements: each one is checked out and returned by the driver,
+   * unchanged. There is no session state to undo, so no ordering to get right.
    *
-   * `error` is accepted, and ignored here, for the day T-7.1 gives a container its own pool:
+   * `error` is accepted, and ignored here, for the day a container gets its own pool:
    * a connection handed back after the client went away must be destroyed, not reused, and
    * this is the method that will do it. Nothing else may.
    */
@@ -505,7 +501,7 @@ export class PostgresProvider {
 
   /**
    * Takes a customer's data out, through `pg_dump`: their schema, or under the `container`
-   * strategy their whole database (T-6.2).
+   * strategy their whole database.
    *
    * The connection string is the provider's, not the caller's: an export route reachable over
    * HTTP must not decide which database it reads from any more than it decides where it
@@ -520,7 +516,7 @@ export class PostgresProvider {
   }
 
   /**
-   * What is in a container, for the preview of phase 1 (T-6.3).
+   * What is in a container, for the preview of a destruction's first phase.
    *
    * Exact row counts, not estimates from the planner statistics: an operator is about to type
    * a slug by hand to destroy this, and "about 40,000 rows" is not a number to make that
@@ -564,7 +560,7 @@ export class PostgresProvider {
     }
   }
 
-  /** Opens a tenant's container by id, reading its registry row. The name the manager port uses (T-6.1). */
+  /** Opens a tenant's container by id, reading its registry row. The name the manager port uses. */
   async openContainer(tenantId: string): Promise<TenantHandle> {
     const row = await firstBy<Tenant>(this.db, this.registry.tenant, 'id', tenantId)
     if (!row) throw new Error(`Tenant '${tenantId}' is not in the registry`)
@@ -572,7 +568,7 @@ export class PostgresProvider {
   }
 
   /**
-   * Creates the container of a tenant that is being provisioned (T-6.1): a schema, or under the
+   * Creates the container of a tenant that is being provisioned: a schema, or under the
    * `container` strategy a database. Answers `false`, having touched nothing, when one with that
    * name is already there, under either strategy: it is never adopted. What is inside it is not
    * known, it may be another tenant's, and a provisioning that fails later drops the container
@@ -592,7 +588,7 @@ export class PostgresProvider {
 
   /**
    * Drops a container: the undo of a provisioning that failed before its registry row, and the
-   * last step of a destruction, which has exported it first (T-6.3). Under `container` the
+   * last step of a destruction, which has exported it first. Under `container` the
    * pool this process holds on the database goes first, and `FORCE` ends the sessions other
    * processes hold, which would otherwise make the drop fail.
    */
@@ -608,7 +604,7 @@ export class PostgresProvider {
   }
 
   /**
-   * Creates a tenant's schema. Used by provisioning (T-6.1) and by the test harness.
+   * Creates a tenant's schema. Used by provisioning and by the test harness.
    * The name is quoted through the driver's identifier escaping, never concatenated raw.
    */
   async createSchema(locator: string): Promise<void> {
@@ -621,13 +617,12 @@ export class PostgresProvider {
 
   /**
    * Runs `fn` while holding an advisory lock on a container, or answers `null` when someone
-   * else already holds it (T-5.3).
+   * else already holds it.
    *
    * A DEDICATED client, not a pooled query: a Postgres advisory lock belongs to the session
    * that took it, so taking one on a connection that goes back to the pool would leave the
-   * lock on a connection any later request could be handed. That is D-01 wearing a different
-   * hat, and it is why the client is checked out for the whole of `fn` and released in a
-   * `finally`.
+   * lock on a connection any later request could be handed. That is why the client is checked
+   * out for the whole of `fn` and released in a `finally`.
    *
    * `pg_try_advisory_lock` and not `pg_advisory_lock`: a fleet migrator that BLOCKS on a
    * container someone else is migrating turns two operators into a deadlock with a queue.
@@ -782,9 +777,8 @@ export function escapeIdentifier(name: string): string {
 }
 
 /**
- * The one gate a schema name goes through. Same rule as v4, which was already correct
- * (appendix B), applied in one more place: v5 also uses the name as a cache key, and a key
- * is a name that outlives the request that brought it.
+ * The one gate a schema name goes through. The name is also a cache key, and a key is a name
+ * that outlives the request that brought it.
  */
 export function assertLocator(name: string): string {
   if (!/^[a-z_][a-z0-9_]{0,62}$/i.test(name)) {
@@ -794,7 +788,7 @@ export function assertLocator(name: string): string {
 }
 
 /**
- * Opens Drizzle on PGlite (F60), in memory or on `dataDir`.
+ * Opens Drizzle on PGlite, in memory or on `dataDir`.
  *
  * Both packages are optional peers, imported here and only here: a deployment on a Postgres
  * server never needs them installed. The control schema is pinned at start, as the pool pins
@@ -850,8 +844,7 @@ export async function createPostgresProvider(options: GeneralConfig['options']):
     idleTimeoutMs: control?.pool?.idleTimeoutMs,
     // The environment is the fallback, not the override: a deployment that declared the
     // number in its configuration meant that number. The variable exists for the deployments
-    // that tune from outside the repository, and until T-9.4 it was documented and read by
-    // nobody (D-11 in another shape).
+    // that tune from outside the repository.
     maxOpenContainers: containers?.maxOpen ?? envInt('TENANT_CONTAINERS_MAX_OPEN', 20, { min: 1, max: 10_000 }),
     strategy,
     containerPoolMax: containers?.poolMax,

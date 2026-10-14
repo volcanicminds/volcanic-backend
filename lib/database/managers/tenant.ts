@@ -5,16 +5,16 @@ import { control, table, column } from './runtime.js'
 import { firstBy, prepared } from '../prepared.js'
 
 //
-// The registry and the container life cycle (T-2.5).
+// The registry and the container life cycle.
 //
-// Every registry method demands a ControlHandle, and the compiler enforces it: in v4 these
-// queries ran on `global.connection`, i.e. whatever connection the pool handed over, which is
-// how `GET /tenants` could list a `tenant` table copied inside a customer's schema (D-01).
+// Every registry method demands a ControlHandle, and the compiler enforces it: a registry
+// query never runs on whatever connection the pool hands over, where a `tenant` table copied
+// inside a customer's schema could answer instead.
 //
-// The container half — create, export, destroy, migrate — is declared here and delegated to
+// The container half (create, export, destroy, migrate) is declared here and delegated to
 // the provider, because "where the data is" is the adapter's business. What is NOT here on
-// purpose: destroyContainer stays unimplemented until T-6.3 puts the two-phase flow and the
-// mandatory export in front of it. An irreversible operation with no ceremony is worse than a
+// purpose: destroyContainer stays unimplemented until the two-phase flow and the mandatory
+// export are in front of it. An irreversible operation with no ceremony is worse than a
 // missing one.
 //
 export interface TenantProvider {
@@ -49,7 +49,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       return (await executeFind(handle, tenant, (query ?? {}) as never)) as never
     },
 
-    // The two lookups of tenant resolution (lib/loader/tenant.ts), on every request: prepared (F62).
+    // The two lookups of tenant resolution (lib/loader/tenant.ts), on every request: prepared.
     async getTenant(ctx: ControlHandle, id: string) {
       const { handle, tenant } = registry(ctx, 'getTenant')
       return await firstBy<Tenant>(handle.db, tenant, 'id', id)
@@ -69,12 +69,12 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
     },
 
     /**
-     * Writes the registry ROW, and nothing else (T-6.1).
+     * Writes the registry ROW, and nothing else.
      *
-     * In T-2.5 this method also created the container, right after the insert. That order is
-     * exactly what the creation flow may not have: if the container cannot be built or
-     * migrated, a row already exists pointing at a container that does not work, and the
-     * next request resolves a tenant into nothing. Provisioning is orchestrated by the route
+     * Creating the container right after the insert is exactly the order the creation flow
+     * may not have: if the container cannot be built or migrated, a row already exists
+     * pointing at a container that does not work, and the next request resolves a tenant into
+     * nothing. Provisioning is orchestrated by the route
      * (build, migrate, seed, and only then record), so the row is written last and means
      * what it says.
      */
@@ -89,11 +89,11 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
           strategy: String(data.strategy ?? 'schema'),
           engine: String(data.engine ?? 'postgres'),
           // Sanitised once, before it is stored, by the caller (docs/SCHEMA_V5.md §4): the
-          // stored value and the used value are the same string, which v4 did not guarantee.
+          // stored value and the used value are the same string.
           locator: String(data.locator ?? data.slug),
           config: data.config ?? {},
           // The version the container was actually brought to, recorded with the row that
-          // points at it (T-6.1).
+          // points at it.
           schemaVersion: data.schemaVersion ?? null,
           status: 'active'
         })
@@ -163,7 +163,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       if (provider.closeContainer) await provider.closeContainer(handle)
     },
 
-    // Phase 5 is closed, but this entry point is not the way in: a container is migrated
+    // This entry point is not the way in: a container is migrated
     // through `layer.migrations.apply(container)` or, for the fleet, `layer.migrateTenants`.
     // Left refusing rather than made into a third door onto the same operation.
     migrateContainer: async (_tenantId: string) =>

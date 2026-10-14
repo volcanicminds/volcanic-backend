@@ -6,10 +6,10 @@ import { uuidv7 } from '../uuid.js'
 // Postgres schema (docs/SCHEMA_V5.md). Two factories, because a table's home is decided at
 // runtime: the control plane lives in one schema, every tenant container in its own.
 //
-// The factories are what makes T-3.1 possible. Drizzle prints the schema name into the SQL
-// it builds — `select ... from "tenant_acme"."user"` — so choosing a container is choosing a
-// table object, not mutating a connection. Nothing is left on the session, so nothing has to
-// be reset before the connection goes back to the pool, which is the whole of D-01.
+// The factories are what make the session-state rule possible. Drizzle prints the schema name
+// into the SQL it builds (`select ... from "tenant_acme"."user"`), so choosing a container is
+// choosing a table object, not mutating a connection. Nothing is left on the session, so
+// nothing has to be reset before the connection goes back to the pool.
 //
 // Conventions applied everywhere: snake_case in the database, camelCase in TypeScript,
 // declared explicitly rather than derived; timestamptz, never a naive timestamp; identifiers
@@ -24,12 +24,12 @@ const stamps = () => ({
 /**
  * Drizzle refuses `pgSchema('public')`, because Postgres already resolves unqualified names
  * there. So a container in `public` produces unqualified SQL, which by definition depends on
- * `search_path` — the one thing v5 does not want to depend on.
+ * `search_path`: the one thing the framework does not want to depend on.
  *
  * Two answers, both applied. Any schema OTHER than `public` is qualified, which is the case
  * for every tenant container and the recommended shape for the control plane too. For
  * `public` the adapter pins `search_path` on the connection itself, once, at connect time
- * (`options=-c search_path=...` in T-2.2): a value that is identical for every connection and
+ * (`options=-c search_path=...`): a value that is identical for every connection and
  * that no request ever changes is not session state, it is configuration.
  */
 const tableFactory = (schemaName: string): typeof pgTable =>
@@ -53,7 +53,7 @@ export function appTables(schemaName: string) {
       password: text('password').notNull(),
       confirmed: boolean('confirmed').notNull().default(false),
       confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
-      // False while a self-created account waits for an administrator (F49). True by default:
+      // False while a self-created account waits for an administrator. True by default:
       // existing rows and accounts an administrator creates wait for nobody.
       approved: boolean('approved').notNull().default(true),
       approvedAt: timestamp('approved_at', { withTimezone: true }),
@@ -66,7 +66,8 @@ export function appTables(schemaName: string) {
       confirmationToken: text('confirmation_token'),
       roles: text('roles').array().notNull().default(sql`'{}'::text[]`),
       // Founder is a property of the row in its container, not of a process environment
-      // variable: with the v4 comparison the same address was founder inside every tenant (D-27).
+      // variable: an environment comparison would make the same address founder inside every
+      // tenant.
       isFounder: boolean('is_founder').notNull().default(false),
       mfaEnabled: boolean('mfa_enabled').notNull().default(false),
       mfaSecret: text('mfa_secret'),
@@ -115,7 +116,7 @@ export function appTables(schemaName: string) {
       createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
       userId: text('user_id'),
       tokenId: text('token_id'),
-      // Which impersonation session wrote this, when one did (T-4.2). A column and not a
+      // Which impersonation session wrote this, when one did. A column and not a
       // key inside `contents`: an audit trail whose actor is buried in a JSON blob cannot be
       // indexed, queried or joined, which is most of what an audit trail is for.
       impersonationId: text('impersonation_id'),
@@ -128,7 +129,7 @@ export function appTables(schemaName: string) {
   )
 
   //
-  // The schema version of THIS container (T-5.1, docs/SCHEMA_V5.md §2.4).
+  // The schema version of THIS container (docs/SCHEMA_V5.md §2.4).
   //
   // One table per container and never a central registry: when a tenant is restored from a
   // backup its schema version has to travel back with it, and a central table would say the
@@ -195,14 +196,13 @@ export function appTables(schemaName: string) {
       ip: text('ip'),
       userAgent: text('user_agent'),
       // Set when the session is an impersonation, so ending the impersonation ends the
-      // session it authorised (T-4.2).
+      // session it authorised.
       impersonationId: text('impersonation_id'),
-      // The methods the login satisfied (F45), e.g. `{password,totp}`. Null on sessions opened
-      // before the flow engine: what is not known is not written as an empty list.
+      // The methods the login satisfied, e.g. `{password,totp}`. Null when they are not known:
+      // what is not known is not written as an empty list.
       authMethods: text('auth_methods').array(),
-      // When the person last proved to be there: the login, then every step-up (F51). A renewal
-      // copies it into the new access token and never moves it. Null on sessions opened before
-      // step-up existed, which reads as not fresh.
+      // When the person last proved to be there: the login, then every step-up. A renewal
+      // copies it into the new access token and never moves it. Null reads as not fresh.
       authenticatedAt: timestamp('authenticated_at', { withTimezone: true }),
       createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
     },
@@ -216,7 +216,7 @@ export function appTables(schemaName: string) {
   )
 
   //
-  // A login in progress (F37). It lives in the container of its subject, like `session`, with
+  // A login in progress. It lives in the container of its subject, like `session`, with
   // `scope` telling a platform identity from a tenant user in a container that holds both.
   //
   // Only the SHA-256 of the flow secret and of `state` is stored, and the code only as an HMAC
@@ -251,7 +251,7 @@ export function appTables(schemaName: string) {
       external: text('external'),
       externalResult: jsonb('external_result'),
       // `step-up` confirms the session `session_sid` of `expected_subject_id` instead of opening
-      // one (F53, F54); a login leaves both null.
+      // one; a login leaves both null.
       purpose: text('purpose').notNull().default('login'),
       sessionSid: text('session_sid'),
       expectedSubjectId: text('expected_subject_id'),
@@ -270,7 +270,7 @@ export function appTables(schemaName: string) {
     ]
   )
 
-  // An identity at a provider, linked to a subject (F40). `sub` is unique per issuer only, and an
+  // An identity at a provider, linked to a subject. `sub` is unique per issuer only, and an
   // email is never a key: it changes, it is recycled, and on many providers it is not verified.
   const externalIdentity = table(
     'external_identity',
@@ -291,7 +291,7 @@ export function appTables(schemaName: string) {
     ]
   )
 
-  // The access log (F44). Append-only like `change`: no `updatedAt`, no `deletedAt`. Never a
+  // The access log. Append-only like `change`: no `updatedAt`, no `deletedAt`. Never a
   // password, a code, a token or a claim, and the address truncated before it gets here.
   const accessLog = table(
     'access_log',
@@ -315,7 +315,7 @@ export function appTables(schemaName: string) {
     ]
   )
 
-  // Settings of the container, one row per key (F49). Written by an administrator of the plane that
+  // Settings of the container, one row per key. Written by an administrator of the plane that
   // owns the container, read on the requests that need them; never a secret.
   const setting = table('setting', {
     key: text('key').primaryKey(),
@@ -417,7 +417,7 @@ export function registryTables(schemaName: string) {
     (t) => [index('destruction_tenant_idx').on(t.tenantId), index('destruction_expires_idx').on(t.expiresAt)]
   )
 
-  // A tenant's own identity provider (F38). Here and never in `tenant.config`, which is
+  // A tenant's own identity provider. Here and never in `tenant.config`, which is
   // serialized to whoever reads the tenant. The client secret is ciphertext, the rest is not
   // secret. Deleted for real, not soft-deleted: a key must be reusable after a removal.
   const identityProvider = table(
@@ -436,7 +436,7 @@ export function registryTables(schemaName: string) {
     (t) => [uniqueIndex('identity_provider_tenant_key_uq').on(t.tenantId, t.key)]
   )
 
-  // The governance log (F76). Append-only and never purged by the framework. No foreign key on
+  // The governance log. Append-only and never purged by the framework. No foreign key on
   // purpose: a row must outlive the tenant, the operator and the provider it names. Never a value
   // of a secret, a token or a configuration: `detail` names fields and says what happened.
   const governanceLog = table(

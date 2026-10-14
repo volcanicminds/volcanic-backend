@@ -1,7 +1,7 @@
 import { isTenancyEnabled } from '../../util/tenancy.js'
 
 //
-// The control scope's own surface (T-4.1, docs/API_V5.md §5).
+// The control scope's own surface (docs/API_V5.md §5).
 //
 // Every route here declares `scope: 'control'`, which means two things at once: the request
 // never opens a tenant container, and it authenticates against the PLATFORM's identities,
@@ -22,7 +22,7 @@ const authRateLimit = {
 const perMinute = (max: number) => ({ max, timeWindow: 60000 })
 
 //
-// The operators are a resource, and they live two segments deep (T-10.20).
+// The operators are a resource, and they live two segments deep.
 //
 // This file serves the platform login, the console manifest and this CRUD, so the hint cannot be
 // declared once at file level: it is named by the routes that are the resource, and by no other.
@@ -35,13 +35,13 @@ const operators = {
   resource: { prefix: 'system/users', name: 'systemUser', titleField: 'email' }
 }
 
-// The platform's access log, its own resource for the same reason (T-12.32).
+// The platform's access log, its own resource for the same reason.
 const platformAccessLog = {
   group: 'system',
   resource: { prefix: 'system/access-log', name: 'systemAccessLog', titleField: 'event', subtitleField: 'occurredAt' }
 }
 
-// What the operators did to the platform (F76), a resource of its own like the access log.
+// What the operators did to the platform, a resource of its own like the access log.
 const governanceLog = {
   group: 'system',
   resource: { prefix: 'system/governance-log', name: 'governanceLog', titleField: 'action', subtitleField: 'occurredAt' }
@@ -57,7 +57,7 @@ export default {
     scope: 'control'
   },
   routes: [
-    // The login flow of the platform (T-12.16): the twins of `/auth/flow/*`, served by the same
+    // The login flow of the platform: the twins of `/auth/flow/*`, served by the same
     // engine. The return route needs no tenant flag: the control plane has one container.
     {
       method: 'GET',
@@ -168,8 +168,8 @@ export default {
     {
       method: 'GET',
       path: '/auth/me',
-      // Any platform identity, whatever its roles (T-10.14): `public` opens the role gate and
-      // `isAuthenticated` closes it again to anonymous callers. `roles: []` would have meant the
+      // Any platform identity, whatever its roles: `public` opens the role gate and
+      // `isAuthenticated` closes it again to anonymous callers. `roles: []` would mean the
       // superuser alone on a control route, and a console needs this answer for every operator.
       roles: ['public'],
       handler: 'systemAuth.me',
@@ -266,7 +266,7 @@ export default {
         response: { 200: { type: 'number' } }
       }
     },
-    // Who may create an account in a tenant, for every tenant (F49). Reading it is oversight,
+    // Who may create an account in a tenant, for every tenant. Reading it is oversight,
     // writing it changes how every customer's users get in.
     {
       method: 'GET',

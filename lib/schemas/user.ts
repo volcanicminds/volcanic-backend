@@ -49,7 +49,7 @@ export const userSchema = {
     blockedAt: { type: 'string' },
     confirmed: { type: 'boolean' },
     confirmedAt: { type: 'string' },
-    // False while a self-created account waits for an administrator (F49).
+    // False while a self-created account waits for an administrator.
     approved: { type: 'boolean' },
     approvedAt: { type: 'string' },
     roles: { type: 'array', items: { type: 'string' } },

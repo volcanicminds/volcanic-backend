@@ -4,7 +4,7 @@ import { clearFlowCookie, flowCookieOf, isCookieMode, setFlowCookie, type Plane 
 import { newSessionSecret } from './session.js'
 
 //
-// The flow credential and the return `state` (F36, F39, T-12.13).
+// The flow credential and the return `state`.
 //
 // `vf1.<routing>.<flowId>.<secret>` names one flow row; `st1.<routing>.<secret>` names the same row
 // from outside, for a return that arrives without the credential. In both only the secret is a

@@ -11,7 +11,7 @@ import { truncateIp, type AccessLogIpMode } from './accessLog.js'
 import { control, inTransaction, table } from './runtime.js'
 
 //
-// The governance log (F76). One table in the control plane, next to the registry it describes, so
+// The governance log. One table in the control plane, next to the registry it describes, so
 // a row outlives the tenant, the operator and the provider it names; the framework never purges it.
 //
 // The manager is the last line for what a row may hold, as the access log's is: an action or an

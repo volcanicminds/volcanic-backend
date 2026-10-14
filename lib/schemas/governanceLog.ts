@@ -1,5 +1,5 @@
 //
-// The governance log as it leaves the server (F76): the columns of the table and nothing else, like
+// The governance log as it leaves the server: the columns of the table and nothing else, like
 // the access log's. A column added later does not reach a client until it is written here.
 //
 export const governanceLogSchema = {

@@ -125,7 +125,7 @@ export default {
         title: 'Destroy a container (phase 2)',
         description: 'Body: token, slug typed again, and the operator second factor. Exports first, always',
         body: { $ref: 'tenantDestroyBodySchema#' },
-        // Marked required here and not in the schema (T-10.16): the refusals belong to the
+        // Marked required here and not in the schema: the refusals belong to the
         // controller, which names what is wrong, while the console learns from this hint what to
         // ask for before spending a token that expires.
         manifest: {
@@ -150,14 +150,14 @@ export default {
       requireCapability: 'tenants:impersonate',
       handler: 'tenants.impersonate',
       middlewares: ['global.isAuthenticated'],
-      // Opening a session as someone else outlives the operator's own: it asks for a recent proof (F56).
+      // Opening a session as someone else outlives the operator's own: it asks for a recent proof.
       freshAuth: true,
       config: {
         title: 'Act as a user of a tenant',
         description: 'Records who, into which tenant, as whom and why, then issues a short-lived tenant token',
         body: { $ref: 'tenantImpersonateBodySchema#' },
         // Both are refused by the controller when missing (USER_REQUIRED, REASON_REQUIRED), so the
-        // console marks them here rather than through the schema (T-10.16).
+        // console marks them here rather than through the schema.
         manifest: {
           input: {
             fields: {
@@ -197,7 +197,7 @@ export default {
         }
       }
     },
-    // A tenant's own identity providers (T-12.26). `tenants` for reading too: the rows name the
+    // A tenant's own identity providers. `tenants` for reading too: the rows name the
     // customer's IdP configuration, which is not what a read-only oversight role needs.
     {
       method: 'GET',

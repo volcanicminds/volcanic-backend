@@ -2,7 +2,7 @@ import type { FastifyRequest } from 'fastify'
 import type { ControlHandle, GovernanceLogEntry, GovernanceLogManagement } from '../../types/global.js'
 
 //
-// The one writer of the governance log (F76), with the opposite rule of the access log's: a change
+// The one writer of the governance log, with the opposite rule of the access log's: a change
 // to the platform that cannot be written down is not made.
 //
 // A change of the registry and its event share one control-plane transaction (`governed`): an

@@ -18,7 +18,7 @@ import { PROVIDER_KEY, resolveProvider } from './providers.js'
 import { OIDC } from './validate.js'
 
 //
-// The HTTP side of the flow routes (T-12.15, T-12.16): one controller, parameterised by plane.
+// The HTTP side of the flow routes: one controller, parameterised by plane.
 //
 // What differs between the planes is small and lives in `planeOf`: which container, which users,
 // which policy, which claims the access token carries. Reading the credential, answering 202 or
@@ -49,7 +49,7 @@ const userAgentOf = (req: FastifyRequest) => (req.headers['user-agent'] as strin
 const tenantIdOf = (req: FastifyRequest, plane: AuthPlane): string | null =>
   plane === 'tenant' && isTenancyEnabled() ? (req.tenantInfo?.id ?? null) : null
 
-/** The providers a login may name here, by key: the tenant's own active ones, then the deployment's (F38). */
+/** The providers a login may name here, by key: the tenant's own active ones, then the deployment's. */
 async function providerKeys(req: FastifyRequest, plane: AuthPlane): Promise<string[]> {
   const declared = Object.keys(global.authFlows[plane]?.providers ?? {})
   const tenantId = tenantIdOf(req, plane)
@@ -63,7 +63,7 @@ async function providerKeys(req: FastifyRequest, plane: AuthPlane): Promise<stri
 }
 
 /**
- * The end of a step-up on either plane (F54): the session row is proven again, then a new access
+ * The end of a step-up on either plane: the session row is proven again, then a new access
  * token carries the moment. Null when the row refuses, which the engine answers as
  * `STEP_UP_NOT_AVAILABLE`.
  */
@@ -152,7 +152,7 @@ function planeOf(req: FastifyRequest, reply: FastifyReply, plane: AuthPlane): Fl
   const users = req.server.userManager
   if (!users?.isImplemented?.()) throw new Error('Not implemented')
   const handle = dataContext(req)
-  // The policy of THIS tenant (T-10.19): the deployment value is the floor, a customer may only tighten it.
+  // The policy of THIS tenant: the deployment value is the floor, a customer may only tighten it.
   const policy = tenantPolicy(req.tenantInfo)
   const routing = isTenancyEnabled() ? (req.tenantInfo?.id ?? CONTROL_ROUTING) : CONTROL_ROUTING
   return {
@@ -171,7 +171,7 @@ function planeOf(req: FastifyRequest, reply: FastifyReply, plane: AuthPlane): Fl
     },
     issue: async (user, _subject, methods) => {
       let current = user
-      // Once, at the end of the flow, and only on the tenant plane (F45). The manager answers the
+      // Once, at the end of the flow, and only on the tenant plane. The manager answers the
       // new identifier, not the row: the session is issued to the identifier that now exists.
       if (global.config?.options?.reset_external_id_on_login) {
         current = { ...user, externalId: await users.resetExternalId(handle, user.id) }
@@ -248,10 +248,10 @@ export function flowHandlers(plane: AuthPlane) {
     async options(req: FastifyRequest, reply: FastifyReply) {
       const p = planeOf(req, reply, plane)
       if (!p) return reply
-      // The tenant plane also says whether a person may create an account here and how (F49), so a
+      // The tenant plane also says whether a person may create an account here and how, so a
       // client knows whether to show the registration and what to say after it.
       const accountCreation = p.accountCreation ? await p.accountCreation() : undefined
-      // The providers of this plane and tenant, by key only: a client draws its own buttons (F47).
+      // The providers of this plane and tenant, by key only: a client draws its own buttons.
       const options = await Promise.all(
         engine.identifierOptions(p).map(async (option) => (option.id === OIDC ? { ...option, providers: await providerKeys(req, plane) } : option))
       )
@@ -266,9 +266,9 @@ export function flowHandlers(plane: AuthPlane) {
     },
 
     /**
-     * The start of a step-up (F53), on an authenticated route: the session is the one whose token
+     * The start of a step-up, on an authenticated route: the session is the one whose token
      * authenticated this request. An impersonation, an integration token or a token without a
-     * session has nobody a step-up could confirm (F55).
+     * session has nobody a step-up could confirm.
      */
     async stepUp(req: FastifyRequest, reply: FastifyReply) {
       const session = confirmableSession(req, plane)

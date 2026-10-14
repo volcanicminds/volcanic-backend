@@ -1,5 +1,5 @@
 //
-// The generation entry for the TENANT set (T-5.1).
+// The generation entry for the TENANT set.
 //
 // A customer's container holds application data and its own audit trail, and nothing about
 // the platform: no registry, no platform identities, no impersonation log. That is invariant

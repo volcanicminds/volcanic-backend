@@ -33,18 +33,15 @@ import { createInPackages, destroyInPackages, exportFromPackages, undoPackages }
 // The tenant registry. Control scope: these routes act on the platform, never inside a
 // customer's container (docs/API_V5.md §6).
 //
-// What v4 did here and v5 does not:
-//   - it read the registry through `global.connection.getRepository(...)`, i.e. whatever
-//     connection the pool handed over, which is how a poisoned `search_path` could make
-//     `GET /tenants` list a table copied inside a tenant's schema (D-01);
-//   - it opened a QueryRunner, pointed it at another tenant and released it without a
-//     reset, in the impersonation path (D-02);
-//   - it decided who was a platform administrator with `req.user?.tenantId === 'system'`,
-//     a comparison against a field the entity does not have: dead code guarding a
-//     privilege boundary (D-18).
+// What these routes never do:
+//   - read the registry through `global.connection.getRepository(...)`, i.e. whatever
+//     connection the pool hands over: a poisoned `search_path` could make `GET /tenants`
+//     list a table copied inside a tenant's schema;
+//   - open a QueryRunner, point it at another tenant and release it without a reset;
+//   - decide who is a platform administrator with `req.user?.tenantId === 'system'`, a
+//     comparison against a field the entity does not have.
 //
-// Impersonation is back (T-4.2), and it is a different thing from the v4 one: the record is
-// written before the token exists, it expires in half an hour instead of a day, and it can
+// Impersonation writes its record before the token exists, expires in half an hour, and can
 // be revoked. See `impersonate` at the bottom of this file.
 //
 const managerOf = (req: FastifyRequest): TenantManagement => req.server['tenantManager']
@@ -130,9 +127,9 @@ function unavailable(req: FastifyRequest, reply: FastifyReply): boolean {
 
 /**
  * Postgres identifiers cannot be parameterized, so a container name is always interpolated.
- * It is sanitised ONCE, before it is stored, and the stored value is the used value: v4
- * saved the raw name and used the sanitised one, so a registry row could name a schema that
- * did not exist (D-20). A value that changes under sanitisation is rejected, not adjusted.
+ * It is sanitised ONCE, before it is stored, and the stored value is the used value: saving
+ * the raw name and using the sanitised one would let a registry row name a schema that does
+ * not exist. A value that changes under sanitisation is rejected, not adjusted.
  */
 export function sanitizeSchemaName(schema: string): string {
   return (schema || '').replace(/[^a-z0-9_]/gi, '')
@@ -142,9 +139,9 @@ export async function list(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   // The records in the body and the pagination in the headers, like every other list route
-  // of the framework (`/users`, `/token`). This one sent the whole `{ headers, records }`
-  // object while its response schema declared an array, so the serializer refused it and the
-  // route answered 500 whatever the registry contained.
+  // of the framework (`/users`, `/token`). The response schema declares an array: sending the
+  // whole `{ headers, records }` object makes the serializer refuse it, and the route answers
+  // 500 whatever the registry contains.
   const { headers, records } = await managerOf(req).listTenants(control(req), req.data())
   return reply.type('application/json').headers(headers as never).send(records)
 }
@@ -171,25 +168,24 @@ export function locatorFor(slug: string): string {
 }
 
 /**
- * Provisioning (T-6.1, docs/API_V5.md §6.1).
+ * Provisioning (docs/API_V5.md §6.1).
  *
- * The order is the task. v4 wrote the registry row first and then tried to build the
- * container; if the build failed, a row was left pointing at a container that does not work,
- * and the next request resolved a tenant into nothing. Here the row is written LAST, so it
- * exists only for a tenant that is finished: container created, schema migrated, administrator
- * seeded and able to log in.
+ * The order is the task. A registry row written first, before a build that fails, is left
+ * pointing at a container that does not work, and the next request resolves a tenant into
+ * nothing. Here the row is written LAST, so it exists only for a tenant that is finished:
+ * container created, schema migrated, administrator seeded and able to log in.
  *
  * If anything fails before that, the container is dropped and no row is written. Dropping is
  * safe precisely because we are before the row: what we remove is a schema created seconds
  * ago that nothing points at and that has never held a customer's data.
  */
 /**
- * The ways a tenant's MFA policy is refused (T-10.19, T-12.7): weaker than the deployment floor, or
+ * The ways a tenant's MFA policy is refused: weaker than the deployment floor, or
  * demanding a second factor this build cannot issue or cannot enrol anyone in, which would lock that
  * customer's users out at their next login. Shared by creation and update, so the two cannot drift.
  */
 /**
- * The set of account creation modes of this tenant alone (F49), which replaces the global one.
+ * The set of account creation modes of this tenant alone, which replaces the global one.
  * Refused when it is written, as the MFA policy is; stored in the order of the modes, so what an
  * operator reads back is what applies.
  */
@@ -209,7 +205,7 @@ function refusePolicy(req: FastifyRequest, reply: FastifyReply, verdict: PolicyV
       .status(503)
       .send(httpError(503, 'This build has no MFA manager: that policy would lock this tenant out', 'MFA_NOT_AVAILABLE'))
   }
-  // The floor puts a second step in every login of that tenant, and a step needs the flow store (F46).
+  // The floor puts a second step in every login of that tenant, and a step needs the flow store.
   if (verdict.policy && demandsEnrolment(verdict.policy) && !isImplemented(req.server['authFlowManager'])) {
     return reply
       .status(503)
@@ -235,7 +231,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   const data = req.data()
   const declared = String(data.locator ?? '')
 
-  // A tenant may only tighten the deployment's MFA policy (T-10.19). A weaker one is refused here
+  // A tenant may only tighten the deployment's MFA policy. A weaker one is refused here
   // rather than stored and ignored at read time: a value an operator can read back is a value they
   // believe applies.
   const policy = checkTenantPolicy((data.config as Record<string, unknown> | undefined)?.mfa_policy)
@@ -245,8 +241,8 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   if (creationRefusal) return creationRefusal
 
   // Sanitised once, before it is stored, and a value that CHANGES under sanitisation is
-  // refused rather than adjusted: v4 saved the raw name and used the sanitised one, so a
-  // registry row could name a schema that does not exist (defect D-20).
+  // refused rather than adjusted: saving the raw name and using the sanitised one would let a
+  // registry row name a schema that does not exist.
   if (declared && sanitizeSchemaName(declared) !== declared) {
     return reply
       .status(400)
@@ -298,7 +294,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
 
     // The schema comes from the migrations, never from entity metadata: a container built by
     // synchronising a schema has no version, and a container with no version cannot be
-    // migrated later (T-5.1). A truthy `tenantId` is what selects the tenant set.
+    // migrated later. A truthy `tenantId` is what selects the tenant set.
     const schemaVersion = await migrations.apply({ tenantId: draft.id, locator })
 
     const container = await provider.forLocator(locator, draft.id)
@@ -308,11 +304,10 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
       username: admin.email,
       password: admin.password,
       roles: [global.roles?.admin?.code || 'admin'],
-      // TRUE by default on this route, and that is defect D-08: v4 seeded the administrator
-      // unconfirmed, login refused unconfirmed users, and no API could confirm one. A tenant
-      // whose administrator cannot log in is not provisioned, it is broken.
+      // TRUE by default on this route: login refuses unconfirmed users, and a tenant whose
+      // administrator cannot log in is not provisioned, it is broken.
       confirmed: admin.adminConfirmed !== false,
-      // The sovereign of ITS container, written into the row (T-4.3). Each tenant has its
+      // The sovereign of ITS container, written into the row. Each tenant has its
       // own founder and inherits nobody else's.
       isFounder: true
     })
@@ -412,7 +407,7 @@ export async function restore(req: FastifyRequest, reply: FastifyReply) {
 
 /**
  * Soft-deletes the REGISTRY ROW. The container and its data survive: destroying them is a
- * separate, two-phase, exported-first operation (T-6.3). The response says so, because a
+ * separate, two-phase, exported-first operation. The response says so, because a
  * caller that believes the data is gone is a caller that stops looking after it.
  */
 export async function remove(req: FastifyRequest, reply: FastifyReply) {
@@ -429,7 +424,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * Takes a customer's data out (T-6.2, docs/API_V5.md §6).
+ * Takes a customer's data out (docs/API_V5.md §6).
  *
  * The version is read from the CONTAINER, not from the registry row, and read before the dump
  * starts: the row says what the last migration run believed, the container says what it
@@ -479,19 +474,20 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
 }
 
 // ---------------------------------------------------------------------------------------
-// Destruction, in two phases (T-6.3, docs/API_V5.md §6.2)
+// Destruction, in two phases (docs/API_V5.md §6.2)
 //
 // This is the one operation the framework cannot undo, so it is the one place where every
 // step is a deliberate obstacle rather than a convenience:
 //
-//   - phase 1 REPORTS what will be destroyed, exactly: the container, its size, the rows per
+//   - the first phase REPORTS what will be destroyed, exactly: the container, its size, the rows per
 //     table. An operator who is about to lose a customer's data should see it counted;
 //   - the token it returns is shown once and stored only as a hash, lasts ten minutes and is
 //     good for a single use;
-//   - phase 2 takes the token, the slug TYPED AGAIN, and a second factor, all three IN THE
-//     BODY. The factor is the operator's TOTP, or, without MFA, a code phase 1 emails to the
-//     address on file through `challengeDeliveryManager`. A token in the URL lands in proxy access logs, browser history and tracing
-//     systems, which is a copy of the permission nobody meant to make;
+//   - the second phase takes the token, the slug TYPED AGAIN, and a second factor, all three IN
+//     THE BODY. The factor is the operator's TOTP, or, without MFA, a code the first phase emails
+//     to the address on file through `challengeDeliveryManager`. A token in the URL lands in proxy
+//     access logs, browser history and tracing systems, which is a copy of the permission nobody
+//     meant to make;
 //   - the export runs FIRST and must produce a real file. No export, no destruction;
 //   - the event is written BEFORE the data goes, because afterwards there may be nothing left
 //     to write with;
@@ -500,8 +496,8 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
 // What it cannot promise, and the README says so: **the data is still in your backups** until
 // those backups expire.
 // ---------------------------------------------------------------------------------------
-// Ten minutes by default, and read from the environment: documented since v5 and consulted by
-// nobody until T-9.4. Bounded on both sides — a window of one second makes the two-phase
+// Ten minutes by default, and read from the environment. Bounded on both sides: a window of one
+// second makes the two-phase
 // destruction unusable, and one of a day makes the "one-time, short-lived" part a fiction.
 const DESTRUCTION_TTL_SECONDS = envInt('DESTRUCTION_TOKEN_TTL', 600, { min: 30, max: 3600 })
 
@@ -527,8 +523,8 @@ export async function destructionRequest(req: FastifyRequest, reply: FastifyRepl
   const destroyed = refuseDestroyed(reply, tenant)
   if (destroyed) return destroyed
 
-  // Refused here, before a token exists: a permission phase 2 could never accept is worse than no
-  // permission, because it looks like one.
+  // Refused here, before a token exists: a permission the second phase could never accept is worse
+  // than no permission, because it looks like one.
   const delivery: ChallengeDeliveryManagement | undefined = req.server['challengeDeliveryManager']
   const byEmail = !actor.mfaEnabled
   if (byEmail && (!isImplemented(delivery) || !actor.email)) {
@@ -726,7 +722,7 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
   })
 }
 
-/** The code phase 1 emailed, with the login's attempts: past the last one, only a new request helps. */
+/** The code the first phase emailed, with the login's attempts: past the last one, only a new request helps. */
 async function verifyEmailedCode(
   req: FastifyRequest,
   dm: DestructionManagement,
@@ -747,7 +743,7 @@ async function verifyEmailedCode(
   }
 }
 
-/** The operator's TOTP, the factor phase 1 settles on whenever the operator has MFA. */
+/** The operator's TOTP, the factor the first phase settles on whenever the operator has MFA. */
 async function verifySecondFactor(req: FastifyRequest, actor: Operator, otp: string): Promise<{ ok: boolean; message: string }> {
   const mfa: MfaManagement | undefined = req.server['mfaManager']
   const systemUsers: SystemUserManagement = req.server['systemUserManager']
@@ -764,10 +760,9 @@ async function verifySecondFactor(req: FastifyRequest, actor: Operator, otp: str
   const secret = await systemUsers.retrieveMfaSecret(control(req), actor.id)
   if (!secret) return { ok: false, message: 'This operator has MFA enabled but no secret on file' }
 
-  // The third copy of one rule, and the one that made the other two worth fixing: a verifier
-  // answers with a DELTA, and comparing it against the stored STEP reads every valid code as
-  // already spent. Here the effect was that an operator with a second factor could never destroy
-  // anything, with a message saying the opposite of what was happening (found live, T-10.21).
+  // A verifier answers with a DELTA, and comparing it against the stored STEP reads every valid
+  // code as already spent: an operator with a second factor could never destroy anything, with a
+  // message saying the opposite of what is happening.
   const { valid, counter } = absoluteStep(await mfa.verify(otp, secret))
   if (!valid) return { ok: false, message: 'The code is not valid' }
   // The step is spent: the same code cannot destroy a second container.
@@ -779,14 +774,12 @@ async function verifySecondFactor(req: FastifyRequest, actor: Operator, otp: str
 }
 
 // ---------------------------------------------------------------------------------------
-// Impersonation (T-4.2, docs/AUTHORIZATION_V5.md §6)
+// Impersonation (docs/AUTHORIZATION_V5.md §6)
 //
-// Defect D-18 was not that impersonation existed: it was that it left a claim in a token and
-// nothing else. No record of who entered whose data or why, twenty-four hours of validity,
-// no way to stop a session once issued, and a privilege check comparing `req.user.tenantId`
-// against the string 'system' on an entity that had no such field, so the guard never fired.
+// A claim in a token and nothing else is not enough: it leaves no record of who entered whose
+// data or why, and no way to stop a session once issued.
 //
-// The order of operations below is the fix, and it is not a detail: the record is written
+// The order of operations below is not a detail: the record is written
 // FIRST, and the token is minted from it. A token issued before the trail exists is a token
 // whose trail can fail to be written.
 // ---------------------------------------------------------------------------------------

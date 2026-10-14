@@ -3,7 +3,7 @@ import { isCookieMode } from '../util/credential.js'
 
 // The allowlist is a deployment decision, not a source-code one: it changes between the
 // developer's laptop, the staging host and production, and a value compiled into the
-// framework would be wrong in at least two of the three (defect D-16). `credentials` follows
+// framework would be wrong in at least two of the three. `credentials` follows
 // the allowlist and is never granted against a wildcard, because no browser honours that pair.
 const corsOrigin = corsOriginFromEnv(process.env.CORS_ORIGINS)
 
@@ -84,7 +84,7 @@ export default [
   },
   {
     name: 'cookie',
-    // Required by the default mode (T-10.37). A project that disables it while in cookie
+    // Required by the default mode. A project that disables it while in cookie
     // mode is refused at boot, not at its first login.
     enable: isCookieMode(),
     options: {

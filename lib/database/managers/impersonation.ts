@@ -4,7 +4,7 @@ import { executeFind } from '../query/index.js'
 import { control, table, column } from './runtime.js'
 
 //
-// The impersonation record (T-4.2, docs/SCHEMA_V5.md §3.3).
+// The impersonation record (docs/SCHEMA_V5.md §3.3).
 //
 // It lives in the control plane, and every method takes a ControlHandle, so the trail of who
 // entered a customer's data cannot be written or read from inside that customer's container.

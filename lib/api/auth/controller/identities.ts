@@ -5,8 +5,8 @@ import { dataContext } from '../../../util/tenancy.js'
 import { recordTenantAccess } from '../../../util/accessLog.js'
 
 //
-// The caller's own external identities (T-12.27): seen and removed, never added. Adding one from a
-// logged-in session needs a fresh re-authentication first, and that is deferred past 5.0 (F48).
+// The caller's own external identities: seen and removed, never added. Adding one from a
+// logged-in session needs a fresh re-authentication first, which these routes do not offer.
 //
 const links = (req: FastifyRequest): ExternalIdentityManagement => req.server['externalIdentityManager']
 

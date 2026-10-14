@@ -1,7 +1,7 @@
 import type { DataHandle, JobRun, JobSchedule } from '../../types/global.js'
 
 //
-// The shape of a job in v5 (T-3.4). Two things it does NOT do, and both are the point:
+// The shape of a job. Two things it does NOT do, and both are the point:
 // it does not look a connection up, and it does not decide where it runs. The schedule
 // declares the plane, the framework hands over the matching handle.
 //

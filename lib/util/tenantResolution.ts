@@ -2,18 +2,16 @@ import type { FastifyRequest } from 'fastify'
 import type { TenantsConfig } from '../../types/global.js'
 
 //
-// The tenant a request DECLARES, as opposed to the one it proves (T-3.2).
+// The tenant a request DECLARES, as opposed to the one it proves.
 //
-// Two rules, and both come from D-03 and D-11.
+// Two rules.
 //
 // One source at a time. If the deployment resolves by subdomain, the header is not read: not
 // as a fallback, not "if the subdomain is missing". Two concurrent sources for one decision
-// is the original shape of D-03, where a header quietly outranked a token claim that was
-// never actually compared.
+// is how a header quietly outranks a token claim that is never actually compared.
 //
-// Never the query string. It was typed and documented in v4 and it is gone in v5 (decision
-// 9): a tenant identifier in the query string ends up in access logs, in `Referer` headers
-// and in browser history, which makes it a credential written on a postcard.
+// Never the query string: a tenant identifier in the query string ends up in access logs, in
+// `Referer` headers and in browser history, which makes it a credential written on a postcard.
 //
 // What comes out of here is untrusted input. It names a tenant, it does not grant one: the
 // caller checks it against the token when there is a token, and looks it up in the registry

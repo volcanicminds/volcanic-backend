@@ -6,10 +6,9 @@ import { queryError } from './errors.js'
 // The operator catalogue (docs/MAGIC_QUERY_V5.md §4).
 //
 // Naming rule, without exceptions: the base form is case-SENSITIVE, the `i` suffix makes it
-// insensitive, the `n` prefix negates it. In v4 the base form followed an environment
-// variable, so the same URL returned different results on two servers of the same product —
-// the worst incoherence of the old syntax, and the reason this one is a property of the
-// operator, visible in the URL.
+// insensitive, the `n` prefix negates it. Case is a property of the operator, visible in the
+// URL, and never of an environment variable: the same URL returns the same results on every
+// server.
 //
 export interface OperatorContext {
   column: Column
@@ -24,7 +23,7 @@ export interface Operator {
 
 const LIKE_ESCAPE = /[\\%_]/g
 
-/** Escapes the wildcards of a LIKE pattern. v4 did not, so `amount:contains=50%` was a wildcard. */
+/** Escapes the wildcards of a LIKE pattern, so the `%` of `amount:contains=50%` is not a wildcard. */
 export const escapeLike = (value: string) => value.replace(LIKE_ESCAPE, (c) => `\\${c}`)
 
 /** Coercion is driven by the COLUMN, not by the shape of the string (docs/MAGIC_QUERY_V5.md §6). */
@@ -47,7 +46,7 @@ export function coerce(column: Column, raw: string): unknown {
   if (type === 'date') {
     // All digits means epoch MILLISECONDS. Left to `new Date(string)`, '1500' would be the
     // year 1500 and a client sending a timestamp would get eight centuries of nonsense back
-    // with no error — the class of silent wrongness this rewrite exists to remove.
+    // with no error.
     const at = /^\d+$/.test(raw) ? new Date(Number(raw)) : new Date(raw)
     if (Number.isNaN(at.getTime())) throw queryError('QUERY_INVALID_VALUE', `'${column.name}' is a date`)
     return at
@@ -148,7 +147,7 @@ export const OPERATORS: Record<string, Operator> = {
   jsonHasAnyKey: jsonKeyOperator('jsonHasAnyKey', '?|', true)
 }
 
-/** The range separator is `..`: with `:` an ISO timestamp split the condition apart, and v4 dropped it. */
+/** The range separator is `..`: with `:` an ISO timestamp would split the condition apart. */
 function range(ctx: OperatorContext, negated: boolean): SQL {
   const parts = ctx.raw.split('..')
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
@@ -169,9 +168,9 @@ for (const kind of ['contains', 'starts', 'ends', 'like'] as PatternKind[]) {
 export function operatorFor(name: string): Operator {
   const operator = OPERATORS[name]
   if (!operator) {
-    // Names are matched exactly, case included. The message used to say "lowercase", which the
-    // catalogue contradicts (`arrayContains`, `jsonHasKey`): the rule is exactness, and the
-    // helpful answer to a wrongly cased name is the name it was meant to be (T-10.33).
+    // Names are matched exactly, case included, and the catalogue is not all lowercase
+    // (`arrayContains`, `jsonHasKey`): the rule is exactness, and the helpful answer to a
+    // wrongly cased name is the name it was meant to be.
     const meant = Object.keys(OPERATORS).find((known) => known.toLowerCase() === name.toLowerCase())
     throw queryError(
       'QUERY_UNKNOWN_OPERATOR',

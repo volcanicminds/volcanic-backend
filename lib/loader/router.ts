@@ -80,9 +80,8 @@ function resolveRequiredRoles(
   roleErrors: string[],
   scope: 'tenant' | 'control' = 'tenant'
 ): Role[] {
-  // Which catalogue the route is judged against, and it is the whole of T-4.1's boot half:
-  // a control route resolves against the control roles, a tenant route against the tenant
-  // ones, and the two maps never see each other's codes.
+  // Which catalogue the route is judged against: a control route resolves against the control
+  // roles, a tenant route against the tenant ones, and the two maps never see each other's codes.
   const isControl = scope === 'control'
   // Read off globalThis, not as a bare identifier: a deployment that has not loaded the
   // control catalogue must get an empty map and a legible error, not a ReferenceError from
@@ -160,15 +159,14 @@ function resolveRequiredRoles(
   if (out.length === 0 && !capability && !isControl) out.push(roles.public)
   if (superuser && !out.some((r) => r.code === superuser.code)) out.push(superuser)
 
-  // One identity space (T-10.22). Without tenants there is no platform: the hook
-  // authenticates the application's own users on control-scope routes too
-  // (lib/hooks/onRequest.ts, `controlIdentity`), and no system user is ever created. The
-  // catalogue above still resolved this route against the SYSTEM roles, so its gate asked for
-  // a role nobody could hold, and `/admin/manifest` answered 403 to the founder himself: the
-  // endpoint existed and was unreachable by anyone. Here the gate is widened to the plane that
-  // actually has users, the same way the identity already was: the application's superuser,
-  // and the application roles that declare the same capability. With tenants declared nothing
-  // changes, because there the two planes are real and must not see each other.
+  // One identity space. Without tenants there is no platform: the hook authenticates the
+  // application's own users on control-scope routes too (lib/hooks/onRequest.ts,
+  // `controlIdentity`), and no system user is ever created. The catalogue above resolves this
+  // route against the SYSTEM roles, so its gate would ask for a role nobody can hold. Here the
+  // gate is widened to the plane that actually has users, the same way the identity is: the
+  // application's superuser, and the application roles that declare the same capability. With
+  // tenants declared nothing changes, because there the two planes are real and must not see
+  // each other.
   if (isControl && !isTenancyEnabled()) {
     const samePlane = [
       roles.admin,
@@ -210,12 +208,11 @@ export function processRoute(
   } = route
 
   // Which plane the route acts on. Read before the roles are resolved, because it decides
-  // WHICH CATALOGUE they are resolved against (T-4.1).
+  // WHICH CATALOGUE they are resolved against.
   //
   // On the ROUTE first, which is where docs/AUTHORIZATION_V5.md §2 puts it, then in `config`,
-  // then the file default. Reading only `config` made the documented spelling a no-op, and a
-  // route that declared `scope: 'control'` ran in the tenant scope: a field that is
-  // documented, typed and never read is defect D-11, and it had grown back.
+  // then the file default. Reading only `config` would make the documented spelling a no-op,
+  // and a route that declared `scope: 'control'` would run in the tenant scope.
   const scope: 'tenant' | 'control' = ((route as { scope?: string }).scope ||
     config?.scope ||
     defaultConfig.scope ||
@@ -251,24 +248,22 @@ export function processRoute(
     response,
     consumes,
     rawBody = false,
-    // Audit trail behaviour for this route (T-3.5). What is tracked lives in
+    // Audit trail behaviour for this route. What is tracked lives in
     // `config/tracking.ts`; this says what happens when the write fails, and the default
     // is strict: an untracked write on a system that promises an audit trail is worse than
     // a visible error.
     tracking
   } = config || {}
 
-  // Which plane the route acts on, and nothing else decides it (T-3.3).
+  // Which plane the route acts on, and nothing else decides it.
   //
-  // `tenantContext` was the v4 spelling and it is refused, not translated: v5 is breaking
-  // and a silent translation is how two spellings of one decision start disagreeing
-  // (invariant 9). Refusing at boot rather than at the first request is the point: a route
-  // that meant "the platform" and is read as "a tenant" would not fail, it would answer
-  // from the wrong container.
+  // `tenantContext`, the v4 spelling, is refused, not translated: a silent translation is how
+  // two spellings of one decision start disagreeing. Refusing at boot rather than at the first
+  // request is the point: a route that meant "the platform" and is read as "a tenant" would not
+  // fail, it would answer from the wrong container.
   // `scope` is the v5 spelling (docs/AUTHORIZATION_V5.md §2): 'tenant' by default, 'control'
   // for a route that acts on the platform. It is resolved into the internal flag the hooks
-  // honour, so a route that declares it actually gets it: a field that is documented, typed
-  // and never read is defect D-11.
+  // honour, so a route that declares it actually gets it.
   const where = `${methodCase.toUpperCase()} ${pathName} (${handler}) in ${file}`
   if (config && Object.prototype.hasOwnProperty.call(config, 'tenantContext')) {
     const meant = (config as unknown as Record<string, unknown>).tenantContext === false ? 'control' : 'tenant'
@@ -277,14 +272,14 @@ export function processRoute(
   if (defaultConfig && Object.prototype.hasOwnProperty.call(defaultConfig, 'tenantContext')) {
     integrityErrors.push(`${file}: \`tenantContext\` in the file-level config is the v4 spelling. Write \`scope\`.`)
   }
-  // Reserved to the framework's own return routes (T-12.17): a route that reads its tenant from a
+  // Reserved to the framework's own return routes: a route that reads its tenant from a
   // flow `state` skips the token and the resolver, and only a route whose handler checks that
   // `state` against a live flow row may do that.
   const tenantFrom = (config as { tenantFrom?: unknown } | undefined)?.tenantFrom
   if (tenantFrom !== undefined && (!framework || tenantFrom !== 'flow-state')) {
     integrityErrors.push(`${where}: \`tenantFrom\` is reserved to the framework's own routes. Remove it.`)
   }
-  // F52: freshness is a question about the person holding a session, and a route anyone may call
+  // Freshness is a question about the person holding a session, and a route anyone may call
   // unauthenticated has nobody to ask it of. `roles: []` plus `global.isAuthenticated` counts as
   // authenticated, as it does for the Swagger security above.
   if (freshAuth !== undefined && typeof freshAuth !== 'boolean') {
@@ -299,8 +294,8 @@ export function processRoute(
 
   // The internal flag the hooks read. It is derived here, in one place, and it is the only
   // thing downstream sees: `scope` is what a consumer writes, this is what the framework
-  // runs on. The default stays the safe one, a route works inside the tenant unless it says
-  // otherwise, exactly as in v4.
+  // runs on. The default is the safe one: a route works inside the tenant unless it says
+  // otherwise.
   const tenantContext = scope !== 'control'
 
   const endpoint = `${dir}${pathName.replace(/\/+$/, '')}`

@@ -1,7 +1,7 @@
 import type { AuthFlowsConfig } from '../../types/global.js'
 
 //
-// The framework's flows (F33, F34): the login of today on both planes, a
+// The framework's flows: the login of today on both planes, a
 // password and then a TOTP code for whoever has one enrolled.
 //
 // A project's `src/config/authFlows.ts` replaces a plane's block whole, never merges into it: a

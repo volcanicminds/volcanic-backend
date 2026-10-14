@@ -1,19 +1,17 @@
 'use strict'
 
 /**
- * CORS: the allowlist comes from the environment, and one combination refuses the boot
- * (defect D-16).
+ * CORS: the allowlist comes from the environment, and one combination refuses the boot.
  *
- * v4 shipped `origin: '*'` together with `credentials: true`. That pair is not a lax setting,
- * it is a broken one: browsers refuse to honour credentials against a wildcard origin, so
- * cookie mode never worked cross-origin at all, and in bearer mode the wildcard leaves the
- * API callable from any page the user happens to visit. Nobody chose it — it was the default.
+ * `origin: '*'` together with `credentials: true` is not a lax setting, it is a broken one:
+ * browsers refuse to honour credentials against a wildcard origin, so cookie mode cannot work
+ * cross-origin at all, and in bearer mode the wildcard leaves the API callable from any page
+ * the user happens to visit.
  *
- * v5 reads `CORS_ORIGINS`, a comma-separated allowlist, and grants `credentials` only when
- * that allowlist is not a wildcard. A deployment that really wants a public API says so by
- * writing `CORS_ORIGINS=*`, which is a sentence someone typed rather than a default nobody
- * read; in production the variable is required, so the wildcard can no longer arrive by
- * omission.
+ * `CORS_ORIGINS` is a comma-separated allowlist, and `credentials` is granted only when that
+ * allowlist is not a wildcard. A deployment that really wants a public API says so by writing
+ * `CORS_ORIGINS=*`, which is a sentence someone typed rather than a default nobody read; in
+ * production the variable is required, so the wildcard cannot arrive by omission.
  */
 
 export type CorsOrigin = boolean | string | string[]
@@ -52,7 +50,7 @@ export function corsOriginFromEnv(raw?: string): CorsOrigin {
 }
 
 /**
- * The tenant header in the preflight allowlist, wherever the backend reads one (T-10.15).
+ * The tenant header in the preflight allowlist, wherever the backend reads one.
  *
  * A browser console on another origin sends the tenant header with its login, and a preflight
  * that does not list it blocks the request before the backend sees it: under the `header`

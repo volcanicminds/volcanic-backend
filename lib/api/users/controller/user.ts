@@ -84,8 +84,7 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   const changingRoles = Object.prototype.hasOwnProperty.call(userData, 'roles')
 
   // Sovereign founder: cannot be demoted or have its email changed through the API. The
-  // question is asked of the ROW, so the answer belongs to this container and to no other
-  // (T-4.3, defect D-27).
+  // question is asked of the ROW, so the answer belongs to this container and to no other.
   if (isFounder(target)) {
     if (changingRoles && !includesRole(userData.roles, roles.admin.code)) {
       return forbidden(reply, 'Cannot demote the sovereign admin')
@@ -145,7 +144,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
 
 export async function getCurrentUser(req: FastifyRequest, reply: FastifyReply) {
   const user: AuthenticatedUser | undefined = req.user
-  // The policy this tenant actually enforces (T-10.19), not the deployment's: a console decides
+  // The policy this tenant actually enforces, not the deployment's: a console decides
   // from here whether to offer the switch, and offering one the server refuses is a lie.
   const mfaPolicy = tenantPolicy(req.tenantInfo)
 
@@ -165,9 +164,9 @@ export async function getCurrentUser(req: FastifyRequest, reply: FastifyReply) {
 // Fields a user is allowed to change on themselves. Everything else (roles,
 // blocked, confirmed, password, externalId, mfa*, ...) is off-limits: spreading the
 // raw body here would let a normal user mass-assign roles:['admin'] and escalate.
-// `firstName`/`lastName` left the list with T-10.22: the v5 `user` table has no such columns
-// (names are the project's own table, see docs/SCHEMA_V5.md §6), so accepting them answered
-// 200 and stored nothing.
+// `firstName`/`lastName` are not in the list: the v5 `user` table has no such columns (names
+// are the project's own table, see docs/SCHEMA_V5.md §6), so accepting them would answer 200
+// and store nothing.
 const SELF_EDITABLE_FIELDS = ['username']
 
 export async function updateCurrentUser(req: FastifyRequest, reply: FastifyReply) {
@@ -221,7 +220,7 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * Ends the wait of an account created under `approval` (F49). Refused on an account that is not
+ * Ends the wait of an account created under `approval`. Refused on an account that is not
  * waiting: approving twice, or approving an account that never waited, is not an approval and must
  * not write one in the access log.
  */

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// The session-state guard (T-3.1, point 3: "no `SET search_path` outside a transaction,
-// anywhere in the data layer").
+// The session-state guard: no `SET search_path` outside a transaction, anywhere in the data
+// layer.
 //
 // The rule is enforced twice on purpose, at two different costs:
 //
@@ -11,12 +11,12 @@
 //     by a consumer's raw SQL, not by a future migration path that forgets the rule.
 //
 // A grep alone would be a coding convention. Watching the driver makes it a property of the
-// running system, which is what invariant 1 asks for: the framework imposes the isolation,
-// it does not ask the caller to remember.
+// running system: the framework imposes the isolation, it does not ask the caller to
+// remember.
 //
 // Why the transaction is the exception and not a loophole: `SET LOCAL` is undone by the
 // commit or the rollback, by definition of the statement. There is no path where it
-// survives into the pool, which is exactly what D-01 was.
+// survives into the pool.
 //
 // Every spelling, including `SET LOCAL`: outside a transaction that one is a silent no-op
 // in Postgres, and a statement that does nothing is a belief about the code that is wrong.
@@ -160,7 +160,7 @@ function guardPgliteTransaction(tx: any): any {
 }
 
 /**
- * The same rule on PGlite (F60), which has no pool: one session, inside the process.
+ * The same rule on PGlite, which has no pool: one session, inside the process.
  *
  * A statement on the instance is outside any transaction, like `pool.query`; a statement on
  * the object handed to a `transaction()` callback is inside one, like a checked-out client

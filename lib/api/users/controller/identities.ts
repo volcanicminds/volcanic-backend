@@ -6,7 +6,7 @@ import { recordTenantAccess } from '../../../util/accessLog.js'
 import { PROVIDER_KEY, resolveProvider } from '../../../auth/providers.js'
 
 //
-// External identities of a user, managed by the tenant's administrator (T-12.27, F40): the third
+// External identities of a user, managed by the tenant's administrator: the third
 // way a link is born, next to linking by email and provisioning just in time.
 //
 const links = (req: FastifyRequest): ExternalIdentityManagement => req.server['externalIdentityManager']

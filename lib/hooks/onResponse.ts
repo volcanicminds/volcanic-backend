@@ -1,13 +1,10 @@
 //
 // Response log, and nothing else.
 //
-// In v4 this hook also released the request's QueryRunner, and that is half of D-01: Fastify
-// runs its onResponse hooks BEFORE the `finish` listener that lib/loader/tenant.ts used to
-// reset `search_path`, so the connection went back to the pool still pointing at a tenant's
-// schema and the reset never ran. Two owners of one release is how that happens.
-//
-// v5 releases in ONE place, `lib/loader/tenant.ts`, and keeps no session
-// state to undo anyway (T-3.1). Logging a response is this file's whole job.
+// The request's QueryRunner is released in ONE place, `lib/loader/tenant.ts`, never here:
+// Fastify runs its onResponse hooks BEFORE the `finish` listener, and two owners of one release
+// is how a connection goes back to the pool before its reset runs. No session state is kept to
+// undo anyway. Logging a response is this file's whole job.
 //
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { withoutQuery } from '../util/logger.js'

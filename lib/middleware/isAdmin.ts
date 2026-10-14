@@ -3,7 +3,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import { httpError } from '../util/httpError.js'
 
 //
-// The apex of whichever plane the request is on (T-4.1).
+// The apex of whichever plane the request is on.
 //
 // `admin` inside a tenant, `system:admin` on the platform. Asking only for the tenant `admin`
 // would mean a control route guarded by this middleware is unreachable by the only identity

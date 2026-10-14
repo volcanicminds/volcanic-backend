@@ -1,5 +1,5 @@
 //
-// Who may create an account in a tenant (F49). The modes are validated again by the controllers,
+// Who may create an account in a tenant. The modes are validated again by the controllers,
 // which also say why a value is refused; the schemas keep the shape and the response honest.
 //
 const modes = { type: 'string', enum: ['invite', 'approval', 'open'] }

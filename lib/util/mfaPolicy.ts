@@ -1,14 +1,13 @@
 'use strict'
 
 //
-// The effective MFA policy, plane by plane and tenant by tenant (T-10.19).
+// The effective MFA policy, plane by plane and tenant by tenant.
 //
-// One value for the whole deployment was a floor nobody could raise: a customer who wanted the
-// second factor for everyone could not have it, and the platform's own operators were not covered
-// at all, so `MANDATORY` obliged the users of every tenant and none of the people who can destroy
-// one. Three levels now, and one rule that keeps them honest: the deployment value is the FLOOR,
-// and what the control plane or a tenant declares may only tighten it. A weaker value is refused
-// when it is written, never ignored when it is read.
+// Three levels, and one rule that keeps them honest: the deployment value is the FLOOR, and what
+// the control plane or a tenant declares may only tighten it. One value for the whole deployment
+// would be a floor nobody could raise, and `MANDATORY` would oblige the users of every tenant and
+// none of the people who can destroy one. A weaker value is refused when it is written, never
+// ignored when it is read.
 //
 import { MfaPolicy } from '../config/constants.js'
 

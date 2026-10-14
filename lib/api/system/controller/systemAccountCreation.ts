@@ -5,7 +5,7 @@ import { CONTROL_KEY, checkRule, deploymentRule, globalRule } from '../../../aut
 import { governed } from '../../../util/governance.js'
 
 //
-// The rule of F49 for every tenant, written by the platform: which modes a tenant may choose from,
+// Who may create an account, for every tenant, written by the platform: which modes a tenant may choose from,
 // and which applies until its administrator chooses. Stored in the control container; without a
 // stored rule the deployment's configuration applies, and removing the stored one goes back to it.
 // The set of a single tenant is `config.account_creation` on its registry row (`PUT /tenants/:id`).

@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Admin Manifest generator (v2) — schema-only, core, no data-layer access.
+ * Admin Manifest generator (v2): schema-only, core, no data-layer access.
  *
- * Composes a Manifest from `global.routes` (BE-1/BE-2) + the registered JSON Schemas
+ * Composes a Manifest from `global.routes` and the registered JSON Schemas
  * (`server.getSchemas()`). Contract: `manifest.v2.schema.json` in @volcanicminds/admin
- * (see MANIFEST_DESIGN.md §2/§3). Relations are emitted "magre" (no kind/foreignKey:
- * enriched via admin overrides). First cut — type breadth/relation detection is hardened
- * by BE-7 tests.
+ * (see MANIFEST_DESIGN.md §2/§3). Relations are emitted lean (no kind/foreignKey:
+ * enriched via admin overrides). Type breadth and relation detection are a first cut.
  */
 import type { ConfiguredRoute, ResourceHints } from '../../types/global.js'
 import { tenantsConfig, isTenancyEnabled } from '../util/tenancy.js'
@@ -18,7 +17,7 @@ type CapabilityKind = 'list' | 'read' | 'create' | 'update' | 'delete' | 'action
 // overrides, because a schema cannot tell those apart from a string or an object: long and rich
 // text are presentations, a relation needs its target and foreign key, an image or a file needs
 // upload endpoints. Identical to `FieldType` in @volcanicminds/admin and to
-// manifest.v2.schema.json (T-10.17).
+// manifest.v2.schema.json.
 type FieldType =
   | 'string' | 'integer' | 'number' | 'boolean' | 'date' | 'datetime' | 'enum' | 'email' | 'url' | 'uuid' | 'json'
   | 'text' | 'textarea' | 'richtext' | 'relation' | 'image' | 'file'
@@ -31,7 +30,7 @@ export interface CapabilitySpec {
   roles: string[]
   label?: string
   target?: ('row' | 'bulk' | 'collection')[]
-  /** What the action's dialog asks before calling it (T-10.16). Actions only, and only with a body. */
+  /** What the action's dialog asks before calling it. Actions only, and only with a body. */
   input?: ActionInput
 }
 export interface ActionInputField {
@@ -97,11 +96,11 @@ export interface Manifest {
 const SENSITIVE_ALWAYS = ['token', 'externalId', 'mfaSecret', 'refreshToken', 'resetPasswordToken', 'confirmationToken']
 const SENSITIVE_WRITE_ONLY = ['password']
 
-/** The login flow of a plane (F31): the routes a console drives, under the plane's prefix. */
+/** The login flow of a plane: the routes a console drives, under the plane's prefix. */
 const flowEndpoints = (prefix: string) => ({
   flowOptions: `${prefix}/flow/options`,
   flowStart: `${prefix}/flow/start`,
-  // The re-authentication a `STEP_UP_REQUIRED` asks for (F53); it continues on the same step routes.
+  // The re-authentication a `STEP_UP_REQUIRED` asks for; it continues on the same step routes.
   flowStepUp: `${prefix}/flow/step-up`,
   flowStep: `${prefix}/flow/step`,
   flowChallenge: `${prefix}/flow/challenge`,
@@ -116,7 +115,7 @@ const flowEndpoints = (prefix: string) => ({
  * starts with. The second factor has no route of its own either; it is a stage of the flow.
  */
 export const AUTH_ENDPOINTS: Record<Plane, Manifest['auth']['endpoints']> = {
-  // `sessions` is announced rather than left to the console to know (T-11.18). The list of a
+  // `sessions` is announced rather than left to the console to know. The list of a
   // caller's own devices is not a resource of the manifest, because it is not a collection
   // anybody can query: it is the sessions of whoever is asking. So it travels here, where the
   // console already reads the routes it must not hardcode, and a build without a session
@@ -128,7 +127,7 @@ export const AUTH_ENDPOINTS: Record<Plane, Manifest['auth']['endpoints']> = {
     logout: '/system/auth/logout',
     sessions: '/system/auth/sessions',
     me: '/system/auth/me',
-    // Account management of an operator already logged in (F45), not a step of the login.
+    // Account management of an operator already logged in, not a step of the login.
     mfaSetup: '/system/auth/mfa/setup',
     mfaEnable: '/system/auth/mfa/enable'
   }
@@ -136,7 +135,7 @@ export const AUTH_ENDPOINTS: Record<Plane, Manifest['auth']['endpoints']> = {
 
 export interface BuildOptions {
   /**
-   * The plane of the console that reads this manifest (T-10.14). Default `tenant`. When the
+   * The plane of the console that reads this manifest. Default `tenant`. When the
    * planes are split, only that plane's routes are described and its auth routes are named.
    */
   plane?: Plane
@@ -160,7 +159,7 @@ function segments(p: string): string[] {
 }
 
 /**
- * The path a route's resource is grouped under (T-10.20).
+ * The path a route's resource is grouped under.
  *
  * The first segment, unless the route declares a longer prefix. A prefix the path does not
  * actually start with is ignored rather than trusted: the URL is what the router serves, and a
@@ -267,7 +266,7 @@ export function buildManifest(input: {
   const sensitiveWriteOnly = options.sensitiveWriteOnly ?? SENSITIVE_WRITE_ONLY
   const plane: Plane = options.plane ?? 'tenant'
 
-  // One console, one plane (T-10.14). A route belongs to the control plane when the router
+  // One console, one plane. A route belongs to the control plane when the router
   // resolved `scope: 'control'` into `tenantContext: false`. Describing the other plane's routes
   // would hand a customer's users the platform's route map and role codes, and would draw
   // screens whose every call is refused with SCOPE_MISMATCH.
@@ -276,7 +275,7 @@ export function buildManifest(input: {
     : routes
 
   // group routes by the path their resource lives under: the first URL segment, or the longer
-  // prefix a route declares (T-10.20)
+  // prefix a route declares
   const bySegment = new Map<string, ConfiguredRoute[]>()
   for (const r of described) {
     const segs = segments(r.path)
@@ -375,7 +374,7 @@ export function buildManifest(input: {
     generatedAt: options.generatedAt || '1970-01-01T00:00:00.000Z',
     i18n: options.i18n || { defaultLocale: 'en', locales: ['en'] },
     auth: {
-      // The framework default since T-10.37: a manifest built without saying otherwise
+      // The framework default: a manifest built without saying otherwise
       // describes a deployment that keeps the session in a cookie.
       mode: options.authMode || 'cookie',
       plane,
@@ -391,7 +390,7 @@ export function buildManifest(input: {
 }
 
 /**
- * The input of a custom action, derived from the body schema of its route (T-10.16).
+ * The input of a custom action, derived from the body schema of its route.
  *
  * The schema is the one description of the body that cannot drift from what the route accepts,
  * because it is what Fastify validates. Field names, types and the schema's `required` come from
@@ -430,7 +429,7 @@ function collectFields(
   schemas: Record<string, any>,
   sensitiveAlways: string[],
   sensitiveWriteOnly: string[],
-  // How many segments of the path belong to the resource itself (T-10.20). Counted from the
+  // How many segments of the path belong to the resource itself. Counted from the
   // wrong end, a resource under a prefix has no create and no list, so it draws a form with no
   // fields: not an error, just an empty screen.
   depth = 1
@@ -511,17 +510,17 @@ export function generateManifest(server: any, options: BuildOptions = {}): Manif
 }
 
 /**
- * What the manifest says about tenancy, asked the way the rest of the framework asks (T-10.5).
+ * What the manifest says about tenancy, asked the way the rest of the framework asks.
  *
  * `multi` comes from `isTenancyEnabled()`, i.e. from a declared STRATEGY, and not from the mere
  * presence of the block. A `tenants` block with no strategy boots as single tenant
- * (`resolveTenancy` falls back to 'none') while the manifest used to announce `multi`: a
- * console then drew a tenant switcher and sent a header a single-tenant backend never reads.
+ * (`resolveTenancy` falls back to 'none'); announcing `multi` there would make a console draw a
+ * tenant switcher and send a header a single-tenant backend never reads.
  *
  * `header` is named only where a console must send it: on the tenant plane, under the `header`
- * resolver, from the login on (T-10.15). Under `subdomain` the host is the tenant; on the control
+ * resolver, from the login on. Under `subdomain` the host is the tenant; on the control
  * plane there is no tenant to declare. `switchable` is always false: from the login the token
- * binds the tenant (T-3.2), and a different one is a new login, not a switch under the session.
+ * binds the tenant, and a different one is a new login, not a switch under the session.
  */
 export function tenancyOf(plane: Plane = 'tenant'): Manifest['tenancy'] {
   const tenants = tenantsConfig()

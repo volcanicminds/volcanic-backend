@@ -3,9 +3,9 @@ import type { FastifyInstance } from 'fastify'
 import { tenantsConfig } from '../util/tenancy.js'
 
 //
-// The instance does not serve traffic on a schema its code does not match (T-5.4).
+// The instance does not serve traffic on a schema its code does not match.
 //
-// This is invariant 2 applied to the schema: a mismatch is not a warning, it is a refusal to
+// This is fail-closed applied to the schema: a mismatch is not a warning, it is a refusal to
 // start. The failure mode it removes is the quiet one. A process that boots against an older
 // schema does not crash; it answers requests, writes rows into columns that mean something
 // else, and is discovered later by the data.
@@ -35,7 +35,7 @@ export interface SchemaCheckOptions {
   onFatal?: (message: string) => void
 }
 
-/** `checkOnResolve` and `refuseStartIfControlBehind`, both default true (invariant 2). */
+/** `checkOnResolve` and `refuseStartIfControlBehind`, both default true. */
 export function migrationChecks(): { onResolve: boolean; onBoot: boolean } {
   const declared = tenantsConfig()?.migrations ?? {}
   return {

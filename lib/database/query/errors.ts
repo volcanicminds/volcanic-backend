@@ -1,11 +1,9 @@
 //
 // Every way a query can be wrong, with a stable machine-readable code.
 //
-// The list is the point of this file. v4 answered a malformed query by quietly running a
-// different one: an unparseable `_logic` became an AND of everything (D-13), an unknown sort
-// field was skipped with a log line, an empty value became the literal string `notFound`, and
-// a range with an ISO timestamp in it was dropped. Each of those returns a plausible result
-// set for a question nobody asked, which is worse than an error because nobody notices.
+// The list is the point of this file. A malformed query is never answered by quietly running
+// a different one: that returns a plausible result set for a question nobody asked, which is
+// worse than an error because nobody notices.
 //
 export type QueryErrorCode =
   | 'QUERY_UNKNOWN_FIELD'

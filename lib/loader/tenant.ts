@@ -30,8 +30,8 @@ const providerOf = (server: FastifyInstance): DataProvider | undefined =>
  *
  * The flag is set here, synchronously, before anything is awaited: the response path and
  * the abort listener can both reach this line, and whichever arrives first must make the
- * other a no-op. Leaving that decision to the adapter would put it back where v4 had it:
- * in two places, with an order nobody controls (D-01).
+ * other a no-op. Leaving that decision to the adapter would put it in two places, with an
+ * order nobody controls.
  */
 async function release(req: FastifyRequest, error?: Error): Promise<void> {
   const scope = req.dataScope
@@ -95,9 +95,9 @@ export async function apply(server: FastifyInstance) {
     if (typeof cfg.tenantContext !== 'boolean') return
     if (cfg.tenantContext === false) return
 
-    // Fail-closed (invariant 2): tenancy declared and no manager able to serve it means the
-    // request cannot be isolated, so it is refused. It is never served on a shared context:
-    // that is what "no implicit fallback to the global context" means (invariant 3).
+    // Fail-closed: tenancy declared and no manager able to serve it means the request cannot
+    // be isolated, so it is refused. It is never served on a shared context: that is what
+    // "no implicit fallback to the global context" means.
     const tm = server['tenantManager'] as TenantManagement
     if (!tm || !tm.isImplemented() || !req.control) {
       if (log.e) log.error('Tenancy: declared but no tenant manager is implemented, refusing the request')
@@ -126,7 +126,7 @@ export async function apply(server: FastifyInstance) {
     let tenant: Tenant | null = null
 
     if (cfg.tenantFrom === 'flow-state') {
-      // A return from a provider (F39, T-12.17): a navigation that carries no token and, with the
+      // A return from a provider: a navigation that carries no token and, with the
       // header resolver, no header. The container is the one the flow `state` routes to, an address
       // the handler then checks against a live row; a tenant the request declares or proves may
       // only agree with it. The query string names a flow here, never a tenant to believe.
@@ -165,8 +165,8 @@ export async function apply(server: FastifyInstance) {
       return reply.code(404).send(httpError(404, 'Not found', 'TENANT_NOT_FOUND'))
     }
 
-    // A container whose schema is behind the code is refused here, one container at a time
-    // (T-5.4). Not at boot: on a fleet, one tenant left behind must not take the other nine
+    // A container whose schema is behind the code is refused here, one container at a time.
+    // Not at boot: on a fleet, one tenant left behind must not take the other nine
     // hundred down with it, and the operator finds out from a request that names the tenant
     // rather than from a process that will not start.
     const behind = await containerBehind(req, tenant)
@@ -257,12 +257,12 @@ function claimedTenant(req: FastifyRequest): string | typeof CONTROL_TOKEN | typ
 }
 
 /**
- * Puts a request inside a tenant's container, once resolution has said which one (T-3.2).
+ * Puts a request inside a tenant's container, once resolution has said which one.
  *
  * The scope travels with the call so the data layer knows WHO is holding the container: it
  * is what the LRU consults before closing one, and what `release()` gives back. Nothing is
  * written to the connection, so there is no matching "leave the container" step, and that
- * absence is the point of T-3.1. The row is the one resolution read from the registry, so
+ * absence is the point. The row is the one resolution read from the registry, so
  * the provider opens it without reading it again.
  */
 export async function openTenantContext(req: FastifyRequest, tenant: Tenant): Promise<void> {

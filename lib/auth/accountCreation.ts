@@ -1,7 +1,7 @@
 import type { ControlHandle, DataHandle, SettingManagement, Tenant } from '../../types/global.js'
 
 //
-// Who may create an account in a tenant (F49).
+// Who may create an account in a tenant.
 //
 // Two levels, each with its own data. The control plane decides the SET of modes a tenant may use:
 // for every tenant through its own setting (or, without one, the deployment's configuration), for a
@@ -13,7 +13,7 @@ import type { ControlHandle, DataHandle, SettingManagement, Tenant } from '../..
 // opens more than it allows.
 //
 // It applies to both doors a person can create an account through: `/auth/register` and the
-// just-in-time provisioning of an identity provider (F40).
+// just-in-time provisioning of an identity provider.
 //
 
 /** From the most closed to the most open. The order is what "the most closed of the set" reads. */

@@ -3,9 +3,9 @@ import type { AccessLogManagement, DataHandle } from '../../../../types/global.j
 import { httpError } from '../../../util/httpError.js'
 
 //
-// The access log of the platform (T-12.32): the operators' own accesses, in the control plane.
+// The access log of the platform: the operators' own accesses, in the control plane.
 // A tenant's accesses are not here and cannot be reached from here; reading them means entering
-// the tenant with an impersonation, which leaves its own record (F44, F19).
+// the tenant with an impersonation, which leaves its own record.
 //
 const manager = (req: FastifyRequest): AccessLogManagement => req.server.accessLogManager
 

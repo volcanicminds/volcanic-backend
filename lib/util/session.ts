@@ -8,12 +8,11 @@ import crypto from 'crypto'
 // secret is a credential; the first three fields are addressing, and none of them is trusted
 // until the registry says the hash of the secret matches a live row.
 //
-// Why not a JWT, which is what v4 and the first v5 used. A signature is worth having when the
-// receiver must decide alone, and here the receiver cannot: the renewal has to read the
-// session row anyway, to learn whether that generation was already spent. So the signature adds
-// a second secret to manage, a second namespace that verifies as the first whenever the two
-// secrets coincide (the reason `typ: 'refresh'` had to exist at all), and a set of claims that
-// go stale. An opaque secret is worth nothing without the database, which is the property that
+// Why not a JWT. A signature is worth having when the receiver must decide alone, and here the
+// receiver cannot: the renewal has to read the session row anyway, to learn whether that
+// generation was already spent. So a signature would add a second secret to manage, a second
+// namespace that verifies as the first whenever the two secrets coincide, and a set of claims
+// that go stale. An opaque secret is worth nothing without the database, which is the property that
 // actually matters here.
 //
 // Why the routing prefix, which looks like a leak of the tenant id. In multi-tenant the session
@@ -77,7 +76,7 @@ export function parseRefreshCredential(raw: unknown): RefreshCredential | null {
 //
 // Lifetimes.
 //
-// Two clocks and a tolerance, and each one answers a different question (F23, F24). Inactivity
+// Two clocks and a tolerance, and each one answers a different question. Inactivity
 // ends a session nobody is using; the absolute lifetime ends a session that renews for ever;
 // the grace window is what keeps two tabs renewing in the same instant from looking like a
 // theft. Seconds everywhere, because a duration written as `180d` in one place and as a number
@@ -141,8 +140,8 @@ export function nextIdleExpiry(absoluteExpiresAt: Date | string, from = new Date
  * Whether this deployment keeps a session registry.
  *
  * The block can turn it off explicitly, but the real switch is the manager: without a data
- * layer there is nothing to write the row in, and F28 says that means no renewal at all rather
- * than a renewal that pretends to rotate.
+ * layer there is nothing to write the row in, and that means no renewal at all rather than a
+ * renewal that pretends to rotate.
  */
 export function sessionRegistryEnabled(manager: { isImplemented?: () => boolean } | undefined): boolean {
   if (block().enabled === false) return false

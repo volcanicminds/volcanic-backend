@@ -8,17 +8,16 @@
  * periodic background sweep.
  *
  * Entries are keyed as `keyGroup :: container :: subject|roles :: method url`. The
- * CONTAINER comes first and is always written out (T-3.6): `control` for the platform,
+ * CONTAINER comes first and is always written out: `control` for the platform,
  * `tenant:<id>` inside a customer's container. It could be inferred from the rest of the key
- * in most shapes, and that is exactly why it is stated instead: defect D-15 was a cache key
- * that happened to be unique until the day the SQL stopped differing between tenants. A key
- * that isolates by accident isolates until something else changes.
+ * in most shapes, and that is exactly why it is stated instead: a key that isolates by
+ * accident isolates until something else changes.
  *
  * The store is configured once at boot from `global.config.options.cache`
  * (see index.ts) and exposed both as `global.cache` and via the package root
  * exports `invalidateCache` / `cache`.
  *
- * KNOWN LIMIT, and it is a decision rather than an oversight (defect D-26): the store is in
+ * KNOWN LIMIT, and it is a decision rather than an oversight: the store is in
  * memory, per process. An invalidation declared by a route reaches the instance that served
  * the request and no other, so behind more than one instance a stale entry survives until it
  * expires. A deployment that needs real cross-instance invalidation wants a shared store,
@@ -26,7 +25,7 @@
  *
  * So the default TTL is not one number: it follows the shape of the deployment the framework
  * can actually see. Without a `tenants` block the instance is a single application and one
- * hour is the useful default it has always been; with tenants declared the deployment is the
+ * hour is the useful default; with tenants declared the deployment is the
  * one that gets scaled horizontally, and the window in which an invalidation can fail to
  * arrive has to be short. The residual case is honest and worth stating: a SINGLE-tenant
  * application can also run behind several instances, and there the one-hour default is the
@@ -58,7 +57,7 @@ const TTL_MULTI_TENANT = 60
 const DEFAULTS: CacheSettings = { enabled: false, ttl: TTL_SINGLE_TENANT, maxEntries: 1000 }
 
 /**
- * The default TTL, chosen by the deployment shape (D-26).
+ * The default TTL, chosen by the deployment shape.
  *
  * One hour where the framework sees a single application, one minute where it sees tenants:
  * that is the deployment that gets replicated, and an invalidation that reaches one instance
@@ -105,7 +104,7 @@ export function configureCache(opts?: CacheSettings | Partial<CacheSettings>): C
       log.info(`Cache 🧊 enabled: ttl ${settings.ttl}s (${why}), maxEntries ${settings.maxEntries}, strategy LRU+TTL`)
     }
     // The store is per process, so an invalidation does not travel. Said once, at boot, on
-    // the deployment where it can actually bite (D-26).
+    // the deployment where it can actually bite.
     if (tenancy && !declaredTtl && log?.w) {
       log.warn('Cache 🧊 is per process: an invalidation reaches this instance only. TTL bounds the staleness.')
     }
@@ -228,7 +227,7 @@ const HITS = new WeakSet<FastifyRequest>()
 const HEADER_ALLOW = /^(content-type|v-)/i
 
 /**
- * Which container a response belongs to, written out rather than implied (T-3.6).
+ * Which container a response belongs to, written out rather than implied.
  *
  * `control` and `tenant:<id>` are distinguishable strings on purpose: an empty segment used
  * to mean both "no tenants configured" and "a control-scope route in a deployment that has

@@ -5,18 +5,18 @@ import { readMigrations, statementsOf, type MigrationFile } from './files.js'
 import { uuidv7 } from '../uuid.js'
 
 //
-// The migration engine (T-5.1).
+// The migration engine.
 //
 // Why the framework applies the SQL itself instead of calling `drizzle-kit`'s runtime
-// migrator, which is what `docs/SCHEMA_V5.md` §2.4 first assumed: that migrator applies the
-// statements of a file as they are written, into whatever the connection resolves. Our
+// migrator: that migrator applies the statements of a file as they are written, into
+// whatever the connection resolves. Our
 // tables are built by a factory over a schema chosen at runtime, so the generated SQL is
 // deliberately UNQUALIFIED and the same file has to land in `tenant_acme` one minute and in
 // `tenant_globex` the next. There is no argument for that, so the engine is here.
 //
-// This is also the one place T-3.1 sanctions a `search_path`: inside a transaction, with
-// `SET LOCAL`, which the commit or the rollback undoes by definition. The rule was never
-// "never name a schema", it was "never leave one on a pooled connection".
+// This is also the one place the session-state rule allows a `search_path`: inside a
+// transaction, with `SET LOCAL`, which the commit or the rollback undoes by definition. The
+// rule is not "never name a schema", it is "never leave one on a pooled connection".
 //
 // Three properties, and each of them is a decision:
 //
@@ -34,7 +34,7 @@ export interface MigrationSet {
   /** `control` or `tenant`: which set this is, recorded next to each applied name. */
   readonly name: string
   /**
-   * Folders read in order, framework first, consumer second (T-5.1 point 5). The framework
+   * Folders read in order, framework first, consumer second. The framework
    * owns the migrations of its own tables; a consumer's entities are the consumer's to move.
    */
   readonly folders: readonly string[]
@@ -117,7 +117,7 @@ async function applied(target: MigrationTarget, set: string): Promise<Array<{ na
  *
  * The `SET LOCAL search_path` is what lets one unqualified file land in any container. It is
  * scoped to this transaction by definition of the statement, so the connection goes back to
- * the pool exactly as it came out (T-3.1).
+ * the pool exactly as it came out.
  */
 async function applyOne(target: MigrationTarget, set: string, file: MigrationFile): Promise<void> {
   await target.handle.transaction(async (tx: any) => {

@@ -20,7 +20,7 @@ import { hashSecret } from './session.js'
 import { isUniqueViolation } from './user.js'
 
 //
-// The flow store (F37, T-12.12).
+// The flow store.
 //
 // Every change that a racing request could also make is one conditional statement, never a read
 // followed by a write: consuming a code, counting a wrong one, spending a send. `version` moves
@@ -37,7 +37,7 @@ const NAME = 'authFlowManager'
 /** The `secret_hash` of a retired flow. No SHA-256 is empty, so no credential finds it again. */
 const RETIRED = ''
 
-/** The longest per-subject window of F37 (24 h): a retired flow's row is kept at least this long. */
+/** The longest per-subject window (24 h): a retired flow's row is kept at least this long. */
 const DEFAULT_SEND_WINDOW_SECONDS = 86_400
 
 interface FlowRow {
@@ -134,7 +134,7 @@ export function createAuthFlowManager(options: { sendWindowSeconds?: number } = 
     version: sql`${col(flows, 'version')} + 1`
   })
 
-  /** Retires every other proven flow of the subject: one live flow per proven subject (F37). */
+  /** Retires every other proven flow of the subject: one live flow per proven subject. */
   const evict = async (handle: RuntimeHandle, flows: Table, subjectId: string, scope: string, keep: string) => {
     await handle.db
       .update(flows)

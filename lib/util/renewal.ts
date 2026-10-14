@@ -21,14 +21,12 @@ import {
 } from './session.js'
 
 //
-// Renewal against the session registry (T-11.8, T-11.9).
+// Renewal against the session registry.
 //
-// One implementation for both planes, on purpose. The two renewals were written twice and drifted
-// twice: the scope check of the control plane had to be added later (D-19's twin), and the tenant
-// one grew a 30-day rule the cookie path never had. The parts that genuinely differ between a
-// tenant session and a platform one are three — which container holds the row, what the routing
-// segment must match, and how the subject is loaded — so they are parameters, and everything else
-// is the same code.
+// One implementation for both planes, on purpose: a renewal written twice drifts twice. The parts
+// that genuinely differ between a tenant session and a platform one are three (which container
+// holds the row, what the routing segment must match, and how the subject is loaded), so they are
+// parameters, and everything else is the same code.
 //
 // What this function refuses, and why it does not explain itself to the caller: an unknown
 // secret, an expired session and a revoked one all answer the same 401. They are the same
@@ -68,7 +66,7 @@ function secondsUntil(session: Session, idleExpiresAt: Date): number {
 export async function renew<S>(context: RenewalContext<S>) {
   const { req, reply, plane, scope, ctx, manager, routing } = context
 
-  // F28: without a registry there is no renewal. A refresh credential nobody can consume is a
+  // Without a registry there is no renewal. A refresh credential nobody can consume is a
   // credential that never expires, so the honest answer is that the route does not exist here.
   if (!sessionRegistryEnabled(manager)) {
     return reply.status(404).send(httpError(404, 'Refresh tokens are disabled', 'NOT_FOUND'))
@@ -86,7 +84,7 @@ export async function renew<S>(context: RenewalContext<S>) {
   }
 
   // The renewal is the one route where the credential arrives in the body or in a cookie scoped
-  // to this path, so nothing upstream has checked which container it belongs to (defect D-19).
+  // to this path, so nothing upstream has checked which container it belongs to.
   // The routing segment is addressing, not proof: it says where to look, and the row found there
   // is what decides anything.
   if (routing !== null && credential.routing !== routing) {
@@ -143,7 +141,7 @@ export async function renew<S>(context: RenewalContext<S>) {
   const idleExpiresAt = nextIdleExpiry(session.absoluteExpiresAt)
   const rotated = await manager.rotate(ctx, session.sid, session.generation, { secret, idleExpiresAt })
 
-  // The proof is copied from the row and never moved: renewing is not proving again (F51).
+  // The proof is copied from the row and never moved: renewing is not proving again.
   const token = await reply.jwtSign({ ...context.claims(subject), ...authTimeClaim(session.authenticatedAt), sid: session.sid })
 
   // A lost race is not a failure. Another request of the same session rotated first, so this one
@@ -158,7 +156,7 @@ export async function renew<S>(context: RenewalContext<S>) {
     return { token, refreshToken: null }
   }
 
-  // Housekeeping, on one renewal in fifty (T-11.12). Rows nobody can use any more pile up
+  // Housekeeping, on one renewal in fifty. Rows nobody can use any more pile up
   // otherwise, and a deployment that never runs the CLI command would grow the table for ever.
   // Awaited rather than fired and forgotten: the container is released when the response ends,
   // and a query that outlives it would be a query on a handle somebody else already has.

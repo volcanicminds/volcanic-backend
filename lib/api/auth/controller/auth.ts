@@ -13,8 +13,7 @@ import { CONTROL_ROUTING, sessionRegistryEnabled } from '../../../util/session.j
 import { mayLogIn } from '../../../auth/subjects.js'
 import { accountCreationOf } from '../../../auth/accountCreation.js'
 import type { ControlHandle } from '../../../../types/global.js'
-// The delta-to-step conversion used to live here, and the control plane had its own copy that
-// did not convert at all (T-10.20). One rule, one place.
+// The delta-to-step conversion, one rule in one place, shared with the control plane.
 import { absoluteStep as evaluateMfaResult } from '../../../util/mfaCounter.js'
 
 const DEFAULT_RESET_PASSWORD_TOKEN_TTL = 3600
@@ -53,7 +52,7 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
     throw new Error('Not implemented')
   }
 
-  // F49, before anything about the request is read: under `invite` the answer is the tenant's rule,
+  // Before anything about the request is read: under `invite` the answer is the tenant's rule,
   // the same for every address, so it says nothing about who has an account here.
   const creation = await accountCreationOf({
     settings: req.server['settingManager'],
@@ -91,7 +90,7 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
 
   // No lookup before the insert, on purpose. A pre-check answers before anything expensive
   // has happened, so a taken address comes back in milliseconds and a free one comes back
-  // after a bcrypt hash: the two are one stopwatch apart, and the uniform body of decision A5
+  // after a bcrypt hash: the two are one stopwatch apart, and the uniform body
   // would be undone by the latency. Letting the unique index decide means both paths hash,
   // both paths touch the database, and both cost the same.
   // Whatever the body says: only the mode decides whether the account waits for an administrator.
@@ -104,7 +103,7 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   } catch (err: any) {
     if (err?.code !== EMAIL_ALREADY_REGISTERED) throw err
 
-    // An address that is already registered gets the answer a new one gets (decision A5).
+    // An address that is already registered gets the answer a new one gets.
     // Anything else — a different status, a different body, a different latency — walks a
     // list of addresses and learns which of them have accounts here. Nothing is created; the
     // identifiers below are minted for this response alone and are stored nowhere, in the
@@ -147,16 +146,14 @@ export async function unregister(req: FastifyRequest, reply: FastifyReply) {
   const isValid = await req.server['userManager'].isValidUser(user)
 
   // A blocked account answers as a wrong secret does: telling the two apart tells whoever holds
-  // the secret that the account exists and has been blocked (S7).
+  // the secret that the account exists and has been blocked.
   if (!isValid || user.blocked) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
 
-  // `disableUserById` never existed on any manager, so this route threw on every call and the
-  // error handler turned it into a 500: unregistering has never worked (found by typing the
-  // injected managers, F7). Blocking is the operation the contract actually has, and it is what
-  // this route means in a framework that does not delete accounts: the credentials stop working
-  // and an administrator can undo it.
+  // Blocking is the operation the contract actually has, and it is what this route means in a
+  // framework that does not delete accounts: the credentials stop working and an administrator
+  // can undo it.
   const blocked = await req.server['userManager'].blockUserById(dataContext(req), user.id, 'unregistered by the user')
   if (!blocked) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not valid' })
@@ -211,7 +208,7 @@ export async function changePassword(req: FastifyRequest, reply: FastifyReply) {
   let isValid = await req.server['userManager'].isValidUser(user)
 
   // A blocked account answers as a wrong secret does: telling the two apart tells whoever holds
-  // the secret that the account exists and has been blocked (S7).
+  // the secret that the account exists and has been blocked.
   if (!isValid || user.blocked) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
@@ -247,13 +244,12 @@ export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
   // (A residual timing side-channel remains since the valid path does a DB write.)
   if (isValid && !user?.blocked) {
     const updated = await req.server['userManager'].forgotPassword(dataContext(req), user.email, resetPasswordTokenTtl())
-    // The token never reaches the response — it is handed to the
+    // The token never reaches the response: it is handed to the
     // `global.postForgotPassword` middleware, which the consumer implements to
     // deliver it (the core has no mailer and cannot know the frontend URL).
-    // `forgotPassword` answers with the token itself, not with the row. Reading `.resetPasswordToken`
-    // off a string yielded `undefined` every single time, so the middleware that is supposed to
-    // deliver the reset link received nothing and the whole flow was silently dead (F7: the manager
-    // was reached through an untyped index, so nothing said so).
+    // `forgotPassword` answers with the token itself, not with the row: reading
+    // `.resetPasswordToken` off a string yields `undefined`, and the middleware that delivers the
+    // reset link would receive nothing.
     req.resetToken = updated ?? undefined
   }
 
@@ -271,7 +267,7 @@ export async function confirmEmail(req: FastifyRequest, reply: FastifyReply) {
   let isValid = await req.server['userManager'].isValidUser(user)
 
   // A blocked account answers as a wrong secret does: telling the two apart tells whoever holds
-  // the secret that the account exists and has been blocked (S7).
+  // the secret that the account exists and has been blocked.
   if (!isValid || user.blocked) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
@@ -301,7 +297,7 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
   let isValid = await req.server['userManager'].isValidUser(user)
 
   // A blocked account answers as a wrong secret does: telling the two apart tells whoever holds
-  // the secret that the account exists and has been blocked (S7).
+  // the secret that the account exists and has been blocked.
   if (!isValid || user.blocked) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Wrong credentials' })
   }
@@ -318,12 +314,12 @@ export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * Ends the session, instead of only forgetting it (T-11.10).
+ * Ends the session, instead of only forgetting it.
  *
- * v4 cleared the browser's cookies and called that a logout. Anyone holding a copy of the
- * refresh cookie kept renewing afterwards, because nothing on the server had changed. The row
- * is revoked first, and the cookies go after: the user's belief and the server's state now
- * describe the same thing.
+ * Clearing the browser's cookies alone is not a logout: anyone holding a copy of the refresh
+ * cookie keeps renewing afterwards, because nothing on the server has changed. The row is
+ * revoked first, and the cookies go after: the user's belief and the server's state describe
+ * the same thing.
  */
 export async function logout(req: FastifyRequest, reply: FastifyReply) {
   const manager = req.server['sessionManager']
@@ -339,15 +335,14 @@ export async function logout(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * Renewal against the session registry (T-11.8).
+ * Renewal against the session registry.
  *
- * Both modes take the same path now. The credential is opaque, so there is no signature to
- * verify and no second token to pair it with: what the bearer renewal used to check by
- * comparing two JWTs — same subject, same tenant, issued not too long ago — is a property of
- * the row itself, which names one subject, lives in one container and carries two clocks.
+ * Both modes take the same path. The credential is opaque, so there is no signature to verify
+ * and no second token to pair it with: same subject, same tenant, issued not too long ago are
+ * properties of the row itself, which names one subject, lives in one container and carries two
+ * clocks.
  *
- * The flow is shared with the control plane (lib/util/renewal.ts) because the two were written
- * twice and drifted twice.
+ * The flow is shared with the control plane (lib/util/renewal.ts), so the two cannot drift.
  */
 export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
   const users = req.server['userManager']
@@ -362,7 +357,7 @@ export async function refreshToken(req: FastifyRequest, reply: FastifyReply) {
     scope: 'tenant',
     ctx: dataContext(req),
     manager: req.server['sessionManager'],
-    // Defect D-19: this is the one route where the credential arrives in the body or in a
+    // This is the one route where the credential arrives in the body or in a
     // cookie scoped to this path, so nothing upstream has decided which container it belongs
     // to. Renewal must not become the door through which a session of one tenant is exchanged
     // for a session in another.
@@ -381,7 +376,7 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'User not linked' })
   }
 
-  // Two levels, and they are not the same act (F26). The sessions are closed first, by name, so
+  // Two levels, and they are not the same act. The sessions are closed first, by name, so
   // the registry says when each one ended and why; then the identity is rotated, which is the
   // hammer that also kills every access token already signed for the old `externalId`.
   //
@@ -402,12 +397,12 @@ export async function invalidateTokens(req: FastifyRequest, reply: FastifyReply)
 }
 
 /**
- * The caller's own sessions (T-11.14).
+ * The caller's own sessions.
  *
- * The registry existed for rotation; once it exists, "where am I logged in" is a question with an
- * answer, and the honest place to answer it is here rather than in every consuming project. The
- * rows carry no secret and no hash: the only handle a client needs is the `sid`, which is also
- * what it sends back to close one.
+ * Once the registry exists, "where am I logged in" is a question with an answer, and the honest
+ * place to answer it is here rather than in every consuming project. The rows carry no secret and
+ * no hash: the only handle a client needs is the `sid`, which is also what it sends back to close
+ * one.
  */
 export async function listSessions(req: FastifyRequest, reply: FastifyReply) {
   const sessions = req.server['sessionManager']
@@ -434,7 +429,7 @@ export async function listSessions(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * Closes one session of the caller: the scalpel next to the hammer (F26).
+ * Closes one session of the caller: the scalpel next to the hammer.
  *
  * Ownership is checked by looking the session up among the caller's own, never by trusting the
  * path: a `sid` is a handle, not an authorisation, and a session that belongs to somebody else
@@ -465,11 +460,9 @@ export async function revokeSession(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * Enrolment is for a subject without a second factor. When the pre-auth token still opened these
- * routes, enrolling over an existing factor turned the password alone into a session: enrol a
- * secret of one's own, overwrite the victim's, and come back with it (T-12.1). Only a complete
- * session reaches them now, and the rule stays: replacing a factor goes through disable first,
- * so a stolen session cannot swap the factor that stands behind the next login.
+ * Enrolment is for a subject without a second factor. Only a complete session reaches these
+ * routes, and replacing a factor goes through disable first, so a stolen session cannot swap the
+ * factor that stands behind the next login.
  */
 const alreadyEnrolled = (reply: FastifyReply) =>
   reply.status(409).send(httpError(409, 'A second factor is already enabled', 'MFA_ALREADY_ENABLED'))
@@ -513,9 +506,8 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   try {
     // 1. Verify using mfaManager (tools)
     // Awaited: the contract allows a manager whose `verify` is async, and an unawaited Promise is
-    // neither a number nor null, so it fell through to the legacy "valid, no step" branch. With an
-    // async manager this route accepted any code at all. The types said nothing while the manager
-    // was reached through an untyped index (F7).
+    // neither a number nor null, so it falls through to the legacy "valid, no step" branch: with an
+    // async manager this route would accept any code at all.
     const { valid, counter } = evaluateMfaResult(await req.server['mfaManager'].verify(token, secret))
     if (!valid) {
       return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Invalid token' })
@@ -531,7 +523,7 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
     }
     await recordTenantAccess(req, { event: 'mfa.enrolled', outcome: 'success', subjectId: user.externalId ?? null, methods: ['totp'] })
 
-    // No session is issued here any more (F45): the caller already holds a complete one, and the
+    // No session is issued here: the caller already holds a complete one, and the
     // enrolment forced by `MANDATORY` happens inside the login flow, which issues its own.
     return { ok: true }
   } catch (error: any) {
@@ -544,8 +536,8 @@ export async function mfaDisable(req: FastifyRequest, reply: FastifyReply) {
   const user = req.user
   if (!user) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Unauthorized' })
 
-  // Self-service removal exists only where the factor is optional (T-10.19): `ONE_WAY` and
-  // `MANDATORY` already refused it, and under `OFF` the way out is a reset by an administrator,
+  // Self-service removal exists only where the factor is optional: `ONE_WAY` and
+  // `MANDATORY` refuse it, and under `OFF` the way out is a reset by an administrator,
   // not a switch that undoes what the policy has just frozen.
   if (!allowsSelfDisable(tenantPolicy(req.tenantInfo))) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'MFA disable is not allowed by security policy' })

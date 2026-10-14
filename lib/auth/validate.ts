@@ -13,14 +13,14 @@ import { PROVIDER_KEY, providerShapeProblems } from './providers.js'
 import { IDP_MFA } from './authenticators/oidc.js'
 
 //
-// The boot refusal of the flow configuration (T-12.6).
+// The boot refusal of the flow configuration.
 //
 // Everything here would otherwise be found at a login: a flow nobody can be chosen for, a method
 // that is not registered, a code that nobody can deliver. Pure, like `unavailableMandatory`: the
 // caller gathers what the build has and this answers one message per cause, each with its fix.
 //
 
-/** The method the engine enrols a subject in when `MANDATORY` meets a subject with no factor (F35). */
+/** The method the engine enrols a subject in when `MANDATORY` meets a subject with no factor. */
 export const ENROLMENT_METHOD = 'totp'
 export const EMAIL_OTP = 'email-otp'
 export const OIDC = 'oidc'
@@ -150,7 +150,7 @@ function planeProblems(plane: AuthPlane, block: AuthPlaneFlows, input: AuthFlowC
       const stageAt = `${at}, stage ${j + 1}`
       if (!stage.anyOf.length) problems.push(`${where}: ${stageAt} has an empty \`anyOf\`: list at least one verifier`)
       for (const id of stage.anyOf) {
-        // Not a method but a fact a provider's login may bring (F41): it is met or it is not, and it
+        // Not a method but a fact a provider's login may bring: it is met or it is not, and it
         // can only be met where an identity provider logs people in.
         if (id === IDP_MFA) {
           if (!block.identify.includes(OIDC)) {
@@ -175,7 +175,7 @@ function planeProblems(plane: AuthPlane, block: AuthPlaneFlows, input: AuthFlowC
       continue
     }
     if (!PROVIDER_KEY.test(key)) problems.push(`${where}: provider key '${key}' must be lowercase letters, digits, '-' or '_'`)
-    // The same rules a tenant's provider meets at the control routes (T-12.26).
+    // The same rules a tenant's provider meets at the control routes.
     for (const problem of providerShapeProblems(provider, { plane, allow: ['type', 'clientSecretEnv'] })) {
       problems.push(`${where}: provider '${key}': ${problem}`)
     }
@@ -205,7 +205,7 @@ function planeProblems(plane: AuthPlane, block: AuthPlaneFlows, input: AuthFlowC
     )
   }
 
-  // F46. An optional stage alone is left out on purpose: it applies only to a subject already
+  // An optional stage alone is left out on purpose: it applies only to a subject already
   // enrolled in a method of it, and that subject meets the engine's own refusal at the step. A
   // method with `initiate` or a required stage can never close in one request.
   if (!input.implemented.authFlow) {
@@ -214,7 +214,7 @@ function planeProblems(plane: AuthPlane, block: AuthPlaneFlows, input: AuthFlowC
       ...block.flows.flatMap((flow, i) =>
         flow.stages.some((s) => !s.optional) ? [`flow ${i + 1} has a stage that is not optional`] : []
       ),
-      // The floor adds a second step to every login (F35), and an enrolment inside the flow for
+      // The floor adds a second step to every login, and an enrolment inside the flow for
       // whoever has no factor yet: neither can run without the row.
       ...(demandsEnrolment(policy) ? [`the ${plane} policy is ${policy}`] : [])
     ]

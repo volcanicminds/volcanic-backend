@@ -5,7 +5,7 @@ import { executeCount, executeFind } from '../query/index.js'
 import { runtime, table, column } from './runtime.js'
 
 //
-// The access log (F44). One table per container, like `session`: a tenant's accesses leave with
+// The access log. One table per container, like `session`: a tenant's accesses leave with
 // its container, and `scope` tells platform identities from tenant users where both live.
 //
 // The manager is the last line for what a row may hold: an event outside the closed vocabulary is

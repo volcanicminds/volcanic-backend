@@ -10,14 +10,9 @@ import { isTenancyEnabled } from '../util/tenancy.js'
 import { runInTenant } from '../util/requestContext.js'
 
 //
-// Scheduled jobs, and where they run (T-3.4).
+// Scheduled jobs, and where they run.
 //
-// In v4 a job was called with no arguments at all. Anything it read went through
-// `global.connection`, so it ran on whatever connection the pool handed over, which in a
-// multi-tenant deployment meant an arbitrary customer's schema (defect D-07). The job could
-// not have done better: there was nothing to ask.
-//
-// In v5 a job DECLARES its plane and RECEIVES its handle. It never looks one up, so there is
+// A job DECLARES its plane and RECEIVES its handle. It never looks one up, so there is
 // no path where the answer is "whatever was lying around":
 //
 //   scope: 'control'       the platform. The default, because a job that says nothing must
@@ -25,7 +20,7 @@ import { runInTenant } from '../util/requestContext.js'
 //   scope: 'tenant'        one named container, `tenant: '<slug>'`
 //   scope: 'every-tenant'  once per active tenant, with the right handle each time
 //
-// The fan-out has the risk profile of the fleet migrator (T-5.3): it is bounded in
+// The fan-out has the risk profile of the fleet migrator: it is bounded in
 // concurrency, it stops when the server closes, and one tenant's failure does not cancel the
 // others. It reports them all at the end instead, because a run that half worked and said
 // nothing is worse than a run that failed.
@@ -161,7 +156,7 @@ export function runnerFor(server: any, jobName: string, schedule: JobSchedule, f
 
 /**
  * One tenant, one lease. The container is borrowed and given back around the call, exactly
- * as a request does (T-3.1), so a long fan-out cannot pin every container it has visited.
+ * as a request does, so a long fan-out cannot pin every container it has visited.
  */
 async function inTenant(
   provider: DataProvider,

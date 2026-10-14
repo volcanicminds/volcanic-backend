@@ -3,7 +3,7 @@ import type { DataHandle, SettingManagement } from '../../../types/global.js'
 import { runtime, table, column } from './runtime.js'
 
 //
-// Settings of a container, one row per key (F49). The control plane keeps the ones that apply to
+// Settings of a container, one row per key. The control plane keeps the ones that apply to
 // every tenant in its own container, a tenant keeps its choices in its own: each plane writes only
 // where it owns the data. A value is JSON and never a secret, because whoever reads the setting of
 // a key reads all of it.

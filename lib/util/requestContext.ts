@@ -1,7 +1,7 @@
 //
 // The tenant a piece of work belongs to, readable from anywhere it runs: a request once resolution
 // has named its tenant (lib/loader/tenant.ts), or a job running on one tenant (lib/loader/schedules.ts).
-// The logger puts it on every line and the span processor on every span (F75), so that neither has
+// The logger puts it on every line and the span processor on every span, so that neither has
 // to be handed the request.
 //
 // Only an identifier, never the slug: a slug is often a customer's name, and log lines and spans

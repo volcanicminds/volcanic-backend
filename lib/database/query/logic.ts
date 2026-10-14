@@ -3,10 +3,9 @@ import { queryError } from './errors.js'
 //
 // The `_logic` expression: aliases combined with AND, OR, NOT and parentheses. Nothing else.
 //
-// v4 parsed this with no limit on length or nesting, caught the resulting stack overflow, and
-// fell back to an AND of every condition (D-13). The query then answered a different question
-// with a straight face. Here every failure is an error with a code, and the limits are
-// explicit so that a caller can be told which one it crossed.
+// Every failure is an error with a code, never a fallback to an AND of every condition, and
+// the limits on length and nesting are explicit so that a caller can be told which one it
+// crossed.
 //
 export interface LogicLimits {
   maxLength: number

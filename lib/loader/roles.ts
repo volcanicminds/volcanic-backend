@@ -28,7 +28,7 @@ export const SYSTEM_CAPABILITIES: readonly SystemCapability[] = [
 ]
 
 /**
- * The capability names both catalogues reserve, each for its own plane (T-10.14). `manifest`
+ * The capability names both catalogues reserve, each for its own plane. `manifest`
  * reads the console manifest: `/admin/manifest` with the tenant catalogue, `/system/manifest`
  * with the control one. Everything else in the control catalogue stays refused on a tenant route.
  */

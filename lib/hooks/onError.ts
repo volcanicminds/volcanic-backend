@@ -6,11 +6,8 @@ import yn from '../util/yn.js'
  * Error hook.
  *
  * The message of the exception is written to the log, always, and reaches the client only
- * when `HIDE_ERROR_DETAILS` allows it (defect D-23). Until v5 this hook echoed
- * `error.message` on a 500 whatever that variable said, while the error handler of
- * `index.ts` honoured it: the same deployment therefore hid the internals on one path and
- * published them on the other, and which path a request took was not something the operator
- * chose. The default follows `NODE_ENV`, so a production build hides by default.
+ * when `HIDE_ERROR_DETAILS` allows it. The default follows `NODE_ENV`, so a production build
+ * hides by default.
  *
  * The 4xx branches hide the message too when the flag is on, exactly like the error handler:
  * a rule that the operator turns on must not have exceptions the operator cannot see. Route

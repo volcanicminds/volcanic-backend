@@ -3,10 +3,9 @@ import * as regExp from '../../util/regexp.js'
 import { tenantRefusal, toSubject } from '../subjects.js'
 
 //
-// `password` as an identifier (T-12.19): the login of both planes, moved here from the two
-// controllers that each wrote it once.
+// `password` as an identifier: the login of both planes, in one place.
 //
-// Every failure before a verified password is the one refusal of D-17: an unknown address, a wrong
+// Every failure before a verified password is the one uniform refusal: an unknown address, a wrong
 // password, an invalid, unconfirmed or blocked account all answer `AUTH_INVALID_CREDENTIALS`, and
 // the cause goes to the log only. `PASSWORD_TO_BE_CHANGED` stays distinct because it is reached
 // after the password verified, and it belongs to this method: a subject who identifies another way

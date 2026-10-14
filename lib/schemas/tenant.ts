@@ -1,10 +1,10 @@
 //
 // The provisioning body (docs/API_V5.md §6.1).
 //
-// `dbSchema` is gone: the field that says WHERE a container lives is `locator`, and it is
+// There is no `dbSchema`: the field that says WHERE a container lives is `locator`, and it is
 // optional because the framework derives it from the slug. What a caller may not do is send
 // one that changes under sanitisation, which answers 400 rather than being accepted quietly
-// under a different name (defect D-20).
+// under a different name.
 //
 export const tenantBodySchema = {
   $id: 'tenantBodySchema',
@@ -21,12 +21,12 @@ export const tenantBodySchema = {
     strategy: { type: 'string', enum: ['schema', 'container'] },
     // A container lives on a Postgres server: PGlite is a single process, so it never holds tenants.
     engine: { type: 'string', enum: ['postgres'] },
-    // S12: a safe SQL identifier alphabet. The name is printed into every statement built
-    // for the container (T-3.1), so it is validated at the edge, again before it is stored,
+    // A safe SQL identifier alphabet. The name is printed into every statement built
+    // for the container, so it is validated at the edge, again before it is stored,
     // and again before it becomes a cache key. maxLength 63 = Postgres identifier limit.
     locator: { type: 'string', minLength: 1, maxLength: 63, pattern: '^[a-zA-Z0-9_]+$' },
     config: { type: 'object', additionalProperties: true },
-    // A tenant whose administrator cannot log in is not provisioned, it is broken (D-08), so
+    // A tenant whose administrator cannot log in is not provisioned, it is broken, so
     // the administrator is part of the request and not a later step.
     admin: {
       type: 'object',
@@ -36,7 +36,7 @@ export const tenantBodySchema = {
         password: { type: 'string', minLength: 8, maxLength: 128 },
         // Defaults to TRUE on this route, unlike POST /auth/register: administrative
         // provisioning and public self-registration are different paths with different
-        // meanings, and v4 gave both the same one.
+        // meanings.
         adminConfirmed: { type: 'boolean' }
       }
     }
@@ -62,9 +62,9 @@ export const tenantResponseSchema = {
     slug: { type: 'string' },
     strategy: { type: 'string' },
     engine: { type: 'string' },
-    // Where the data is. `dbSchema` was the v4 name and it is gone with the field it named.
+    // Where the data is.
     locator: { type: 'string' },
-    // Which migration this container was last brought to (T-5.1). Null on a container that
+    // Which migration this container was last brought to. Null on a container that
     // predates the version, which a serializer must be able to say rather than drop.
     schemaVersion: { type: ['string', 'null'] },
     status: { type: 'string', enum: ['active', 'suspended', 'archived', 'destroyed'] },
@@ -81,7 +81,7 @@ export const tenantListResponseSchema = {
 }
 
 //
-// The bodies of two registry actions (T-10.16). They describe the shape and add no constraint the
+// The bodies of two registry actions. They describe the shape and add no constraint the
 // controllers did not already enforce: no `required`, because a missing `userId` or `reason` is
 // refused by the controller with USER_REQUIRED or REASON_REQUIRED, codes a client acts on, and a
 // schema would answer first with a generic FST_ERR_VALIDATION. The console learns what is required
@@ -108,14 +108,14 @@ export const tenantImpersonateBodySchema = {
 }
 
 //
-// Phase 2 of a destruction (T-10.21). Without this, the route has no body description, so a
+// The second phase of a destruction. Without this, the route has no body description, so a
 // console built from the manifest draws a button with nothing behind it.
 //
 // No `required`, for the same reason as the two schemas above: all three fields are refused by
 // the controller with codes a client acts on (DESTRUCTION_TOKEN_INVALID, DESTRUCTION_SLUG_MISMATCH,
 // DESTRUCTION_OTP_INVALID), and a schema `required` would answer first with a generic
 // FST_ERR_VALIDATION. What the dialog must ask for is declared on the route, under
-// `config.manifest.input` (T-10.16).
+// `config.manifest.input`.
 //
 export const tenantDestroyBodySchema = {
   $id: 'tenantDestroyBodySchema',
@@ -129,7 +129,7 @@ export const tenantDestroyBodySchema = {
 }
 
 //
-// A tenant's own identity providers (T-12.26, F38). The client secret is accepted in a body and
+// A tenant's own identity providers. The client secret is accepted in a body and
 // named in no response schema: the serializer drops what a schema does not declare, so a secret a
 // controller forgot to strip still does not leave. `config` is closed for the same reason.
 //

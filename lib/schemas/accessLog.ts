@@ -1,5 +1,5 @@
 //
-// The access log as it leaves the server (F44): the columns of the table and nothing else. The
+// The access log as it leaves the server: the columns of the table and nothing else. The
 // serializer drops what the schema does not name, so a column added later does not reach a client
 // until it is written here on purpose.
 //

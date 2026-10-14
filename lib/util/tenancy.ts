@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
 // One place answers "does this deployment have tenants?", so the answer cannot drift
-// between the router, the hooks, the cache and the manifest. In v4 six call sites each read
-// `options.multi_tenant?.enabled` on their own.
+// between the router, the hooks, the cache and the manifest.
 //
 // v5 shape (docs/CONFIGURATION_V5.md §1): the `tenants` block is absent for a single-tenant
 // deployment and present, with a strategy, when tenants exist. There is no `enabled` flag:
@@ -30,9 +29,9 @@ export class NoDataContextError extends Error {
 }
 
 /**
- * The data handle of a request, chosen by what the ROUTE declared (T-3.3).
+ * The data handle of a request, chosen by what the ROUTE declared.
  *
- * Invariant 3 in one function: in a deployment with tenants, a query without an explicit
+ * No implicit fallback to the global context, in one function: in a deployment with tenants, a query without an explicit
  * context is an error, never a read of the control plane. So there are exactly three cases
  * and none of them is a fallback:
  *
@@ -42,19 +41,17 @@ export class NoDataContextError extends Error {
  *     is what single tenant means (docs/CONFIGURATION_V5.md §1);
  *   - tenants are configured and this is a tenant route: the container, or nothing.
  *
- * v4 wrote the third case as `req.db ?? global.connection.manager`, which is why a request
- * that lost its context read whatever the pool handed over (D-06). Reaching the throw below
- * means the resolution of T-3.2 was bypassed, so it is a bug in the framework and it is
- * reported as one rather than served.
+ * Reaching the throw below means tenant resolution was bypassed, so it is a bug in the
+ * framework and it is reported as one rather than served.
  *
- * Exported from `@volcanicminds/backend` (T-10.1). It was internal until then, so every
- * consuming project had to write the choice again by hand, and the shortest way to write it
- * is `req.tenant ?? req.control`: the fallback this function exists to refuse. A rule that
+ * Exported from `@volcanicminds/backend`, so no consuming project writes the choice again by
+ * hand: the shortest way to write it is `req.tenant ?? req.control`, the fallback this function
+ * exists to refuse. A rule that
  * only the framework can obey is a rule the applications on top of it will break.
  */
 export function dataContext(req: FastifyRequest): DataHandle {
   // The router stores the scope as a boolean on the route config, under the v4 spelling it
-  // refuses at the surface (lib/loader/router.ts:263). `FastifyContextConfig` is not
+  // refuses at the surface (lib/loader/router.ts:260). `FastifyContextConfig` is not
   // augmented with it, hence the cast rather than a lie in `types/global.d.ts`.
   const config = req?.routeOptions?.config as { tenantContext?: boolean } | undefined
   const declaresControl = config?.tenantContext === false

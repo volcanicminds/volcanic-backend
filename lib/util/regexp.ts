@@ -1,4 +1,4 @@
-// The patterns the framework itself validates with (T-10.29). Only these: the exports map of
+// The patterns the framework itself validates with. Only these: the exports map of
 // the package exposes `.` and `./db`, so nothing in this file is reachable by a consumer, and a
 // pattern the framework does not use is a pattern nobody runs. The username, alternative email,
 // Italian tax-code, IBAN and phone patterns that stood here were exactly that, and they were
@@ -11,7 +11,7 @@
  * email can have multiple words
  * email can use . - or + for smart labeling
  * TLD has no upper length limit (e.g. .test, .info, .email)
- * NOTE (S10 — ReDoS): the separators inside the repeating groups are REQUIRED
+ * NOTE (ReDoS): the separators inside the repeating groups are REQUIRED
  * (`[.+-]`/`[.-]`, not `[.+-]?`/`[.-]?`). With an optional separator the pattern
  * degenerates to `\w+(\w+)*`, which partitions a run of word-chars in
  * exponentially many ways → catastrophic backtracking on a long non-matching

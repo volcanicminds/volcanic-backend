@@ -5,7 +5,7 @@ import { PROVIDER_KEY, providerShapeProblems } from '../../../auth/providers.js'
 import { governed } from '../../../util/governance.js'
 
 //
-// A tenant's own identity providers, written by the platform (T-12.26, F38).
+// A tenant's own identity providers, written by the platform.
 //
 // The operator with `tenants` writes them, as the operator writes the tenant's MFA policy: a
 // customer does not configure how its users are let in from inside the container those users can

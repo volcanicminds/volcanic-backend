@@ -13,7 +13,7 @@ function generatePassword(): string {
 /**
  * Whether this container already has a sovereign.
  *
- * Asked of the data, not of the environment: that is the whole of T-4.3. A container that
+ * Asked of the data, not of the environment. A container that
  * predates the column simply has none, and the next genesis run gives it one.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,15 +43,13 @@ export interface GenesisOptions {
  * - `ADMIN_EMAIL` unset → allowed only when an admin already exists, otherwise fail-fast.
  */
 export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisOptions = {}): Promise<void> {
-  // The handle is asked for, not assumed (T-3.3). v4 read `global.connection` here, which
-  // is the same implicit context invariant 3 forbids at request time; worse, once that
-  // global stopped existing the guard turned this whole reconciliation into a no-op, and
-  // an instance could boot with no administrator at all without saying so.
+  // The handle is asked for, not assumed: a global connection here would be the same implicit
+  // context that is forbidden at request time.
   const provider = (server as unknown as Record<string, DataProvider | undefined>)['provider']
   if (!provider) return // no live data layer (e.g. a core-only boot)
   const ctx = await provider.control()
 
-  // Which apex the deployment needs (T-4.1). With tenants declared, the first identity to
+  // Which apex the deployment needs. With tenants declared, the first identity to
   // exist is a PLATFORM one: a tenant admin is provisioned with its tenant, and seeding one
   // here would put an application user in the container that administers the application.
   if (isTenancyEnabled()) return await ensureGenesisSystemAdmin(server, ctx, opts)
@@ -86,10 +84,9 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
       patch.roles = [...(existing.roles || []), adminCode]
     }
 
-    // The sovereignty is written into the row, once (T-4.3). If some other row already
-    // carries it, this one does NOT get it: changing an environment variable must not be
-    // able to mint a second sovereign, which is the whole reason the flag stopped being an
-    // env comparison. Moving it is a deliberate act, not a redeploy.
+    // The sovereignty is written into the row, once. If some other row already carries it,
+    // this one does NOT get it: changing an environment variable must not be able to mint a
+    // second sovereign. Moving it is a deliberate act, not a redeploy.
     if (!isFounder(existing) && !(await founderExists(um, ctx))) {
       patch.isFounder = true
     } else if (!isFounder(existing) && log?.w) {
@@ -112,7 +109,7 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
     roles: [adminCode],
     // The first identity on an empty container is the sovereign one, and from here on the
     // question "is this the founder?" is answered by this column and never by the
-    // environment (defect D-27).
+    // environment.
     isFounder: !(await founderExists(um, ctx))
   })
   await um.userConfirmation(ctx, created)
@@ -136,9 +133,9 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
  * administrator nobody asked for is worse. So `ADMIN_EMAIL` creates the founding system user
  * if it is missing, and its absence is fatal only when no system user exists at all.
  *
- * This is also the one place `ADMIN_EMAIL` is still allowed to decide who is sovereign
- * (T-4.3): from here on, being a founder is a property of a row, not of the environment the
- * process happens to have been started with.
+ * This is also the one place `ADMIN_EMAIL` is allowed to decide who is sovereign: from here on,
+ * being a founder is a property of a row, not of the environment the process happens to have
+ * been started with.
  */
 async function ensureGenesisSystemAdmin(
   server: FastifyInstance,

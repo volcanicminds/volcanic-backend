@@ -8,14 +8,10 @@ import { firstBy } from '../prepared.js'
 import { envInt } from '../env.js'
 
 //
-// Platform identities (T-4.1).
+// Platform identities.
 //
 // The whole point of this file is the type of its first argument: every method takes a
 // ControlHandle, so a system user cannot be read or written from inside a tenant container.
-// In v4 there was no such table: the "super admin" was a row in the `user` table of the
-// `public` schema, and the only thing keeping it apart from a tenant's admin was which
-// schema the connection happened to resolve. That is D-01, and it made every administrative
-// operation one defect away from a privilege escalation.
 //
 // What this table deliberately does NOT have (docs/SCHEMA_V5.md §3.2): `confirmed` and
 // `confirmation_token`. System users are provisioned, never self-registered, so there is no
@@ -24,9 +20,9 @@ import { envInt } from '../env.js'
 //
 // The work factor, from the environment with a FLOOR.
 //
-// Twelve was measured once, on one machine, and hard-coded — so a deployment on slower
+// A hard-coded factor fits the one machine it was measured on: a deployment on slower
 // hardware pays whatever that costs and a deployment on faster hardware under-spends, and
-// neither can say so. T-9.4 measures the cost on the machine that will run it, which is only
+// neither can say so. The cost is measured on the machine that will run it, which is only
 // worth doing if the answer can be applied.
 //
 // The floor is the point: a tunable work factor is also a way to weaken every password in the
@@ -103,7 +99,7 @@ export function createSystemUserManager(): SystemUserManagement {
     },
 
     retrieveSystemUserById: (ctx, id) => byColumn(ctx, 'retrieveSystemUserById', 'id', id),
-    // Every authenticated request on the control plane reads this row: prepared (F62).
+    // Every authenticated request on the control plane reads this row: prepared.
     retrieveSystemUserByExternalId: async (ctx, externalId) => {
       const { handle, user } = users(ctx, 'retrieveSystemUserByExternalId')
       return await firstBy(handle.db, user, 'externalId', externalId)
@@ -142,10 +138,9 @@ export function createSystemUserManager(): SystemUserManagement {
 
     // --- MFA ---------------------------------------------------------------------------
     //
-    // Deferred in T-4.1 and landed here, because T-6.3 is what actually needs it: destroying
-    // a customer's data asks for a second factor, and a factor that does not exist cannot be
-    // asked for. Same shape as the tenant users': the secret is encrypted at rest with a key
-    // derived per record (T-2.6), and only the id addresses a user, never an email.
+    // Destroying a customer's data asks for a second factor, and a factor that does not exist
+    // cannot be asked for. Same shape as the tenant users': the secret is encrypted at rest with
+    // a key derived per record, and only the id addresses a user, never an email.
     async saveMfaSecret(ctx: ControlHandle, userId: string, secret: string) {
       const { handle, user } = users(ctx, 'saveMfaSecret')
       await handle.db

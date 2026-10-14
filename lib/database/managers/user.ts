@@ -16,9 +16,9 @@ import { envInt } from '../env.js'
 //
 // The work factor, from the environment with a FLOOR.
 //
-// Twelve was measured once, on one machine, and hard-coded — so a deployment on slower
+// A hard-coded factor fits the one machine it was measured on: a deployment on slower
 // hardware pays whatever that costs and a deployment on faster hardware under-spends, and
-// neither can say so. T-9.4 measures the cost on the machine that will run it, which is only
+// neither can say so. The cost is measured on the machine that will run it, which is only
 // worth doing if the answer can be applied.
 //
 // The floor is the point: a tunable work factor is also a way to weaken every password in the
@@ -83,12 +83,7 @@ export function createUserManager(): UserManagement {
     },
 
     /**
-     * Whether the password has aged past `PASSWORD_EXPIRATION_DAYS`.
-     *
-     * Carried over from v4, where it was already correct, and missed by the port of T-2.5:
-     * the login route calls it and the v5 manager did not have it, so every tenant login
-     * answered 500. Found by the isolation bench (T-0.2), which is the only suite that logs
-     * a real user in through a real route.
+     * Whether the password has aged past `PASSWORD_EXPIRATION_DAYS`. The login route calls it.
      *
      * Synchronous, unlike everything else here, because it reads a field it was handed: it
      * asks no database anything, and making it async would suggest otherwise.
@@ -117,7 +112,7 @@ export function createUserManager(): UserManagement {
      * Insert, and let the unique index on the address decide.
      *
      * There is no lookup first, and that is the point: registration must not answer faster
-     * for an address that is taken than for one that is free (defect D-17), and a pre-check
+     * for an address that is taken than for one that is free, and a pre-check
      * returns before the hash below has cost anything. Here both paths hash and both paths
      * reach the database, so the two are the same length. A collision comes back as an error
      * carrying `EMAIL_ALREADY_REGISTERED`, which the caller turns into the same 200 a real
@@ -140,7 +135,7 @@ export function createUserManager(): UserManagement {
             // An account that starts unconfirmed gets the secret that confirms it, or
             // `/auth/confirm-email` has nothing to match and only an administrator could confirm it.
             confirmationToken: data.confirmed ? null : crypto.randomUUID().replace(/-/g, ''),
-            // Only a self-created account under `approval` waits (F49); every other path passes nothing.
+            // Only a self-created account under `approval` waits; every other path passes nothing.
             approved: data.approved ?? true,
             roles: data.roles ?? [],
             isFounder: data.isFounder ?? false,
@@ -196,7 +191,7 @@ export function createUserManager(): UserManagement {
     },
 
     retrieveUserById: (ctx, id) => byColumn(ctx, 'retrieveUserById', 'id', id),
-    // Every authenticated request on a tenant reads this row: prepared (F62).
+    // Every authenticated request on a tenant reads this row: prepared.
     retrieveUserByExternalId: async (ctx, externalId) => {
       const { handle, user } = users(ctx, 'retrieveUserByExternalId')
       return await firstBy(handle.db, user, 'externalId', externalId)
@@ -292,7 +287,7 @@ export function createUserManager(): UserManagement {
       return true
     },
 
-    /** Ends the wait of F49. False when no row waited: approving twice is not an approval. */
+    /** Ends an account's wait for approval. False when no row waited: approving twice is not an approval. */
     async approveUserById(ctx: DataHandle, id: string) {
       const { handle, user } = users(ctx, 'approveUserById')
       const rows = await handle.db

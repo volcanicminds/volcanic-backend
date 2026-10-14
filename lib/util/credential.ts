@@ -2,24 +2,20 @@
 // Where the request's credential is, how it is read, and how a session is written.
 //
 // One module, because the readers and the writers must agree: the tenant is resolved from
-// the token (T-3.2) before the authentication hook runs, the hook then reads the same token
-// to identify the subject, and the login writes it where both will look. In v4 the tenant
-// hook did not read the token at all, and the check that pretended to compare them was dead
-// code (D-03). Two readers of one credential is fine; two ways of finding it is how they
-// drift apart.
+// the token before the authentication hook runs, the hook then reads the same token to
+// identify the subject, and the login writes it where both will look. Two readers of one
+// credential is fine; two ways of finding it is how they drift apart.
 //
-// T-10.37: two channels, one kind of credential each.
+// Two channels, one kind of credential each.
 //
 // `AUTH_MODE=COOKIE`, the default, keeps the browser session in a signed httpOnly cookie that
 // no script of the page can read, and leaves the `Authorization` header to the integration
-// tokens (`/token`), which are issued to programs, not to browsers. The v4 rule was "one
-// source per configuration", and it made the two exclusive: in cookie mode the header was not
-// read at all, so turning the cookie on broke every integration. The rule is now "one source
+// tokens (`/token`), which are issued to programs, not to browsers. The rule is "one source
 // per kind of credential", and it is enforced by the authentication hook, not only described
 // here: a session token presented in the header of a cookie deployment is refused.
 //
 // `AUTH_MODE=BEARER` is the explicit choice for clients that cannot hold a cookie: every
-// credential travels in the header and is returned in the body, as before.
+// credential travels in the header and is returned in the body.
 //
 // Each plane has its own pair of cookies. A browser of a platform operator holds the control
 // session and, while impersonating, a tenant session at the same time: one cookie for both
@@ -48,7 +44,7 @@ export interface Credential {
 /**
  * The claim that made a refresh JWT unusable as an access token, and the reverse.
  *
- * Since T-11.6 the refresh credential is opaque and can never verify as a JWT, so nothing this
+ * The refresh credential is opaque and can never verify as a JWT, so nothing this
  * version issues carries it. The guards that read it stay for the upgrade window: a refresh
  * token signed by a 5.0 alpha is still a valid signature, and without the claim it would verify
  * as an access token wherever `JWT_REFRESH_SECRET` was left unset.
@@ -62,8 +58,7 @@ export const SESSION_COOKIES: Record<Plane, { access: string; refresh: string; r
 
 /**
  * The configured mode. Unset means `COOKIE`; anything that is not one of the two modes is
- * refused, because v4 read any other value as `BEARER` and `AUTH_MODE=cookie` silently
- * meant the opposite of what it said. `index.ts` calls this before registering anything, so
+ * refused, never read as the other one. `index.ts` calls this before registering anything, so
  * a bad value stops the boot instead of the first request.
  */
 export function authMode(): AuthMode {
@@ -131,11 +126,9 @@ export function sessionTokenOf(req: FastifyRequest, plane: Plane): string | unde
 //
 // Writing.
 //
-// T-10.38: the cookie lives exactly as long as the token it carries. v4 wrote `maxAge: 86400`
-// by hand while the JWT inside lasted `JWT_EXPIRES_IN`, fifteen days: the browser dropped the
-// cookie after one, and anyone who copied its value could replay it for fourteen more. The
-// lifetime is now read back from the token's own `exp`, so the only setting is the one that
-// signs it, and a token that cannot expire is never written here.
+// The cookie lives exactly as long as the token it carries. The lifetime is read back from
+// the token's own `exp`, so the only setting is the one that signs it, and a token that
+// cannot expire is never written here.
 //
 
 /**
@@ -154,7 +147,7 @@ export function refreshCookiePath(plane: Plane): string {
 }
 
 /**
- * The flow credential's own cookie (F36): a name and a path per plane, so a browser sends it to the
+ * The flow credential's own cookie: a name and a path per plane, so a browser sends it to the
  * flow routes of that plane and to nothing else, and it is never read as a session.
  */
 export const FLOW_COOKIES: Record<Plane, { name: string; route: string }> = {
@@ -193,12 +186,11 @@ export function setAccessCookie(reply: FastifyReply, plane: Plane, token: string
 }
 
 /**
- * The refresh cookie, whose lifetime is now passed in rather than read out of the token.
+ * The refresh cookie, whose lifetime is passed in rather than read out of the token.
  *
- * T-10.38 took the cookie's `maxAge` from the JWT's own `exp`, so the browser could never keep
- * a cookie longer than the credential inside it. The refresh credential is no longer a JWT and
- * carries no `exp` (T-11.6): the deadline lives in the session row, and the caller reads it
- * from there. The guarantee is the same one, from the other side.
+ * The browser must never keep a cookie longer than the credential inside it. The refresh
+ * credential is not a JWT and carries no `exp`: the deadline lives in the session row, and the
+ * caller reads it from there.
  */
 export function setRefreshCookie(reply: FastifyReply, plane: Plane, refreshToken: string, maxAgeSeconds: number) {
   write(reply, SESSION_COOKIES[plane].refresh, refreshToken, refreshCookiePath(plane), Math.max(0, Math.floor(maxAgeSeconds)))
@@ -230,7 +222,7 @@ export function clearSessionCookies(reply: FastifyReply, plane: Plane) {
  * Where a session is written down, and for whom.
  *
  * The handle is the caller's decision and never this module's: a tenant user's session belongs
- * in the tenant container, a platform identity's in the control plane (F19). `routing` is the
+ * in the tenant container, a platform identity's in the control plane. `routing` is the
  * segment the refresh token carries so that a later renewal can find that container again
  * before it can read anything.
  */
@@ -243,25 +235,26 @@ export interface SessionOrigin {
   routing?: string | null
   ip?: string | null
   userAgent?: string | null
-  /** The methods the flow satisfied, kept on the row for a later step-up (F45). */
+  /** The methods the flow satisfied, kept on the row for a later step-up. */
   authMethods?: string[] | null
 }
 
 /**
  * Opens a session for `claims` and hands the credentials over the channel of the configured mode.
  *
- * The refresh token is an opaque secret written into the registry (T-11.6, T-11.7), not a second
- * JWT. What comes back to the client is worthless without the row, the row says which generation
- * is current, and that is what makes rotation and reuse detection possible at all.
+ * The refresh token is an opaque secret written into the registry, not a second JWT. What comes
+ * back to the client is worthless without the row, the row says which generation is current,
+ * and that is what makes rotation and reuse detection possible at all.
  *
- * Without a registry there is **no refresh token**, and that is the decision of F28 rather than
- * an omission: a refresh credential nobody can consume is a credential that never expires, and
+ * Without a registry there is **no refresh token**, and that is a decision rather than an
+ * omission: a refresh credential nobody can consume is a credential that never expires, and
  * shipping one while calling it a session would be the worse of the two failures.
  *
  * The access token carries `sid`, so an action can be attributed to a session and not only to a
- * subject, and `auth_time`, the moment of this login's proof, which a `freshAuth` route reads
- * (F51); it is there without a registry too, where only a new login can move it. In cookie mode the body carries `null` in place of both tokens: the fields stay, so a
- * client can tell "the session is in the cookie" from "this build has no refresh tokens".
+ * subject, and `auth_time`, the moment of this login's proof, which a `freshAuth` route reads;
+ * it is there without a registry too, where only a new login can move it. In cookie mode the
+ * body carries `null` in place of both tokens: the fields stay, so a client can tell "the
+ * session is in the cookie" from "this build has no refresh tokens".
  */
 export async function issueSession(
   reply: FastifyReply,
@@ -306,7 +299,7 @@ export async function issueSession(
 }
 
 /**
- * The access token of a session just proven again by a step-up (F54): same `sid`, the new
+ * The access token of a session just proven again by a step-up: same `sid`, the new
  * `auth_time` read from the row. The refresh credential does not rotate, because nothing about
  * the session's ownership changed; only the access token does, so the proof reaches the next
  * request without waiting for a renewal.

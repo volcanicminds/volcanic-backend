@@ -47,30 +47,30 @@ export function buildManagers(
     tokenManager: createTokenManager(),
     trackingManager: createTrackingManager(),
     tenantManager: createTenantManager(provider),
-    // Platform identities, in the control plane and nowhere else (T-4.1). Every method of
-    // this one takes a ControlHandle, so the compiler refuses to read a system user from
-    // inside a customer's container.
+    // Platform identities, in the control plane and nowhere else. Every method of this one
+    // takes a ControlHandle, so the compiler refuses to read a system user from inside a
+    // customer's container.
     systemUserManager: createSystemUserManager(),
     // The trail of a system user entering a customer's data, written in the control plane
-    // before the token that allows it exists (T-4.2).
+    // before the token that allows it exists.
     impersonationManager: createImpersonationManager(),
-    // The permission-with-a-fuse that phase 1 of a destruction writes (T-6.3).
+    // The permission-with-a-fuse that the first phase of a destruction writes.
     destructionManager: createDestructionManager(),
-    // The live sessions, in the container of their subject (T-11.5). Without this one there is
-    // no renewal at all: a refresh nobody can consume is a credential that never expires.
+    // The live sessions, in the container of their subject. Without this one there is no
+    // renewal at all: a refresh nobody can consume is a credential that never expires.
     sessionManager: createSessionManager(),
-    // Multi-step logins (T-12.12): without it only a flow that closes in one request can run (F46).
+    // Multi-step logins: without it only a flow that closes in one request can run.
     authFlowManager: createAuthFlowManager(),
     externalIdentityManager: createExternalIdentityManager(),
-    // Control plane only: a tenant's IdP secret never sits in the container it serves (F38).
+    // Control plane only: a tenant's IdP secret never sits in the container it serves.
     identityProviderManager: createIdentityProviderManager(),
-    // Retention and address mode from the `accessLog` block; the environment still wins (F44).
+    // Retention and address mode from the `accessLog` block; the environment still wins.
     accessLogManager: createAccessLogManager(options?.accessLog ?? {}),
-    // What the operators did to the platform, in the control plane, never purged (F76). The
+    // What the operators did to the platform, in the control plane, never purged. The
     // address policy is the access log's.
     governanceLogManager: createGovernanceLogManager({ ip: options?.accessLog?.ip }),
     // Container settings, on both planes: the operator's rules in the control container, a
-    // tenant's choices in its own (F49).
+    // tenant's choices in its own.
     settingManager: createSettingManager()
   }
 }

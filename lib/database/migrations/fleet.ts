@@ -2,9 +2,9 @@ import type { Tenant } from '../../../types/global.js'
 import type { ContainerRef, MigrationRunner } from '../ports.js'
 
 //
-// The fleet migrator (T-5.3).
+// The fleet migrator.
 //
-// This is the highest-risk code in the rewrite, and the plan says so: a defect in the router
+// This is the highest-risk code in the framework: a defect in the router
 // breaks a route, a defect here breaks the databases of different customers at once. Every
 // property below is therefore a refusal rather than a convenience.
 //
@@ -16,7 +16,7 @@ import type { ContainerRef, MigrationRunner } from '../ports.js'
 //     continues, and the failures are listed by name at the end. A total is not an answer,
 //     because the next question is always "which ones";
 //   - **the state lives in the containers**. There is no run table to keep consistent,
-//     because each container records what it applied (T-5.1), so an interrupted run resumes
+//     because each container records what it applied, so an interrupted run resumes
 //     by simply looking again: a container that finished has nothing pending;
 //   - **a container being migrated elsewhere is skipped, not queued**. Blocking would turn
 //     two operators into a deadlock with a waiting list;

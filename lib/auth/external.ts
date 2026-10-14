@@ -11,14 +11,14 @@ import type { ResolvedProvider } from './providers.js'
 import { mayLogIn, systemUserMayLogIn, toSubject } from './subjects.js'
 
 //
-// Who an identity from a provider is here (F40, T-12.27): the resolution a return from an IdP goes
+// Who an identity from a provider is here: the resolution a return from an IdP goes
 // through before the flow may trust it.
 //
 // In this order, and nothing else: an existing link on the four keys (plane, provider, issuer,
 // subject), never on the address alone; then a link by email, only where the provider declares it,
 // only for an address the provider says it verified, only in a domain the provider lists; then a
 // user created just in time, only where the provider turns it on, only on the tenant plane, only
-// for an address the provider verified, as the tenant's account creation mode allows (F49), never
+// for an address the provider verified, as the tenant's account creation mode allows, never
 // with the admin role; otherwise `IDP_IDENTITY_NOT_LINKED`. `sub` is unique per issuer only, and an
 // address changes, gets recycled and is unverified on many providers: linking by address is the
 // classic door to an account takeover, which is why each of these steps is opt-in.
@@ -34,7 +34,7 @@ export type ExternalResolution =
       reason: 'IDP_IDENTITY_NOT_LINKED' | 'ACCOUNT_PENDING_APPROVAL'
       event: Extract<AccessEvent, 'idp.rejected' | 'account.pending'>
       cause: string
-      /** The account the refusal is about, when there is one: the waiting one of F49. */
+      /** The account the refusal is about, when there is one: the one waiting for an administrator. */
       subjectId?: string
     }
 
@@ -116,7 +116,7 @@ export async function resolveExternal(ctx: AuthContext, provider: ResolvedProvid
     // hold the address, so its real owner could neither register nor be provisioned until an
     // administrator stepped in.
     if (!verified) return refused('just-in-time provisioning needs an address the provider verified')
-    // F49. Under `invite` a provider creates accounts only for a directory someone listed: whoever
+    // Under `invite` a provider creates accounts only for a directory someone listed: whoever
     // configured it with `emailDomains` authorized those addresses, and without a list the provider
     // would be an open registration by another door.
     const mode = ctx.accountCreation ? await ctx.accountCreation() : 'invite'

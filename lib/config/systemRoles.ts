@@ -35,7 +35,7 @@ const systemRoles: SystemRole[] = [
     name: 'System auditor',
     description: 'Read-only oversight of the platform',
     // The operators' access log is oversight in its plainest form: who entered the platform, when.
-    // The governance log is the rest of it: what they did once inside (F76).
+    // The governance log is the rest of it: what they did once inside.
     capabilities: ['tenants:read', 'manifest', 'access-log', 'governance-log']
   }
 ]

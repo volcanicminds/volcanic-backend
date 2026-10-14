@@ -5,13 +5,10 @@ import { dataContext } from './tenancy.js'
 import { withoutQuery } from './logger.js'
 
 //
-// The audit trail, and what happens when it cannot be written (T-3.5).
+// The audit trail, and what happens when it cannot be written.
 //
-// Defect D-05, in full: in multi-tenant the tracker called the manager with no context, the
-// manager refused, the tracker caught the exception into a log line, and the request went on
-// to answer 200. The audit trail was empty and nothing said so. Three separate mistakes, and
-// the third is the one that mattered: a system that promises an audit trail and silently does
-// not keep one is worse than one that fails visibly.
+// A system that promises an audit trail and silently does not keep one is worse than one that
+// fails visibly.
 //
 // So, in order:
 //
@@ -25,8 +22,8 @@ import { withoutQuery } from './logger.js'
 // One consequence, stated rather than hidden: the change is written after the handler has
 // already written its own row, and the two are not in one transaction. Strict mode therefore
 // answers 500 on a request whose data change DID happen. Making them atomic means running
-// the handler inside the tracker's transaction, which is a different design and not this
-// task; until then, a visible inconsistency beats an invisible one.
+// the handler inside the tracker's transaction, which is a different design; a visible
+// inconsistency beats an invisible one.
 //
 export class TrackingError extends Error {
   readonly statusCode = 500
@@ -43,7 +40,7 @@ export class TrackingError extends Error {
  * Reads the row as it stands before the handler touches it, so the diff has a baseline.
  *
  * The framework can only do this for tables it knows. A consumer's own entity is not
- * registered anywhere in v5 (`global.entity` is gone), so for those the consumer sets
+ * registered anywhere (there is no `global.entity`), so for those the consumer sets
  * `req.trackingData` in a hook of its own; when nobody does, the change is still recorded,
  * with the previous values simply absent rather than invented.
  */
@@ -68,8 +65,7 @@ export async function track(req: FastifyRequest, reply: FastifyReply, payload: a
   const tc = getTrackingConfigIfEnabled(req)
   if (!tc || !req.server['trackingManager']?.isImplemented()) return
 
-  // A request that did not succeed changed nothing worth recording. v4 reached this point
-  // on error responses too and got out of it by failing to find a primary key.
+  // A request that did not succeed changed nothing worth recording.
   if (reply.statusCode >= 400) return
 
   try {
@@ -134,7 +130,7 @@ export async function track(req: FastifyRequest, reply: FastifyReply, payload: a
       status,
       userId: req.user?.id ?? null,
       tokenId: req.token?.id ?? null,
-      // Which impersonation session wrote this, when one did (T-4.2). Without it the trail
+      // Which impersonation session wrote this, when one did. Without it the trail
       // would say a tenant user made the change, which is true of the credential and false
       // of the person.
       impersonationId: req.impersonation?.id ?? null,
@@ -170,8 +166,8 @@ export function isStrict(req: FastifyRequest): boolean {
 
 function getTrackingConfigIfEnabled(req: FastifyRequest) {
   try {
-    // `req.routeConfig` was the v4 spelling and does not exist in Fastify v5, so that fallback
-    // could never fire: the router writes the route's url into `routeOptions.config`.
+    // The router writes the route's url into `routeOptions.config`; `req.routeConfig` does not
+    // exist in Fastify v5.
     const code = `${req.method?.toUpperCase()}::${req.routeOptions?.config?.url || req.url}`
     return code in global.tracking && global.tracking[code].enable ? { code, ...global.tracking[code] } : null
   } catch (error) {

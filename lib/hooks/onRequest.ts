@@ -52,15 +52,15 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
     req.roles = () => [roles.public.code]
     req.hasRole = (r: Role) => req.roles().includes(r?.code)
 
-    // `req.routeConfig` was the v4 spelling and does not exist in Fastify v5: the fallback could
-    // never fire, and the router always sets `routeOptions.config` on the routes it registers.
+    // The router always sets `routeOptions.config` on the routes it registers; `req.routeConfig`
+    // does not exist in Fastify v5.
     const cfg = req.routeOptions?.config ?? {}
 
-    // Whose identity this route answers to (T-4.1).
+    // Whose identity this route answers to.
     //
     // Only where the two planes actually differ: a deployment WITHOUT tenants has one
     // container and one identity space, so its control-scope routes (`/health`,
-    // `/admin/manifest`) keep authenticating the application's own users, exactly as before.
+    // `/admin/manifest`) authenticate the application's own users.
     // Demanding a platform identity there would demand a system user the deployment never
     // creates. With tenants declared the split is real, and a control route answers to a
     // system user or to nobody.
@@ -77,16 +77,12 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
     if (credential) {
       try {
         // The claims this framework signs (lib/util/credential.ts). `jwt.verify` answers a
-        // `VerifyPayloadType`, which is a string or an unknown object: reading `scp` or `imp` off
-        // it compiled only because the hook's own parameters were untyped.
+        // `VerifyPayloadType`, which is a string or an unknown object.
         const tokenData = reply.server.jwt.verify(credential.token) as SessionClaims
         claims = tokenData
 
-        // F36, before anything else: the framework no longer signs a token with a `role` claim.
-        // The last one it did was the five-minute token between the two factors, and without the
-        // list of routes that used to confine it, one still alive across a deploy would pass for a
-        // session.
-        // Whatever else carries the claim is not a token of this framework either.
+        // Before anything else: the framework signs no token with a `role` claim, so whatever
+        // carries the claim is not a token of this framework.
         if (tokenData.role !== undefined) {
           throw refusal('This token does not authenticate a request', 'UNAUTHORIZED')
         }
@@ -97,7 +93,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           throw refusal('A refresh token does not authenticate a request', 'UNAUTHORIZED')
         }
 
-        // T-10.37, one kind of credential per channel. In cookie mode the header belongs to the
+        // One kind of credential per channel. In cookie mode the header belongs to the
         // integration tokens: a session token there is either a leftover of a bearer client or
         // a token taken out of its cookie, and neither is a reason to accept it. The claims
         // below are the ones an integration token never carries; one without them is still
@@ -107,11 +103,8 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           throw refusal('Sessions travel in the cookie: the Authorization header accepts integration tokens only', 'CREDENTIAL_CHANNEL')
         }
 
-        // No tenant check here. In v4 this was the anti-spoofing gate and it never fired:
-        // it ran AFTER the tenant hook had already chosen the container from the header,
-        // and it compared a `tid` against a field the user entity did not have (D-03).
-        // In v5 the comparison happens before anything is opened, in lib/loader/tenant.ts,
-        // so by this line `req.tenantInfo` is already the tenant the token proves. Checking
+        // No tenant check here. The comparison happens before anything is opened, in
+        // lib/loader/tenant.ts, so by this line `req.tenantInfo` is already the tenant the token proves. Checking
         // it twice would mean two answers to one question.
 
         // docs/AUTHORIZATION_V5.md §2.2, the other half of the gate: the tenant side is
@@ -130,7 +123,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         }
 
         // An impersonated session is checked against the RECORD, not against the signature
-        // (T-4.2, docs/AUTHORIZATION_V5.md §6). A JWT that is still cryptographically valid
+        // (docs/AUTHORIZATION_V5.md §6). A JWT that is still cryptographically valid
         // is not a session that is still allowed: revoking must take effect now, not in
         // thirty minutes, or "revoke" is a word for "stop issuing new ones".
         if (tokenData.imp) {
@@ -240,7 +233,7 @@ export function isAnonymous(req: FastifyRequest): boolean {
   return !req.user && !req.token && !req.systemUser
 }
 
-/** The roles, then the freshness a `freshAuth` route asks for (F52): a person who may not act is not asked to prove anything. */
+/** The roles, then the freshness a `freshAuth` route asks for: a person who may not act is not asked to prove anything. */
 function finishGates(req: FastifyRequest, reply: FastifyReply, cfg: FastifyContextConfig, claims: SessionClaims | null) {
   const denied = finishRoleGate(req, reply, cfg)
   if (denied || !cfg.freshAuth) return denied
@@ -250,7 +243,7 @@ function finishGates(req: FastifyRequest, reply: FastifyReply, cfg: FastifyConte
 /**
  * The role intersection, in one place so both identity paths end the same way.
  *
- * Extracted in T-4.1 rather than duplicated: a control-scope request resolves a different
+ * Shared rather than duplicated: a control-scope request resolves a different
  * subject from a different plane, but the question asked of it, "do your roles intersect
  * what this route requires", must not be a second implementation that can drift.
  */

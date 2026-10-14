@@ -11,12 +11,10 @@ export { escapeLike, coerce, OPERATORS } from './operators.js'
 //
 // The Magic Query: from a query string to a query (docs/MAGIC_QUERY_V5.md).
 //
-// Two rules govern the whole file, and they are the difference from v4:
+// Two rules govern the whole file:
 //
 //   1. nothing is ever dropped in silence. Every branch that cannot honour what was asked
-//      throws with a code. v4 skipped an unknown sort field with a log line, degraded an
-//      invalid `_logic` to an AND of everything, and turned an empty value into the literal
-//      string `notFound` — three ways of answering a question nobody asked;
+//      throws with a code;
 //   2. validation happens before anything is built, in a fixed order: reserved parameters,
 //      field, operator, value, then `_logic`. The first error wins, and it is the one
 //      reported, so a caller fixes one thing at a time.
@@ -31,7 +29,7 @@ export const DEFAULT_SENSITIVE_FIELDS = [
 ]
 
 export interface QueryOptions {
-  /** Never returned, and — new in v5 — never filterable either: filtering a hash is an oracle. */
+  /** Never returned, and never filterable either: filtering a hash is an oracle. */
   sensitiveFields?: string[]
   maxPageSize?: number
   defaultPageSize?: number
@@ -43,10 +41,8 @@ export interface QueryOptions {
    * It is AND-ed **after** everything the URL asked for, `_logic` included, so no expression
    * a client can write reaches around it.
    *
-   * v4 had this as a fourth argument of `executeFindQuery`, and consuming projects used it to
-   * carry their permission rules. Losing it in the port would have meant every consumer
-   * filtering in application code after the page had already been cut, which returns short
-   * pages and a wrong total.
+   * Without it a consumer filters in application code after the page has already been cut,
+   * which returns short pages and a wrong total.
    */
   extraWhere?: SQL
 }
@@ -72,9 +68,8 @@ export function parseQuery(table: Table, params: Record<string, unknown>, option
   // and therefore the name it filters on: `createdAt`, not `created_at`.
   const columns = getTableColumns(table) as unknown as Record<string, Column>
   const sensitive = new Set(options.sensitiveFields ?? DEFAULT_SENSITIVE_FIELDS)
-  // Documented since v5 and read by nobody until T-9.4, which is D-11 in another shape. The
-  // route's own option still wins: the variable is the deployment's ceiling, not a way to
-  // raise a limit a route deliberately lowered.
+  // The route's own option wins: the variable is the deployment's ceiling, not a way to raise a
+  // limit a route deliberately lowered.
   const maxPageSize = options.maxPageSize ?? envInt('VOLCANIC_MAX_PAGE_SIZE', 100, { min: 1, max: 10_000 })
   const limits = options.logicLimits ?? DEFAULT_LOGIC_LIMITS
 
@@ -148,11 +143,9 @@ export function parseQuery(table: Table, params: Record<string, unknown>, option
 
     //
     // A repeated query-string key arrives as an ARRAY, because that is what a query parser
-    // does with `?a=1&a=2` — it never arrives as two entries, since an object has one value
-    // per key. Comparing keys, which is what this did until T-9.5, therefore compared things
-    // that cannot collide: the guard was unreachable, and a repeated condition went through as
-    // `String(['1','2'])`, the single value `'1,2'`. That is v4's "silently keep the last one"
-    // wearing a different hat, and it is precisely the case the refusal was written for.
+    // does with `?a=1&a=2`: it never arrives as two entries, since an object has one value
+    // per key. Comparing keys therefore compares things that cannot collide, and an unrefused
+    // repeated condition goes through as `String(['1','2'])`, the single value `'1,2'`.
     //
     // An array is unambiguous here: the list operators (`:in`, `:nin`) take a comma-separated
     // STRING, so nothing legitimate sends one.
@@ -251,7 +244,7 @@ export interface FindResult<T> {
   headers: Record<string, number>
 }
 
-/** The pagination headers v4 already returned, kept as they were: clients depend on them. */
+/** The pagination headers: clients depend on them. */
 export function headersFor(parsed: ParsedQuery, count: number, total: number): Record<string, number> {
   return {
     'v-count': count,
@@ -263,9 +256,8 @@ export function headersFor(parsed: ParsedQuery, count: number, total: number): R
 }
 
 /**
- * Runs the query. The handle decides the container; this function never chooses one, which is
- * why there is no way for it to fall back to a global connection the way v4's view queries did
- * (D-06) — there is no global connection to fall back to.
+ * Runs the query. The handle decides the container; this function never chooses one, and there
+ * is no global connection to fall back to.
  */
 export async function executeFind<T>(
   handle: Pick<RuntimeHandle, 'db'>,

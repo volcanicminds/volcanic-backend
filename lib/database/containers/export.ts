@@ -7,7 +7,7 @@ import type { Tenant } from '../../../types/global.js'
 import type { ExportResult } from '../ports.js'
 
 //
-// Taking a customer's data out (T-6.2).
+// Taking a customer's data out.
 //
 // Three refusals, and they are the whole design:
 //
@@ -92,8 +92,7 @@ function discard(file: string): void {
  * strategy the database that is it.
  *
  * `--schema` unless the database is the tenant's own: a container's export must contain that
- * customer's data and no trace of anybody else's, which is invariant 7 applied to a file that
- * will be handed to them.
+ * customer's data and no trace of anybody else's: the file will be handed to them.
  */
 export async function exportPostgres(tenant: Tenant, request: ExportRequest): Promise<ExportResult> {
   try {

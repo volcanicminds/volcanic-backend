@@ -42,7 +42,7 @@ export interface FreshnessClaims {
 
 /**
  * The gate of a `freshAuth` route, after the roles. `STEP_UP_REQUIRED` when a step-up can fix it,
- * `STEP_UP_NOT_AVAILABLE` when none can (F55): an impersonation or an integration token is never
+ * `STEP_UP_NOT_AVAILABLE` when none can: an impersonation or an integration token is never
  * fresh, and a stale token with no session behind it (a build without the registry) has nothing
  * a step-up could confirm, only a new login.
  */

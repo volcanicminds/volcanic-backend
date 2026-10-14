@@ -25,10 +25,8 @@ import {
 // still boots, and every data call fails loudly instead of silently doing nothing. The
 // framework asks `isImplemented()` before taking any path that needs persistence.
 //
-// v4 listed all sixty methods by hand and each one threw the same sentence, so every change
-// to a manager contract meant editing this file twice: once for the signature, once for the
-// argument names nobody reads. One factory does the same job and cannot drift from the
-// interfaces, because there is nothing here to keep in sync.
+// One factory builds them all and cannot drift from the interfaces, because there is nothing
+// here to keep in sync.
 //
 function notImplemented<T extends object>(manager: string, methods: readonly string[]): T {
   const known = new Set(methods)
@@ -131,12 +129,12 @@ export const defaultDestructionManager = notImplemented<DestructionManagement>(
   'destructionManager',
   DESTRUCTION_METHODS
 )
-// Without this one there is no renewal at all (F28): a refresh that nobody can consume is a
+// Without this one there is no renewal at all: a refresh that nobody can consume is a
 // credential that never expires, which is worse than not having one.
 export const defaultSessionManager = notImplemented<SessionManagement>('sessionManager', SESSION_METHODS)
 export const defaultMfaManager = notImplemented<MfaManagement>('mfaManager', MFA_METHODS)
 export const defaultTransferManager = notImplemented<TransferManagement>('transferManager', TRANSFER_METHODS)
-// Without a flow store only the flows that close in one request can run (F46): a second step with
+// Without a flow store only the flows that close in one request can run: a second step with
 // no memory is a second step that counts no attempts.
 export const defaultAuthFlowManager = notImplemented<AuthFlowManagement>('authFlowManager', AUTH_FLOW_METHODS)
 export const defaultExternalIdentityManager = notImplemented<ExternalIdentityManagement>(
@@ -154,11 +152,11 @@ export const defaultChallengeDeliveryManager = notImplemented<ChallengeDeliveryM
 // Asked with isImplemented() before every write: without it an access is written to the process log only.
 export const defaultAccessLogManager = notImplemented<AccessLogManagement>('accessLogManager', ACCESS_LOG_METHODS)
 // Unlike the access log, never skipped: without it every governance write answers 503, because a
-// change to the registry nobody can account for is the thing the log exists to rule out (F76).
+// change to the registry nobody can account for is the thing the log exists to rule out.
 export const defaultGovernanceLogManager = notImplemented<GovernanceLogManagement>(
   'governanceLogManager',
   GOVERNANCE_LOG_METHODS
 )
-// Without a settings store every rule of F49 falls back to the deployment's own values: nothing
+// Without a settings store every account-creation rule falls back to the deployment's own values: nothing
 // a tenant or an operator chose at runtime can be read, and nothing can be written.
 export const defaultSettingManager = notImplemented<SettingManagement>('settingManager', SETTING_METHODS)

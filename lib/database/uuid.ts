@@ -3,10 +3,9 @@ import { randomBytes } from 'crypto'
 //
 // UUID v7: 48 bits of Unix milliseconds, then version and variant bits, then randomness.
 //
-// Why not ask the database for a free identifier: v4 looked one up with a `do/while` around
-// a SELECT, both for users and for tokens (D-28). That is a round trip per insert to solve a
-// collision that does not happen — 74 random bits give a birthday collision probability
-// below 1e-15 for the volumes this framework sees.
+// Why not ask the database for a free identifier: a lookup with a `do/while` around a SELECT
+// is a round trip per insert to solve a collision that does not happen. 74 random bits give a
+// birthday collision probability below 1e-15 for the volumes this framework sees.
 //
 // Why v7 rather than v4: it is time-ordered, so inserts stay local in the b-tree instead of
 // scattering across it, and a row carries its creation instant even before you look at

@@ -5,9 +5,9 @@ import type { Engine, TenantStrategy, GeneralConfig } from '../../types/global.j
 //
 // It is a property of the code, not a setting: a cell turns to `yes` only when the code and
 // the test that hold it exist. A consumer cannot widen it, because the point of it is to
-// refuse a combination the framework cannot honour — in v4 declaring multi-tenant on Mongo
-// logged a warning and then served every request against the whole database, with no
-// isolation whatsoever (D-04). Fail-closed at boot is invariant 2.
+// refuse a combination the framework cannot honour: a multi-tenant declaration the engine
+// cannot isolate would serve every request against the whole database. The refusal fails
+// closed, at boot.
 //
 type Support = Record<TenantStrategy | 'none', boolean>
 

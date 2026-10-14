@@ -2,15 +2,14 @@ import * as crypto from 'crypto'
 import { promisify } from 'util'
 
 //
-// Encryption of the secrets the framework stores: today the MFA seed (T-2.6).
+// Encryption of the secrets the framework stores: today the MFA seed.
 //
-// What changes from v4 is the shape of the call, not the cryptography. `scryptSync` with
-// N = 2^15 measured **82 ms of blocked event loop per derivation** on the survey machine, and
-// it sits on the MFA verification path: at ten logins a second the process stops answering
-// anything else. The parameters stay exactly as they were — a memory-hard KDF with a
-// per-record salt is the right choice, it just must not be synchronous (D-14).
+// The derivation is asynchronous. `scryptSync` with N = 2^15 measured **82 ms of blocked
+// event loop per derivation** on the survey machine, and it sits on the MFA verification
+// path: at ten logins a second the process stops answering anything else. A memory-hard KDF
+// with a per-record salt is the right choice, it just must not be synchronous.
 //
-// The stored format is unchanged, `v2:salt:iv:authTag:ciphertext`, and the two legacy read
+// The stored format is `v2:salt:iv:authTag:ciphertext`, and the two legacy read
 // paths are kept: a project migrating from v4 carries rows written years ago, and refusing to
 // read them would mean asking every user to enrol MFA again. Nothing is ever WRITTEN in a
 // legacy format.

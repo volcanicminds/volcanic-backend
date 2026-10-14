@@ -5,12 +5,10 @@
 // which is zero for a code typed in its own window. A delta is not a position in time, and
 // storing one as if it were is how an anti-replay check turns into a lock.
 //
-// That is what happened on the control plane (found by running it, T-10.20): `mfa_last_used_counter`
-// held the delta, so the first successful verification wrote `0`, and every later code, being also
-// a delta of `0`, failed `counter <= last` and answered «That code has already been used». A
-// platform operator with a second factor could enrol once and never log in again. The tenant plane
-// did the conversion inline and was fine, which is exactly how two copies of one rule drift: the
-// copy nobody exercised is the one that is wrong.
+// With the delta in `mfa_last_used_counter`, the first successful verification writes `0`, and every
+// later code, being also a delta of `0`, fails `counter <= last` and answers «That code has already
+// been used»: an account with a second factor enrols once and never logs in again. Two copies of one
+// rule drift, and the copy nobody exercises is the one that is wrong.
 //
 // So the conversion lives here, once, and both planes call it.
 //

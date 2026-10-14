@@ -2,7 +2,7 @@ import fs from 'fs'
 import type { ExportedArtifact, Tenant, TenantHandle, TenantLifecycle, TenantPlace } from '../../types/global.js'
 
 //
-// The packages that follow a tenant's life (T-16.2, `TenantLifecycle`).
+// The packages that follow a tenant's life (`TenantLifecycle`).
 //
 // Each runs inside the route that drives the moment, in the order given to `start()`, and its
 // failure is the route's failure, named with the package: an export that left a package's data

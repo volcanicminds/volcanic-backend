@@ -13,12 +13,12 @@ import * as regExp from '../../util/regexp.js'
 import { mayLogIn, systemUserMayLogIn, toSubject } from '../subjects.js'
 
 //
-// `email-otp` in its two roles (T-12.22, T-12.23).
+// `email-otp` in its two roles.
 //
 // As a verifier it sends a code to the address on file of a subject already identified, and only
 // of a confirmed one: an address nobody proved is not a channel a second factor may travel on.
 // As an identifier the address is all the caller has, so the answer must not tell whether it
-// belongs to anybody (F43): an unknown address gets the same 202, the same descriptor and the same
+// belongs to anybody: an unknown address gets the same 202, the same descriptor and the same
 // write to the flow row (a code nobody receives), and the only difference, the delivery, happens
 // after the response is decided and is never awaited, because the latency of a mail server is a
 // stopwatch.
@@ -30,10 +30,10 @@ import { mayLogIn, systemUserMayLogIn, toSubject } from '../subjects.js'
 
 export const EMAIL_OTP_ID = 'email-otp'
 
-/** Six digits after a first factor, eight when the address alone asks for the code (F37). */
+/** Six digits after a first factor, eight when the address alone asks for the code. */
 const CODE_LENGTH: Record<ChallengePurpose, number> = { verify: 6, identify: 8 }
 
-/** Per subject, across every flow: restarting a login does not reset the count (F37). */
+/** Per subject, across every flow: restarting a login does not reset the count. */
 export const SUBJECT_SEND_WINDOWS: ChallengeLimits['perSubject'] = [
   { max: 5, windowSeconds: 15 * 60 },
   { max: 20, windowSeconds: 24 * 60 * 60 }

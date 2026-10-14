@@ -18,13 +18,7 @@ function defined(obj: any): Record<string, unknown> {
 }
 
 /**
- * Query string and body merged into one bag, **the body winning** on a key present in both
- * (defect D-29, decision Q12).
- *
- * v4 returned one source *or* the other: if the query string carried a single non-null value
- * the body was dropped whole, so `POST /auth/login?utm=x` with the credentials in the body
- * answered «Email not valid». The cliff was invisible from the outside and depended on a
- * query parameter nobody thought was part of the call.
+ * Query string and body merged into one bag, **the body winning** on a key present in both.
  *
  * The body wins because it is the payload of the request, while the query string is
  * addressing: when a caller sends both, the one they meant to send is the body. Callers that

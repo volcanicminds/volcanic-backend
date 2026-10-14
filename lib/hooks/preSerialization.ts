@@ -3,9 +3,9 @@ import sizeof from 'object-sizeof'
 import * as tracking from '../util/tracker.js'
 
 //
-// Awaited, and before the payload leaves. In v4 the tracking call was fired and forgotten,
-// so a failure could not reach the response even in principle: the answer was already on its
-// way. Awaiting here is what makes strict mode possible at all (T-3.5): a throw becomes the
+// Awaited, and before the payload leaves. A tracking call fired and forgotten could not reach
+// the response even in principle: the answer would already be on its way. Awaiting here is what
+// makes strict mode possible at all: a throw becomes the
 // 500 the caller deserves instead of a log line nobody reads.
 //
 export default async (req: FastifyRequest, reply: FastifyReply, payload: unknown) => {

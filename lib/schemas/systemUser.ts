@@ -1,5 +1,5 @@
 //
-// The platform's own identities (T-4.1), described so the console can manage them (T-10.20).
+// The platform's own identities, described so the console can manage them.
 //
 // Two schemas, because the two directions are not the same set. What comes back is whatever
 // `present()` leaves of a row (the credential columns, `password` and `mfaSecret`, never leave

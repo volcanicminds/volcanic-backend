@@ -3,7 +3,7 @@ import type { AccessLogEntry, DataHandle } from '../../types/global.js'
 import { dataContext } from './tenancy.js'
 
 //
-// The one writer of the access log (F44). The rule that matters: a write never fails the request
+// The one writer of the access log. The rule that matters: a write never fails the request
 // it describes. The insert is awaited on the handle of the request, because the tenant's handle is
 // given back when the response ends and a write fired after it would run on a handle somebody else
 // holds. The process log line is written whatever happens to the row, so an access is never lost
@@ -29,7 +29,7 @@ export async function recordAccess(req: FastifyRequest, handle: DataHandle | nul
     return
   }
 
-  // Housekeeping on one write in fifty, like the sessions (T-12.33): a deployment that never runs
+  // Housekeeping on one write in fifty, like the sessions: a deployment that never runs
   // `npx volcanic access-log --purge` must not grow the table for ever. Same handle, same reason
   // it is awaited.
   if (Math.random() < 0.02) {

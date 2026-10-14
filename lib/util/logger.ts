@@ -1,7 +1,7 @@
 'use strict'
 
 //
-// The framework's logger (F63): pino, JSON lines in production, `pino-pretty` on a developer's
+// The framework's logger: pino, JSON lines in production, `pino-pretty` on a developer's
 // machine. Fastify receives the same instance as `loggerInstance`, so `req.log` writes where
 // `log` does.
 //
@@ -95,7 +95,7 @@ function serializeRequest(req: {
 
 /**
  * The active span's ids on a line written inside it, under the names OpenTelemetry's own pino
- * instrumentation uses, so a collector joins a log line to its trace (F68). Without an SDK there
+ * instrumentation uses, so a collector joins a log line to its trace. Without an SDK there
  * is no active span and the line is unchanged.
  */
 export function traceFields(): Record<string, string> {

@@ -11,8 +11,8 @@ import { randomBytes } from 'crypto'
  * shared module has nowhere to live that both sides may reach. Twenty lines of a stable,
  * specified algorithm is the cheaper of the two prices.
  *
- * The core needs it for identifiers that are never stored — the decoy registration of D-17 —
- * which must be indistinguishable from the ones the database mints. A v4 uuid would carry a
+ * The core needs it for identifiers that are never stored (the decoy registration), which
+ * must be indistinguishable from the ones the database mints. A v4 uuid would carry a
  * different version nibble, and that nibble alone would answer the question the decoy exists
  * to leave unanswered.
  */

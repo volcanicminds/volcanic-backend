@@ -9,7 +9,7 @@ const authRateLimit = {
 }
 
 // Per IP, on top of the per-flow and per-subject ceilings of the flow store, which are the real
-// gates (F44). `cancel` has none: it can only end the caller's own flow.
+// gates. `cancel` has none: it can only end the caller's own flow.
 const perMinute = (max: number) => ({ max, timeWindow: 60000 })
 
 // Renewal presents an unguessable credential, so the ceiling is against flooding, not guessing,
@@ -235,7 +235,7 @@ export default {
       roles: [],
       handler: 'auth.mfaEnable',
       middlewares: ['global.isAuthenticated'],
-      // Throttle TOTP attempts to curb online brute-force of the 6-digit code (S11).
+      // Throttle TOTP attempts to curb online brute-force of the 6-digit code.
       rateLimit: { max: 10, timeWindow: 60000 },
       config: {
         title: 'Enable MFA',
@@ -369,7 +369,7 @@ export default {
         tenantFrom: 'flow-state'
       }
     },
-    // The caller's own external identities (T-12.27): seen and removed, not added (F48).
+    // The caller's own external identities: seen and removed, not added.
     {
       method: 'GET',
       path: '/identities',

@@ -1,5 +1,5 @@
 //
-// The access log of the tenant plane (T-12.32, F44), read by the tenant's admin.
+// The access log of the tenant plane, read by the tenant's admin.
 //
 // Read-only: rows are written by the framework as accesses happen and removed by retention, never
 // by a client. The query sees only `scope: 'tenant'` rows, a condition added after everything the

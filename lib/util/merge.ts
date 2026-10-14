@@ -2,11 +2,9 @@
 //
 // Deep merge for configuration objects.
 //
-// v4 merged the consumer's `config/general.ts` over the defaults with a spread
-// (`lib/loader/general.ts`), which is one level deep: declaring a single key inside a
-// nested block silently erased its siblings. Writing `multi_tenant: { enabled: true }`
-// dropped `resolver`, `header_key` and `query_key` and left the framework running with
-// undefined values it had documented as defaults. That was defect D-21.
+// A spread is one level deep: declaring a single key inside a nested block would silently
+// erase its siblings and leave the framework running with undefined values it documents as
+// defaults.
 //
 // The rules, chosen to be predictable rather than clever:
 //

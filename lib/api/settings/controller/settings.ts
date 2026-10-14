@@ -26,7 +26,7 @@ export async function getAccountCreation(req: FastifyRequest, reply: FastifyRepl
 }
 
 /**
- * The tenant's choice (F49). A mode outside the set is refused when it is written rather than
+ * The tenant's choice. A mode outside the set is refused when it is written rather than
  * stored and overridden when it is read: an administrator who reads back what they saved must be
  * reading what applies. The set can still shrink later, and then the state says so: `choice` stays,
  * `mode` moves.

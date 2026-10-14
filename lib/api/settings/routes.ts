@@ -1,5 +1,5 @@
 //
-// The settings a tenant's administrator chooses for the tenant (F49), inside what the platform
+// The settings a tenant's administrator chooses for the tenant, inside what the platform
 // allows. Stored in the tenant's own container; the platform's side of each rule is under
 // `/system/*` and on the tenant's registry row.
 //

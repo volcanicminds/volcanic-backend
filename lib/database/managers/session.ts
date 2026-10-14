@@ -15,7 +15,7 @@ import { runtime, table, column } from './runtime.js'
 // that can renew a session.
 //
 // Every method takes a `DataHandle` rather than a `ControlHandle`, because the session lives
-// where its subject lives (F19). Which handle to pass is the caller's decision, as it is for
+// where its subject lives. Which handle to pass is the caller's decision, as it is for
 // users, and passing the wrong one is a session written in the wrong container, not a type the
 // compiler can catch. The `scope` column exists for exactly that reason: a control session and
 // a tenant session can sit in the same container of a single-tenant deployment, and a renewal
@@ -166,7 +166,7 @@ export function createSessionManager(): SessionManagement {
             eq(column(session, 'subjectId'), subjectId as never),
             isNull(column(session, 'revokedAt')),
             // A session nobody proved stays unproven: the person behind an impersonation is not
-            // the subject, whatever they can type (F55).
+            // the subject, whatever they can type.
             isNull(column(session, 'impersonationId')),
             gt(column(session, 'idleExpiresAt'), now as never),
             gt(column(session, 'absoluteExpiresAt'), now as never)

@@ -5,7 +5,7 @@ import { runtime, table, column } from './runtime.js'
 import { firstBy } from '../prepared.js'
 
 //
-// Machine credentials (T-2.5). Same shape as the user manager, one difference that matters:
+// Machine credentials. Same shape as the user manager, one difference that matters:
 // `expiresAt` is written as given and never defaulted here. A credential without an expiry
 // must be a decision taken at the API, not an omission that quietly becomes permanent
 // (docs/API_V5.md §4).
@@ -82,7 +82,7 @@ export function createTokenManager(): TokenManagement {
     },
 
     retrieveTokenById: async (ctx, id) => await one(ctx, 'retrieveTokenById', 'id', id),
-    // Every request carrying an integration token reads this row: prepared (F62).
+    // Every request carrying an integration token reads this row: prepared.
     retrieveTokenByExternalId: async (ctx, externalId) => {
       const { handle, token } = tokens(ctx, 'retrieveTokenByExternalId')
       return await firstBy(handle.db, token, 'externalId', externalId)

@@ -1,5 +1,5 @@
 //
-// OpenTelemetry (F64, F68). The framework starts the SDK itself, in `preload()`, when the
+// OpenTelemetry. The framework starts the SDK itself, in `preload()`, when the
 // deployment asks for it with the standard `OTEL_*` variables. No `--import` is needed, and
 // nothing here patches a module: the loader hooks of `import-in-the-middle` register through
 // `module.register()`, which Node 26 deprecates (DEP0205).
@@ -107,7 +107,7 @@ function outgoingUrl(request: { origin: string; path: string }): Attributes {
 }
 
 /**
- * The tenant on every span started while work of a tenant runs (F75): the hooks and the handler
+ * The tenant on every span started while work of a tenant runs: the hooks and the handler
  * after resolution, the queries, the outgoing calls, the AI calls of tools. Only on an SDK the
  * framework starts; with one started by `--import`, the request span alone carries it
  * (`enterTenant`).

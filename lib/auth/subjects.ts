@@ -27,9 +27,9 @@ export function toSubject(plane: AuthPlane, user: any): AuthSubject {
 
 /**
  * Why a tenant user may not log in, or null when it may: a row with an address and a password, the
- * address confirmed, not blocked, not waiting for an administrator (F49). Every door asks this one
+ * address confirmed, not blocked, not waiting for an administrator. Every door asks this one
  * question, so a condition added here reaches all of them. The cause is for the log only: the
- * caller answers the uniform refusal of D-17 whichever it is.
+ * caller answers the uniform refusal whichever it is.
  */
 export async function tenantRefusal(users: UserManagement, user: any): Promise<string | null> {
   if (!user || !(await users.isValidUser(user))) return 'AUTH_INVALID_USER'

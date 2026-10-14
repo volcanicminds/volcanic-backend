@@ -10,7 +10,7 @@ import { encrypt, decrypt } from '../crypto.js'
 import { control, table, column } from './runtime.js'
 
 //
-// A tenant's own identity providers (F38), in the control plane registry and never in
+// A tenant's own identity providers, in the control plane registry and never in
 // `tenant.config`, which is serialized to whoever reads the tenant.
 //
 // The client secret is encrypted with the function that encrypts the MFA seed (`../crypto.ts`,

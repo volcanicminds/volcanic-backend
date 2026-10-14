@@ -8,8 +8,7 @@ import type {
 } from '../../types/global.js'
 
 //
-// Identity providers (F38, T-12.25, T-12.26): where their settings come from and what shape they
-// must have.
+// Identity providers: where their settings come from and what shape they must have.
 //
 // Two sources. The deployment declares providers per plane in `authFlows.ts`, with the client secret
 // as the NAME of an environment variable, read once at boot and kept in this module: never on a
@@ -77,7 +76,7 @@ export function providerShapeProblems(settings: unknown, options: { plane: AuthP
   }
   if (s.linkByEmail !== undefined && typeof s.linkByEmail !== 'boolean') problems.push('linkByEmail must be a boolean')
   if (s.emailDomains !== undefined && !isStringList(s.emailDomains)) problems.push('emailDomains must be a list of domains')
-  // F40: linking by email without a list of domains would link any address the provider vouches for.
+  // Linking by email without a list of domains would link any address the provider vouches for.
   if (s.linkByEmail === true && !(isStringList(s.emailDomains) && s.emailDomains.length > 0)) {
     problems.push('linkByEmail needs emailDomains: the domains whose addresses may be linked')
   }
@@ -87,7 +86,7 @@ export function providerShapeProblems(settings: unknown, options: { plane: AuthP
     if (!jit || typeof jit !== 'object' || typeof jit.enabled !== 'boolean' || !isStringList(jit.roles ?? [])) {
       problems.push('jit must be { enabled: boolean, roles: string[] }')
     } else if (jit.enabled && options.plane === 'control') {
-      // Platform identities are provisioned, never created by a login (F40).
+      // Platform identities are provisioned, never created by a login.
       problems.push('jit is not available on the control plane')
     } else if ((jit.roles as string[] | undefined)?.includes(global.roles?.admin?.code || 'admin')) {
       problems.push('jit.roles cannot include the admin role')

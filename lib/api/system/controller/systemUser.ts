@@ -9,7 +9,7 @@ import { recordControlAccess } from '../../../util/accessLog.js'
 import { fieldNames, governed } from '../../../util/governance.js'
 
 //
-// Platform identities, managed from the control scope (T-4.1).
+// Platform identities, managed from the control scope.
 //
 // Every call takes `req.control`, and the compiler enforces it: `SystemUserManagement` only
 // accepts a ControlHandle, so there is no spelling of these operations that reaches a
@@ -38,7 +38,7 @@ function invalidRoles(roles: unknown): string[] {
 }
 
 /**
- * The way back for an operator who lost the device (T-10.19).
+ * The way back for an operator who lost the device.
  *
  * It belongs to whoever holds `system-users`, never to the person concerned: on a plane where
  * `MANDATORY` is the setting to recommend, a second factor its owner can remove alone is a second

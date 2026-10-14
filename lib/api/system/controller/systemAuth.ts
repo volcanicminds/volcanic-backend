@@ -10,14 +10,14 @@ import { recordControlAccess } from '../../../util/accessLog.js'
 import { systemUserMayLogIn } from '../../../auth/subjects.js'
 
 //
-// The account side of the control scope (T-4.1, docs/API_V5.md §5): sessions, renewal and the
+// The account side of the control scope (docs/API_V5.md §5): sessions, renewal and the
 // second factor of an operator already logged in. The login itself is `/system/auth/flow/*`.
 //
 // A platform token carries `scp: 'control'` and **no** `tid`. That is not a label: the tenant
-// resolution of T-3.2 refuses a token with `scp: 'control'` inside a container, and the
+// resolution refuses a token with `scp: 'control'` inside a container, and the
 // authentication hook refuses a token without it on a platform route. A system user therefore
 // has no silent way into a customer's data; the only way in is impersonation, which leaves a
-// record (T-4.2).
+// record.
 //
 const manager = (req: FastifyRequest): SystemUserManagement => req.server['systemUserManager']
 const control = (req: FastifyRequest): ControlHandle => req.control as ControlHandle
@@ -47,7 +47,7 @@ function currentSid(req: FastifyRequest): string | undefined {
   return typeof claims?.sid === 'string' ? claims.sid : undefined
 }
 
-/** The operator's own platform sessions (T-11.14), the twin of the tenant listing. */
+/** The operator's own platform sessions, the twin of the tenant listing. */
 export async function listSessions(req: FastifyRequest, reply: FastifyReply) {
   const sessions = req.server['sessionManager']
   if (!sessionRegistryEnabled(sessions) || !req.control) {
@@ -91,7 +91,7 @@ export async function revokeSession(req: FastifyRequest, reply: FastifyReply) {
   return { ok: true }
 }
 
-/** Ends the platform session, and not only the browser's memory of it (T-11.10). */
+/** Ends the platform session, and not only the browser's memory of it. */
 export async function logout(req: FastifyRequest, reply: FastifyReply) {
   const sessions = req.server['sessionManager']
   const sid = currentSid(req)
@@ -105,7 +105,7 @@ export async function logout(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * The platform identity behind the session, with its roles (T-10.14).
+ * The platform identity behind the session, with its roles.
  *
  * A console asks this to decide what to draw. `/users/me` is a tenant route: a control token
  * there is refused, so without this a platform console could log in and never learn who it is.
@@ -118,13 +118,12 @@ export async function me(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * Renewal of a platform session (T-11.8), the twin of the tenant one and now literally the same
- * code (lib/util/renewal.ts).
+ * Renewal of a platform session, the twin of the tenant one and literally the same code
+ * (lib/util/renewal.ts).
  *
- * The scope check that had to be written here by hand, and then again on the cookie path, is a
- * column of the row: a session opened on the control plane carries `scope: 'control'`, so a
- * tenant session cannot be renewed into a platform one even in a single-tenant deployment where
- * both kinds of row sit in the same container.
+ * The scope check is a column of the row: a session opened on the control plane carries
+ * `scope: 'control'`, so a tenant session cannot be renewed into a platform one even in a
+ * single-tenant deployment where both kinds of row sit in the same container.
  */
 export async function renew(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
@@ -146,7 +145,7 @@ export async function renew(req: FastifyRequest, reply: FastifyReply) {
 }
 
 //
-// MFA for platform identities (T-6.3, deferred here by T-4.1).
+// MFA for platform identities.
 //
 // It exists because destroying a customer's data asks for a second factor, and a factor that
 // does not exist cannot be asked for. The shape is the tenant one: a secret shown once at
@@ -191,8 +190,8 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
   // Confirmed before it is trusted: enabling MFA on a secret the operator never proved they
   // hold would lock them out of the account and out of the destruction path with it.
   // What the verifier answers is a DELTA, not a position in time. Writing it down as if it were
-  // is what locked an operator out after the first enrolment (T-10.20): the delta of a code typed
-  // in its own window is zero, and every later code, also zero, then read as already spent.
+  // locks an operator out after the first enrolment: the delta of a code typed in its own window
+  // is zero, and every later code, also zero, then reads as already spent.
   const { valid, counter } = absoluteStep(await req.server['mfaManager'].verify(String(token), String(secret)))
   if (!valid) return reply.status(400).send(httpError(400, 'The code is not valid'))
 

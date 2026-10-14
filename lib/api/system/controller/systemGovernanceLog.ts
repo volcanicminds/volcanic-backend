@@ -3,7 +3,7 @@ import type { ControlHandle, GovernanceLogManagement } from '../../../../types/g
 import { httpError } from '../../../util/httpError.js'
 
 //
-// The governance log of the platform (F76): what the operators did to the registry, the operators
+// The governance log of the platform: what the operators did to the registry, the operators
 // and the providers, read with Magic Query (`tenantId=`, `action=`, `actorId=`, `occurredAt:gte=`).
 //
 const manager = (req: FastifyRequest): GovernanceLogManagement => req.server.governanceLogManager

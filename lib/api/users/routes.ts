@@ -7,8 +7,8 @@ export default {
     version: false,
     manifest: {
       group: 'system',
-      // `email`, not first and last name: the v5 `user` table has no name columns (T-10.22), and a
-      // title built from absent fields drew every user in the console as a blank row.
+      // `email`, not first and last name: the v5 `user` table has no name columns, and a title
+      // built from absent fields draws every user in the console as a blank row.
       resource: { name: 'user', titleField: 'email', subtitleField: 'username' }
     }
   },
@@ -273,7 +273,7 @@ export default {
         }
       }
     },
-    // External identities of a user, managed by the administrator (T-12.27).
+    // External identities of a user, managed by the administrator.
     {
       method: 'GET',
       path: '/:id/identities',

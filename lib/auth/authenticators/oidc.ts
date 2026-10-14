@@ -12,7 +12,7 @@ import type {
 import { resolveExternal } from '../external.js'
 
 //
-// OpenID Connect as an identifier (F39 to F42, T-12.28 to T-12.30).
+// OpenID Connect as an identifier.
 //
 // Three moments. `initiate` builds the address of the provider with PKCE `S256` and a `nonce`,
 // always, and hands the verifier and the nonce to the engine, which keeps them encrypted in the flow
@@ -20,9 +20,9 @@ import { resolveExternal } from '../external.js'
 // `/auth/flow/return/oidc`: it exchanges the code with the three checks (state, verifier, nonce),
 // validates the ID token, and leaves the claims in the row; it issues nothing. `verify`, on the next
 // step, cashes those claims with the flow credential that only the browser that started holds, and
-// resolves who they are here (F40, F49). A login CSRF therefore lands in the attacker's own row.
+// resolves who they are here. A login CSRF therefore lands in the attacker's own row.
 //
-// `openid-client` is an optional peer, loaded on first use (F42): a deployment that never lists
+// `openid-client` is an optional peer, loaded on first use: a deployment that never lists
 // `oidc` never loads it, and one that lists it without installing it is refused at boot. Its types
 // stay inside this file, so the framework's public types never name it.
 //
@@ -32,7 +32,7 @@ type Configuration = import('openid-client').Configuration
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
 
 const ID = 'oidc'
-/** The pseudo-method a trusted second factor of the provider satisfies (F41). */
+/** The pseudo-method a trusted second factor of the provider satisfies. */
 export const IDP_MFA = 'idp-mfa'
 
 const DISCOVERY_TTL_MS = 60 * 60 * 1000
@@ -112,7 +112,7 @@ export function returnPathOf(value: unknown): string | null | false {
   }
 }
 
-/** Whether the provider's own second factor counts here (F41): only where it is declared, and the claim carries it. */
+/** Whether the provider's own second factor counts here: only where it is declared, and the claim carries it. */
 export function idpSecondFactor(settings: OidcProviderSettings, result: ExternalAuthResult): boolean {
   const trust = settings.mfa
   if (!trust?.values?.length) return false
@@ -157,7 +157,7 @@ async function initiate(ctx: AuthContext, input: AuthInput): Promise<AuthResult>
     state,
     nonce
   }
-  // F41: a provider trusted on `acr` is asked for the level it is trusted at.
+  // A provider trusted on `acr` is asked for the level it is trusted at.
   if (s.mfa?.trust === 'acr' && s.mfa.values.length) parameters.acr_values = s.mfa.values.join(' ')
   return { outcome: 'redirect', binding: 'redirect', url: oidc.buildAuthorizationUrl(config, parameters).href }
 }

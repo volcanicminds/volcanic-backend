@@ -5,7 +5,7 @@ import { control, table, column } from './runtime.js'
 import { challengeMac } from './authFlow.js'
 
 //
-// The first phase of destroying a customer's data (T-6.3, docs/SCHEMA_V5.md §3.4).
+// The first phase of destroying a customer's data (docs/SCHEMA_V5.md §3.4).
 //
 // A row here is a permission with a fuse: it names one tenant, it belongs to one operator, it
 // is good for ten minutes, and it can be spent once. Everything about that shape exists
@@ -13,7 +13,7 @@ import { challengeMac } from './authFlow.js'
 //
 // The token is **never stored**. What the row keeps is its SHA-256, so a control plane that
 // leaks its own tables still leaks nothing that can destroy anything: the only copy of the
-// token was in the response to phase 1, and the operator has it or nobody does. The emailed
+// token was in the response to the first phase, and the operator has it or nobody does. The emailed
 // code of an operator without MFA is kept the same way, as an HMAC keyed by that token.
 //
 const NAME = 'destructionManager'

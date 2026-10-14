@@ -1,5 +1,5 @@
 //
-// The generation entry for the CONTROL set (T-5.1).
+// The generation entry for the CONTROL set.
 //
 // `drizzle-kit` reads a static module and emits SQL from it, so the factories are called
 // once here with `public`, which `tableFactory` deliberately leaves UNQUALIFIED: the SQL

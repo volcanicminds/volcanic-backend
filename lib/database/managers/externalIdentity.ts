@@ -3,7 +3,7 @@ import type { DataHandle, ExternalIdentity, ExternalIdentityManagement, SessionS
 import { runtime, table, column } from './runtime.js'
 
 //
-// Links between an identity at a provider and a subject (F40). They live in the container of the
+// Links between an identity at a provider and a subject. They live in the container of the
 // subject, like its sessions. The key is (scope, provider, issuer, subject) and never an email.
 // A second link for the same key is refused by the unique index and the driver's error reaches the
 // caller: the engine asks `findLink` first, and a race it loses is not a link to overwrite.

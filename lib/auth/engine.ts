@@ -34,7 +34,7 @@ import { kindsOf } from './registry.js'
 import { ENROLMENT_METHOD } from './validate.js'
 
 //
-// The flow engine (T-12.14), one module for both planes as the renewal is.
+// The flow engine, one module for both planes as the renewal is.
 //
 // Pure with respect to HTTP: it is handed a plane (a handle, a policy, the flows, how to load a
 // subject and how to open a session) and answers an outcome the controller turns into a response.
@@ -63,21 +63,21 @@ export interface FlowPlane<R = unknown> {
   /** Opens the session, once, and answers the body of the 200 and the subject it was issued to. */
   issue(record: R, subject: AuthSubject, methods: string[]): Promise<{ body: Record<string, unknown>; subjectId: string }>
   /**
-   * The end of a step-up (F54): proves the live session `sid` again and answers the body of the 200,
+   * The end of a step-up: proves the live session `sid` again and answers the body of the 200,
    * or null when that session can no longer be confirmed (revoked, expired, not the subject's).
    */
   elevate(record: R, subject: AuthSubject, sid: string, methods: string[]): Promise<{ body: Record<string, unknown> } | null>
   /** Best effort: a failed write never fails a login. */
   record(entry: Omit<AccessLogEntry, 'scope'>): Promise<void>
-  /** Who may create an account on this plane (F49); absent on the control plane, which has no registration. */
+  /** Who may create an account on this plane; absent on the control plane, which has no registration. */
   accountCreation?: AuthContext['accountCreation']
-  /** The identity providers of this plane and tenant, by key (F38). */
+  /** The identity providers of this plane and tenant, by key. */
   provider?: AuthContext['provider']
   /** What the flow of this request is for; a login when absent. Set by the engine, never by a controller. */
   readonly intent?: FlowIntent
 }
 
-/** A login opens a session; a step-up confirms the live session `sid` of `subjectId` (F53). */
+/** A login opens a session; a step-up confirms the live session `sid` of `subjectId`. */
 export type FlowIntent = { purpose: 'login' } | { purpose: 'step-up'; sid: string; subjectId: string }
 
 /** The session a step-up confirms, as the authenticated request presented it. */
@@ -210,7 +210,7 @@ const context = <R>(p: FlowPlane<R>, subject: AuthSubject | null, flow: AuthFlow
 })
 
 /**
- * The round trip of a flow (F39): the `state` carries the routing of this request's container, so
+ * The round trip of a flow: the `state` carries the routing of this request's container, so
  * the return, which arrives with no credential and no header, finds its container; only the hash of
  * the secret part goes in the row, and the verifier and the nonce go in encrypted.
  */
@@ -230,7 +230,7 @@ function identifierOf<R>(p: FlowPlane<R>, method: unknown): Authenticator | null
   return authenticator && kindsOf(authenticator).includes('identifier') ? authenticator : null
 }
 
-/** The first flow whose roles meet the subject's; `'*'` is last and meets everyone (F34). */
+/** The first flow whose roles meet the subject's; `'*'` is last and meets everyone. */
 const chooseFlow = (flows: AuthPlaneFlows, roles: readonly string[]) =>
   flows.flows.findIndex((flow) => flow.roles.includes('*') || flow.roles.some((role) => roles.includes(role)))
 
@@ -249,7 +249,7 @@ function namedMethods(flows: AuthPlaneFlows): Set<string> {
 /**
  * The stages this subject owes, recomputed at every step from the configuration and the policy of
  * now. An optional stage applies to a subject enrolled in one of its methods. The MFA floor is the
- * engine's and not the configuration's (F35): under `MANDATORY` a flow that would close without a
+ * engine's and not the configuration's: under `MANDATORY` a flow that would close without a
  * second factor gets one, the subject's enrolled factors or, with none, an enrolment.
  */
 async function planStages<R>(p: FlowPlane<R>, s: Progress<R>): Promise<PlannedStage[]> {
@@ -290,8 +290,8 @@ async function planStages<R>(p: FlowPlane<R>, s: Progress<R>): Promise<PlannedSt
 
 /**
  * The methods a stage offers this subject. One it is not enrolled in is offered as an enrolment
- * only where the policy accepts new factors and the subject has none: the rule of the 409 of
- * T-12.1, applied inside the flow.
+ * only where the policy accepts new factors and the subject has none: the rule of the 409 the
+ * enrolment routes answer, applied inside the flow.
  */
 async function stageOptions<R>(p: FlowPlane<R>, s: Progress<R>, stage: PlannedStage): Promise<StageOption[]> {
   const ctx = context(p, s.subject, s.flow)
@@ -374,7 +374,7 @@ async function proceed<R>(p: FlowPlane<R>, s: Progress<R>): Promise<FlowOutcome>
     await end(p, s.flow, { event: 'login.failed', outcome: 'failure', code: 'FLOW_ENROLMENT_REFUSED', subjectId: s.subject.externalId, methods: s.satisfied })
     return refuse('FLOW_ENROLMENT_REFUSED', true)
   }
-  // F46: a second step with no memory would be a second step that counts no attempts.
+  // A second step with no memory would be a second step that counts no attempts.
   if (!storeAvailable(p)) return refuse('AUTH_FLOW_NOT_AVAILABLE')
 
   if (s.flow && s.credential) return partial(s.credential, s.flow, options)
@@ -424,7 +424,7 @@ async function identified<R>(p: FlowPlane<R>, method: string, result: AuthResult
   // same way at every step, and a method written by a consumer may not ask it at all.
   const loaded = await p.loadSubject(result.subject.externalId)
   if (!loaded) return await refuseSubject(p, flow, null, [method])
-  // A step-up proves the person of the session and nobody else (F54): someone else's valid
+  // A step-up proves the person of the session and nobody else: someone else's valid
   // credentials are wrong credentials here, and they end the flow.
   const intent = intentOf(p)
   if (intent.purpose === 'step-up' && loaded.subject.externalId !== intent.subjectId) {
@@ -441,7 +441,7 @@ async function identified<R>(p: FlowPlane<R>, method: string, result: AuthResult
   const satisfied = unique([method, ...(result.satisfied ?? [])])
   let proven: AuthFlow | null = null
   if (located) {
-    // Proving the subject takes its slot: any other proven flow of it is evicted (F37).
+    // Proving the subject takes its slot: any other proven flow of it is evicted.
     proven = await storeOf(p).advance(p.handle, located.flow.flowId, located.flow.version, {
       subjectId: loaded.subject.externalId,
       flowName: String(flowIndex),
@@ -468,7 +468,7 @@ async function locate<R>(p: FlowPlane<R>, presented: string | undefined): Promis
   const credential = parseFlowCredential(presented)
   if (!credential) return refuse('FLOW_REQUIRED', Boolean(presented))
   // The routing is addressing, like the refresh credential's: checked against the container this
-  // request resolved, and never used to choose one (T-12.17).
+  // request resolved, and never used to choose one.
   if (credential.routing !== p.routing) return refuse('TENANT_MISMATCH')
   if (!storeAvailable(p)) return refuse('AUTH_FLOW_NOT_AVAILABLE')
 
@@ -534,7 +534,7 @@ async function exhausted<R>(p: FlowPlane<R>, s: Progress<R>, method: string): Pr
 // The five operations a controller calls.
 //
 
-/** The identifiers of the plane, without touching any row (F47). */
+/** The identifiers of the plane, without touching any row. */
 export function identifierOptions<R>(p: FlowPlane<R>): StageOption[] {
   return p.flows.identify.filter((id) => identifierOf(p, id)).map((id) => ({ id, kind: 'identifier' as const }))
 }
@@ -548,7 +548,7 @@ export async function start<R>(p: FlowPlane<R>, method: unknown, input: AuthInpu
   if (!authenticator.initiate) return await identified(p, id, await authenticator.verify(context(p, null, null), input), null)
 
   // A method that leaves the request (a code sent, a provider visited) needs the row from the
-  // start. It is not proven yet, so it holds no subject's slot and evicts nobody (F37).
+  // start. It is not proven yet, so it holds no subject's slot and evicts nobody.
   if (!storeAvailable(p)) return refuse('AUTH_FLOW_NOT_AVAILABLE')
   const opened = await openFlow(p, null, null)
   await p.record({ event: 'flow.started', outcome: 'success', methods: [id], flowId: opened.flow.flowId })
@@ -557,7 +557,7 @@ export async function start<R>(p: FlowPlane<R>, method: unknown, input: AuthInpu
 }
 
 /**
- * A step-up (F53): the same start, for the person of a live session. The flow carries the session
+ * A step-up: the same start, for the person of a live session. The flow carries the session
  * and its subject from the first row it writes, so the routes that follow, public as every flow
  * route, need not know it is one.
  */
@@ -699,7 +699,7 @@ export async function cancel<R>(p: FlowPlane<R>, presented: string | undefined):
 }
 
 /**
- * A return from outside (F39). It records what the method validated and issues nothing: the flow
+ * A return from outside. It records what the method validated and issues nothing: the flow
  * credential, which only the browser that started the flow holds, cashes it with the next step.
  * A login CSRF therefore lands in the attacker's own row.
  */

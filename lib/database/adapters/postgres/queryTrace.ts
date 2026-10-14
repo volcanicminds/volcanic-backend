@@ -1,5 +1,5 @@
 //
-// Query spans (F68): one CLIENT span per statement that reaches the driver, emitted here and
+// Query spans: one CLIENT span per statement that reaches the driver, emitted here and
 // not by a patch of `pg`, so PGlite has them too and no loader hook is needed. The guard
 // (guard.ts) calls in at the same choke point where it judges the statement.
 //

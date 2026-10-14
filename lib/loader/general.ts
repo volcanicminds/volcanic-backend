@@ -8,18 +8,16 @@ import { globSync } from 'glob'
 // block being absent is what "single tenant" means, and filling it with defaults would turn
 // every deployment into a multi-tenant one by accident.
 //
-// They live here, not in the block itself, for the reason D-21 taught: a consumer declaring
-// one key must not lose the others, and a default nobody applies is a lie in a document
-// (that was D-11, the `resolver` that was documented, typed, and never read).
+// They live here, not in the block itself: a consumer declaring one key must not lose the
+// others, and a default nobody applies is a lie in a document.
 const TENANTS_DEFAULTS = {
   resolver: 'header',
   headerKey: 'x-tenant-id',
   subdomainLevel: 1,
-  // `maxOpen` is deliberately absent (T-10.9). It has an environment variable,
+  // `maxOpen` is deliberately absent. It has an environment variable,
   // `TENANT_CONTAINERS_MAX_OPEN`, and the adapter reads `configured ?? environment ?? default`.
-  // Filling it here made "configured" true for everyone, so the `??` never reached the
-  // environment: the variable T-9.4 wired back in was unread again on every normal boot. Its
-  // default (20) lives once, next to the environment read, in
+  // Filling it here would make "configured" true for everyone, so the `??` would never reach
+  // the environment. Its default (20) lives once, next to the environment read, in
   // `lib/database/adapters/postgres/index.ts`.
   containers: {
     idleTimeoutMs: 300000,
@@ -40,11 +38,8 @@ export function normalizeOptions<T extends object>(options: T): T {
 
 export async function load() {
   // The framework's defaults are ONE file, `lib/config/general.ts`, found by the first pattern
-  // below and merged before the project's own. Until T-10.8 a second, shorter list lived here
-  // as the merge base, and the two had already drifted apart: this one had no `mfa_policy`, no
-  // TTLs, no `export_directory`, no `control` beyond the engine. A default written twice is a
-  // default that will disagree with itself, so the base is now empty and the framework file is
-  // required to be found.
+  // below and merged before the project's own. A default written twice is a default that will
+  // disagree with itself, so the base is empty and the framework file is required to be found.
   let options: Record<string, unknown> = {}
   let frameworkDefaults = false
 
@@ -62,10 +57,10 @@ export async function load() {
       const config: GeneralConfig = module.default || module
 
       if (config.name === 'general') {
-        // Deep merge, not a spread: a spread is one level deep, so declaring a single key
-        // inside a nested block erased its siblings — writing `tenants: { strategy }` would
-        // drop `resolver` and `headerKey` and leave the framework running on undefined
-        // values it documents as defaults. That was defect D-21. See lib/util/merge.ts.
+        // Deep merge, not a spread: a spread is one level deep, so a single key declared
+        // inside a nested block would erase its siblings; `tenants: { strategy }` would drop
+        // `resolver` and `headerKey` and leave the framework running on undefined values it
+        // documents as defaults. See lib/util/merge.ts.
         options = deepMerge(options, config.options)
         if (pattern === frameworkPattern) frameworkDefaults = true
       }

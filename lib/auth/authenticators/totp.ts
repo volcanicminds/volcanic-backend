@@ -3,7 +3,7 @@ import { absoluteStep, isReplay } from '../../util/mfaCounter.js'
 import { mfaAvailable } from '../../util/mfaPolicy.js'
 
 //
-// `totp` as a verifier (T-12.20), and the in-flow enrolment the MFA floor demands (T-12.21).
+// `totp` as a verifier, and the in-flow enrolment the MFA floor demands.
 //
 // The engine reserves one of the flow's attempts before `verify` runs, so a wrong code, a replayed
 // one and a burst of parallel guesses all spend the same ceiling. A replay answers exactly like a

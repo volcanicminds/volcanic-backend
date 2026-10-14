@@ -2,7 +2,7 @@ import { eq, sql, type Column, type Table } from 'drizzle-orm'
 import type { UntypedDb } from './managers/runtime.js'
 
 //
-// Prepared statements on the paths every request walks (F62, T-14.4).
+// Prepared statements on the paths every request walks.
 //
 // Drizzle builds the SQL of a query each time it runs it; a prepared query keeps the text and
 // takes only the parameters. Kept per DATABASE and per TABLE OBJECT: under the `schema` strategy
@@ -11,7 +11,7 @@ import type { UntypedDb } from './managers/runtime.js'
 // statements with it (both maps are weak).
 //
 // UNNAMED, always: a named statement lives on the server connection, and the connection must go
-// back to the pool as it came out (T-3.1). The empty name keeps the parse on the server and
+// back to the pool as it came out. The empty name keeps the parse on the server and
 // saves the builder in Node, which is where the measured cost was (docs/TUNING.md).
 //
 // Only where `scripts/bench-paths.ts` measured the gain: preparing every query would add

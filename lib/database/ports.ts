@@ -14,7 +14,7 @@ import type { TenantHandle, Tenant, GeneralConfig, DataProvider, DataRequestScop
 export type RequestScope = DataRequestScope
 
 export interface ConnectionProvider extends DataProvider {
-  /** Opens or reuses the container of a registry row, honouring the LRU limit of T-7.1. */
+  /** Opens or reuses the container of a registry row, honouring the LRU limit on live containers. */
   tenant(tenant: Tenant, scope?: RequestScope): Promise<TenantHandle>
 }
 
@@ -35,7 +35,7 @@ export interface MigrationRunner {
   /** What the container has applied. Reads the container, never a central table. */
   version(container: ContainerRef): Promise<string | null>
   /**
-   * What the CODE expects this container to be at: the newest migration of its set (T-5.4).
+   * What the CODE expects this container to be at: the newest migration of its set.
    *
    * Reads the folders and nothing else, so it answers without touching a database. That is
    * what makes it usable at boot, before anything is serving, and on every tenant resolution
@@ -61,7 +61,7 @@ export interface ContainerReport {
 export interface ContainerLifecycle {
   create(tenant: Tenant): Promise<void>
   export(tenant: Tenant, destination: string): Promise<ExportResult>
-  /** Irreversible, and only ever reached after a successful export (T-6.3). */
+  /** Irreversible, and only ever reached after a successful export. */
   destroy(tenant: Tenant): Promise<void>
   inspect(tenant: Tenant): Promise<ContainerReport>
 }
