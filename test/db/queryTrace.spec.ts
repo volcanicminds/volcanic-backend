@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// Query spans (F68): the data layer emits one CLIENT span per statement, at the driver, under
+// Query spans: the data layer emits one CLIENT span per statement, at the driver, under
 // the span that was active when the statement was issued. Checked on PGlite, which runs
 // everywhere, on a pool double for the one path PGlite does not have (a client handed out from
 // the pool's waiting queue), and on Postgres with DATABASE_URL.

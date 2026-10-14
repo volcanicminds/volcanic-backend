@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-8.2 / defect D-29: `req.data()` used to return the query string OR the body.
+// `req.data()` merges the query string and the body.
 //
-// The cliff was invisible from the outside: one unrelated query parameter — a `utm_source`
-// added by a mail client, a cache-buster — and the whole body disappeared, so a login with
-// the credentials in the body answered «Email not valid». These tests pin the merge and the
-// precedence, because "it works on my request" is exactly what v4 also did.
+// Returning one OR the other is a cliff invisible from the outside: one unrelated query parameter,
+// a `utm_source` added by a mail client or a cache-buster, and the whole body disappears, so a
+// login with the credentials in the body answers «Email not valid». These tests pin the merge and
+// the precedence.
 //
 import { expect } from 'expect'
 import { getData, getQueryData, getBodyData, getParams } from '../../lib/util/common.js'

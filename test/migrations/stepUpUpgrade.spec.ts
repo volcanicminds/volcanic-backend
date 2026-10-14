@@ -1,5 +1,5 @@
 //
-// T-13.5: the migration of F51 and F53 on a container stopped at 0003, on both sets. A flow row
+// The step-up migration on a container stopped at 0003, on both sets. A flow row
 // in flight across the deploy must come through as a login, and a live session as one that no
 // step-up has proven yet: its token carries no `auth_time`, so a `freshAuth` route asks for one.
 //
@@ -27,7 +27,7 @@ function behaviours(name: string, open: (upTo?: UpTo) => Promise<Migrated>) {
     it('keeps the flows in flight as logins and the sessions as never proven, on both sets', async () => {
       const db = await open({ control: '0003_account_creation_control', tenant: '0003_account_creation_tenant' })
       try {
-        // A flow and a session as phase 12 wrote them, in the schema of 0003.
+        // A flow and a session as written in the schema of 0003.
         await execute(
           db,
           sql`insert into auth_flow (id, flow_id, secret_hash, expires_at) values ('f-1', 'flow-1', 'h', now() + interval '1 hour')`

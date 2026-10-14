@@ -136,14 +136,12 @@ export async function setup(extra: Record<string, unknown> = {}, options: { stra
   ;(global as any).config = cfg
   ;(global as any).roles = await loaderRoles.load()
   // The control catalogue, exactly as index.ts loads it: a control route resolves its roles
-  // against this map and never against the tenant one (T-4.1).
+  // against this map and never against the tenant one.
   ;(global as any).systemRoles = await loaderRoles.loadSystem()
   ;(global as any).t = loaderTranslation.load()
 
   // The data layer is loaded through a variable specifier so this file keeps
-  // type-checking while `db.ts` does not exist yet (T-1.3 creates it). Until then the
-  // suite fails here, which is the point: it must be red before the rewrite and green
-  // after it, with no edit in between.
+  // type-checking without `db.ts`.
   const dataLayerPath = '../../db.js'
   let dataLayer: any
   try {
@@ -159,9 +157,9 @@ export async function setup(extra: Record<string, unknown> = {}, options: { stra
   shutdownDataLayer = managers.shutdown
 
   // What a deployment does before the first request: bring the control plane to the current
-  // schema version (T-5.2, `npm run db:migrate`). Not a workaround for a defect, which this
-  // harness never contains: a database nobody migrated has no tables, and a framework that
-  // created them on boot from its entity metadata is exactly what v5 removed.
+  // schema version (`npm run db:migrate`). Not a workaround for a defect, which this harness
+  // never contains: a database nobody migrated has no tables, and the framework does not create
+  // them on boot from its entity metadata.
   await managers.migrations.apply({ locator: 'public' })
 
   server = await startServer({ ...managers, ...extra })

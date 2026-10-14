@@ -28,9 +28,9 @@ describe('util/authz', () => {
     expect(includesRole(undefined, 'admin')).toBe(false)
   })
 
-  // T-4.3: the founder is a property of the row, in its own container. v4 asked the process
-  // environment, so in multi-tenant the same address was sovereign inside EVERY tenant and
-  // one customer's admin inherited another's protections (defect D-27).
+  // The founder is a property of the row, in its own container. Asking the process environment
+  // would make the same address sovereign inside EVERY tenant in multi-tenant, and one
+  // customer's admin would inherit another's protections.
   describe('isFounder', () => {
     const saved = process.env.ADMIN_EMAIL
     afterEach(() => {
@@ -46,8 +46,7 @@ describe('util/authz', () => {
 
     it('does not consult the environment, whatever it says', () => {
       process.env.ADMIN_EMAIL = 'founder@x.com'
-      // The address matches the variable and the row does not carry the flag: in v4 this
-      // returned true, and in every tenant at once.
+      // The address matches the variable and the row does not carry the flag.
       expect(isFounder({ email: 'founder@x.com' })).toBe(false)
       // And the flag is enough without the variable.
       delete process.env.ADMIN_EMAIL

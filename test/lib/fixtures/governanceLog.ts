@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// A governance log in memory (F76), for the suites that mount governance routes on fakes. `within`
+// A governance log in memory, for the suites that mount governance routes on fakes. `within`
 // is the real contract in miniature: the rows recorded inside a change that throws are dropped,
 // as a rollback drops them.
 //

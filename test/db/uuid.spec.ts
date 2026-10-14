@@ -1,7 +1,6 @@
 //
-// T-2.1: identifiers are minted in process. v4 looked for a free one with a `do/while`
-// around a query, for users and for tokens (D-28) — a round trip per insert to avoid a
-// collision that does not happen.
+// Identifiers are minted in process: looking for a free one with a query would cost a round
+// trip per insert to avoid a collision that does not happen.
 //
 import { expect } from 'expect'
 import { uuidv7, uuidv7Time } from '../../lib/database/uuid.js'

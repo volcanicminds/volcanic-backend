@@ -1,5 +1,5 @@
 //
-// T-12.46: the migration of F49 on a container stopped at 0002, on both sets. The users already
+// The account creation migration on a container stopped at 0002, on both sets. The users already
 // there must come through approved, or the upgrade would shut out every existing account at its
 // next login; the settings table arrives empty.
 //
@@ -30,7 +30,7 @@ function behaviours(name: string, open: (upTo?: UpTo) => Promise<Migrated>) {
       try {
         expect(await tableNames(db.tenant, db.schemas.tenant)).not.toContain('setting')
 
-        // A user as phase 12 wrote it before F49, in the schema of 0002.
+        // A user as written in the schema of 0002.
         await execute(
           db,
           sql`insert into "user" (id, external_id, email, password, confirmed) values ('u-1', 'x-1', 'anna@acme.test', 'h', true)`

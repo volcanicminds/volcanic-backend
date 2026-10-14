@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.29 and T-12.30: an OIDC login through the flow engine, on the real flow store of a migrated
+// An OIDC login through the flow engine, on the real flow store of a migrated
 // container and against a provider that answers in process (test/lib/fixtures/fakeIdp.ts). The
 // store is real because the properties in doubt are its own: the `state` found by its hash in the
 // right container, spent with the first return, the verifier and the nonce kept encrypted, the

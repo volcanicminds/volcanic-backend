@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-5.4: the instance does not serve traffic on a schema its code does not match.
+// The instance does not serve traffic on a schema its code does not match.
 //
 // The failure this removes is the quiet one. A process that boots against an older schema
 // does not crash: it answers requests, writes rows into columns that mean something else, and

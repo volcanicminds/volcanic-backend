@@ -1,5 +1,5 @@
 //
-// T-15.2, the governance log of F76 on a real migrated control plane: the closed vocabulary, the
+// The governance log on a real migrated control plane: the closed vocabulary, the
 // truncated address, the reading by tenant and action, and the property every governance route
 // rests on: an event that cannot be written takes its registry change down with it. PGlite always,
 // Postgres with DATABASE_URL.

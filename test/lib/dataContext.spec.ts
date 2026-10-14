@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-3.1: what a request gets from the data layer, and where it gives it back.
+// What a request gets from the data layer, and where it gives it back.
 //
 // The property under test is not "the hooks run" but "the release happens exactly once,
-// whoever gets there first". v4 had two owners of one release and they ran in the wrong
-// order, which is the whole of D-01; a single owner is only worth claiming if a test says
-// a second caller changes nothing.
+// whoever gets there first". A single owner is only worth claiming if a test says a second
+// caller changes nothing.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
@@ -151,7 +150,7 @@ describe('loader/tenant · the request data context (T-3.1)', () => {
     server.get('/x', { config: { tenantContext: true } }, async () => ({ ok: true }))
 
     // Tenancy declared and no way to honour it: the request is refused, never served on
-    // the control plane by omission (invariant 3).
+    // the control plane by omission.
     const res = await server.inject({ method: 'GET', url: '/x' })
     expect(res.statusCode).toBe(503)
     expect(JSON.parse(res.body).code).toBe('TENANCY_NOT_AVAILABLE')
@@ -173,9 +172,9 @@ describe('loader/tenant · the request data context (T-3.1)', () => {
 })
 
 //
-// T-3.3: invariant 3, as a function. The control plane is what a route ASKS for, never what
-// it gets because its tenant went missing. `dataContext` is pure, so the rule is stated
-// here without a server: the shape of the request is the whole input.
+// The rule as a function: the control plane is what a route ASKS for, never what it gets
+// because its tenant went missing. `dataContext` is pure, so the rule is stated here without a
+// server: the shape of the request is the whole input.
 //
 describe('util/tenancy · which handle a call gets (T-3.3)', () => {
   const CONTROL: any = { kind: 'control' }
@@ -196,8 +195,8 @@ describe('util/tenancy · which handle a call gets (T-3.3)', () => {
 
   it('refuses to substitute the control plane when the container is missing', () => {
     withTenancy(true)
-    // v4 wrote this case as `req.db ?? global.connection.manager`, and that is D-06: a
-    // request that lost its context read whatever the pool handed over.
+    // A fallback such as `req.db ?? global.connection.manager` would let a request that lost
+    // its context read whatever the pool handed over.
     expect(() => dataContext(req({ control: CONTROL }))).toThrow(NoDataContextError)
     try {
       dataContext(req({ control: CONTROL }))
@@ -224,11 +223,10 @@ describe('util/tenancy · which handle a call gets (T-3.3)', () => {
   })
 
   //
-  // T-10.1: the rule above is only worth having if the applications on top of the framework
-  // can obey it. Until this export existed they could not, because `dataContext` was
-  // internal: a consuming project wrote the choice again by hand, and the shortest
-  // hand-written form is `req.tenant ?? req.control`, which is the one case the function
-  // refuses. The assertion is on the PUBLIC entry on purpose, because what a consumer
+  // The rule above is only worth having if the applications on top of the framework can obey
+  // it, so `dataContext` is exported: a consuming project that writes the choice again by hand
+  // reaches for the shortest form, `req.tenant ?? req.control`, which is the one case the
+  // function refuses. The assertion is on the PUBLIC entry on purpose, because what a consumer
   // imports is what has to hold.
   //
   it('is exported from the package entry, and the export obeys invariant 3', async () => {

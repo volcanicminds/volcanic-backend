@@ -1,6 +1,5 @@
 //
-// T-2.6. The cryptography is unchanged from v4 and the tests say so: what changed is that the
-// derivation no longer blocks the event loop (D-14, measured at 82 ms per call).
+// The cryptography, and a key derivation that does not block the event loop.
 //
 import * as crypto from 'crypto'
 import { expect } from 'expect'
@@ -52,7 +51,7 @@ describe('database/crypto', function () {
 
   it('does not block the event loop while deriving', async () => {
     // The property, not the timing: a timer scheduled before the derivation must fire while
-    // it is still running. With scryptSync it could not, which is the whole of D-14.
+    // it is still running. With scryptSync it could not.
     let timerFired = false
     const timer = setTimeout(() => (timerFired = true), 5)
 

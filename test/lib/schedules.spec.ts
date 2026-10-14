@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-3.4: a job declares where it runs, and receives the handle.
+// A job declares where it runs, and receives the handle.
 //
-// Defect D-07 was not "the job used the wrong connection", it was that the job had no way
-// to ask for the right one: it was called with no arguments and everything it read went
-// through a global. So these tests assert on WHAT EACH INVOCATION RECEIVED, which is the
-// only observable that distinguishes the fix from a comment.
+// A job called with no arguments, reading everything through a global, has no way to ask for
+// the right connection. So these tests assert on WHAT EACH INVOCATION RECEIVED, which is the
+// only observable that distinguishes the rule from a comment.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
@@ -82,7 +81,7 @@ describe('loader/schedules · where a job runs (T-3.4)', () => {
     expect(seen[0].ctx.tenantId).toBe('id-acme')
     expect(seen[0].tenant).toBe('acme')
     // The lease is released whether the job succeeded or not: a job is not a request, but
-    // it borrows a container the same way (T-3.1).
+    // it borrows a container the same way.
     expect(server.provider.released.length).toBe(1)
   })
 
@@ -151,7 +150,7 @@ describe('loader/schedules · where a job runs (T-3.4)', () => {
   })
 
   it('refuses a tenant suspended after the fan-out read the fleet (T-14.4)', async () => {
-    // The provider no longer reads the registry: the fan-out reads each row again right
+    // The provider does not read the registry: the fan-out reads each row again right
     // before its job, so a list that is minutes old cannot run a job in a suspended tenant.
     const server = fakeServer()
     server.tenantManager.getTenant = async (_ctx: any, id: string) => {

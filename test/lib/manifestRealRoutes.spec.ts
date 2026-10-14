@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-10.20 and T-10.21, verified on the real route files instead of fixtures.
+// The manifest hints, verified on the real route files instead of fixtures.
 //
 // `manifest.spec.ts` proves the grammar on shapes written by hand, which is where the rules
 // belong. What it cannot prove is that the framework's own routes.ts USE that grammar: the hint
@@ -135,7 +135,7 @@ describe('manifest · the framework own routes, through the loader', () => {
     it('asks phase 2 for the token, the slug and the second factor, all three required', () => {
       // Two calls tied together: the token is shown once, and the second call wants it back
       // along with the slug typed by hand. Without an input the console has a button and no
-      // dialog, which is T-10.21 in one sentence.
+      // dialog.
       expect(action('data').method).toBe('DELETE')
       expect(action('data').input.fields).toEqual([
         { name: 'token', type: 'string', required: true },

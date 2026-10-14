@@ -1,18 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-10.37, T-10.38, T-10.39: the session in a cookie, by default, and what that changes.
+// The session in a cookie, by default, and what that changes.
 //
-// The default mode is now `COOKIE`, and it is not the v4 cookie mode with a different default.
-// v4 read one channel per configuration, so turning the cookie on switched the header off and
-// every integration token with it; it wrote a cookie that outlived nothing and died before its
-// token; it had no renewal at all; and it wrote the platform session and the tenant one into
-// the same cookie. Each of those is a test below, and each goes through `server.inject` with
-// the real hook and the real handlers, because the property in doubt is what a request
-// carrying a cookie actually gets back, not what a helper returns when called.
+// The default mode is `COOKIE`. Each test below guards against one way a cookie mode fails: one
+// channel per configuration, so turning the cookie on switches the header off and every
+// integration token with it; a cookie that dies before its token; no renewal at all; the platform
+// session and the tenant one written into the same cookie. Each goes through `server.inject` with
+// the real hook and the real handlers, because the property in doubt is what a request carrying a
+// cookie actually gets back, not what a helper returns when called.
 //
-// T-11.6 to T-11.10 changed what a refresh token IS, and these tests changed with it. The refresh
-// credential is no longer a second JWT signed with the same secret as the access one: it is an
-// opaque secret that means nothing without the session row, it rotates at every renewal, and
+// The refresh credential is not a second JWT signed with the same secret as the access one: it is
+// an opaque secret that means nothing without the session row, it rotates at every renewal, and
 // presenting a spent one closes the session instead of renewing it.
 //
 import { expect } from 'expect'
@@ -56,8 +54,8 @@ async function build() {
   const server: any = fastify()
   await server.register(cookie, { secret: COOKIE_SECRET })
   await server.register(jwtValidator, { secret: SECRET, sign: { expiresIn: `${ACCESS_TTL}s` } })
-  // No refresh namespace any more: since T-11.6 the refresh credential is an opaque secret whose
-  // only meaning is a row in the registry, so the store below is what makes renewal exist at all.
+  // No refresh namespace: the refresh credential is an opaque secret whose only meaning is a row
+  // in the registry, so the store below is what makes renewal exist at all.
   const sessions = fakeSessionStore()
   server.decorate('sessionManager', sessions.manager)
   server.decorate('sessionRows', sessions.rows)
@@ -188,7 +186,7 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
     })
 
     it('refuses a value that is not a mode, instead of reading it as the other one', () => {
-      // v4 read anything that was not exactly `COOKIE` as `BEARER`, so `cookie` meant bearer.
+      // Case does not matter, and a value that is not a mode is never read as `BEARER`.
       process.env.AUTH_MODE = 'cookie'
       expect(authMode()).toBe('COOKIE')
       process.env.AUTH_MODE = 'COOKIES'
@@ -396,14 +394,13 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
 
       const access = cookieOf(res, 'auth_token')
       const claims = server.jwt.decode(unsigned(server, access.value))
-      // One setting: the lifetime the token was signed with IS the cookie's lifetime. v4 wrote
-      // 86400 by hand next to a fifteen-day token.
+      // One setting: the lifetime the token was signed with IS the cookie's lifetime.
       expect(claims.exp - claims.iat).toBe(ACCESS_TTL)
       expect(Math.abs(access.maxAge - ACCESS_TTL)).toBeLessThanOrEqual(1)
 
-      // The refresh credential is opaque and carries no `exp` to read back (T-11.6). Its deadline
-      // is the earlier of the two clocks on the row, which with the defaults is the idle one, so
-      // the guarantee of T-10.38 holds from the other side.
+      // The refresh credential is opaque and carries no `exp` to read back. Its deadline is the
+      // earlier of the two clocks on the row, which with the defaults is the idle one, so the
+      // guarantee above holds from the other side.
       const refresh = cookieOf(res, 'refresh_token')
       expect(Math.abs(refresh.maxAge - IDLE_TTL)).toBeLessThanOrEqual(2)
       expect(parseRefreshCredential(unsigned(server, refresh.value))).toBeTruthy()
@@ -480,7 +477,7 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
       expect(out.statusCode).toBe(200)
       expect(cookieOf(out, 'refresh_token')).toMatchObject({ value: '', path: '/auth/refresh-token' })
 
-      // v4 cleared the cookies and called it a logout: this request is the one that used to work.
+      // Clearing the cookies is not a logout: the refresh credential they carried must stop working.
       const res = await server.inject({ method: 'POST', url: '/auth/refresh-token', cookies: { refresh_token: refresh } })
       expect(res.statusCode).toBe(401)
       expect(codeOf(res)).toBe('REFRESH_REQUIRED')
@@ -554,8 +551,7 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
       expect(renewed.statusCode).toBe(200)
       const body = JSON.parse(renewed.body)
       expect(typeof body.token).toBe('string')
-      // v4 renewed the access token and left the refresh one untouched for its whole lifetime,
-      // which is the property that made a stolen refresh token worth months.
+      // A refresh token left untouched for its whole lifetime would make a stolen one worth months.
       expect(body.refreshToken).not.toBe(refresh)
       await server.close()
     })

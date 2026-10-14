@@ -1,16 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-3.1: the tenant context leaves nothing on the connection.
+// The tenant context leaves nothing on the connection.
 //
-// The verification the plan asks for, in the form it asks for it: a POOL DOUBLE that
-// records every statement the data layer emits, so the claim under test is not "the code
-// looks right" but "these are the statements, and none of them writes session state".
+// The verification is a POOL DOUBLE that records every statement the data layer emits, so the
+// claim under test is not "the code looks right" but "these are the statements, and none of them
+// writes session state".
 // No database is involved, which is why this suite runs everywhere. The real-Postgres
-// half of the proof lives in postgres.spec.ts and in the bench of T-0.2. The PGlite block
-// opens a database, inside the process, so it runs everywhere too (T-14.1).
+// half of the proof lives in postgres.spec.ts and in the isolation bench. The PGlite block
+// opens a database, inside the process, so it runs everywhere too.
 //
-// What made D-01 possible was not a missing reset: it was that a reset was needed at all.
-// These tests state the property that removes the need.
+// The risk is not a missing reset: it is that a reset is needed at all. These tests state the
+// property that removes the need.
 //
 import { expect } from 'expect'
 import { sql } from 'drizzle-orm'
@@ -100,7 +100,7 @@ describe('database · session state (T-3.1)', () => {
       await (provider.control() as any).db.select().from((provider.control() as any).registry.tenant)
 
       expect(pool.statements.length).toBe(3)
-      // The container is in the SQL, not in the session: this is the whole of T-3.1.
+      // The container is in the SQL, not in the session.
       expect(pool.statements[0]).toContain('"tenant_acme"."user"')
       expect(pool.statements[1]).toContain('"tenant_globex"."user"')
       for (const statement of pool.statements) {
@@ -115,9 +115,9 @@ describe('database · session state (T-3.1)', () => {
 
       const err = await refused(() => acme.execute(sql.raw('set search_path to tenant_globex')))
       expect(err.code).toBe('DB_SESSION_STATE_FORBIDDEN')
-      // Raw SQL on a tenant handle now runs inside a transaction that enters the container
-      // (T-6.1), so `begin` and the container's own SET LOCAL do reach the wire. What never
-      // does is the statement that would have pointed the session at somebody else.
+      // Raw SQL on a tenant handle runs inside a transaction that enters the container, so
+      // `begin` and the container's own SET LOCAL do reach the wire. What never does is the
+      // statement that would point the session at somebody else.
       expect(pool.statements.some((s) => /set local search_path to "tenant_acme"/i.test(s))).toBe(true)
       expect(pool.statements.some((s) => /tenant_globex/i.test(s))).toBe(false)
     })

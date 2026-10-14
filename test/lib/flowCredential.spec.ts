@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.13: the flow credential and the return `state`.
+// The flow credential and the return `state`.
 //
 // Both are strings a stranger chooses, so the property under test is that a malformed one is a
 // refusal the caller writes and never an exception that becomes a 500. The size of `state` is the
-// other one: it is dimensioned on the 80 bytes SAML allows `RelayState`, so the method deferred to
-// a later phase can use the same format without a second rule.
+// other one: it is dimensioned on the 80 bytes SAML allows `RelayState`, so a SAML method can use
+// the same format without a second rule.
 //
 import { expect } from 'expect'
 import crypto from 'crypto'

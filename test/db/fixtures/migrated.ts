@@ -1,7 +1,7 @@
 //
 // A control plane and a tenant container with the framework's real migrations applied, on PGlite
 // (always, inside the process) or on Postgres (throwaway schemas, only with DATABASE_URL). The
-// managers of phase 12 depend on indexes a hand-written CREATE TABLE would not have, the partial
+// managers depend on indexes a hand-written CREATE TABLE would not have, the partial
 // unique index on the subject's slot first of all, so their tests run on these.
 //
 // On PGlite every fixture is an instance of its own, cloned from one migrated once per process:

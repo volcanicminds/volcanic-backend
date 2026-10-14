@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-5.3: the fleet migrator, against a real fleet.
+// The fleet migrator, against a real fleet.
 //
-// The plan calls this the highest-risk code in the rewrite, and asks for a fleet of at least
-// twenty containers with a forced interruption among the cases. Both are here. What is
+// A fleet of at least twenty containers, with a forced interruption among the cases. What is
 // asserted is not "the loop runs" but the five things an operator finds out about a fleet
 // migrator only when it goes wrong: it refuses to start without a way back, it says WHICH
 // containers failed, it does not stop the run because one of them did, it resumes instead of

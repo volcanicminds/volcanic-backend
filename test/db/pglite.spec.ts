@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-14.1: PGlite through the Postgres provider (F60). The matrix said `pglite + none` before
-// any code held it; these tests hold it. No DATABASE_URL anywhere: the point of PGlite is a
-// Postgres that needs no server.
+// PGlite through the Postgres provider. The matrix accepts `pglite + none`, and these tests hold
+// it. No DATABASE_URL anywhere: the point of PGlite is a Postgres that needs no server.
 //
 // Each `openPglite()` costs a boot of about a second, so the instances are few and shared.
 // The session guard on PGlite is proved in session-state.spec.ts, with the rest of the rule.

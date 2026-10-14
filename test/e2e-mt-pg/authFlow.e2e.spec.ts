@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.39: the login flow across containers, on real Postgres.
+// The login flow across containers, on real Postgres.
 //
-// Phase 12 put three new kinds of row inside the tenant's container: the flow of a login in
+// Three kinds of row live inside the tenant's container: the flow of a login in
 // progress, the link between an account and an identity at a provider, and the access log. The
 // return from a provider arrives with no token and, with the header resolver, no header, so the
 // only thing that names its container is the flow `state`. If any of that addressing were wrong the

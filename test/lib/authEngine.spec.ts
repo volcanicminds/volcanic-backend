@@ -1,5 +1,5 @@
 //
-// T-12.14: the flow engine, pure with respect to HTTP, on authenticators written for the test.
+// The flow engine, pure with respect to HTTP, on authenticators written for the test.
 //
 // Each case is a property of the state machine rather than of a method: the AND of stages, the OR
 // inside one, an optional stage, the choice of a flow by role, an identifier a role does not
@@ -246,7 +246,7 @@ describe('auth · the flow engine (T-12.14)', () => {
     // A subject that already has a factor is asked for it, even by a flow with no stage.
     const eve = await login(p, 'eve@x.test')
     expect(partial(eve).stage.options).toEqual([{ id: 'totp', kind: 'verifier' }])
-    // ...and cannot enrol another one inside the flow: the rule of the 409 of T-12.1.
+    // ...and cannot enrol another one inside the flow.
     expect(refusalOf(await engine.step(p, credentialOf(eve), 'totp', {}, 'enrol'))).toBe('FLOW_ENROLMENT_REFUSED')
   })
 

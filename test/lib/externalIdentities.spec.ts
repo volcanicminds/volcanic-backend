@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.27: the routes of external identities. A user sees and removes its own links and nobody
+// The routes of external identities. A user sees and removes its own links and nobody
 // else's; an administrator lists, creates and removes them for a user; every change is an event in
 // the access log.
 //

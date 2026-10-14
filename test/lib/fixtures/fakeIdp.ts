@@ -1,10 +1,10 @@
 import { createHash, generateKeyPairSync, randomBytes, sign } from 'crypto'
 
 //
-// An OpenID provider without a network (T-12.40, anticipated by T-12.29): discovery, JWKS and the
-// token endpoint answered in process through the `fetch` the OIDC authenticator can be given. It
-// signs real RS256 ID tokens with a key of its own, checks PKCE on the code exchange, and spends a
-// code once, so what `openid-client` validates here is what it validates against a real provider.
+// An OpenID provider without a network: discovery, JWKS and the token endpoint answered in
+// process through the `fetch` the OIDC authenticator can be given. It signs real RS256 ID tokens
+// with a key of its own, checks PKCE on the code exchange, and spends a code once, so what
+// `openid-client` validates here is what it validates against a real provider.
 //
 // A test plays the browser: it reads the authorization address the flow answered, "logs in" with
 // `authorize`, and brings the code and the state back to the return route.

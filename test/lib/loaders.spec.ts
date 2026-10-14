@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: the five loaders that decide what a consuming project can override, and how.
+// The five loaders that decide what a consuming project can override, and how.
 //
-// None of them had a test, and each one implements a different override rule — which is
-// exactly the kind of thing that is impossible to remember and cheap to get wrong:
+// Each one implements a different override rule, which is exactly the kind of thing that is
+// impossible to remember and cheap to get wrong:
 //
 //   schemas     deep merge on a matching `$id`, framework properties kept
 //   hooks       ADDED to the framework's, never instead of them

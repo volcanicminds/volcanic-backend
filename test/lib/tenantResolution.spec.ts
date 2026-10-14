@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-3.2: the tenant is bound to the token, not to a header.
+// The tenant is bound to the token, not to a header.
 //
-// The defect this replaces (D-03) was not a missing check, it was a check that could never
-// run: the tenant hook chose the container before the authentication hook existed, and the
-// comparison it made was against a field the user entity did not have. So the tests below
+// A check can exist and never run: a tenant hook that chooses the container before
+// authentication, comparing against a field the user entity does not have. So the tests below
 // do not ask "is there a check", they ask what the framework ANSWERS when the two sources
 // disagree, which is the only form of the question an attacker can pose.
 //
@@ -52,7 +51,7 @@ async function serverWith(tenants: any) {
   server.decorate('provider', provider)
   server.decorate('tenantManager', fakeRegistry())
   // What the router builds from the authenticators: the return route reads its `state` under the
-  // parameter name the method declares (T-12.17), `state` for a method that declares none.
+  // parameter name the method declares, `state` for a method that declares none.
   server.decorate('authRegistry', {
     get: (_plane: string, id: string) =>
       id === 'fake-saml' ? { id, stateParam: 'RelayState' } : id === 'oidc' ? { id } : undefined
@@ -225,8 +224,8 @@ describe('loader/tenant · resolving which tenant (T-3.2)', () => {
         url: '/data',
         headers: { host: 'acme.example.com', [HEADER]: 'globex' }
       })
-      // Not "the header loses": the header is not consulted. Two concurrent sources for one
-      // decision is the shape D-03 had.
+      // Not "the header loses": the header is not consulted, because one decision has one
+      // source.
       expect(res.statusCode).toBe(200)
       expect(body(res).tenant).toBe('acme')
       await server.close()

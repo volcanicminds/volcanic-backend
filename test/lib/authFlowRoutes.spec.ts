@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.15, T-12.16, T-12.19 to T-12.21: the `/auth/flow/*` routes of both planes, over HTTP.
+// The `/auth/flow/*` routes of both planes, over HTTP.
 //
 // The routes are mounted from the framework's own route files, with their real schemas, their real
 // handlers and the real authentication hook, because two of the properties in doubt live exactly
@@ -176,7 +176,7 @@ describe('auth · the flow routes of both planes (T-12.15, T-12.16, T-12.19 to T
       const { server, flows } = await build()
       const res = await server.inject({ method: 'GET', url: '/auth/flow/options' })
       expect(res.statusCode).toBe(200)
-      // `invite`: the deployment's default when nobody chose (F49).
+      // `invite`: the deployment's default when nobody chose.
       expect(json(res)).toEqual({ options: [{ id: 'password', kind: 'identifier' }], accountCreation: 'invite' })
       expect(flows.rows.size).toBe(0)
       await server.close()

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.22 to T-12.24: `email-otp` through the flow engine, on the real flow store of a migrated
+// `email-otp` through the flow engine, on the real flow store of a migrated
 // container. The store is not faked here because the properties in doubt are its own: the ceiling
 // per subject that a restarted flow must not reset, the conditional consumption of a code, and an
 // unproven flow that must not evict a proven one. PGlite always, Postgres with DATABASE_URL.

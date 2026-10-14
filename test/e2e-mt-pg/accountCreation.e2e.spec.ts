@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// F49 over HTTP, on real Postgres and two real tenants: the platform decides the set of account
-// creation modes, for every tenant or for one; each tenant's administrator picks inside its own
-// set; the registration obeys what applies; a waiting account logs in only once approved.
+// Account creation over HTTP, on real Postgres and two real tenants: the platform decides the set
+// of account creation modes, for every tenant or for one; each tenant's administrator picks inside
+// its own set; the registration obeys what applies; a waiting account logs in only once approved.
 //
 import { expect } from 'expect'
 import { setup, teardown, inject, systemToken, createTenant, login, bearer, sql, ACME, GLOBEX, HEADER } from './harness.js'

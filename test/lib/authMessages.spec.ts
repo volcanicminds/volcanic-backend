@@ -1,14 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-8.1 / defect D-17: login and register stop answering the question "does this address have
-// an account here?".
+// Login and register do not answer the question "does this address have an account here?".
 //
-// v4 answered it four different ways at login — «Wrong credentials», «Invalid user», «User
-// email unconfirmed», «User blocked» — and once more at registration, with «Email already
-// registered». Those five messages are a directory: fed a list of addresses they say which
-// ones exist, and for the ones that do, whether the account is merely unconfirmed or has been
-// shut off. The tests below assert that the four login refusals are ONE response, and that a
-// registration on a taken address is indistinguishable from one on a free address.
+// Distinct messages for a wrong password, an unknown user, an unconfirmed address and a blocked
+// account at login, and for a taken address at registration, would be a directory: fed a list of
+// addresses they say which ones exist, and for the ones that do, whether the account is merely
+// unconfirmed or has been shut off. The tests below assert that the four login refusals are ONE
+// response, and that a registration on a taken address is indistinguishable from one on a free
+// address.
 //
 import { expect } from 'expect'
 import {
@@ -76,7 +75,7 @@ async function attemptLogin(manager: any) {
   return reply.sent
 }
 
-// Through the password identifier of the login flow, which is the only login left (T-12.34).
+// Through the password identifier of the login flow, which is the only login.
 describe('auth · one refusal for every login failure (D-17)', () => {
   let restore: () => void
   before(() => (restore = useFrameworkFlows()))
@@ -113,8 +112,9 @@ describe('auth · one refusal for every login failure (D-17)', () => {
   })
 
   it('gives a blocked account the uniform refusal even when its password also aged out', async () => {
-    // v4 checked the expiry first, so a blocked account whose password had aged out received
-    // PASSWORD_TO_BE_CHANGED: a distinct code handed to someone the deployment shut out.
+    // The block is checked before the expiry: otherwise a blocked account whose password had aged
+    // out would receive PASSWORD_TO_BE_CHANGED, a distinct code handed to someone the deployment
+    // shut out.
     const sent = await attemptLogin(
       loginManager({
         retrieveUserByPassword: async () => ({ ...confirmed, blocked: true }),
@@ -136,7 +136,7 @@ describe('auth · one refusal for every login failure (D-17)', () => {
 describe('auth · a taken address registers like a free one (D-17, decision A5)', () => {
   const body = { username: 'someone', email: 'Someone@Acme.test', password1: GOOD, password2: GOOD }
 
-  // Registration is closed by default since F49; these cases are about an open one.
+  // Registration is closed by default; these cases are about an open one.
   before(() => ((global as any).config.options.accountCreation = { allowed: ['open'], default: 'open' }))
   after(() => delete (global as any).config.options.accountCreation)
 

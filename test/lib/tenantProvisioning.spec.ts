@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: what provisioning and exporting a container refuse.
+// What provisioning and exporting a container refuse.
 //
-// Four refusals no test had ever fired, and one of them exists because of a defect with a
-// number: v4 SAVED the container name raw and USED it sanitised, so a registry row could
-// name a schema that does not exist (D-20). v5 refuses a name that changes under
-// sanitisation rather than quietly adjusting it — a rule whose whole value is that it fires.
+// Four refusals. One of them guards the name: a container name SAVED raw and USED sanitised
+// lets a registry row name a schema that does not exist, so a name that changes under
+// sanitisation is refused rather than quietly adjusted, a rule whose whole value is that it fires.
 //
 import fs from 'fs'
 import os from 'os'
@@ -121,8 +120,8 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
       expect(JSON.parse(res.body).code).toBe('TENANT_LOCATOR_INVALID')
     }
 
-    // Refusing and adjusting look the same from a happy path and differ exactly where D-20
-    // lived: adjusting writes one name and uses another.
+    // Refusing and adjusting look the same from a happy path and differ exactly here: adjusting
+    // writes one name and uses another.
     expect(created.length).toBe(0)
     await server.close()
   })

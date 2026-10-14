@@ -1,7 +1,7 @@
 //
-// T-12.11: the phase 12 migrations applied to an empty container and to one stopped at 0001, on
-// both sets. A container stopped at 0001 is what every deployment of phase 11 is, and its live
-// sessions must come through intact, with `auth_methods` empty.
+// The migrations applied to an empty container and to one stopped at 0001, on both sets. A
+// container stopped at 0001 has live sessions, and they must come through intact, with
+// `auth_methods` empty.
 //
 import { expect } from 'expect'
 import { sql } from 'drizzle-orm'
@@ -46,7 +46,7 @@ function behaviours(name: string, open: (upTo?: UpTo) => Promise<Migrated>) {
         expect(await tableNames(db.tenant, db.schemas.tenant)).not.toContain('auth_flow')
         expect(await tableNames(db.control, db.schemas.control)).not.toContain('identity_provider')
 
-        // A session as phase 11 wrote it, in the phase 11 schema.
+        // A session as written in the schema of 0001.
         await execute(
           db,
           sql`insert into session (id, sid, subject_id, scope, secret_hash, idle_expires_at, absolute_expires_at) values ('s-1', 'sid-1', 'user-1', 'tenant', 'h', now() + interval '1 hour', now() + interval '1 hour')`

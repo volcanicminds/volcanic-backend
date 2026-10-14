@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-16.2, a package that follows a tenant's life, over HTTP on real Postgres and under both
+// A package that follows a tenant's life, over HTTP on real Postgres and under both
 // strategies. The package keeps a table inside the container, written with text SQL through the
 // public door (`access(handle).raw`), and a folder outside it: the table goes with the container,
 // the folder is exported next to the dump and removed with the tenant, and a creation the package

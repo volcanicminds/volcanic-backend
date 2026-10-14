@@ -1,5 +1,5 @@
 //
-// T-8.1 / defect D-16: the wildcard is a decision, never a default nobody read.
+// The wildcard is a decision, never a default nobody read.
 //
 // The tests are on the pure validator rather than on a boot, because the interesting cases
 // are the ones that must STOP a boot, and a test that asserts by exiting the process asserts
@@ -15,8 +15,8 @@ import {
 } from '../../lib/util/cors.js'
 
 //
-// T-10.15: found by a browser, not by a test. A console on another origin sends the tenant
-// header with its login, the preflight did not allow it, and the login never left the page.
+// A console on another origin sends the tenant header with its login: if the preflight does not
+// allow it, the login never leaves the page.
 //
 describe('util/cors · the tenant header in the preflight (T-10.15)', () => {
   const HEADER = { strategy: 'schema', resolver: 'header', headerKey: 'x-org' }

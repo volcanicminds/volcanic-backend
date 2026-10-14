@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: the admin apex, which is the whole authorization model of `/users` and had no test.
+// The admin apex, which is the whole authorization model of `/users`.
 //
 // Four rules protect it (docs/AUTHORIZATION_MODEL.md §6), and each one exists because of a
 // specific way an instance stops being administrable:
@@ -10,9 +10,9 @@
 //   C. the instance never drops to zero admins
 //   D. the sovereign founder cannot be demoted, renamed, deleted or blocked
 //
-// They were written, reviewed and never exercised. That matters more here than almost
-// anywhere else: a broken authorization rule does not fail, it permits — the happy path is
-// identical, and the only observable difference is that something forbidden went through.
+// Exercising them matters more here than almost anywhere else: a broken authorization rule does
+// not fail, it permits; the happy path is identical, and the only observable difference is that
+// something forbidden went through.
 //
 import { expect } from 'expect'
 import { create, update, remove, block, unblock, resetMfaByAdmin, resetPasswordByAdmin } from '../../lib/api/users/controller/user.js'

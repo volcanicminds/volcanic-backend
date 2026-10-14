@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-13.5: step-up across containers, on real Postgres (F50 to F56).
+// Step-up across containers, on real Postgres.
 //
 // A step-up proves again the session row the token names, and that row lives in the subject's own
 // container. What is observed here, from outside as everywhere in this bench: the row that moves
@@ -134,7 +134,7 @@ describe('Step-up across containers on real Postgres (T-13.5)', function () {
     })
     expect(allowed.statusCode).toBe(200)
 
-    // The impersonation token it hands out is never fresh, and cannot be made so (F55).
+    // The impersonation token it hands out is never fresh, and cannot be made so.
     const imp = body(allowed).token
     const setup = await inject({ method: 'POST', url: '/auth/mfa/setup', headers: bearer(imp, GLOBEX.slug) })
     expect(body(setup).code).toBe('STEP_UP_NOT_AVAILABLE')

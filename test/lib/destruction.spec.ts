@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-6.3: destroying a customer's data, in two phases.
+// Destroying a customer's data, in two phases.
 //
 // This is the one operation the framework cannot undo, so the tests are almost entirely about
 // what it REFUSES. A destruction that works is one line; a destruction that cannot be
@@ -137,9 +137,8 @@ function fakes(over: any = {}) {
     mfaManager: {
       isImplemented: () => true,
       // A verifier answers with a DELTA: how many steps away from now the accepted code was,
-      // which is zero for a code typed in its own window. The fixture used to answer `42`, a
-      // number no verifier returns, and that is what let the replay check pass while comparing
-      // the wrong two things (T-10.21).
+      // which is zero for a code typed in its own window. A fixture answering a number no
+      // verifier returns would let the replay check pass while comparing the wrong two things.
       verify: async (code: string) => (code === '123456' ? 0 : null)
     },
     systemUserManager: {
@@ -449,10 +448,8 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
 
     // The step is spent by the first use, so the same code cannot destroy a second container.
     //
-    // The value is a STEP, not a delta. The fixture said `42` and passed for the wrong reason:
-    // the code compared the verifier's delta against it, and 0 was always smaller. Now that all
-    // three call sites store what `lib/util/mfaCounter.ts` computes, a spent step is the step a
-    // current code belongs to (T-10.21, found by destroying a container from a live console).
+    // The value is a STEP, not a delta: all three call sites store what `lib/util/mfaCounter.ts`
+    // computes, so a spent step is the step a current code belongs to.
     ACTOR.mfaLastUsedCounter = Math.floor(Date.now() / 1000 / 30)
     const replayed = await destroy(server, { token, slug: 'acme', otp: '123456' })
     expect(replayed.statusCode).toBe(403)
@@ -641,7 +638,7 @@ describe('destruction · the emailed code of an operator without MFA (§6.2)', (
       const { server, res, body, requests } = await open(shape)
       expect(res.statusCode).toBe(503)
       expect(body.code).toBe('DESTRUCTION_FACTOR_NOT_AVAILABLE')
-      // A permission phase 2 could never accept is not handed out.
+      // A permission the second phase could never accept is not handed out.
       expect(body.token).toBe(undefined)
       if (shape.delivery === false) expect(requests.size).toBe(0)
       await server.close()

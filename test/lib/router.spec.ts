@@ -9,7 +9,7 @@ import { processRoute } from '../../lib/loader/router.js'
   backoffice: { code: 'backoffice' },
   ops: { code: 'ops', capabilities: ['users'] }
 }
-// T-4.1: the control catalogue is a separate map. A control route resolves against this
+// The control catalogue is a separate map. A control route resolves against this
 // one and never sees a tenant role code.
 ;(global as any).systemRoles = {
   'system:admin': { code: 'system:admin', name: 'System admin', capabilities: [] },
@@ -24,14 +24,14 @@ const run = (route: any, validRoutes: any[] = [], errors: string[] = [], fileCon
 const codes = (r: any) => (r.roles || []).map((x: any) => x.code)
 
 describe('loader/router — processRoute', () => {
-  // T-1.2: `scope` is the v5 spelling of which plane a route acts on. It must actually
-  // reach the route, or it is a documented field nobody reads (D-11).
+  // `scope` names which plane a route acts on. It must actually reach the route, or it is a
+  // documented field nobody reads.
   it('resolves scope: control into a route outside the tenant context', () => {
     const r: any = run({ method: 'GET', path: '/', handler: 'user.find', config: { scope: 'control' } })
     expect(r.tenantContext).toBe(false)
   })
 
-  // T-3.3: `tenantContext` was the v4 spelling. It is refused at boot, not translated: a
+  // `tenantContext` is the v4 spelling. It is refused at boot, not translated: a
   // route that meant "the platform" and is silently read as "a tenant" does not fail, it
   // answers from the wrong container.
   it('refuses the v4 spelling instead of translating it', () => {
@@ -94,7 +94,7 @@ describe('loader/router — processRoute', () => {
   })
 
   it('gives a control route the system superuser, and never public', () => {
-    // A property of a deployment WITH tenants: there the two planes are real (T-4.1).
+    // A property of a deployment WITH tenants: there the two planes are real.
     ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }
     try {
       const r: any = run({ method: 'GET', path: '/', handler: 'x.y', config: { scope: 'control' } })
@@ -114,10 +114,10 @@ describe('loader/router — processRoute', () => {
   })
 
   //
-  // T-10.22: without tenants there is one identity space, and the control-scope routes that
-  // exist there (`/admin/manifest`, a project's own) must be reachable by the users that
-  // exist. Before, the gate held only system roles, which a single-tenant deployment never
-  // creates, and `/admin/manifest` answered 403 to the founder: mounted and unreachable.
+  // Without tenants there is one identity space, and the control-scope routes that exist there
+  // (`/admin/manifest`, a project's own) must be reachable by the users that exist. A gate
+  // holding only system roles, which a single-tenant deployment never creates, would answer 403
+  // to the founder on `/admin/manifest`: mounted and unreachable.
   //
   it('opens a control route to the application superuser when there are no tenants', () => {
     ;(global as any).config = { options: { tenants: null } }
@@ -197,7 +197,7 @@ describe('loader/router — processRoute', () => {
     expect(r).toBeNull()
   })
 
-  // T-12.17: reading the tenant from a flow `state` skips the token and the resolver, so only a
+  // Reading the tenant from a flow `state` skips the token and the resolver, so only a
   // route whose handler checks that state against a live flow row may ask for it.
   it("refuses `tenantFrom` on a project's route and accepts it on the framework's", () => {
     const errors: string[] = []
@@ -237,7 +237,7 @@ describe('loader/router — processRoute', () => {
     expect(unknown.length).toBe(1)
   })
 
-  // F52: freshness is asked of the person holding a session, so a route must authenticate first.
+  // Freshness is asked of the person holding a session, so a route must authenticate first.
   it('carries `freshAuth` on an authenticated route and refuses it where nobody authenticates', () => {
     const guarded: string[] = []
     const byRole: any = run({ method: 'POST', path: '/mfa', handler: 'user.mfa', roles: ['admin'], freshAuth: true }, [], guarded)

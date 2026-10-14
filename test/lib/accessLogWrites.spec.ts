@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.31: the access log is written by the routes that end, revoke or change a way in, on both
-// planes, and the write never decides the outcome of the request. T-12.32: it is read back by the
-// tenant's admin and by the platform's auditor, each on its own plane.
+// The access log is written by the routes that end, revoke or change a way in, on both planes,
+// and the write never decides the outcome of the request. It is read back by the tenant's admin
+// and by the platform's auditor, each on its own plane.
 //
 // The handlers are the framework's own, mounted bare behind the real authentication hook. What the
 // tests hold to: each event lands in the container of its plane with the right subject, no row ever
@@ -265,7 +265,7 @@ describe('access log · the writes of the session and factor routes (T-12.31)', 
       expect(replayed.statusCode).toBe(401)
       expect(json(replayed).code).toBe('SESSION_REUSE_DETECTED')
 
-      // A successful renewal is deliberately not an event (F44): one row, the reuse.
+      // A successful renewal is deliberately not an event: one row, the reuse.
       expect(rows).toEqual([
         expect.objectContaining({
           event: 'session.reuse_detected',

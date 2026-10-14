@@ -1,5 +1,5 @@
 //
-// T-12.3 and T-12.4 through the real `start()`: no data layer, the framework's own flows.
+// Authentication at boot, through the real `start()`: no data layer, the framework's own flows.
 //
 // The promise is that the server boots with nothing injected. It is kept by the Null Objects and
 // by a default configuration that asks for nothing a bare build cannot give, and only the real
@@ -98,7 +98,7 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
       ...frozen,
       tenant: { identify: ['password', 'email-otp'], flows: [{ roles: ['*'], stages: [] }] }
     }
-    // `email-otp` is a built-in since T-12.22: what this build cannot run is a delivery nobody injected.
+    // `email-otp` is a built-in: what this build cannot run is a delivery nobody injected.
     await expect(start({})).rejects.toThrow("authFlows.tenant: lists 'email-otp' and no challenge delivery is injected")
   })
 

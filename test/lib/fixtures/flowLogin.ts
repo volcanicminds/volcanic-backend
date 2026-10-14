@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// The login of v5, for the specs that need a session and are not about the login (T-12.34).
+// The login, for the specs that need a session and are not about the login.
 //
-// `/auth/login` and `/system/auth/login` are gone: a session is what `POST /auth/flow/start` with
-// `method: 'password'` answers when nothing else is owed. What the flow handlers read besides the
-// managers is set up here, as `start()` would: the resolved flows and the authenticator registry.
+// There is no `/auth/login` nor `/system/auth/login`: a session is what `POST /auth/flow/start`
+// with `method: 'password'` answers when nothing else is owed. What the flow handlers read
+// besides the managers is set up here, as `start()` would: the resolved flows and the
+// authenticator registry.
 //
 import frameworkFlows from '../../../lib/config/authFlows.js'
 import { resolveAuthFlows } from '../../../lib/loader/authFlows.js'

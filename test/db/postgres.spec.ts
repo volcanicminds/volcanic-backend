@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-2.2 against a real Postgres. Skipped when DATABASE_URL is absent, so `npm test` stays
+// Against a real Postgres. Skipped when DATABASE_URL is absent, so `npm test` stays
 // runnable without docker; the CI job that owns a database runs it.
 //
-// What is worth testing here is not "drizzle works" but the property the whole rewrite rests
-// on: after reading a tenant's container, the connection is not left pointing at it. On v4
-// this was unobservable, because PGlite hands out a single connection and the leak needed a
-// pool to be seen.
+// What is worth testing here is not "drizzle works" but the property the framework rests on:
+// after reading a tenant's container, the connection is not left pointing at it. PGlite hands
+// out a single connection, so the leak needs a pool to be seen.
 //
 import { expect } from 'expect'
 import { sql } from 'drizzle-orm'

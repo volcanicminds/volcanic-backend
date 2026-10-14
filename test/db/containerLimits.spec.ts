@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-10.9: the container limits, read along the path a real boot takes.
+// The container limits, read along the path a real boot takes.
 //
-// T-9.4 wired `TENANT_CONTAINERS_MAX_OPEN` back into the adapter as
-// `configured ?? environment ?? default`, and its tests proved the environment helper. What no
-// test followed was the value from the loader to the adapter: `normalizeOptions` filled
-// `tenants.containers.maxOpen` with the default for every deployment that declared tenants,
-// so "configured" was always true and the `??` never reached the environment. The variable
-// was unread again, in the one case where it matters.
+// The adapter reads `TENANT_CONTAINERS_MAX_OPEN` as `configured ?? environment ?? default`. If
+// `normalizeOptions` filled `tenants.containers.maxOpen` with the default for every deployment
+// that declares tenants, "configured" would always be true and the `??` would never reach the
+// environment, so the variable would go unread in the one case where it matters.
 //
 // So these tests start where a boot starts, from `normalizeOptions`, and read what the provider
 // ended up with. Constructing a provider opens nothing: the pools are lazy.

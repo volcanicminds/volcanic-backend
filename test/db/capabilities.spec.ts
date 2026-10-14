@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-1.4: the capability matrix refuses, at boot, every combination the framework cannot
-// isolate. Each of these ran as a warning in v4 and then served traffic without isolation
-// (D-04). `onFatal` is injected so a refusal does not kill the test process, the same
-// pattern lib/util/secret.ts already uses.
+// The capability matrix refuses, at boot, every combination the framework cannot isolate.
+// `onFatal` is injected so a refusal does not kill the test process, the same pattern
+// lib/util/secret.ts uses.
 //
 import { expect } from 'expect'
 import { assertSupported, supports, supportedCombinations, resolveTenancy } from '../../lib/database/capabilities.js'
@@ -23,7 +22,7 @@ describe('database/capabilities', () => {
   })
 
   it('refuses the file engines by name, instead of starting on Postgres', () => {
-    // Postgres is the only engine (F58): a configuration written for SQLite or libSQL stops the
+    // Postgres is the only engine: a configuration written for SQLite or libSQL stops the
     // boot rather than run against a database it never named.
     for (const engine of ['sqlite', 'libsql']) {
       expect(refusal({ control: { engine } })).toContain(`unknown engine '${engine}'`)
@@ -48,8 +47,8 @@ describe('database/capabilities', () => {
   })
 
   it('names an unknown engine instead of guessing one', () => {
-    // Mongo is not an adapter in v5: the data layer dropped it, and the matrix says so
-    // instead of warning and serving requests without isolation, which is what v4 did.
+    // Mongo is not an adapter, and the matrix says so instead of warning and serving requests
+    // without isolation.
     expect(refusal({ control: { engine: 'mongodb' } })).toContain("unknown engine 'mongodb'")
     expect(refusal({ tenants: { strategy: 'schema', engine: 'cassandra' } })).toContain("unknown engine 'cassandra'")
   })

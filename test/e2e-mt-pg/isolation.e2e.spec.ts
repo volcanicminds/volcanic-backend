@@ -4,9 +4,7 @@
 // observable from outside: what a client can read. None of them asserts a configuration,
 // because a configuration test passes on broken code.
 //
-// Expected state today: all red. The data layer does not exist yet. They turn green when
-// phase 3 closes, and they must do it WITHOUT being edited — a bench you adjust to make it
-// pass is not a bench.
+// They must pass WITHOUT being edited: a bench you adjust to make it pass is not a bench.
 //
 import { expect } from 'expect'
 import {

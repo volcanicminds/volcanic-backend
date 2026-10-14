@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-3.5: the audit trail gets a context, and a failure is visible.
+// The audit trail gets a context, and a failure is visible.
 //
-// Defect D-05 had three layers: the tracker called the manager with no context, the manager
-// refused, and the tracker turned the refusal into a log line while the request answered 200.
-// A test that only checked "addChange was called" would have passed on the broken code, so
-// what is asserted here is WHICH CONTAINER the write went to and WHAT THE CALLER SEES when
-// it cannot happen.
+// The failure this guards against has three layers: a tracker that calls the manager with no
+// context, a manager that refuses, and a tracker that turns the refusal into a log line while
+// the request answers 200. A test that only checked "addChange was called" would pass on that
+// code, so what is asserted here is WHICH CONTAINER the write went to and WHAT THE CALLER SEES
+// when it cannot happen.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
@@ -106,7 +106,7 @@ describe('util/tracker · the audit trail gets a context (T-3.5)', () => {
     const res = await put(server, { [HEADER]: 'acme' })
     expect(res.statusCode).toBe(200)
 
-    // The one assertion D-05 was about: in v4 this array was empty and nothing said so.
+    // The one assertion that matters: an empty array here is a change lost with nothing said.
     expect(tracking.calls.added.length).toBe(1)
     const { ctx, change } = tracking.calls.added[0]
     expect(ctx.kind).toBe('tenant')

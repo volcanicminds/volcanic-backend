@@ -85,7 +85,7 @@ describe('emergency MFA reset at boot', () => {
     expect(await emergencyMfaReset({} as any, { env: env(5), now: NOW })).toBe('no-data-layer')
   })
 
-  // S13: the reset has no actor and no request, so the access log is the only trace the admin reads.
+  // The reset has no actor and no request, so the access log is the only trace the admin reads.
   describe('the access log', () => {
     const row = (scope: string, outcome: string, subjectId: string | null, code?: string) => ({
       ctx: CONTROL,

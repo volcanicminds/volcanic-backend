@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.25 and T-12.26: identity providers declared by the deployment and written per tenant.
+// Identity providers declared by the deployment and written per tenant.
 //
 // What the tests hold to: one set of shape rules for both sources, checked where the provider is
 // written and without calling it; a deployment secret read at boot and kept out of every global;

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-15.2, the writer of the governance log (F76) and its reading route, without a database: what
+// The writer of the governance log and its reading route, without a database: what
 // `governed`, `intend` and `settle` take from the request, what they write and when they write
 // nothing. The transaction itself is held on a real control plane in test/db/governanceLog.spec.ts,
 // every route over HTTP in test/e2e-mt-pg/governanceLog.e2e.spec.ts.

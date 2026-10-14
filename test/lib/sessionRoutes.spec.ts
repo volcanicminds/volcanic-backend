@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-11.14: the sessions of the caller, listed and closed one at a time.
+// The sessions of the caller, listed and closed one at a time.
 //
 // The registry was built for rotation, and these two routes are what it makes possible: seeing
 // where an account is logged in, and closing one device without closing the others. What the

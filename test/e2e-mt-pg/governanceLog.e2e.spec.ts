@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-15.2, the governance log of F76 over HTTP on real Postgres: every governance route leaves its
+// The governance log over HTTP on real Postgres: every governance route leaves its
 // row, an export and a destruction write their intent before the effect and their outcome after,
 // the rows of a tenant stay once its container is gone, and only a holder of `governance-log`
 // reads them. What the rows say is checked from outside too, with plain `pg`.

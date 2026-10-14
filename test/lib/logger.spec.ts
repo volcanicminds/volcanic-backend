@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// The framework's logger (F63).
+// The framework's logger.
 //
-// Unset, `LOG_LEVEL` used to mean `debug` everywhere, production included: every resolved subject
-// and every warning about a bad token went into logs that outlive the request, on a deployment
-// where nobody had decided that. The default now follows `NODE_ENV`, and an explicit value always
-// wins. The format follows the same rule: JSON lines in production, pretty anywhere else.
+// Unset, `LOG_LEVEL` follows `NODE_ENV`, and an explicit value always wins: a `debug` default in
+// production would put every resolved subject and every warning about a bad token into logs that
+// outlive the request, on a deployment where nobody decided that. The format follows the same
+// rule: JSON lines in production, pretty anywhere else.
 //
 // What is written is checked on the line itself: a secret in a logged object, a provider's code in
 // a URL, and the lines Fastify writes for a request, which go through the same instance.

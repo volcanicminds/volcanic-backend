@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: the admin manifest, 350 lines with no test.
+// The admin manifest.
 //
 // It is what an admin console renders from: the resources it shows, the fields it puts on a
 // form, the capabilities it gates buttons with. A wrong manifest does not throw — it draws a
@@ -230,9 +230,9 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
   })
 
   //
-  // T-10.5: what the LIVE manifest says about tenancy is asked the way the router, the hooks
-  // and the data layer ask it. Before, a `tenants` block with no strategy booted single
-  // tenant and was announced as multi, so a console drew a switcher for a header nobody read.
+  // What the LIVE manifest says about tenancy is asked the way the router, the hooks and the
+  // data layer ask it: a `tenants` block with no strategy boots single tenant, and announcing it
+  // as multi would make a console draw a switcher for a header nobody reads.
   //
   describe('tenancy of the live manifest (T-10.5)', () => {
     const withTenants = (tenants: any) => {
@@ -253,7 +253,7 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
     })
 
     it('names the header the backend actually reads, and offers no switcher (T-10.15)', () => {
-      // From the login on the token binds the tenant (T-3.2): another tenant under the same
+      // From the login on the token binds the tenant: another tenant under the same
       // session is TENANT_MISMATCH, so a console switches by signing in again. The list the
       // switcher read, `/tenants`, is a control route no customer user can call either.
       withTenants({ strategy: 'schema', resolver: 'header', headerKey: 'x-org' })
@@ -288,7 +288,7 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
       // A customer's users must not receive the platform's route map and role codes.
       expect(names(m)).toEqual(['products'])
       expect(m.auth.plane).toBe('tenant')
-      // The login is the flow (F31): there is no login route to name, and no MFA verification.
+      // The login is the flow: there is no login route to name, and no MFA verification.
       expect(m.auth.endpoints).toMatchObject({
         flowOptions: '/auth/flow/options',
         flowStart: '/auth/flow/start',
@@ -298,7 +298,7 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
         flowCancel: '/auth/flow/cancel'
       })
       expect(m.auth.endpoints.login).toBeUndefined()
-      // T-11.18: the console reads where its own devices are listed instead of knowing the path.
+      // The console reads where its own devices are listed instead of knowing the path.
       expect(m.auth.endpoints.sessions).toBe('/auth/sessions')
     })
 
@@ -317,7 +317,7 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
         refresh: '/system/auth/refresh-token',
         logout: '/system/auth/logout',
         me: '/system/auth/me',
-        // Account management of an operator already logged in (F45).
+        // Account management of an operator already logged in.
         mfaSetup: '/system/auth/mfa/setup',
         mfaEnable: '/system/auth/mfa/enable',
         // The platform sessions are their own list: an operator closing a device must not be
@@ -428,7 +428,7 @@ describe('manifest · the envelope the console reads first (T-9.5)', () => {
 })
 
 //
-// T-10.20: a resource does not always begin at the first segment.
+// A resource does not always begin at the first segment.
 //
 // The platform's operators live at `/system/users`, and `system` is shared with the platform
 // login and the console manifest. Grouped on that first segment they are not a resource at all:

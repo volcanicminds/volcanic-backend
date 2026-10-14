@@ -1,5 +1,5 @@
 //
-// The flows of the bench (T-12.39): the framework's, plus `oidc` as an identifier of the tenant
+// The flows of the bench: the framework's, plus `oidc` as an identifier of the tenant
 // plane, so that each tenant can log in through its own identity provider. The providers are the
 // tenants' own, written through `/tenants/:id/identity-providers`: the deployment declares none.
 //

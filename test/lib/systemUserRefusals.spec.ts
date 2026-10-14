@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: what managing a platform identity refuses.
+// What managing a platform identity refuses.
 //
-// Three refusals that no test had ever fired. Two of them guard the last door out — an
-// instance whose only administrator blocked or deleted itself is not recoverable from the
-// inside — and the third keeps the two role catalogues from leaking into each other, which is
-// the whole reason T-4.1 split them.
+// Three refusals. Two of them guard the last door out (an instance whose only administrator
+// blocked or deleted itself is not recoverable from the inside), and the third keeps the two
+// role catalogues from leaking into each other.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
@@ -83,7 +82,7 @@ describe('system users · what it refuses (T-9.5)', () => {
   it('refuses a tenant role on a platform identity, and names the offending one', async () => {
     // `admin` is a real role — in the OTHER catalogue. Granting it here would create an
     // identity whose role code means one thing where it is stored and another where it is
-    // read, which is the confusion T-4.1 exists to remove.
+    // read.
     const { server, created } = await build()
 
     const res = await server.inject({

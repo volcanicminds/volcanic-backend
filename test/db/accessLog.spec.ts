@@ -1,7 +1,7 @@
 //
-// T-12.12, the access log manager of F44 on a real migrated container: the closed vocabulary, the
-// truncated address, and the purge by predicate. T-12.32 and T-12.33: the reading of one plane and
-// the two retentions. PGlite always, Postgres with DATABASE_URL.
+// The access log manager on a real migrated container: the closed vocabulary, the truncated
+// address, the purge by predicate, the reading of one plane and the two retentions. PGlite always,
+// Postgres with DATABASE_URL.
 //
 import { expect } from 'expect'
 import { eq } from 'drizzle-orm'

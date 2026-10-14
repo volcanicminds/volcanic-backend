@@ -1,5 +1,5 @@
 //
-// T-12.2 and T-12.3: the authenticator contract and the registry that holds it, plane by plane.
+// The authenticator contract and the registry that holds it, plane by plane.
 //
 import { expect } from 'expect'
 import type { AuthContext, Authenticator, AuthResult } from '../../types/global.js'

@@ -1,13 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.4: reading a tunable out of the environment.
+// Reading a tunable out of the environment.
 //
 // The rule this serves is an invariant: **the declared default is what the code does**, and no
-// field is typed, documented and never read. That was defect D-11, and it came back anyway:
-// `VOLCANIC_MAX_PAGE_SIZE`, `TENANT_CONTAINERS_MAX_OPEN` and `DESTRUCTION_TOKEN_TTL` were all
-// in the documented environment table and consulted by nobody. Found by the tuning bench, which
-// set out to MEASURE what those variables carry and discovered there was nowhere to put the
-// answer.
+// field is typed, documented and never read.
 //
 // What is worth pinning is the refusals, because the failure mode of getting them wrong is
 // quiet: a limit nobody set behaving like a limit somebody chose.
@@ -80,8 +76,8 @@ describe('util/env · reading a tunable (T-9.4)', () => {
   })
 
   it('does not need a logger to exist, because a migration script has none', () => {
-    // `log?.w` still throws when `log` is undeclared — optional chaining guards a property,
-    // not an identifier — which is the bug T-9.1 found across the whole data layer.
+    // `log?.w` still throws when `log` is undeclared: optional chaining guards a property, not
+    // an identifier.
     const saved = (global as any).log
     delete (global as any).log
     try {
@@ -94,9 +90,9 @@ describe('util/env · reading a tunable (T-9.4)', () => {
 
 describe('util/env · the variables that were documented and unread (T-9.4)', () => {
   it('is what VOLCANIC_MAX_PAGE_SIZE now goes through', async () => {
-    // End of the D-11 shape: the clamp the documentation promises is the clamp the query
-    // layer applies. The route's own option still wins — the variable is the deployment's
-    // ceiling, not a way to raise a limit a route deliberately lowered.
+    // The clamp the documentation promises is the clamp the query layer applies. The route's own
+    // option still wins: the variable is the deployment's ceiling, not a way to raise a limit a
+    // route deliberately lowered.
     const { parseQuery } = await import('../../lib/database/query/index.js')
     const { appTables } = await import('../../lib/database/schema/pg.js')
     const { user } = appTables('public')

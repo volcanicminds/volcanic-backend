@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-10.19: the second factor, plane by plane and tenant by tenant.
+// The second factor, plane by plane and tenant by tenant.
 //
-// One value for the whole deployment was a floor nobody could raise, and the control plane read
-// none at all: `MANDATORY` obliged the users of every customer and none of the operators who can
-// destroy a customer. These tests pin the three levels and the rule that keeps them honest, the
-// floor a tenant may only tighten, because a policy that can be loosened from below is not one.
+// One value for the whole deployment would be a floor nobody can raise, and a control plane that
+// reads none would leave `MANDATORY` obliging the users of every customer and none of the
+// operators who can destroy a customer. These tests pin the three levels and the rule that keeps
+// them honest, the floor a tenant may only tighten, because a policy that can be loosened from
+// below is not one.
 //
 import { expect } from 'expect'
 import { MfaPolicy } from '../../lib/config/constants.js'

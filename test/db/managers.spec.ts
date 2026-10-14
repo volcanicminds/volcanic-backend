@@ -35,8 +35,8 @@ describe('database/managers (T-2.5)', () => {
 
   describe('context', () => {
     it('refuses to work without a handle instead of finding one', async () => {
-      // v4 fell back to the global connection here, which meant reading whichever container
-      // the pool had last touched (D-06).
+      // Falling back to a global connection here would read whichever container the pool had
+      // last touched.
       await expect(users.retrieveUserByEmail(undefined as never, 'x@y.z')).rejects.toThrow(/needs a data handle/)
       await expect(tokens.countQuery(null as never, {})).rejects.toThrow(/needs a data handle/)
     })
@@ -73,7 +73,7 @@ describe('database/managers (T-2.5)', () => {
       const created: any = await users.createUser(tenant, { email: 'Anna@Acme.test', password: 'Acme-pw-123456' })
       expect(created.email).toBe('anna@acme.test') // normalised, so a login cannot miss it by case
       expect(created.password).not.toBe('Acme-pw-123456')
-      expect(created.password.startsWith('$2b$12$')).toBe(true) // cost 12, as in v4
+      expect(created.password.startsWith('$2b$12$')).toBe(true) // cost 12
       expect(created.id).toMatch(/^[0-9a-f-]{36}$/)
       expect(created.externalId).toBeTruthy()
       expect(created.confirmed).toBe(false) // registration never self-confirms
@@ -188,9 +188,9 @@ describe('database/managers (T-2.5)', () => {
       expect(written.contents).toEqual([{ key: 'email', old: 'a', new: 'b' }])
     })
 
-    // T-3.5: `retrieveBy` is the baseline of the diff, not the audit history. The correction
-    // is recorded in docs/MANAGERS_V5.md §7: the method has one caller, the tracker, and what
-    // the tracker needs is the row as it stands before the request writes to it.
+    // `retrieveBy` is the baseline of the diff, not the audit history: the method has one caller,
+    // the tracker, and what the tracker needs is the row as it stands before the request writes
+    // to it.
     it('reads the tracked row so the diff has a baseline', async () => {
       const user: any = await users.createUser(tenant, { email: 'baseline@acme.test', password: 'Baseline-pw-123' })
       const before: any = await tracking.retrieveBy(tenant, 'user', user.id)
@@ -234,7 +234,7 @@ describe('database/managers (T-2.5)', () => {
       expect(await manager.softDeleteTenant(control, tenantRow.id)).toBe(true)
       expect(await manager.getTenantBySlug(control, 'acme')).toBeNull()
 
-      // And the irreversible one refuses to run before T-6.3 gives it its ceremony.
+      // And the irreversible one refuses to run without its ceremony.
       await expect(manager.destroyContainer(tenantRow.id)).rejects.toThrow(/T-6.3/)
     })
 
@@ -257,10 +257,8 @@ describe('database/managers (T-2.5)', () => {
   })
 
   //
-  // T-4.1. The property under test is the type of the first argument: a platform identity is
-  // not reachable from inside a container, and the runtime says so as loudly as the compiler.
-  // In v4 there was no such table at all, and the only thing separating the super-admin from a
-  // tenant's admin was which schema resolved `user`, which is exactly what D-01 broke.
+  // The property under test is the type of the first argument: a platform identity is not
+  // reachable from inside a container, and the runtime says so as loudly as the compiler.
   //
   describe('platform identities (T-4.1)', () => {
     it('refuses a tenant handle where the control plane is required', async () => {

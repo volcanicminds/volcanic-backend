@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.27: who an identity from a provider is here (F40), on the real stores of a migrated
+// Who an identity from a provider is here, on the real stores of a migrated
 // container. Each of the three ways in is opt-in, and each of the cases below is a way an account
 // would be taken over if it were not: an unverified address, a domain nobody listed, JIT that was
 // off, JIT that grants admin, and one `sub` presented by two issuers.
@@ -41,7 +41,8 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
         flow: null,
         limits: { flowTtl: 600, otpTtl: 300, otpMaxAttempts: 5, otpMaxSends: 3 },
         challenges: null,
-        // Registration open: the cases here are about F40; F49 has its own in accountCreation.spec.ts.
+        // Registration open: the cases here are about external identities; account creation has its
+        // own in accountCreation.spec.ts.
         accountCreation: async () => 'open'
       }) as any
 

@@ -1,13 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-5.1: the migration engine, against a real Postgres.
+// The migration engine, against a real Postgres.
 //
 // What is worth testing here is not "the SQL runs" but the four properties that make a fleet
 // of containers survivable: the same unqualified file lands in a different schema each time,
 // a failure halfway leaves the successful part applied so the next run resumes, an edited
 // migration is caught instead of silently skipped, and nothing is left on the connection
-// afterwards. The last one is T-3.1's rule, and migrations are the one path allowed to name
-// a schema at all.
+// afterwards, although migrations are the one path allowed to name a schema at all.
 //
 import fs from 'fs'
 import os from 'os'
@@ -186,7 +185,7 @@ suite('migrations · applying a set (T-5.1)', function () {
   it('leaves nothing on the connection, though it is the one path allowed to name a schema', async () => {
     const control: any = provider.control()
     // The SET LOCAL of the migration is undone by its own commit, by definition of the
-    // statement. This is what T-3.1 kept the door open for, and it is still closed behind it.
+    // statement: the one path allowed to name a schema still leaves the connection clean.
     const path$ = await control.execute(sql`select current_setting('search_path') as sp`)
     expect(path$.rows[0].sp).toBe('public')
   })

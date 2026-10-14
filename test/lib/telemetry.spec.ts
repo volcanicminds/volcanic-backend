@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// OpenTelemetry in the core (F64, F68): when the framework turns it on, what a request leaves
+// OpenTelemetry in the core: when the framework turns it on, what a request leaves
 // behind, and the refusal when a deployment asks for it without the packages.
 //
 // The SDK here is the in-memory one an `--import` would have registered, so the framework takes

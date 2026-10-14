@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// S13, the emergency MFA reset against a migrated container: the factor goes and the access log
+// The emergency MFA reset against a migrated container: the factor goes and the access log
 // keeps a row the admin reads with the same query as any other access. The doubles of
 // test/lib/mfaReset.spec.ts accept any event; only the real manager refuses one outside its
 // vocabulary.

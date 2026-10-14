@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: machine tokens, and the same apex rule that guards users.
+// Machine tokens, and the same apex rule that guards users.
 //
 // A token carries roles and those roles are what authorizes its requests (see
 // `hooks/onRequest`), so a `tokens` capability holder able to mint an admin token holds
-// `admin` by another route — the capability was granted to manage machine credentials, and it
-// would have become a way to grant yourself everything. The rule was written and never fired.
+// `admin` by another route: the capability is granted to manage machine credentials, and it
+// would become a way to grant yourself everything.
 //
 // The other property worth pinning is what create writes: the row, and nothing after the
 // signature. The bearer goes back in the answer and is not stored anywhere.

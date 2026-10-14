@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-5.2: the control plane and a customer's container have different lives, so they have
+// The control plane and a customer's container have different lives, so they have
 // different sets.
 //
 // The interesting assertion is not that two folders exist. It is that the runner picks the

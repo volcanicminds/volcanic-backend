@@ -1,15 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: the refusals of the authentication hook, each one fired by the condition that
-// reaches it.
+// The refusals of the authentication hook, each one fired by the condition that reaches it.
 //
-// Every code below was written, reviewed and then never seen again — no test made any of them
-// fire. That is not a gap in coverage percentages, it is a gap in knowledge: a guard nobody
-// has watched work may sit on a path the request never takes, may read a field that does not
-// exist, may be unreachable. Defect D-03 was exactly that shape — an anti-spoofing check
-// comparing a property the entity did not have, in a hook that ran before the one that would
-// have populated it. It never fired, nothing failed, and for two years the tenant was decided
-// by a header.
+// A guard nobody has watched work may sit on a path the request never takes, may read a field
+// that does not exist, may be unreachable: an anti-spoofing check comparing a property the entity
+// does not have, in a hook that runs before the one that would populate it, never fires, and
+// nothing fails.
 //
 // So these tests go through `server.inject`: a real request, a real token, the real hook
 // order. Calling the guard directly would prove that it throws when invoked, which is not the
@@ -92,8 +88,8 @@ describe('hooks/onRequest · the refusals, each one provoked (T-9.5)', () => {
     savedRoles = (global as any).roles
     savedConfig = (global as any).config
     ;(global as any).roles = { public: { code: 'public', name: 'Public' }, admin: { code: 'admin', name: 'Admin' } }
-    // The refusals below are those of a session presented in the header, which since T-10.37
-    // is the bearer mode only. The channel rules of the default mode are authChannels.spec.ts.
+    // The refusals below are those of a session presented in the header, which is the bearer
+    // mode only. The channel rules of the default mode are authChannels.spec.ts.
     savedMode = process.env.AUTH_MODE
     process.env.AUTH_MODE = 'BEARER'
   })
@@ -172,7 +168,7 @@ describe('hooks/onRequest · the refusals, each one provoked (T-9.5)', () => {
 
     // The second factor is a stage of the login flow, whose credential is not a JWT. A token of
     // the old kind still alive across a deploy is therefore nobody: there is no list of routes
-    // it may reach any more, and without one it would pass for a session.
+    // it may reach, and without one it would pass for a session.
     const refused = await call(server, '/orders', halfway)
     expect([refused.statusCode, codeOf(refused)]).toEqual([401, 'UNAUTHORIZED'])
 

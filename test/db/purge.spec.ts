@@ -1,5 +1,5 @@
 //
-// T-12.33: the fan-out behind `npx volcanic <sessions|auth-flows|access-log> --purge --tenants`.
+// The fan-out behind `npx volcanic <sessions|auth-flows|access-log> --purge --tenants`.
 // The registry is paged, and the loop has to reach the containers past any page boundary: a fixed
 // ceiling would skip them without saying so.
 //

@@ -1,5 +1,5 @@
 //
-// T-12.12, against a real container migrated with the framework's own migrations: the flow store,
+// Against a real container migrated with the framework's own migrations: the flow store,
 // the links to external identities and the tenant's identity providers, as the database sees them.
 //
 // PGlite always; Postgres too when DATABASE_URL is set, because PGlite serves every statement on

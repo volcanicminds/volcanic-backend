@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// The tenant on every log line and every span of a tenant's work (F75).
+// The tenant on every log line and every span of a tenant's work.
 //
 // The request is served over a socket, not `inject()`: the context is lost where Fastify reads the
 // body from the socket's events and where the response finishes, and an injected request has

@@ -1,16 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-10.27 left a blind spot written down: three route handlers that no spec ever loaded, so
-// under c8 they counted as zero and under monocart they do not count at all. The way out was
-// never a threshold, it was calls that reach those routes.
+// Three route handlers that no other spec loads: under c8 they would count as zero and under
+// monocart they do not count at all, so what covers them is calls that reach those routes.
 //
-// They are four lines each, which is why nobody wrote a test: the work happens inside
-// `generateManifest`, and T-9.5 already covers `buildManifest` on the shapes it produces. What
-// stayed untested is the WIRING — that each handler asks for the plane its own route stands
-// for, that it reads the schemas off the instance actually serving the request, and that the
-// whole thing answers over HTTP. A handler that sent the tenant manifest on `/system/manifest`
-// would not throw: it would hand a customer's console the platform's route map and role codes,
-// and every screen it drew would be refused with SCOPE_MISMATCH.
+// They are four lines each: the work happens inside `generateManifest`, and manifest.spec.ts
+// covers `buildManifest` on the shapes it produces. What is under test here is the WIRING: that
+// each handler asks for the plane its own route stands for, that it reads the schemas off the
+// instance actually serving the request, and that the whole thing answers over HTTP. A handler
+// that sent the tenant manifest on `/system/manifest` would not throw: it would hand a
+// customer's console the platform's route map and role codes, and every screen it drew would be
+// refused with SCOPE_MISMATCH.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
@@ -42,7 +41,7 @@ const TENANT_ROUTES = [
 ]
 
 // The control plane: what the router leaves as `tenantContext: false` after reading
-// `scope: 'control'` (T-1.2).
+// `scope: 'control'`.
 const CONTROL_ROUTES = [
   route({ path: '/tenants', tenantContext: false, roles: [{ code: 'system:operator' }] }),
   route({ method: 'POST', path: '/tenants', tenantContext: false, roles: [{ code: 'system:operator' }] })
@@ -114,7 +113,7 @@ describe('api route controllers over HTTP (T-10.27 blind spot)', () => {
       expect(manifest.auth.endpoints.flowStart).toBe('/auth/flow/start')
       expect(manifest.resources.map((r: any) => r.name)).toEqual(['partners'])
       expect(paths(manifest).every((p: string) => p.startsWith('/partners'))).toBe(true)
-      // Multi-tenant on the tenant plane: the console is told which header to send (T-10.15).
+      // Multi-tenant on the tenant plane: the console is told which header to send.
       expect(manifest.tenancy).toMatchObject({ mode: 'multi', switchable: false, header: 'x-tenant-id' })
     })
 

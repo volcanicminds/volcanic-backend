@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-14.4: a prepared statement belongs to one container (F62).
+// A prepared statement belongs to one container.
 //
 // The statements of the hot paths are kept per database and per table object, and under the
 // `schema` strategy a tenant IS its table objects: a cache keyed on anything coarser would hand
-// one customer's row to another, which is D-01 again. Proved on PGlite always, and on Postgres
+// one customer's row to another. Proved on PGlite always, and on Postgres
 // with DATABASE_URL, where the pool spreads the executions over several connections.
 //
 import { expect } from 'expect'
@@ -74,8 +74,8 @@ if (URL) {
   suite('Postgres', async () => new PostgresProvider({ url: URL, schema: 'public', poolMax: 4 }))
 
   // A named statement is session state: the connection would go back to the pool carrying it,
-  // which is what T-3.1 forbids, and a PgBouncer in transaction mode before 1.21 would fail on
-  // it. PGlite ignores the name, so only a server can tell.
+  // and a PgBouncer in transaction mode before 1.21 would fail on it. PGlite ignores the name, so
+  // only a server can tell.
   describe('database/prepared · the connection goes back to the pool as it came out (T-3.1, T-14.4)', function () {
     this.timeout(60000)
     let provider: PostgresProvider

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-11.5, against a container migrated on PGlite: the session registry as the database sees it.
+// Against a container migrated on PGlite: the session registry as the database sees it.
 //
 // The controller-level behaviour lives in test/lib/authChannels.spec.ts with an in-memory store.
 // What is proved here is the part that store cannot prove: that the SQL does what the contract
@@ -107,7 +107,7 @@ describe('database/managers · the session registry (T-11.5)', () => {
     expect(found.session.revokedReason).toBe('logout')
   })
 
-  // F54: a step-up proves the same row again. The conditions are the statement's WHERE clause,
+  // A step-up proves the same row again. The conditions are the statement's WHERE clause,
   // so a row that is not the subject's, not live, or an impersonation is left as it was.
   it('marks a live session proven again, and nothing else', async () => {
     const opened = new Date(Date.now() - 600_000)

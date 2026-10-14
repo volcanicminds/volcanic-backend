@@ -1,14 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: the two authorization middlewares, the response log, and two utilities that decide
-// what a client reads. None of them had a test.
+// The two authorization middlewares, the response log, and two utilities that decide what a
+// client reads.
 //
-// The middlewares are the interesting half. Both were WRONG in a way a test would have caught
-// immediately: `isAuthenticated` only knew about `req.user`, so every control route using it
-// answered 401 to a perfectly valid platform token, and `isAdmin` asked only for the tenant
-// `admin`, which made a control route guarded by it unreachable by the only identity allowed
-// to act on the platform. Both were found by the isolation bench — that is, by a suite written
-// for something else.
+// The middlewares are the interesting half, and each can be wrong in a way a test catches
+// immediately: an `isAuthenticated` that only knows about `req.user` answers 401 to a perfectly
+// valid platform token on every control route using it, and an `isAdmin` that asks only for the
+// tenant `admin` makes a control route guarded by it unreachable by the only identity allowed to
+// act on the platform.
 //
 import { expect } from 'expect'
 import { preHandler as isAuthenticated } from '../../lib/middleware/isAuthenticated.js'
@@ -104,8 +103,7 @@ describe('middleware/isAdmin · the apex of whichever plane (T-9.5)', () => {
 
   it('does not let a tenant admin pass as a platform admin, or the reverse', () => {
     // The two apexes are separate identities, and `admin` on one plane is not `system:admin`
-    // on the other. One field holding either would put the two back in the same slot, which
-    // is the confusion T-4.1 exists to remove.
+    // on the other. One field holding either would put the two back in the same slot.
     expect(run(isAdmin, { systemUser: { id: 'sys-1' }, ...asRoles(['admin']) }).passed).toBe(false)
     expect(run(isAdmin, { user: { id: 'u1' }, ...asRoles(['system:admin']) }).passed).toBe(false)
   })

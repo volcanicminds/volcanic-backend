@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// Integration tokens on real Postgres (T-14.7).
+// Integration tokens on real Postgres.
 //
 // `POST /token` answers with the bearer once. What is observed here: that bearer carries the tenant
 // it was created in and authenticates there without a header and nowhere else, and the row the

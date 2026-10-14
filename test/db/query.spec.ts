@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-2.4, against a container migrated on PGlite: the right rows for a query it accepts, a 400
-// with the right code for one it refuses (docs/MAGIC_QUERY_V5.md §11).
+// Against a container migrated on PGlite: the right rows for a query it accepts, a 400 with the
+// right code for one it refuses (docs/MAGIC_QUERY_V5.md §11).
 //
-// The error cases carry most of the value here. Each one of them is a v4 behaviour that
-// answered a different question instead of refusing: a skipped sort field, a degraded
-// `_logic`, a range split by an ISO timestamp, an empty value turned into the string
-// `notFound`, a filter on a password hash.
+// The error cases carry most of the value here. Each one of them refuses a query instead of
+// answering a different question: a skipped sort field, a degraded `_logic`, a range split by an
+// ISO timestamp, an empty value turned into the string `notFound`, a filter on a password hash.
 //
 import { eq, sql } from 'drizzle-orm'
 import { expect } from 'expect'
@@ -51,13 +50,13 @@ describe('database/query (T-2.4)', () => {
   describe('filtering', () => {
     it('matches exactly, and case matters unless the operator says otherwise', async () => {
       expect((await find({ 'email:eq': 'Anna@acme.test' })).records.length).toBe(1)
-      // v4 answered this differently depending on an environment variable.
+      // The answer does not depend on an environment variable.
       expect((await find({ 'email:eq': 'anna@acme.test' })).records.length).toBe(0)
       expect((await find({ 'email:eqi': 'anna@acme.test' })).records.length).toBe(1)
     })
 
     it('treats wildcards in a value as text, not as pattern', async () => {
-      // `amount:contains=50%` searched for everything starting with 50 in v4.
+      // `amount:contains=50%` does not search for everything starting with 50.
       expect((await find({ 'email:contains': 'acme' })).records.length).toBe(3)
       expect((await find({ 'email:contains': 'ac%me' })).records.length).toBe(0)
       expect((await find({ 'email:like': '%acme%' })).records.length).toBe(3)
@@ -81,9 +80,9 @@ describe('database/query (T-2.4)', () => {
     })
 
     it('applies a route restriction the URL cannot argue with (extraWhere)', async () => {
-      // v4 carried this as a fourth argument of executeFindQuery, and consumers used it for
-      // row-level security. It is AND-ed last, so no `_logic` a caller writes can reach around
-      // it: the OR below matches everyone and still returns only the row the route allows.
+      // Consumers use this for row-level security. It is AND-ed last, so no `_logic` a caller
+      // writes can reach around it: the OR below matches everyone and still returns only the row
+      // the route allows.
       const only = { extraWhere: eq(pg.user.id, '2') }
       expect((await find({}, only)).records.map((r: any) => r.id)).toEqual(['2'])
       expect(await executeCount(handle, pg.user, {}, { ...options, ...only })).toBe(1)
@@ -97,7 +96,6 @@ describe('database/query (T-2.4)', () => {
     it('sorts with a leading minus and refuses a field that does not exist', async () => {
       const down = await find({ _sort: '-createdAt' })
       expect(down.records.map((r: any) => r.id)).toEqual(['3', '2', '1'])
-      // v4 logged a warning and returned an unsorted list.
       expect(codeOf(() => parseQuery(pg.user, { _sort: '-nope' }, options))).toBe('QUERY_UNKNOWN_FIELD')
     })
 
@@ -164,7 +162,7 @@ describe('database/query (T-2.4)', () => {
 
   describe('refusals', () => {
     it('never lets a sensitive field into a query', () => {
-      // v4 allowed filtering on the password hash, which is an oracle.
+      // Filtering on the password hash would be an oracle.
       expect(codeOf(() => parseQuery(pg.user, { 'password:contains': 'hash' }, options))).toBe('QUERY_SENSITIVE_FIELD')
       expect(codeOf(() => parseQuery(pg.user, { _sort: 'password' }, options))).toBe('QUERY_SENSITIVE_FIELD')
       expect(codeOf(() => parseQuery(pg.user, { _fields: 'password' }, options))).toBe('QUERY_SENSITIVE_FIELD')
@@ -173,9 +171,9 @@ describe('database/query (T-2.4)', () => {
     it('refuses an unknown field, an unknown operator and a wrongly cased one', () => {
       expect(codeOf(() => parseQuery(pg.user, { 'nope:eq': 'x' }, options))).toBe('QUERY_UNKNOWN_FIELD')
       expect(codeOf(() => parseQuery(pg.user, { 'email:nope': 'x' }, options))).toBe('QUERY_UNKNOWN_OPERATOR')
-      // Operator names are matched exactly, case included: v4 accepted :ISEMPTY.
+      // Operator names are matched exactly, case included.
       expect(codeOf(() => parseQuery(pg.user, { 'email:CONTAINS': 'x' }, options))).toBe('QUERY_UNKNOWN_OPERATOR')
-      // And the refusal names the operator that was meant (T-10.33).
+      // And the refusal names the operator that was meant.
       expect(() => parseQuery(pg.user, { 'email:CONTAINS': 'x' }, options)).toThrow(/did you mean 'contains'/)
       expect(() => parseQuery(pg.user, { 'roles:arraycontains': 'x' }, options)).toThrow(/did you mean 'arrayContains'/)
     })
@@ -184,8 +182,8 @@ describe('database/query (T-2.4)', () => {
       expect(codeOf(() => parseQuery(pg.user, { 'email:contains': '' }, options))).toBe('QUERY_EMPTY_VALUE')
       expect(codeOf(() => parseQuery(pg.user, { 'roles:in': 'a,,b' }, options))).toBe('QUERY_EMPTY_VALUE')
 
-      // The same field and operator twice with no alias is ambiguous, and v4 silently kept the
-      // last one, so a caller narrowing a search got a different result than the URL says.
+      // The same field and operator twice with no alias is ambiguous: silently keeping the last
+      // one would give a caller narrowing a search a different result than the URL says.
       // A query string can carry a repeated key, so this is reachable from outside.
       expect(codeOf(() => parseQuery(pg.user, { 'email:contains': ['a', 'b'] as never }, options))).toBe(
         'QUERY_DUPLICATE_CONDITION'

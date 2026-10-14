@@ -3,7 +3,7 @@
 // Two routes that read the SAME unqualified table name, one in each scope. The
 // table exists in the control plane and inside every tenant container with a
 // different marker row, so a single HTTP response says which container the
-// connection was actually pointed at. That is how the leak of D-01 becomes
+// connection was actually pointed at. That is how a connection leak becomes
 // observable from outside the process, without importing anything of the data
 // layer into the test.
 export default {

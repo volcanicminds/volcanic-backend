@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-16.1, a database per tenant over HTTP on real Postgres: creating a tenant creates its database
+// A database per tenant over HTTP on real Postgres: creating a tenant creates its database
 // and migrates it, its users read their own rows and nobody else's, exporting it dumps that
 // database whole, and destroying it drops it while the other tenant keeps working. What is on the
 // server is checked from outside, with plain `pg`.

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.29 over HTTP: the options name the providers of this plane and tenant, the start answers a
+// OIDC over HTTP: the options name the providers of this plane and tenant, the start answers a
 // redirect, the browser's return answers 303 to the configured console with the path the client
 // asked for and nothing else, and the session is born only at the next step.
 //

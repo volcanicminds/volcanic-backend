@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-7.1: one database per tenant, without running out of connections.
+// One database per tenant, without running out of connections.
 //
-// The measured constraint of appendix A.3 is the connection and not the ORM: at
-// `max_connections = 100`, a hundred and fifty containers each holding one fail with "sorry,
-// too many clients already". So what is asserted here is the arithmetic and the LRU, because
-// a design that keeps one pool per tenant works in every test and stops working on the day
-// the sales team succeeds.
+// The measured constraint is the connection and not the ORM: at `max_connections = 100`, a
+// hundred and fifty containers each holding one fail with "sorry, too many clients already". So
+// what is asserted here is the arithmetic and the LRU, because a design that keeps one pool per
+// tenant works in every test and stops working on the day the sales team succeeds.
 //
 import fs from 'fs'
 import os from 'os'

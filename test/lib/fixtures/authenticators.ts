@@ -2,13 +2,13 @@ import crypto from 'crypto'
 import type { AuthContext, AuthInput, AuthResult, AuthReturnInput, AuthSubject, Authenticator } from '../../../types/global.js'
 
 //
-// Two authenticators written only against the public contract, with no cast anywhere (T-12.2).
+// Two authenticators written only against the public contract, with no cast anywhere.
 //
 // Their point is the shapes the framework does not ship yet: an identifier that leaves the site
 // with a posted form and comes back through `complete` (the shape of SAML), one that leaves with a
 // redirect and comes back on a GET with a `state` the engine built (the shape of a social login
 // over plain OAuth 2), and a verifier that sends a code and checks it (the shape of SMS). If the
-// contract could not express them, the methods after this phase would each need a change to it.
+// contract could not express them, each new method would need a change to it.
 //
 
 export const FAKE_SUBJECT: AuthSubject = {

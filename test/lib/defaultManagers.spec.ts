@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: the Null-Object managers, which are what "runs with no database" means.
+// The Null-Object managers, which are what "runs with no database" means.
 //
 // The framework promises to boot without a data layer, and these are the objects that keep
-// that promise. Untested, the promise rests on a Proxy — and a Proxy that answers the wrong
-// question is a specific, already-paid-for kind of bug: a catch-all version of this told
-// Fastify it was a getter/setter when Fastify probed the decorator before registering it, and
-// the manager was wired as something else entirely. Found by the isolation bench, not by
-// anything here, which is the gap this file closes.
+// that promise. A Proxy that answers the wrong question is a specific kind of bug: a catch-all
+// version of this tells Fastify it is a getter/setter when Fastify probes the decorator before
+// registering it, and the manager is wired as something else entirely.
 //
 import { expect } from 'expect'
 import {

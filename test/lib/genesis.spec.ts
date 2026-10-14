@@ -12,7 +12,7 @@ import { ensureGenesisAdmin } from '../../lib/loader/genesis.js'
 const CONTROL: any = { kind: 'control' }
 
 function fakeManager(overrides: any = {}) {
-  // T-3.3: every call is recorded WITH the handle it received. Genesis runs before any
+  // Every call is recorded WITH the handle it received. Genesis runs before any
   // request exists, so if it could still reach a manager without a context, nothing at
   // request time would catch it.
   const calls: any = { created: null, promoted: null, confirmed: null, contexts: [] as any[] }
@@ -23,7 +23,7 @@ function fakeManager(overrides: any = {}) {
     countQuery: async (ctx: any, query: any) => {
       seen(ctx)
       // Two different questions reach the same method: how many admins exist, and whether
-      // this container already has a sovereign (T-4.3).
+      // this container already has a sovereign.
       if (query && 'isFounder:eq' in query) return overrides.founders ?? 0
       return overrides.count ?? 0
     },
@@ -69,8 +69,7 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
     const um = fakeManager()
     let fatal = false
     // No provider: a core-only boot has nowhere to look for an administrator, so it says
-    // nothing rather than failing the startup. What it must NOT do is look anyway, which
-    // is what `global.connection` allowed in v4 (T-3.3).
+    // nothing rather than failing the startup. What it must NOT do is look anyway.
     await ensureGenesisAdmin({ userManager: um } as any, { onFatal: () => (fatal = true) })
     expect(um.calls.created).toBeNull()
     expect(um.calls.contexts).toEqual([])
@@ -105,8 +104,8 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
     expect(um.calls.created).toBeNull()
   })
 
-  // T-4.3: sovereignty is a column now, so genesis reconciles the row instead of trusting
-  // that ADMIN_EMAIL will be compared again on every later request.
+  // Sovereignty is a column, so genesis reconciles the row instead of trusting that ADMIN_EMAIL
+  // will be compared again on every later request.
   it('marks an existing admin as the founder when the container has none', async () => {
     process.env.ADMIN_EMAIL = 'founder@x.com'
     const um = fakeManager({ existing: { id: 'u1', roles: ['admin'] }, founders: 0 })
@@ -119,8 +118,7 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
     process.env.ADMIN_EMAIL = 'someone-else@x.com'
     const um = fakeManager({ existing: { id: 'u2', roles: ['admin'] }, founders: 1 })
     await ensureGenesisAdmin(serverWith(um))
-    // Changing an environment variable must not be able to hand sovereignty to another row:
-    // that is exactly what made D-27 a privilege issue rather than a naming one.
+    // Changing an environment variable must not be able to hand sovereignty to another row.
     expect(um.calls.promoted).toBeNull()
     expect(um.calls.created).toBeNull()
   })

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-1.1: the configuration merge. The first test is the regression for D-21, where a
-// consumer declaring one key inside a nested block silently lost that block's siblings.
+// The configuration merge. The first test guards against a consumer declaring one key inside a
+// nested block and silently losing that block's siblings.
 //
 import { expect } from 'expect'
 import { deepMerge } from '../../lib/util/merge.js'
@@ -63,7 +63,7 @@ describe('lib/loader/general · normalizeOptions', () => {
     expect(options.tenants.headerKey).toBe('x-tenant-id')
     expect(options.tenants.containers.poolMax).toBe(2)
     expect(options.tenants.migrations.checkOnResolve).toBe(true)
-    // Not filled on purpose (T-10.9): it has an environment variable, and a value written here
+    // Not filled on purpose: it has an environment variable, and a value written here
     // would be "configured" for everyone, so the variable would never be read.
     expect(options.tenants.containers.maxOpen).toBeUndefined()
   })
@@ -80,9 +80,8 @@ describe('lib/loader/general · normalizeOptions', () => {
 })
 
 //
-// T-10.8 and T-10.6: the defaults are one file, and what that file says is what `load()` returns.
-// Until T-10.8 the loader had its own shorter copy as the merge base, and it had already drifted:
-// the keys asserted below are exactly the ones that copy did not have.
+// The defaults are one file, and what that file says is what `load()` returns: a shorter copy as
+// the merge base would drift from it.
 //
 describe('lib/loader/general · load', () => {
   before(() => {

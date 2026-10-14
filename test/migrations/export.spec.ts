@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-6.2: taking a customer's data out.
+// Taking a customer's data out.
 //
 // The assertions are the three refusals, because the failure this operation must never have
 // is the plausible one: a file that exists, opens cleanly, and is missing something. A backup
@@ -56,8 +56,8 @@ describe('export · where the file goes (T-6.2)', () => {
 
   it('says so when the container has no version, instead of leaving it out', () => {
     const file = exportPath(ACME, { directory: dir, schemaVersion: null }, 'sql')
-    // A dump whose version is unknown can be restored into a container the code no longer
-    // matches, so "unknown" is written down rather than omitted.
+    // A dump whose version is unknown can be restored into a container the code does not
+    // match, so "unknown" is written down rather than omitted.
     expect(path.basename(file)).toContain('no-migration')
   })
 

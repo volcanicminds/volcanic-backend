@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-4.1: who administers the platform and who administers a tenant are different identities.
+// Who administers the platform and who administers a tenant are different identities.
 //
-// In v4 the difference rested on ONE thing: which schema resolved the `user` table. That is
-// exactly what defect D-01 broke, so every administrative operation was one defect away from
-// a privilege escalation. The tests below therefore do not check that a role name is
-// accepted; they check that a credential from one plane buys nothing on the other.
+// A difference resting on ONE thing, which schema resolves the `user` table, would leave every
+// administrative operation one defect away from a privilege escalation. The tests below therefore
+// do not check that a role name is accepted; they check that a credential from one plane buys
+// nothing on the other.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
@@ -66,11 +66,11 @@ function serverWith(opts: any = {}) {
     retrieveSystemUserByExternalId: async (_ctx: any, externalId: string) =>
       [ROOT, AUDITOR, OPERATOR].find((u) => u.externalId === externalId) ?? null,
     // The password is not what these tests are about: the login here is the door the MFA policy
-    // stands in front of (T-10.19).
+    // stands in front of.
     retrieveSystemUserByPassword: async (_ctx: any, email: string) =>
       [ROOT, AUDITOR, OPERATOR].find((u) => u.email === email) ?? null
   })
-  // `MANDATORY` is a stage of the flow, and a stage needs somewhere to wait (F46).
+  // `MANDATORY` is a stage of the flow, and a stage needs somewhere to wait.
   server.decorate('authFlowManager', fakeFlowStore().manager)
   decorateAuthRegistry(server)
   server.decorate('userManager', {
@@ -242,9 +242,9 @@ describe('control scope · platform identities (T-4.1)', () => {
 })
 
 //
-// T-10.14: a platform console has to learn who logged in. `/users/me` is a tenant route, and a
-// control token there is refused, so before this route a console could sign an operator in and
-// never know which roles to draw the screens for.
+// A platform console has to learn who logged in. `/users/me` is a tenant route, and a control
+// token there is refused, so without this route a console could sign an operator in and never
+// know which roles to draw the screens for.
 //
 describe('control scope · the identity behind a platform session (T-10.14)', () => {
   let restoreFlows: () => void

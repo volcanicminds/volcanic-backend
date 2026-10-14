@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-4.2: impersonation leaves a record, and the record is what keeps the session alive.
+// Impersonation leaves a record, and the record is what keeps the session alive.
 //
-// Defect D-18 was not that impersonation existed. It was that it left a claim in a token and
-// nothing else: no record of who entered whose data or why, twenty-four hours of validity, no
-// way to stop a session once issued, and a privilege check comparing a field the entity did
-// not have, so the guard never fired. The tests below therefore check the ORDER (record
-// first, token after) and the REVOCATION (a signed token that buys nothing), because those
-// are the two properties a claim in a token cannot have.
+// A claim in a token and nothing else would leave no record of who entered whose data or why,
+// and no way to stop a session once issued. The tests below therefore check the ORDER (record
+// first, token after) and the REVOCATION (a signed token that buys nothing), because those are
+// the two properties a claim in a token cannot have.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
@@ -168,7 +166,7 @@ describe('impersonation · the record comes first (T-4.2)', () => {
     expect(impersonationTtl()).toBe(1800)
     ;(global as any).config = { options: { impersonation_ttl: 60 * 60 } }
     expect(impersonationTtl()).toBe(3600)
-    // v4 issued these for twenty-four hours. The ceiling is not configurable.
+    // The ceiling is not configurable.
     ;(global as any).config = { options: { impersonation_ttl: 48 * 3600 } }
     expect(impersonationTtl()).toBe(4 * 3600)
   })

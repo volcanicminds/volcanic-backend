@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-11.6: the shape of the refresh credential, and the clocks around it.
+// The shape of the refresh credential, and the clocks around it.
 //
 // These are the parts that run on a string a stranger chose, so what matters is that every shape
 // of input has an outcome and none of them is an exception: a token that throws on the renewal

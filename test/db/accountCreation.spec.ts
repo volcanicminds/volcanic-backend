@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.46 and T-12.48 on the real stores of a migrated container (F49): the settings table on both
+// Account creation on the real stores of a migrated container: the settings table on both
 // containers, an account that waits and the approval that ends the wait, the doors a waiting
 // account must not pass (password, email-otp, a link to a provider), and the just-in-time
 // provisioning under each of the three modes. PGlite always, Postgres with DATABASE_URL.
@@ -121,7 +121,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       }
       const refusal = (o: FlowOutcome) => (o.kind === 'refused' ? o.refusal.code : o.kind)
 
-      // The uniform answer of D-17, as for an unconfirmed or blocked account.
+      // The uniform answer, as for an unconfirmed or blocked account.
       expect(refusal(await engine.start(p, 'password', { email: waiting.email, password: 'Acme-pw-123456' }))).toBe(
         'AUTH_INVALID_CREDENTIALS'
       )

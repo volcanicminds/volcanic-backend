@@ -1,12 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-3.6: a cache entry belongs to one container, and says so.
+// A cache entry belongs to one container, and says so.
 //
-// Defect D-15 was not "the cache leaked": it was a key that happened to be unique. In v4 the
-// data layer keyed on the SQL, and with a schema-per-tenant strategy the SQL of two tenants
-// is the same string. The response cache was already scoped correctly, which is exactly why
-// the container is now written into the key explicitly rather than inferred: isolation that
-// holds by accident holds until something else changes.
+// A key on the SQL alone is not unique: with a schema-per-tenant strategy the SQL of two tenants
+// is the same string. So the container is written into the key explicitly rather than inferred:
+// isolation that holds by accident holds until something else changes.
 //
 import { expect } from 'expect'
 import {
@@ -51,8 +49,8 @@ describe('util/cache · the container is part of the key (T-3.6)', () => {
     const globex = req({ tenantInfo: { id: 'id-globex' }, user: { externalId: 'u1' } })
 
     cacheSet(keyFor(acme, 'orders'), 'ACME ROWS')
-    // Same user, same roles, same method, same url: in v4's data-layer cache this was the
-    // same key, and the second tenant read the first one's rows.
+    // Same user, same roles, same method, same url: without the container in the key this is
+    // the same key, and the second tenant reads the first one's rows.
     expect(cacheGet(keyFor(globex, 'orders'))).toBe(undefined)
     expect(cacheGet(keyFor(acme, 'orders'))).toBe('ACME ROWS')
   })

@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-9.5: the startup check on cryptographic secrets, which had no test at all.
+// The startup check on cryptographic secrets.
 //
 // This is the gate that decides whether an instance with a forgeable signing key reaches
-// production, and until now nothing had ever exercised it. `@fastify/jwt` refuses only a
-// FALSY secret (`assert(options.secret, 'missing secret')`) and accepts a weak one happily, so
-// this validator is the entire difference between "tokens are signed" and "tokens are signed
-// with something an attacker can guess".
+// production. `@fastify/jwt` refuses only a FALSY secret (`assert(options.secret, 'missing
+// secret')`) and accepts a weak one happily, so this validator is the entire difference between
+// "tokens are signed" and "tokens are signed with something an attacker can guess".
 //
 // The pure validator is tested directly and the policy through its verdict, because the
 // enforcement half calls `process.exit` — a test that asserted by exiting the process would

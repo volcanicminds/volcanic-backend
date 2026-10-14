@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-10.20, found by running the thing: the anti-replay counter of a TOTP verification.
+// The anti-replay counter of a TOTP verification.
 //
 // A verifier answers with a DELTA, how far from now the accepted code was, which is zero for a
-// code typed in its own window. The control plane stored that delta as if it were a position in
-// time, so the first successful verification wrote `0` and every later code, also a delta of
-// zero, failed `counter <= last`: an operator who enrolled a second factor could never log in
-// again. The tenant plane converted the delta inline and was fine, which is how two copies of one
-// rule drift — the copy nobody exercised is the wrong one.
+// code typed in its own window. Stored as if it were a position in time, that delta makes the
+// first successful verification write `0` and every later code, also a delta of zero, fail
+// `counter <= last`: an operator who enrolled a second factor could never log in again.
 //
 // These tests hold the converted form, because that is the property: what gets written down is a
 // position in time, comparable with the next one.
@@ -19,7 +17,7 @@ describe('mfa · the anti-replay counter is a step, not a delta (T-10.20)', () =
   it('turns the delta of a code typed in its own window into the step it belongs to', () => {
     const { valid, counter } = absoluteStep(0)
     expect(valid).toBe(true)
-    // The bug in one line: this used to be 0.
+    // The delta would be 0 here: what is stored is the current step.
     expect(counter).toBe(currentStep())
     expect(counter).toBeGreaterThan(1_000_000)
   })

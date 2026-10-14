@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// The account side of the second factor, on both planes (T-12.1, T-12.35, T-12.36).
+// The account side of the second factor, on both planes.
 //
-// The login no longer hands out a half-way token: the second factor is a stage of the flow, and the
-// routes that set up, enable and disable a factor are account management for a complete session
-// (F45). Three things are driven here through the real hook, the real route files and the real
-// handlers: a pre-auth token of the old kind, still signed with the current secret, authenticates
-// nothing anywhere (F36); a subject who already has a factor cannot enrol a second one over it,
-// which is the T-12.1 attack with a stolen session instead of a password; and enabling a factor
-// answers without issuing a session, because the caller already has one.
+// The login does not hand out a half-way token: the second factor is a stage of the flow, and the
+// routes that set up, enable and disable a factor are account management for a complete session.
+// Three things are driven here through the real hook, the real route files and the real handlers:
+// a pre-auth token of the old kind, still signed with the current secret, authenticates nothing
+// anywhere; a subject who already has a factor cannot enrol a second one over it, even with a
+// stolen session; and enabling a factor answers without issuing a session, because the caller
+// already has one.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'

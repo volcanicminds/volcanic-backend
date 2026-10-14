@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-2.1. The risk worth testing is drift between what the schema file declares and what the
-// migrations build, and the property T-3.1 depends on: that a Postgres container is chosen by
+// The risk worth testing is drift between what the schema file declares and what the migrations
+// build, and the property the tenant context depends on: that a Postgres container is chosen by
 // qualifying the tables, not by mutating a connection.
 //
 import { expect } from 'expect'
@@ -60,12 +60,11 @@ describe('database/schema · the tables', () => {
   const pgReg = pg.registryTables('public')
 
   it('declares the tables of a container and of the registry', () => {
-    // `migration` joined them in T-5.1: every container carries its own schema version, so
-    // the table is part of the set that defines a container.
-    // `session` joined them in T-11.1: the registry of live sessions lives in the container of
-    // the subject it belongs to, so it is part of what defines a container too.
-    // `authFlow`, `externalIdentity` and `accessLog` joined them in T-12.8 for the same reason,
-    // `setting` in T-12.46.
+    // `migration` is one of them: every container carries its own schema version, so the table
+    // is part of the set that defines a container.
+    // `session` too: the registry of live sessions lives in the container of the subject it
+    // belongs to, so it is part of what defines a container.
+    // `authFlow`, `externalIdentity`, `accessLog` and `setting` for the same reason.
     expect(Object.keys(pgApp).sort()).toEqual([
       'accessLog', 'authFlow', 'change', 'externalIdentity', 'migration', 'session', 'setting', 'token', 'user'
     ])
@@ -82,14 +81,13 @@ describe('database/schema · the tables', () => {
   })
 
   it('keeps the registry out of a tenant container', () => {
-    // v4 synchronised every entity into every tenant schema, so each container carried a
-    // copy of the `tenant` table — which is what made a poisoned connection able to list
-    // the wrong registry (D-01). A container holds application data and nothing else.
+    // A container holds application data and nothing else: a copy of the `tenant` table inside
+    // it would let a poisoned connection list the wrong registry.
     expect(Object.keys(pgApp)).not.toContain('tenant')
     expect(Object.keys(pgApp)).not.toContain('systemUser')
-    // A tenant's IdP secret sits in the control plane, never inside the container it serves (F38).
+    // A tenant's IdP secret sits in the control plane, never inside the container it serves.
     expect(Object.keys(pgApp)).not.toContain('identityProvider')
-    // The governance log outlives the container it would otherwise be destroyed with (F76).
+    // The governance log outlives the container it would otherwise be destroyed with.
     expect(Object.keys(pgApp)).not.toContain('governanceLog')
   })
 
@@ -136,7 +134,7 @@ describe('database/schema · postgres', () => {
   it('locates a tenant with one field, not with a pair of engine-specific ones', () => {
     const tenant = pgConfig(pg.registryTables('public').tenant)
     expect(columns(tenant)).toContain('locator')
-    expect(columns(tenant)).not.toContain('db_schema') // v4 had dbSchema + dbName, and neither
+    expect(columns(tenant)).not.toContain('db_schema') // dbSchema and dbName: neither
     expect(columns(tenant)).not.toContain('db_name') //  could describe a file container
   })
 })

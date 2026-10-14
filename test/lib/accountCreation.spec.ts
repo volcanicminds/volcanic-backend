@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-12.47 and T-12.48: who may create an account in a tenant (F49). The platform decides the set of
+// Who may create an account in a tenant. The platform decides the set of
 // modes, for every tenant or for one; the tenant's administrator picks one inside it; the pick that
 // falls out of a narrowed set gives way to the most closed mode left. Both doors obey it: the
 // registration route here, the just-in-time provisioning in test/db/accountCreation.spec.ts.

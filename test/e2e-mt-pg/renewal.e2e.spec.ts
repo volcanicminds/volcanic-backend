@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-11.11: renewal across containers, on real Postgres.
+// Renewal across containers, on real Postgres.
 //
-// The session registry moved a fact that used to live inside a signature into a row, and the row
-// lives inside the tenant's own container. That raises a question the single-container suites
-// cannot answer: on the renewal route the access token is gone by design, so nothing upstream has
-// read a `tid`, and the credential itself is what names the container to open. If that addressing
+// The session registry keeps in a row a fact a signature could carry, and the row lives inside
+// the tenant's own container. That raises a question the single-container suites cannot answer:
+// on the renewal route the access token is gone by design, so nothing upstream has read a `tid`,
+// and the credential itself is what names the container to open. If that addressing
 // were wrong in either direction the damage would be silent and serious — a session written in
 // one customer's schema and renewed from another's, or a renewal that opens the wrong container
 // and finds nothing.
@@ -82,8 +82,8 @@ describe('Renewal across containers on real Postgres (T-11.11)', function () {
     const opened = await session(ACME.slug, ACME.adminEmail, ACME.adminPassword)
 
     const res = await renew(GLOBEX.slug, opened.refreshToken)
-    // Defect D-19 on the one route where the credential arrives in the body: renewal must not be
-    // the door through which a session of one tenant is exchanged for a session in another.
+    // On the one route where the credential arrives in the body, renewal must not be the door
+    // through which a session of one tenant is exchanged for a session in another.
     expect(res.statusCode).toBe(403)
     expect(body(res).code).toBe('TENANT_MISMATCH')
 

@@ -1,5 +1,5 @@
 //
-// T-12.5 and T-12.6: `config/authFlows.ts`, how it is loaded, and every reason it stops the boot.
+// `config/authFlows.ts`, how it is loaded, and every reason it stops the boot.
 //
 // One test per cause, each on the text of its message: the message is what an operator reads at
 // three in the morning, and a refusal that fires with the wrong sentence sends them to fix the

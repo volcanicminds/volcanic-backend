@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-8.2 / defect D-23: the error hook echoed the exception on a 500 whatever
-// `HIDE_ERROR_DETAILS` said, while the error handler of index.ts honoured it.
+// The error hook honours `HIDE_ERROR_DETAILS` on a 500, as the error handler of index.ts does.
 //
-// The same deployment therefore hid its internals on one path and published them on the
-// other, and which path a request took was not something the operator chose. What is asserted
+// Otherwise the same deployment would hide its internals on one path and publish them on the
+// other, and which path a request takes is not something the operator chooses. What is asserted
 // here is the body the client receives, since that is the whole observable.
 //
 import { expect } from 'expect'
