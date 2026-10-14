@@ -5,9 +5,9 @@
 // merged into one run) and prints a single AGGREGATE summary at the end (total
 // passing / failing / pending across all suites).
 //
-// Unlike the old `&&` chain it does NOT stop at the first failure: every suite runs,
-// the per-suite mocha output is streamed through live (colors preserved), and the
-// process exits non-zero if any suite failed — so CI still goes red.
+// It does NOT stop at the first failure: every suite runs, the per-suite mocha output
+// is streamed through live (colors preserved), and the process exits non-zero if any
+// suite failed, so CI still goes red.
 //
 import { spawn } from 'node:child_process'
 
@@ -17,13 +17,7 @@ const bold = (s) => c(1, s)
 const red = (s) => c(31, s)
 const green = (s) => c(32, s)
 
-// The suites, in run order.
-//
-// v5 rebuild in progress: the TypeORM data layer was removed (T-0.1) and every suite
-// that booted through it went with it. Only the core unit suite survives until the
-// Drizzle data layer exists. The target suite map is docs/TESTING_V5.md §1; the specs
-// of the removed suites are recoverable from history, e.g.
-//   git show main:test/e2e/auth-lifecycle.e2e.spec.ts
+// The suites, in run order. The target suite map is docs/TESTING_V5.md §1.
 const SUITES = ['test:lib', 'test:db', 'test:migrations', 'test:budget']
 
 const ANSI = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')

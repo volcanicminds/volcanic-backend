@@ -527,7 +527,7 @@ npm run test:migrations   # the migration runner
 npm run test:budget       # statements per request, counted; fails when one grows
 npm run test:e2e:mt:pg    # the isolation bench, against a real Postgres
 npm run coverage          # measures, and fails under the floor (runs in CI, in the `test` job)
-npm run check-all         # lint, types, layer boundary, session state, migration sets, refusals
+npm run check-all         # lint, types, layer boundary, session state, migration sets, refusals, comment history
 ```
 
 ### Every refusal has a test that fires it

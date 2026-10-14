@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// T-5.2: the two sets stay two.
+// The two sets stay two.
 //
 // The control plane and a customer's container have different lives. The control plane is
 // migrated once and holds the registry, the platform identities and the impersonation log; a
@@ -9,10 +9,10 @@
 // same file is never shared.
 //
 // That is true today because the generation entries say so, and this check exists because
-// "true today" is how defect D-15 started. The properties below are the ones that would fail
-// silently if someone shared an entry, moved a folder, or added a control table to the tenant
-// schema: nothing would break, and a customer's container would quietly gain a copy of the
-// tenant registry, which is the shape D-01 needed to become a privilege escalation.
+// "true today" is not a guarantee. The properties below are the ones that would fail silently
+// if someone shared an entry, moved a folder, or added a control table to the tenant schema:
+// nothing would break, and a customer's container would quietly gain a copy of the tenant
+// registry, which is the shape a privilege escalation needs.
 //
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
@@ -23,7 +23,7 @@ const SETS = ['control', 'tenant']
 const dirOf = (set) => path.join(ROOT, 'lib/database/migrations', set, 'pg')
 
 // Tables of the platform. Nothing that describes the fleet belongs inside one of its members:
-// that is invariant 7, "outside the customer's container goes only what you could publish".
+// outside the customer's container goes only what you could publish.
 const CONTROL_ONLY = ['tenant', 'system_user', 'impersonation', 'destruction_request', 'identity_provider', 'governance_log']
 const SHARED = ['user', 'token', 'change', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log']
 

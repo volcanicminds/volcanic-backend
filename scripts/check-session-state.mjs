@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// T-3.1, point 3: no `SET search_path` outside a transaction, anywhere in the sources.
+// No `SET search_path` outside a transaction, anywhere in the sources.
 //
 // This is the cheap half of the rule, a grep, so the statement cannot be *written*. The
 // expensive half runs on the driver (lib/database/adapters/postgres/guard.ts), so it cannot
@@ -26,8 +26,7 @@ const LOCAL = /(?:^|[\s;('"`])set\s+local\s+search_path\b/i
 
 /**
  * Comments are stripped before matching: a file is allowed to EXPLAIN the statement it must
- * not run, and half of this repository's comments exist to say why D-01 happened. Newlines
- * are preserved so the reported line number is the real one.
+ * not run. Newlines are preserved so the reported line number is the real one.
  */
 function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/[^\n]*/g, '')

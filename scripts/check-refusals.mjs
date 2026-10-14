@@ -1,14 +1,11 @@
 #!/usr/bin/env node
 //
-// T-9.5: every refusal the framework can answer with has a test that makes it fire.
+// Every refusal the framework can answer with has a test that makes it fire.
 //
-// The framework refuses a great deal, on purpose: v5 replaced silent fallbacks with visible
-// failures nearly everywhere, and that is half its design. But a refusal nobody has ever seen
-// fire is a refusal whose INTENT is known and whose behaviour is not — the guard may be on a
-// path the request never takes, may compare the wrong field, may be dead code. Defect D-03 was
-// exactly that: an anti-spoofing check comparing a property the entity did not have, in a hook
-// that ran before the one that would have populated it. It never fired, nothing failed, and
-// the tenant was decided by the header for two years.
+// The framework refuses a great deal, on purpose: visible failures instead of silent fallbacks,
+// nearly everywhere, are half its design. But a refusal nobody has ever seen fire is a refusal
+// whose INTENT is known and whose behaviour is not: the guard may be on a path the request never
+// takes, may compare the wrong field, may be dead code.
 //
 // So this compares the error codes the SOURCE can produce against the codes the TESTS name.
 // It is deliberately shallow — a code named in a test is counted — because the alternative is

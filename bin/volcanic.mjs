@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// The operator's half of the fleet migrator (T-5.3).
+// The operator's half of the fleet migrator.
 //
 // Deliberately thin: it parses arguments, prints a table and chooses an exit code. Everything
 // that decides anything lives in `migrateFleet`, so a person at a terminal and a deploy script
@@ -86,9 +86,9 @@ async function main() {
   const layer = await dataLayer.start(config.options)
 
   try {
-    // Each manager decides what "expired" means. Sessions (T-11.12): rows whose two clocks have
-    // run out, so a revoked session stays until its own deadline and the reason it ended survives
-    // it. Access log (T-12.33): rows past the retention of their own plane.
+    // Each manager decides what "expired" means. Sessions: rows whose two clocks have run out, so
+    // a revoked session stays until its own deadline and the reason it ended survives it. Access
+    // log: rows past the retention of their own plane.
     if (command in purges) {
       // The paging over the registry lives in `purgeContainers` (lib/database/purge.ts), where
       // it is tested past the first thousand tenants.

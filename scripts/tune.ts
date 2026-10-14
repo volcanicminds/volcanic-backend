@@ -149,8 +149,8 @@ async function tuneKeyDerivation(): Promise<any> {
   return {
     N,
     sample,
-    // The number that matters is not the cost, it is whether it blocks: v4 used the SYNC call
-    // and 82 ms of it sat on the event loop at every MFA login.
+    // The number that matters is not the cost, it is whether it blocks: a SYNC call would put
+    // all of it on the event loop at every MFA login.
     note: 'asynchronous since v5: this cost is paid off the event loop, not on it'
   }
 }
@@ -417,8 +417,8 @@ async function tuneRateLimit(): Promise<any> {
    * `costMs` is the price of the work BEHIND the limit, and it is a parameter because the two
    * limits guard completely different work: a refused login still costs a bcrypt verification,
    * while the 404 handler costs a `reply.code(404).send()`. Charging a hash to the 404 handler
-   * priced it at a quarter of a core per address and made the shipped limit look reckless. It
-   * was the model that was wrong, which is the failure this whole file is written against.
+   * prices it at a quarter of a core per address and makes the shipped limit look reckless: a
+   * wrong model, which is the failure this whole file is written against.
    */
   const price = (max: number, windowMs: number, costMs: number, work: string) => {
     const cpuPerMinute = costMs ? round(max * costMs * (60_000 / windowMs)) : 0

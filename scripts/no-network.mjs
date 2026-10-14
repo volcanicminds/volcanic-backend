@@ -1,5 +1,5 @@
 //
-// T-12.40: a run with the network switched off, loaded with `--import` before the suites.
+// A run with the network switched off, loaded with `--import` before the suites.
 //
 // Every connection that would leave the machine throws, and so does every name resolution, so a
 // suite that reached a real provider fails instead of passing on whatever that provider answered.

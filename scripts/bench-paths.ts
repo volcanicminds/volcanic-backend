@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// The hot-path bench (T-14.4, F62).
+// The hot-path bench.
 //
 // Every authenticated request reads the same few rows before its handler runs: the tenant from
 // the registry, then the user or the integration token behind the credential, or the platform

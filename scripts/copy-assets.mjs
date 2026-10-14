@@ -12,10 +12,10 @@ const assets = [
   // `./orm.js`). Without these under `dist/types/`, consumers get unresolved
   // types (attw "Internal resolution error"). The data layer's own types are declared in
   // `.ts` files under `lib/database/` (`ports.ts` and the adapters), which tsc emits, so they
-  // need no copy. (Until T-10.36 this said `types/database/typeorm/global.ts`, a v4 path.)
+  // need no copy.
   ['types/global.d.ts', 'dist/types/global.d.ts'],
   ['types/orm.d.ts', 'dist/types/orm.d.ts'],
-  // The migration SQL (T-5.1). `tsc` emits no `.sql`, and the runner resolves the folders
+  // The migration SQL. `tsc` emits no `.sql`, and the runner resolves the folders
   // relative to the compiled `dist/db.js`, so without this the published package ships a
   // migrator with nothing to apply: `npx volcanic migrate` would report "nothing to do" on
   // an empty database, which is the one answer a migrator must never give wrongly.

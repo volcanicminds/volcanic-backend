@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// Bring the CONTROL plane to the current schema version (T-5.2).
+// Bring the CONTROL plane to the current schema version.
 //
 // The control plane is migrated ONCE, by hand or by a deploy step, and that is the whole
-// reason it is a separate command from the fleet migrator (T-5.3): one is an operation on a
+// reason it is a separate command from the fleet migrator: one is an operation on a
 // single database that either worked or did not, the other walks N containers and has to be
 // resumable, bounded and interruptible. Merging them would give the safe operation the
 // ceremony of the dangerous one, and the dangerous one the casualness of the safe one.

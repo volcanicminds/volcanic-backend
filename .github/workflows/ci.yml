@@ -16,15 +16,15 @@ jobs:
       - run: npm run lint
       - run: npm run type-check
       - run: npm run depcruise
-      # T-3.1: `SET search_path` outside a transaction is what D-01 was. The grep is the
-      # cheap half of the rule; the driver guard is the other half and runs with the tests.
+      # No `SET search_path` outside a transaction. The grep is the cheap half of the rule; the
+      # driver guard is the other half and runs with the tests.
       - run: npm run check:session-state
-      # T-5.2: the two migration sets stay two. A tenant container that quietly gained a copy
-      # of the registry is the shape D-01 needed to become a privilege escalation.
+      # The two migration sets stay two. A tenant container that quietly gained a copy of the
+      # registry is the shape a privilege escalation needs.
       - run: npm run check:migration-sets
-      # T-9.5: every refusal code the source can answer with is named by a test.
+      # Every refusal code the source can answer with is named by a test.
       - run: npm run check:refusals
-      # Q12: the dependencies a consumer installs. Dev-only advisories are not gated, because
+      # The dependencies a consumer installs. Dev-only advisories are not gated, because
       # they never reach a deployment; a high one in production dependencies stops the build.
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run build
@@ -41,10 +41,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: npm }
-      - run: npm ci # compila bcrypt (nativo); ubuntu-latest ha i build tools
-      - run: npm test # `pretest` builds first — i test girano contro dist/ (self-reference @volcanicminds/backend)
-      # A floor nobody runs is not a gate: `npm run coverage` existed since phase 8 and no job
-      # executed it, so it had been failing on its own thresholds unnoticed (T-10.27).
+      - run: npm ci # builds bcrypt (native); ubuntu-latest has the build tools
+      - run: npm test # `pretest` builds first: the tests run against dist/ (self-reference @volcanicminds/backend)
+      # A floor nobody runs is not a gate: without this step the coverage thresholds fail unnoticed.
       - run: npm run coverage
       - uses: actions/upload-artifact@v4
         if: always()
@@ -79,7 +78,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: npm }
       # A `pg_dump` older than the server refuses to dump it, and the export tests then skip
-      # rather than fail. Installing the matching client is what keeps T-6.2's happy path
+      # rather than fail. Installing the matching client is what keeps the export happy path
       # actually exercised instead of quietly stepped over.
       - run: |
           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
@@ -95,7 +94,7 @@ jobs:
       - run: npm run test:db
       # The migration engine has to be judged against a real schema: PGlite has no pool and
       # the point of these tests is that one unqualified file lands in a different container
-      # each time (T-5.1).
+      # each time.
       - run: npm run test:migrations
       # Statements per request, on PGlite and on this server: the counts must be the same.
       - run: npm run test:budget
@@ -104,7 +103,7 @@ jobs:
       - run: npm run bench:http -- --smoke --out "$RUNNER_TEMP/bench-http.json"
         env:
           BENCH_DATABASE_URL: postgres://volcanic:volcanic@127.0.0.1:5432/volcanic
-      # The OIDC suites with every connection off the machine refused (T-12.40): a test that reached
+      # The OIDC suites with every connection off the machine refused: a test that reached
       # a real provider would fail here instead of passing on what that provider answered.
       - run: npm run test:oidc:offline
       - run: npm run test:e2e:mt:pg
@@ -119,8 +118,8 @@ jobs:
         with: { node-version-file: .nvmrc, cache: npm, registry-url: 'https://registry.npmjs.org' }
       - run: npm ci
       - run: npm run build
-      # Una versione con suffisso (5.0.0-alpha.0) esce su dist-tag `next`, mai su `latest`:
-      # `latest` passa alla 5 solo quando la fase 7 è chiusa e la guida di migrazione esiste.
+      # A version with a suffix (5.0.0-alpha.0) goes out on dist-tag `next`, never on `latest`:
+      # `latest` moves to 5 only once the migration guide exists.
       # Block scalar, not a plain one: the ternary inside puts `? ` and ` : ` in the value, which
       # YAML reads as a complex mapping key and rejects.
       - run: |
