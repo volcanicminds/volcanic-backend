@@ -229,7 +229,7 @@ gives it one. Moving sovereignty is now a deliberate write, not a redeploy.
 | no version anywhere | a `migration` table **inside each container** |
 
 Forward only: there is no `down`. Reversibility comes from shipping additive migrations first
-and the destructive half in a later release (expand/contract, see the README), so a rollback
+and the destructive half in a later release (expand/contract, see `llms.txt` §2.6), so a rollback
 is a code deploy and never a data restore.
 
 **New refusals.** The instance does not start when the control plane is behind the code, and a

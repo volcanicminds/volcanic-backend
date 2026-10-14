@@ -10,7 +10,7 @@ import type { Config } from 'drizzle-kit'
 // Forward only. `drizzle-kit` generates no `down`, and that is the right shape: a `down` on
 // a destructive migration restores the form and not the data, which is a promise that fails
 // exactly when it is called on. Reversibility lives in the release discipline
-// (expand/contract, see the README), not in a script that lies about it.
+// (expand/contract, see llms.txt §2.6), not in a script that lies about it.
 //
 // Two sets, because the control plane and a customer's container have different lives
 // (T-5.2). `MIGRATION_SET` picks one; the npm scripts pass it. The folder ends in `pg`, the

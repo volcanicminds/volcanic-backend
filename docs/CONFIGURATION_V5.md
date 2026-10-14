@@ -119,7 +119,7 @@ their defaults.
 ## 4. Environment variables
 
 The variables that shape the data layer. The rest of the environment (JWT, logging, Swagger,
-MFA) is in the README table. The last column says where each value lands, because a variable
+MFA) is in the `llms.txt` table, §1.5. The last column says where each value lands, because a variable
 can do three different things: fill a configuration key, act as the fallback of one, or be read
 where it is used without passing through the configuration at all.
 

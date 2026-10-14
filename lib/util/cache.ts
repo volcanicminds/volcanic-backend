@@ -21,7 +21,7 @@
  * memory, per process. An invalidation declared by a route reaches the instance that served
  * the request and no other, so behind more than one instance a stale entry survives until it
  * expires. A deployment that needs real cross-instance invalidation wants a shared store,
- * which is a port and an adapter this framework does not ship today. The README says so too.
+ * which is a port and an adapter this framework does not ship today. llms.txt §5.6 says so too.
  *
  * So the default TTL is not one number: it follows the shape of the deployment the framework
  * can actually see. Without a `tenants` block the instance is a single application and one

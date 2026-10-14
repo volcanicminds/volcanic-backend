@@ -16,7 +16,7 @@ import path from 'path'
 //   - **forward only**. There is no `down`, because `drizzle-kit` does not generate one and
 //     because a `down` on a destructive migration restores the shape and not the data, which
 //     is a promise that fails exactly when it is needed. Reversibility lives in the design
-//     (expand/contract, see the README), not in a script that lies.
+//     (expand/contract, see llms.txt §2.6), not in a script that lies.
 //
 export interface MigrationFile {
   /** The file name without its extension: it is the identity, and it is the order. */

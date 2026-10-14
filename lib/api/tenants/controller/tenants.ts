@@ -493,7 +493,7 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
 //     to write with;
 //   - calling it twice is not an error. The second answer is `alreadyDestroyed`.
 //
-// What it cannot promise, and the README says so: **the data is still in your backups** until
+// What it cannot promise, and llms.txt §2.13 says so: **the data is still in your backups** until
 // those backups expire.
 // ---------------------------------------------------------------------------------------
 // Ten minutes by default, and read from the environment. Bounded on both sides: a window of one

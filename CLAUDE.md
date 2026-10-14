@@ -33,7 +33,7 @@ manager e il consumer li passa a `startServer(layer)`. Contratti in `docs/MANAGE
 `MfaManagement`, `TransferManagement`, `ControlHandle`, `TenantHandle`, `DataHandle`). Senza data
 layer partono i default no-op e il server si avvia comunque.
 
-Wiring consumer, in quest'ordine (il motivo è nel README):
+Wiring consumer, in quest'ordine (il motivo è in `llms.txt` §1.3, "Startup order"):
 
 ```typescript
 import { preload, start as startServer } from '@volcanicminds/backend'
