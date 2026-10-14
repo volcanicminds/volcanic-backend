@@ -1,11 +1,11 @@
 //
 // `@volcanicminds/backend/db` — the data layer entry point.
 //
-// The subpath carries no engine name: in v4 it was `/typeorm`, so the ORM was part of the
-// public API and changing it became a breaking change for every consumer (invariant 10).
-// What lives behind it is Drizzle today and is nobody's business tomorrow.
+// The subpath carries no engine name, so the ORM is not part of the public API and changing it
+// is not a breaking change for any consumer. What lives behind it is Drizzle today and is
+// nobody's business tomorrow.
 //
-// One engine, Postgres, on a server or on PGlite inside the process (F58, F60). The contract is
+// One engine, Postgres, on a server or on PGlite inside the process. The contract is
 // the ports every adapter implements, and the capability matrix refuses a combination the
 // framework cannot isolate before a single connection is opened.
 //
@@ -44,7 +44,7 @@ export {
  *
  * The capability check runs first and on purpose: a configuration the framework cannot
  * honour must stop the boot, not surface later as a request that silently reads the wrong
- * container. That is invariant 2, and D-04 is what happens without it.
+ * container.
  */
 export async function start(options?: DataLayerOptions) {
   const resolved = options ?? global.config?.options
@@ -52,8 +52,8 @@ export async function start(options?: DataLayerOptions) {
 
   const provider = await createPostgresProvider(resolved)
 
-  // The measured constraint of appendix A.3 is the connection, so it is checked before the
-  // first one is handed out and not at the two-hundredth tenant (T-7.1).
+  // The measured constraint is the connection, so it is checked before the first one is handed
+  // out and not at the two-hundredth tenant.
   const sizing = provider as { assertConnectionBudget?: () => Promise<void> }
   if (sizing.assertConnectionBudget) await sizing.assertConnectionBudget()
 
@@ -62,14 +62,14 @@ export async function start(options?: DataLayerOptions) {
 
   return {
     ...managers,
-    /** Not a manager: the framework uses it to open a request's handles (T-3.1). */
+    /** Not a manager: the framework uses it to open a request's handles. */
     provider,
-    /** Applies the schema of a container and says which version it is at (T-5.1). */
+    /** Applies the schema of a container and says which version it is at. */
     migrations,
     /**
-     * Brings every tenant container to the current version (T-5.3).
+     * Brings every tenant container to the current version.
      *
-     * The exported half of the double surface the plan requires: `npx volcanic migrate
+     * The exported half of a double surface: `npx volcanic migrate
      * --tenants` is a thin wrapper around this call, so an operator at a terminal and a
      * deploy script running unattended go through the same code and get the same refusals.
      */
@@ -109,7 +109,7 @@ async function activeTenants(
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /**
- * Where the migrations of each set are read from (T-5.1 point 5).
+ * Where the migrations of each set are read from.
  *
  * The framework's folder first, then the consumer's: the framework owns the migrations of
  * its own tables and nothing else, and a consumer's entities are the consumer's to move. Two
@@ -120,8 +120,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
  * migrations in `migrations/<set>/pg`.
  *
  * The keys are `control` and `tenant`, and a missing one is an error rather than an empty set.
- * "Zero migrations applied" and "no migrations exist" are different facts, and before T-9.1
- * they had the same answer: success.
+ * "Zero migrations applied" and "no migrations exist" are different facts.
  */
 export function migrationSets(): Record<string, MigrationSet> {
   const framework = (set: string) => path.join(__dirname, 'lib', 'database', 'migrations', set, 'pg')

@@ -9,13 +9,12 @@ export { MfaPolicy, VQuery, VFindResult, VHeaders }
 
 export interface AuthenticatedUser {
   /**
-   * The row's own identifier (T-6.1).
+   * The row's own identifier.
    *
-   * v4 exposed `getId()`, an ORM entity method that had leaked into the framework's public
-   * surface. v5 hands back plain rows, so the identifier is a field: the ORM is not part of
-   * the API, and a data row that answers method calls is the ORM pretending otherwise. The
-   * gap only showed end to end, where `req.user.getId()` was not a function and the failure
-   * surfaced three layers away as an unexplained 401.
+   * The framework hands back plain rows, so the identifier is a field: the ORM is not part of
+   * the API, and a data row that answers method calls is the ORM pretending otherwise.
+   * `req.user.getId()` is not a function, and the failure surfaces three layers away as an
+   * unexplained 401.
    */
   id: string
   username: string
@@ -26,7 +25,7 @@ export interface AuthenticatedUser {
 }
 
 export interface AuthenticatedToken {
-  /** The row's own identifier. See `AuthenticatedUser.id`: v5 hands back rows, not entities. */
+  /** The row's own identifier. See `AuthenticatedUser.id`: the framework hands back rows, not entities. */
   id: string
   name: string
   roles: Role[]
@@ -47,12 +46,12 @@ export interface Roles {
 }
 
 // ---------------------------------------------------------------------------------------
-// System identity (T-4.1, docs/AUTHORIZATION_V5.md §2-§4)
+// System identity (docs/AUTHORIZATION_V5.md §2-§4)
 //
-// Who administers the PLATFORM is a different thing from who administers a tenant, and in v5
-// it is a different type. In v4 the only thing separating a super-admin from a tenant admin
-// was which schema resolved the `user` table, i.e. exactly what defect D-01 broke: every
-// administrative operation was one defect away from a privilege escalation.
+// Who administers the PLATFORM is a different thing from who administers a tenant, and it is
+// a different type: if the only thing separating a super-admin from a tenant admin were which
+// schema resolved the `user` table, every administrative operation would be one defect away
+// from a privilege escalation.
 //
 // What the compiler can enforce, it does: a system role's code must start with `system:`,
 // and its capabilities must come from the closed control catalogue, so a system role cannot
@@ -97,7 +96,7 @@ export interface Data {
 export interface ResourceHints {
   name?: string // canonical resource name; maps schemas → resource without heuristics
   /**
-   * The path the resource lives under, when it is not the first segment of the route (T-10.20).
+   * The path the resource lives under, when it is not the first segment of the route.
    *
    * `/system/users` is a CRUD on the platform's operators, but its first segment is `system`,
    * which it shares with the platform login and the console manifest: grouped there, its six
@@ -120,7 +119,7 @@ export interface ManifestHints {
 }
 
 /**
- * What a console's action dialog needs beyond the route's body schema (T-10.16).
+ * What a console's action dialog needs beyond the route's body schema.
  *
  * The fields, their types and the schema's `required` come from the schema itself; this adds only
  * presentation, and `required` for a field whose absence the controller refuses with its own code
@@ -142,14 +141,14 @@ export interface RouteConfig {
    * Which plane the route acts on: 'tenant' (the default) or 'control'.
    *
    * The v4 spelling `tenantContext` is not accepted, and not translated either: the router
-   * refuses to start on a route that still uses it (T-3.3, invariant 9). The conversion is
+   * refuses to start on a route that still uses it. The conversion is
    * one line and it is in docs/MIGRATION_V4_V5.md.
    */
   scope?: 'tenant' | 'control'
-  /** Reserved to the framework (T-12.17): a consumer's route that declares it stops the boot. */
+  /** Reserved to the framework: a consumer's route that declares it stops the boot. */
   tenantFrom?: 'flow-state'
   /**
-   * Audit trail behaviour for this route (T-3.5). WHAT is tracked is declared in
+   * Audit trail behaviour for this route. WHAT is tracked is declared in
    * `config/tracking.ts`; this says what happens when the change cannot be written.
    *
    * `strict` defaults to true: the request fails with `TRACKING_FAILED`. Declare
@@ -206,7 +205,7 @@ export interface Route {
   requireCapability?: string
   /**
    * Answers only to a session whose person proved to be there within `STEP_UP_MAX_AGE` seconds;
-   * otherwise 403 `STEP_UP_REQUIRED` (F52). Refused at boot on a route open to `public`.
+   * otherwise 403 `STEP_UP_REQUIRED`. Refused at boot on a route open to `public`.
    */
   freshAuth?: boolean
   middlewares: string[]
@@ -246,7 +245,7 @@ export interface ContainersConfig {
 export interface TenantsConfig {
   strategy: TenantStrategy
   engine: Engine
-  /** How the tenant is resolved for requests that carry no token. Never `query`: see D-11. */
+  /** How the tenant is resolved for requests that carry no token. Never `query`. */
   resolver?: TenantResolver
   headerKey?: string
   /** Which label of the hostname carries the tenant, when resolver is `subdomain`. */
@@ -264,8 +263,8 @@ export interface TenantsConfig {
 //
 // Two nominal types, so the compiler forbids passing a tenant connection where a control
 // one is required. The brands are phantom: nothing exists at runtime. The core declares
-// them WITHOUT naming an ORM — that is invariant 10, and it is what tied v4 to TypeORM in
-// three files outside the data layer. The data layer re-exports them widened to its own
+// them WITHOUT naming an ORM: naming one would tie files outside the data layer to it. The
+// data layer re-exports them widened to its own
 // client and offers an accessor for the rare hand-written query.
 // ---------------------------------------------------------------------------------------
 declare const controlBrand: unique symbol
@@ -281,12 +280,12 @@ export type TenantHandle = { readonly [tenantBrand]: true; readonly tenantId: st
 export type DataHandle = ControlHandle | TenantHandle
 
 /**
- * What one request borrows from the data layer (T-3.1).
+ * What one request borrows from the data layer.
  *
- * It exists so that giving it back has ONE address. In v4 the release was written twice,
- * an `onResponse` hook and a listener on `reply.raw`, and the two ran in the wrong order,
- * which is how a tenant's `search_path` went back into the pool (D-01). One scope, one
- * release, and a second call is a no-op rather than a double free.
+ * It exists so that giving it back has ONE address: a release written twice, an `onResponse`
+ * hook and a listener on `reply.raw`, can run in the wrong order and put a tenant's
+ * `search_path` back into the pool. One scope, one release, and a second call is a no-op
+ * rather than a double free.
  */
 export interface DataRequestScope {
   readonly requestId: string
@@ -340,7 +339,7 @@ export interface Tenant {
 export type TenantPlace = Pick<Tenant, 'slug' | 'locator' | 'strategy'>
 
 /**
- * A package's part in the life of a tenant (T-16.2), passed to `start({ tenantLifecycles })`.
+ * A package's part in the life of a tenant, passed to `start({ tenantLifecycles })`.
  *
  * What a package keeps for a tenant inside the container goes with the container. What it keeps
  * outside, files on a disk or an index of its own, is invisible to the framework: without this
@@ -389,24 +388,23 @@ export interface GeneralConfig {
     scheduler: boolean
     embedded_auth: boolean
     // MFA Configs. The emergency reset of the admin's MFA is environment-only
-    // (`MFA_ADMIN_FORCED_RESET_EMAIL`/`_UNTIL`): the two keys typed here until T-10.6 were
-    // read by nobody, so setting them compiled and did nothing.
+    // (`MFA_ADMIN_FORCED_RESET_EMAIL`/`_UNTIL`).
     mfa_policy?: MfaPolicy | string
     /**
-     * The control plane's own policy, never weaker than `mfa_policy` (T-10.19). Absent means the
+     * The control plane's own policy, never weaker than `mfa_policy`. Absent means the
      * deployment value. A tenant declares its own in the `config` of its registry row.
      */
     system_mfa_policy?: MfaPolicy | string
     // Lifetime of a /auth/forgot-password reset token, in seconds (default 3600).
     reset_password_token_ttl?: number
-    /** Seconds an impersonation session lasts (T-4.2). Default 1800, hard maximum 14400. */
+    /** Seconds an impersonation session lasts. Default 1800, hard maximum 14400. */
     impersonation_ttl?: number
     /**
-     * Who may create an account in a tenant (F49): `invite`, `approval`, `open`. `allowed` is a list
+     * Who may create an account in a tenant: `invite`, `approval`, `open`. `allowed` is a list
      * or a comma-separated string; `default` must be one of them. Refused at boot when it is not.
      */
     accountCreation?: { allowed: string[] | string; default: string }
-    /** Where container exports are written (T-6.2). Configuration, never a request field. */
+    /** Where container exports are written. Configuration, never a request field. */
     export_directory?: string
     // Where the platform's own data lives: the tenant registry, the system users, and
     // the application data itself when there are no tenants (docs/CONFIGURATION_V5.md §1).
@@ -419,9 +417,9 @@ export interface GeneralConfig {
       enabled: boolean
     }
     /**
-     * The session registry and the rotation of refresh tokens (T-11.13).
+     * The session registry and the rotation of refresh tokens.
      *
-     * `enabled: false` gives back the stateless renewal of v4, where a refresh token cannot be
+     * `enabled: false` gives a stateless renewal, where a refresh token cannot be
      * consumed and a logout only clears cookies. It is a decision a deployment can take, not a
      * default: without the block the registry is on wherever a data layer is injected.
      */
@@ -435,7 +433,7 @@ export interface GeneralConfig {
       graceSeconds?: number
     }
     /**
-     * The access log (F44). Each key has an environment variable that wins over it, so a
+     * The access log. Each key has an environment variable that wins over it, so a
      * deployment can tighten retention or drop addresses without a release.
      */
     accessLog?: {
@@ -456,11 +454,11 @@ export interface GeneralConfig {
 }
 
 /**
- * Where a scheduled job runs (T-3.4).
+ * Where a scheduled job runs.
  *
  * `control` is the default because a job that says nothing must not touch a customer's
- * data: in v4 a job ran with no context at all, which meant it ran on whatever connection
- * the pool handed over, i.e. inside an arbitrary tenant (defect D-07).
+ * data: a job with no context at all runs on whatever connection the pool hands over, i.e.
+ * inside an arbitrary tenant.
  */
 export type JobScope = 'control' | 'tenant' | 'every-tenant'
 
@@ -507,7 +505,7 @@ export interface ConfiguredRoute {
   enable: boolean
   /**
    * `false` when the route declared `scope: 'control'`, `true` otherwise. Derived by the router,
-   * never authored (T-10.34).
+   * never authored.
    *
    * The name is the v4 spelling that the router REFUSES in an author's config
    * (lib/loader/router.ts), and it is kept here on purpose: this is the resolved boolean the
@@ -607,7 +605,7 @@ export interface UserManagement {
 
   blockUserById(ctx: DataHandle, id: string, reason: string): Promise<boolean>
   unblockUserById(ctx: DataHandle, id: string): Promise<boolean>
-  /** Ends the wait of an account under `approval` (F49); false when it was not waiting. */
+  /** Ends the wait of an account under `approval`; false when it was not waiting. */
   approveUserById(ctx: DataHandle, id: string): Promise<boolean>
 
   countQuery(ctx: DataHandle, data: VQuery): Promise<number>
@@ -641,9 +639,9 @@ export interface TokenManagement {
 }
 
 /**
- * The audit trail. Renamed from `DataBaseManagement`, which promised to manage a database
- * and only ever wrote changes; `synchronizeSchemas()` is gone with it, because a schema
- * rebuilt from metadata cannot coexist with versioned migrations.
+ * The audit trail: it writes changes and manages no database. There is no
+ * `synchronizeSchemas()`, because a schema rebuilt from metadata cannot coexist with versioned
+ * migrations.
  */
 export interface TrackingManagement {
   isImplemented(): boolean
@@ -662,18 +660,17 @@ export interface NewChange {
   status: 'create' | 'update' | 'delete'
   userId?: string | null
   tokenId?: string | null
-  /** The impersonation session behind the write, when there was one (T-4.2). */
+  /** The impersonation session behind the write, when there was one. */
   impersonationId?: string | null
   contents: Array<{ key: string; old?: unknown; new?: unknown }>
 }
 
 /**
- * A system user acting as a tenant user, recorded before it can happen (T-4.2).
+ * A system user acting as a tenant user, recorded before it can happen.
  *
- * In v4 an impersonation left a claim in a token and nothing else: no record, twenty-four
- * hours of validity, no way to revoke it, and the privilege check guarding it compared a
- * field the entity did not have (defect D-18). The row is the difference between an audited
- * capability and a back door with a comment.
+ * Without the row an impersonation is a claim in a token and nothing else: no record and no
+ * way to revoke it. The row is the difference between an audited capability and a back door
+ * with a comment.
  */
 export interface Impersonation {
   id: string
@@ -690,10 +687,10 @@ export interface Impersonation {
 }
 
 /**
- * The first phase of destroying a customer's data (T-6.3): a permission with a fuse.
+ * The first phase of destroying a customer's data: a permission with a fuse.
  *
  * One tenant, one operator, ten minutes, one use. The token is never stored, only its hash:
- * the single copy went out in the response to phase 1.
+ * the single copy goes out in the response to this first phase.
  */
 export interface DestructionRequest {
   id: string
@@ -763,9 +760,9 @@ export interface Session {
   ip?: string | null
   userAgent?: string | null
   impersonationId?: string | null
-  /** The methods of the last proof, the login or a step-up (F45, F54). Null for a session opened before the flow engine. */
+  /** The methods of the last proof, the login or a step-up. Null for a session opened before the flow engine. */
   authMethods?: string[] | null
-  /** When the person last proved to be there (F51). Null reads as never: not fresh. */
+  /** When the person last proved to be there. Null reads as never: not fresh. */
   authenticatedAt?: Date | string | null
   createdAt: Date | string
 }
@@ -787,10 +784,10 @@ export type SessionLookup =
   | { outcome: 'unknown' }
 
 /**
- * The registry of live sessions (T-11.1 → T-11.5).
+ * The registry of live sessions.
  *
- * Every method takes a `DataHandle` because the session lives in the container of its subject
- * (F19): a tenant user's session in the tenant container, a platform identity's in the control
+ * Every method takes a `DataHandle` because the session lives in the container of its subject:
+ * a tenant user's session in the tenant container, a platform identity's in the control
  * plane. The core never chooses that handle by itself, the caller does, exactly as for users.
  */
 export interface SessionManagement {
@@ -826,17 +823,17 @@ export interface SessionManagement {
     next: { secret: string; idleExpiresAt: Date | string }
   ): Promise<Session | null>
   /**
-   * A step-up (F54): the live session `sid` of `subjectId` is proven again now, by `methods`. One
+   * A step-up: the live session `sid` of `subjectId` is proven again now, by `methods`. One
    * conditional `UPDATE`; null when the session is revoked, expired, an impersonation or someone
    * else's, and the step-up then confirms nothing.
    */
   markAuthenticated(ctx: DataHandle, sid: string, subjectId: string, methods: string[]): Promise<Session | null>
   /** Idempotent: revoking an already revoked session is the same state, not an error. */
   revokeSession(ctx: DataHandle, sid: string, reason: string): Promise<boolean>
-  /** Returns how many were closed. The blunt instrument that is not `externalId` (F26). */
+  /** Returns how many were closed. The blunt instrument that is not `externalId`. */
   revokeAllOfSubject(ctx: DataHandle, subjectId: string, reason: string): Promise<number>
   listOfSubject(ctx: DataHandle, subjectId: string): Promise<Session[]>
-  /** Removes rows no renewal can use any more. Called lazily and by the CLI (T-11.12). */
+  /** Removes rows no renewal can use any more. Called lazily and by the CLI. */
   purgeExpired(ctx: DataHandle, before?: Date | string): Promise<number>
 }
 
@@ -984,12 +981,12 @@ export interface FlowChallenges {
   record(data: { method: string; code: string; expiresAt: Date; limits: ChallengeLimits }): Promise<ChallengeRecord>
   /** One conditional statement: a right code is good once, a wrong one spends an attempt. */
   consume(code: string): Promise<ChallengeConsumption>
-  /** Names the subject an unproven flow sends to, so its sends count against that subject (F37). */
+  /** Names the subject an unproven flow sends to, so its sends count against that subject. */
   nominate(subjectId: string): Promise<boolean>
 }
 
 /**
- * The round trip of a method that leaves the request (F39), bound by the engine to its flow. The
+ * The round trip of a method that leaves the request, bound by the engine to its flow. The
  * authenticator hands what the return will need; the engine keeps it encrypted in the row and
  * answers the `state` to send, built with the routing the authenticator never sees.
  */
@@ -997,7 +994,7 @@ export interface FlowRoundTrip {
   begin(external: AuthFlowExternal): Promise<string | null>
 }
 
-/** A provider ready for a login (F38): its settings, where they came from, and its secret if any. */
+/** A provider ready for a login: its settings, where they came from, and its secret if any. */
 export interface ResolvedIdentityProvider {
   key: string
   type: IdentityProviderType
@@ -1018,12 +1015,12 @@ export interface AuthContext {
   readonly policy: MfaPolicy
   readonly managers: AuthManagers
   readonly flow: Readonly<AuthFlow> | null
-  /** The limits of the deployment (F37), the environment already applied. */
+  /** The limits of the deployment, the environment already applied. */
   readonly limits: Readonly<AuthFlowLimits>
   /** Null without a flow row, or where the request presented no credential for it. */
   readonly challenges: FlowChallenges | null
   /**
-   * Who may create an account here (F49), read when it is needed: the just-in-time provisioning
+   * Who may create an account here, read when it is needed: the just-in-time provisioning
    * of a provider asks it. Absent, the most closed mode applies.
    */
   readonly accountCreation?: () => Promise<'invite' | 'approval' | 'open'>
@@ -1036,7 +1033,7 @@ export interface AuthContext {
 }
 
 /**
- * One authentication method (T-12.2).
+ * One authentication method.
  *
  * `initiate` starts what cannot finish in one request: it sends a code, or answers with the
  * address of an external provider. `complete` receives the return from that provider, which
@@ -1059,7 +1056,7 @@ export interface Authenticator {
   enrol?(ctx: AuthContext, subject: AuthSubject): Promise<EnrolmentSetup>
 }
 
-/** The authenticators of both planes (T-12.3). Built-ins first, then a consumer's, replacing by `id`. */
+/** The authenticators of both planes. Built-ins first, then a consumer's, replacing by `id`. */
 export interface AuthenticatorRegistry {
   register(authenticator: Authenticator): void
   get(plane: AuthPlane, id: string): Authenticator | undefined
@@ -1162,7 +1159,7 @@ export interface ExternalAuthResult {
 }
 
 /**
- * What a failed return left in the flow (F39): the refusal the next step answers with. The return
+ * What a failed return left in the flow: the refusal the next step answers with. The return
  * is a navigation that can carry no answer the console reads, so the answer waits in the row for
  * the one request that can: the step made with the flow credential.
  */
@@ -1171,11 +1168,11 @@ export interface ExternalAuthFailure {
   code: AuthRefusalCode
 }
 
-/** A login opens a session; a step-up confirms the one that started it (F53). */
+/** A login opens a session; a step-up confirms the one that started it. */
 export type AuthFlowPurpose = 'login' | 'step-up'
 
 /**
- * A flow row (F37). The hashes of the flow secret, of the code and of `state` are deliberately
+ * A flow row. The hashes of the flow secret, of the code and of `state` are deliberately
  * absent, as the secrets are from `Session`.
  */
 export interface AuthFlow {
@@ -1199,7 +1196,7 @@ export interface AuthFlow {
   /** Set by a failed return; the next step ends the flow with its code. */
   externalFailure?: ExternalAuthFailure | null
   purpose: AuthFlowPurpose
-  /** A step-up only: the session it confirms, and the subject that session belongs to (F54). */
+  /** A step-up only: the session it confirms, and the subject that session belongs to. */
   sessionSid: string | null
   expectedSubjectId: string | null
   version: number
@@ -1234,7 +1231,7 @@ export type ChallengeConsumption =
   | { outcome: 'expired' }
 
 /**
- * The flow store (F37, T-12.12). The row lives in the container of its subject, like `session`.
+ * The flow store. The row lives in the container of its subject, like `session`.
  * Every change is one conditional statement: a read followed by a write would let two steps
  * racing each other both win.
  */
@@ -1301,7 +1298,7 @@ export interface AuthFlowManagement {
   purgeExpired(ctx: DataHandle, before?: Date | string): Promise<number>
 }
 
-/** A link between an identity at a provider and a subject (F40). Unique on the four keys, never on the email. */
+/** A link between an identity at a provider and a subject. Unique on the four keys, never on the email. */
 export interface ExternalIdentity {
   id: string
   scope: SessionScope
@@ -1332,7 +1329,7 @@ export interface ExternalIdentityManagement {
   touch(ctx: DataHandle, id: string): Promise<boolean>
 }
 
-/** Settings of a container, one JSON value per key (F49). Never a secret. */
+/** Settings of a container, one JSON value per key. Never a secret. */
 export interface SettingManagement {
   isImplemented(): boolean
   /** The stored value, or null when the key was never written. */
@@ -1343,7 +1340,7 @@ export interface SettingManagement {
 
 export type IdentityProviderType = 'oidc'
 
-/** A tenant's own provider, in the control plane registry (F38). Never in `tenant.config`. */
+/** A tenant's own provider, in the control plane registry. Never in `tenant.config`. */
 export interface IdentityProvider {
   id: string
   tenantId: string
@@ -1396,7 +1393,7 @@ export type ChallengePurpose = 'identify' | 'verify'
 export type DeliveryPurpose = ChallengePurpose | 'destruction'
 
 /**
- * One code to deliver (F43). The consumer composes subject and text: the backend hands over data,
+ * One code to deliver. The consumer composes subject and text: the backend hands over data,
  * not presentation. `to` is always the address on file, never one taken from a request body.
  */
 export interface ChallengeDelivery {
@@ -1416,7 +1413,7 @@ export interface ChallengeDeliveryManagement {
   deliver(message: ChallengeDelivery): Promise<void>
 }
 
-/** The closed vocabulary of the access log (F44). A successful renewal is deliberately not an event. */
+/** The closed vocabulary of the access log. A successful renewal is deliberately not an event. */
 export type AccessEvent =
   | 'login.succeeded'
   | 'login.failed'
@@ -1480,7 +1477,7 @@ export interface AccessLogManagement {
   purgeExpired(ctx: DataHandle, now?: Date): Promise<number>
 }
 
-/** The closed vocabulary of the governance log (F76): what an operator did to the platform. */
+/** The closed vocabulary of the governance log: what an operator did to the platform. */
 export type GovernanceAction =
   | 'tenant.created'
   | 'tenant.updated'
@@ -1572,9 +1569,8 @@ export interface TransferManagement {
  * The registry and the life cycle of containers. Every registry method takes a
  * ControlHandle: passing a TenantHandle does not compile.
  *
- * `resolveTenant(req)` and `switchContext(tenant, db)` of v4 are gone. Resolution moved to
- * the core, which reads and verifies the token and hands down only the identifier; context
- * switching disappeared entirely, because v5 never mutates session state (T-3.1).
+ * Resolution lives in the core, which reads and verifies the token and hands down only the
+ * identifier; there is no context switching, because the framework never mutates session state.
  */
 export interface TenantManagement {
   isImplemented(): boolean
@@ -1595,7 +1591,7 @@ export interface TenantManagement {
   closeContainer(handle: TenantHandle): Promise<void>
   migrateContainer(tenantId: string, target?: string): Promise<string>
   exportContainer(tenantId: string, destination: string): Promise<any>
-  /** Irreversible. Only ever called after a successful export (T-6.3). */
+  /** Irreversible. Only ever called after a successful export. */
   destroyContainer(tenantId: string): Promise<boolean>
   inspectContainer(tenantId: string): Promise<any>
 }
@@ -1613,7 +1609,7 @@ export interface SystemUserManagement {
   blockSystemUserById(ctx: ControlHandle, id: string, reason: string): Promise<any>
   unblockSystemUserById(ctx: ControlHandle, id: string): Promise<any>
 
-  // The second factor of tenant destruction (T-6.3). See docs/SCHEMA_V5.md §3.2.
+  // The second factor of tenant destruction. See docs/SCHEMA_V5.md §3.2.
   saveMfaSecret(ctx: ControlHandle, userId: string, secret: string): Promise<boolean>
   retrieveMfaSecret(ctx: ControlHandle, userId: string): Promise<string | null>
   enableMfa(ctx: ControlHandle, userId: string): Promise<boolean>
@@ -1628,7 +1624,7 @@ declare module 'fastify' {
     user?: AuthenticatedUser
     token?: AuthenticatedToken
     startedAt?: Date
-    /** Query string and body merged, the body winning on a shared key (defect D-29). */
+    /** Query string and body merged, the body winning on a shared key. */
     data(): Data & VQuery
     /** Only the query string. */
     queryData(): Data & VQuery
@@ -1646,18 +1642,17 @@ declare module 'fastify' {
     /** The registry row of this request's tenant. A record, never a connection. */
     tenantInfo?: Tenant
     /**
-     * The platform administrator behind a control-scope request (T-4.1).
+     * The platform administrator behind a control-scope request.
      *
      * Deliberately NOT `req.user`: a system user is not a tenant user, and one field holding
-     * either would put the two identities back in the same slot, which is the shape the
-     * whole phase exists to remove.
+     * either would put the two identities back in the same slot.
      */
     systemUser?: any
-    /** What this request borrowed from the data layer, and gives back exactly once (T-3.1). */
+    /** What this request borrowed from the data layer, and gives back exactly once. */
     dataScope?: DataRequestScope
     /**
-     * The live impersonation session behind this request, when the token carries `imp`
-     * (T-4.2). Verified against the control plane on every request: a JWT that is still
+     * The live impersonation session behind this request, when the token carries `imp`.
+     * Verified against the control plane on every request: a JWT that is still
      * cryptographically valid is not a session that is still allowed.
      */
     impersonation?: Impersonation
@@ -1692,14 +1687,14 @@ declare module 'fastify' {
    * file: `scope: 'control'` becomes `tenantContext: false` (lib/loader/router.ts), and the roles
    * a route requires are threaded as objects rather than codes.
    *
-   * The hooks read these on every request and read them off an untyped object until now, so a
-   * renamed field would have been found by a failing request and not by the compiler (F7).
+   * The hooks read these on every request: typed here, a renamed field is found by the compiler
+   * and not by a failing request.
    */
   export interface FastifyContextConfig {
     tenantContext?: boolean
-    /** Reserved to the framework's return routes: the tenant is read from the flow `state` (T-12.17). */
+    /** Reserved to the framework's return routes: the tenant is read from the flow `state`. */
     tenantFrom?: 'flow-state'
-    /** Set by the router from the route's `freshAuth` (F52). */
+    /** Set by the router from the route's `freshAuth`. */
     freshAuth?: boolean
     requiredRoles?: Role[]
     /** The route's own method and path, threaded by the router so a refusal can name them. */
@@ -1711,13 +1706,12 @@ declare module 'fastify' {
   }
   /**
    * The managers a consumer injects through `start(decorators)`, declared where Fastify can see
-   * them (F7, the `noImplicitAny` work).
+   * them.
    *
-   * They were reached as `req.server['userManager']` and typed as nothing: a string index on an
-   * instance that declares no such property, which is an implicit `any` in the one place where a
-   * wrong call is most expensive. Declaring them here types every call site at once, without
-   * touching a single one of them, and turns a contract that lived in `index.ts` and in the
-   * documentation into something the compiler checks.
+   * Undeclared, `req.server['userManager']` is a string index on an instance that declares no
+   * such property, which is an implicit `any` in the one place where a wrong call is most
+   * expensive. Declaring them here types every call site at once, and turns the contract in
+   * `index.ts` and in the documentation into something the compiler checks.
    *
    * None of them is optional, and that is the honest shape: `start()` decorates every one before
    * the server accepts a request, with the no-op defaults where a consumer injected nothing. A
@@ -1743,9 +1737,9 @@ declare module 'fastify' {
     accessLogManager: AccessLogManagement
     governanceLogManager: GovernanceLogManagement
     settingManager: SettingManagement
-    /** Not a manager: the authenticators of both planes, built by `start()` (T-12.3). */
+    /** Not a manager: the authenticators of both planes, built by `start()`. */
     authRegistry: AuthenticatorRegistry
-    /** Not a manager: the packages that follow a tenant's life, in the order given to `start()` (T-16.2). */
+    /** Not a manager: the packages that follow a tenant's life, in the order given to `start()`. */
     tenantLifecycles: readonly TenantLifecycle[]
   }
 }
@@ -1790,22 +1784,21 @@ declare global {
   var transferConfig: TransferConfig
   var transferPath: string | null
   var roles: Roles
-  /** The control-scope catalogue. Separate map, separate namespace (T-4.1). */
+  /** The control-scope catalogue. Separate map, separate namespace. */
   var systemRoles: SystemRoles
   /** The flows of both planes (`config/authFlows.ts`), frozen, read by the manifest and the engine. */
   var authFlows: ResolvedAuthFlows
   /**
    * The i18n instance loaded at boot (`lib/loader/translation.ts`).
    *
-   * It was used as `global.t` in several places and declared nowhere, so every one of those was
-   * an implicit any on a global (F7).
+   * Used as `global.t` in several places; declared here so none of those is an implicit any on a
+   * global.
    */
   var t: any
   var tracking: TrackChangesList
   var trackingConfig: Data
-  // `connection`, `entity` and `repository` were the v4 ambient globals of the data layer.
-  // They are gone (T-3.3): a global connection is a context nobody declared, and reading it
-  // is how a request served whatever the pool happened to hold (D-01, D-06). Whoever needs
+  // The data layer has no ambient global: a global connection is a context nobody declared,
+  // and reading it serves a request whatever the pool happens to hold. Whoever needs
   // the control plane receives a ControlHandle, whoever needs a tenant a TenantHandle, and
   // both arrive on the request.
   var routes: ConfiguredRoute[]

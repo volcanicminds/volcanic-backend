@@ -70,10 +70,10 @@ import type {
   TransferManagement,
   UserManagement
 } from './types/global.js'
-// `lib/config/general.js` is deliberately NOT imported here (T-10.4). It is the framework's
+// `lib/config/general.js` is deliberately NOT imported here. It is the framework's
 // layer of defaults and `loaderConfig.load()` merges it with the project's; reading it directly
 // skips that merge. A static import is also hoisted above `dotenv.config()`, so the
-// `process.env` reads inside it ran before `.env` was loaded.
+// `process.env` reads inside it would run before `.env` is loaded.
 import { MfaPolicy } from './lib/config/constants.js'
 import { isCookieMode } from './lib/util/credential.js'
 import { stepUpMaxAge } from './lib/util/stepUp.js'
@@ -194,12 +194,12 @@ async function addFastifySchedule(server: FastifyInstance) {
 }
 
 const preload = async () => {
-  // First, so the data layer started after preload() already has a tracer to write to (F68).
+  // First, so the data layer started after preload() already has a tracer to write to.
   await startTelemetry()
   global.config = await loaderConfig.load()
   global.t = loaderTranslation.load()
   global.roles = await loaderRoles.load()
-  // The control catalogue is a separate map, not extra entries in `roles` (T-4.1): a role
+  // The control catalogue is a separate map, not extra entries in `roles`: a role
   // that can suspend a customer and a role that can read a customer's orders are not two
   // rows of one list.
   global.systemRoles = await loaderRoles.loadSystem()
@@ -210,7 +210,7 @@ const preload = async () => {
 
 /**
  * What `start()` takes: the managers to inject, each optional, plus the authenticators that feed
- * the registry (T-12.3). A manager left out, or passed as `undefined`, is the Null Object. The
+ * the registry. A manager left out, or passed as `undefined`, is the Null Object. The
  * data layer's `start()` result is accepted as it is, with the keys that are not managers
  * (`provider`, `migrations`, ...), which is why the type stays open.
  */
@@ -233,7 +233,7 @@ export interface StartOptions {
   governanceLogManager?: GovernanceLogManagement
   settingManager?: SettingManagement
   authenticators?: readonly Authenticator[]
-  /** The packages that follow a tenant's life: created, exported, destroyed with it (T-16.2). */
+  /** The packages that follow a tenant's life: created, exported, destroyed with it. */
   tenantLifecycles?: readonly TenantLifecycle[]
   [key: string]: unknown
 }
@@ -254,9 +254,9 @@ const start = async (decorators: StartOptions = {}) => {
   global.tracking = tracking
   global.trackingConfig = trackingConfig
 
-  // Fastify logs through the framework's logger (F63), so `req.log` writes where `log` does, with
-  // the request id. Its per-request lines stay off unless `LOG_FASTIFY` asks for them (T-10.10).
-  // Written out rather than left to Fastify's default (S16), so the ceiling on a JSON body is a
+  // Fastify logs through the framework's logger, so `req.log` writes where `log` does, with
+  // the request id. Its per-request lines stay off unless `LOG_FASTIFY` asks for them.
+  // Written out rather than left to Fastify's default, so the ceiling on a JSON body is a
   // number the deployment can read and change. Transfers do not go through it: they stream.
   const bodyLimit = envInt('BODY_LIMIT', 1048576)
   const server: FastifyInstance = fastify({
@@ -268,9 +268,9 @@ const start = async (decorators: StartOptions = {}) => {
   await registerTelemetry(server)
 
   const { HOST: host = '0.0.0.0', PORT: port = '2230' } = process.env
-  // One hour, not fifteen days (T-10.39): the browser session renews itself from the refresh
-  // token, so the access token only has to outlive a request, and a stolen one is worth an hour.
-  // Lowered only once renewal existed in both modes, or the default would have been a logout.
+  // One hour: the browser session renews itself from the refresh token, so the access token only
+  // has to outlive a request, and a stolen one is worth an hour. It holds because renewal exists
+  // in both modes; without it the default would be a logout.
   const {
     JWT_SECRET = '',
     JWT_EXPIRES_IN = '1h',
@@ -286,7 +286,7 @@ const start = async (decorators: StartOptions = {}) => {
 
   if (plugins?.rawBody) await server.register(rawBody, plugins.rawBody || {})
   if (cookieMode && !plugins?.cookie) {
-    // Cookie mode is the default (T-10.37), so this is what a project meets when its own
+    // Cookie mode is the default, so this is what a project meets when its own
     // config/plugins.ts disables the plugin: every login would fail on `reply.setCookie`.
     throw new Error('AUTH_MODE=COOKIE, the default, needs the `cookie` plugin: enable it in config/plugins.ts or set AUTH_MODE=BEARER')
   }
@@ -341,7 +341,7 @@ const start = async (decorators: StartOptions = {}) => {
   if (plugins?.multipart) {
     // A consumer's `config/plugins.ts` entry replaces the framework's options whole, so the
     // ceilings are applied here, under whatever the consumer wrote: without them a single request
-    // may carry any number of files and fields (S16).
+    // may carry any number of files and fields.
     const options = plugins.multipart as { limits?: Record<string, number> }
     await server.register(multipart, {
       ...options,
@@ -352,7 +352,7 @@ const start = async (decorators: StartOptions = {}) => {
     // Checked on the EFFECTIVE options, not on the framework default: a consuming project
     // that writes its own `config/plugins.ts` replaces that default whole, and the one
     // combination that must never reach production has to be caught wherever it was written.
-    // The tenant header joins the allowlist where the backend reads it (T-10.15): without it a
+    // The tenant header joins the allowlist where the backend reads it: without it a
     // browser console on another origin cannot even send its login.
     const corsOptions = withTenantHeader(plugins.cors, tenantsConfig())
     assertCorsOptions(corsOptions, { prod: process.env.NODE_ENV === 'production' })
@@ -381,13 +381,13 @@ const start = async (decorators: StartOptions = {}) => {
     sign: { expiresIn: JWT_EXPIRES_IN }
   })
 
-  // The refresh token stopped being a JWT in T-11.6: it is an opaque secret whose only meaning
-  // is a row in the session registry, so there is no second namespace to register and no second
-  // signing secret to keep strong. `JWT_REFRESH=false` still turns renewal off, and what decides
-  // whether it is available at all is now the registry itself (F28, lib/util/renewal.ts).
+  // The refresh token is not a JWT: it is an opaque secret whose only meaning is a row in the
+  // session registry, so there is no second namespace to register and no second signing secret
+  // to keep strong. `JWT_REFRESH=false` turns renewal off, and what decides whether it is
+  // available at all is the registry itself (lib/util/renewal.ts).
   //
   // `JWT_REFRESH_SECRET` and `JWT_REFRESH_EXPIRES_IN` are read here only to refuse them out
-  // loud: a deployment that sets them is describing a mechanism this version no longer has, and
+  // loud: a deployment that sets them is describing a mechanism this version does not have, and
   // silence would let it believe the session lasts what that variable says.
   if (JWT_REFRESH_SECRET || JWT_REFRESH_EXPIRES_IN !== '180d') {
     log.warn(
@@ -445,8 +445,8 @@ const start = async (decorators: StartOptions = {}) => {
   server.decorate('tenantLifecycles', lifecycles)
 
   // After the injection, because a project may bring its own managers and methods: a flow this
-  // build cannot run, or a policy that demands a second factor it cannot issue (T-10.19), is a
-  // locked door with no key, and the first login is where everyone would find out (T-12.6).
+  // build cannot run, or a policy that demands a second factor it cannot issue, is a
+  // locked door with no key, and the first login is where everyone would find out.
   const flowProblems = authFlowProblems({
     flows: global.authFlows,
     registry: authRegistry,
@@ -461,11 +461,11 @@ const start = async (decorators: StartOptions = {}) => {
     env: process.env
   })
   if (flowProblems.length) throw new Error(flowProblems.join('\n'))
-  // Read once, now that the validation has refused an empty one, and kept out of every global (T-12.25).
+  // Read once, now that the validation has refused an empty one, and kept out of every global.
   captureDeploymentSecrets(global.authFlows, process.env)
 
   // Before anything writes: an instance does not serve traffic on a schema its code does not
-  // match (T-5.4). It runs BEFORE the genesis reconciliation on purpose, because that one
+  // match. It runs BEFORE the genesis reconciliation on purpose, because that one
   // writes into tables whose shape this check is what guarantees.
   await assertControlSchemaCurrent(server)
 
@@ -486,7 +486,7 @@ const start = async (decorators: StartOptions = {}) => {
     try {
       await server.ready()
       const { writeFileSync } = await import('node:fs')
-      // One manifest per console plane (T-10.14): MANIFEST_DUMP_PLANE=control dumps the platform
+      // One manifest per console plane: MANIFEST_DUMP_PLANE=control dumps the platform
       // console's, which a build cannot pull in cookie mode (no integration token on that plane).
       const plane = process.env.MANIFEST_DUMP_PLANE === 'control' ? 'control' : 'tenant'
       writeFileSync(manifestDumpPath, JSON.stringify(generateManifest(server, { plane }), null, 2))
@@ -516,16 +516,14 @@ const start = async (decorators: StartOptions = {}) => {
     })
     .then((address) => {
       if (log.i) {
-        // Milliseconds to seconds. It was divided by 100, so a boot of 1.5s printed "15s".
+        // Milliseconds to seconds.
         const elapsed = (new Date().getTime() - begin) / 1000
         log.info(`All stuff loaded 🟢 in ${elapsed}s`)
       }
 
-      // The policy the auth controllers ENFORCE, read from where they read it (T-10.4). This
-      // used to read the framework's own defaults file, so a project that set
-      // `mfa_policy: 'MANDATORY'` in its config was told at boot that MFA was optional.
-      // Two planes since T-10.19: the deployment value is the floor, and the control plane may
-      // be stricter. A tenant's own value lives in its registry row and is resolved per request.
+      // The policy the auth controllers ENFORCE, read from where they read it. Two planes: the
+      // deployment value is the floor, and the control plane may be stricter. A tenant's own
+      // value lives in its registry row and is resolved per request.
       // A value that is written and is not a policy stops the boot, as a bad `AUTH_MODE` does:
       // reading it as "the default" is how a setting comes to mean the opposite of what it says.
       try {
@@ -544,11 +542,11 @@ const start = async (decorators: StartOptions = {}) => {
         log.info(`Security MFA 🔑 set to ${stated}`)
       }
 
-      // T-11.15. `reset_external_id_on_login` rotates the subject's public identifier at every
-      // login, which was the only revocation v4 had. With a session registry it is the hammer
-      // used as a routine: logging in from a phone drops the session on the laptop, and it also
-      // changes an identifier that integrations may have stored. The option stays, because a
-      // deployment may want exactly that, but it stops being a silent default nobody chose.
+      // `reset_external_id_on_login` rotates the subject's public identifier at every login.
+      // With a session registry it is the hammer used as a routine: logging in from a phone
+      // drops the session on the laptop, and it also changes an identifier that integrations may
+      // have stored. The option stays, because a deployment may want exactly that, but it is
+      // never a silent default nobody chose.
       if (log.w && config?.options?.reset_external_id_on_login) {
         log.warn(
           'Security 🔑 reset_external_id_on_login is on: every login closes the other sessions of that user ' +
@@ -588,14 +586,14 @@ export type {
   UserManagement,
   TokenManagement,
   TrackingManagement,
-  // The session registry (T-11.4). A consumer that injects its own store implements this, and
+  // The session registry. A consumer that injects its own store implements this, and
   // a consumer that lists a user's devices reads `Session` without describing it again.
   SessionManagement,
   Session,
   SessionScope,
   SessionLookup,
   MfaManagement,
-  // Composable authentication (T-12.2, T-12.4): the contract a consumer's own method implements,
+  // Composable authentication: the contract a consumer's own method implements,
   // and the ports a consumer may inject instead of the data layer's.
   Authenticator,
   AuthenticatorKind,
@@ -645,7 +643,7 @@ export type {
   GovernanceLogRecord,
   GovernanceLogManagement,
   SettingManagement,
-  // What a project's `src/config/authFlows.ts` is typed with (T-12.5).
+  // What a project's `src/config/authFlows.ts` is typed with.
   AuthFlowsConfig,
   AuthPlaneFlows,
   AuthFlowDefinition,
@@ -675,12 +673,11 @@ export { MfaPolicy } from './lib/config/constants.js'
 
 export { yn, preload, start, TranslatedError }
 
-// The choice of container, as a function a consuming project can call (T-10.1).
+// The choice of container, as a function a consuming project can call.
 //
-// Until it was exported, the only way for an application to name the handle of a request was
-// to write the choice again by hand, and the shortest way to write it is
-// `req.tenant ?? req.control`: invariant 3 inverted, because with tenancy on a request that
-// lost its context then reads the control plane instead of failing. `NoDataContextError`
+// An application that writes the choice again by hand tends to write the shortest form,
+// `req.tenant ?? req.control`, which is wrong: with tenancy on, a request that lost its
+// context then reads the control plane instead of failing. `NoDataContextError`
 // travels with it, because a consumer that catches it is catching a framework bug and not a
 // bad request.
 export { dataContext, NoDataContextError } from './lib/util/tenancy.js'
