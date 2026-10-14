@@ -98,8 +98,8 @@ keyGroup :: container :: subject | roles :: METHOD url
 - **roles**: the effective role codes, sorted.
 
 **Why the container is written out.** It could be inferred from the rest of the key in most
-shapes, and that is exactly the reason it is stated. Defect D-15 was a cache key that happened
-to be unique: the v4 data-layer cache keyed on the SQL, and with a schema-per-tenant strategy
+shapes, and that is exactly the reason it is stated. A key that is unique by coincidence does
+not isolate: the v4 data-layer cache keyed on the SQL, and with a schema-per-tenant strategy
 the SQL of two tenants is the same string, so the key stopped isolating the day the schema
 moved out of it. Isolation that holds by accident holds until something else changes.
 
@@ -222,7 +222,7 @@ global.cache.stats()                 // { size, hits, misses, enabled, ttl, maxE
 
 ### The store is per process, and an invalidation does not travel
 
-This is a **known limit and a decision**, not an oversight (defect D-26). The store is a `Map`
+This is a **known limit and a decision**, not an oversight. The store is a `Map`
 in the process that serves the request. A declarative `invalidates`, or a call to
 `invalidateCache()`, empties that instance's entries and reaches no other instance, so behind a
 load balancer a stale entry survives on the other replicas until it expires.

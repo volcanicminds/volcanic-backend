@@ -2,10 +2,10 @@
 
 > **This document describes v4 and is superseded.** In v5 the data layer subpath is
 > `@volcanicminds/backend/db`, the ORM is not part of the API, and PGlite is kept for
-> development and unit tests only, never for isolation tests: it has no pool, so the entire
-> class of defects the rewrite exists to remove is invisible under it (decision 13 of
-> `docs/evo/EVO_FRAMEWORK.md`). `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` does not exist any more either:
-> schemas are versioned migrations (T-5.1). See `docs/MIGRATION_V4_V5.md`.
+> development and unit tests only, never for isolation tests: it has no pool, so a tenant's
+> `search_path` surviving on a pooled connection, the class of defect isolation tests exist to
+> catch, is invisible under it. `DB_SYNCHRONIZE_SCHEMA_AT_STARTUP` does not exist any more either:
+> schemas are versioned migrations. See `docs/MIGRATION_V4_V5.md`.
 
 The data layer (`@volcanicminds/backend/typeorm`) can run on **PGlite**, an in‑process WASM build of Postgres.
 No server to install, no Docker container, no connection string: set `type: 'pglite'` and the database is _just

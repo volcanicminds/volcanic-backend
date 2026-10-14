@@ -1,8 +1,6 @@
 # Authentication flows (v5)
 
-> **Status: specification of what the code does.** Target: `@volcanicminds/backend` v5, phase 12
-> (`docs/evo/EVO_FASE_12.md`, decisions F33 to F49). Replaces `docs/AUTH_COMPOSABLE_EVOLUTION.md`, the v4
-> design this engine grew out of, which is removed: where the two differed, this one is the code.
+> **Status: specification of what the code does.** Target: `@volcanicminds/backend` v5.
 > If this document and the code disagree, the code wins and this document has a defect.
 
 A login in v5 is a **flow**: one identify stage that says who the subject is, then the ordered
@@ -449,7 +447,7 @@ where a stage lists it and for the MFA floor (§8.2), nowhere else.
 
 ## 7. Linking and just-in-time provisioning
 
-An identity at a provider is resolved to a subject in this order, and nothing else (F40):
+An identity at a provider is resolved to a subject in this order, and nothing else:
 
 1. **An existing link** on the four keys `(plane, provider, issuer, subject)`, never on the address.
    The linked account is judged as any login judges it.
@@ -556,7 +554,7 @@ from the flow row, never from the request.
   only the access cookie is replaced.
 - A session revoked or expired meanwhile ends the flow with 403 `STEP_UP_NOT_AVAILABLE`.
 - A step-up is a flow of its subject like a login, so opening one retires the other flows of that
-  subject (F37), a login in another tab included, and the other way round.
+  subject, a login in another tab included, and the other way round.
 
 A client that meets `STEP_UP_REQUIRED` runs the step-up and repeats the request. The manifest names
 the route as `auth.flowStepUp` (docs/API_V5.md §7).
@@ -652,9 +650,9 @@ A refusal code of a consumer's authenticator passes through as 401 with that cod
 
 **SAML.** The contract already has what it needs: `complete` with a posted form, `stateParam` for
 `RelayState`, `action: { type: 'post', url, fields }`, a `state` short enough for SAML's 80 bytes,
-and the `identity_provider.type` column. The method and its library are a later phase.
+and the `identity_provider.type` column. The method and its library do not ship yet.
 
-**Self-service linking** (F48, after 5.0). A user with a live session adding a provider account is a
+**Self-service linking** (after 5.0). A user with a live session adding a provider account is a
 back door for whoever steals that session for an hour: the link outlives password changes, logouts
 and even a rotation of `external_id`. It will come with a flow of another purpose that asks for a
 fresh re-authentication first, that is with step-up (§8.5). Until then links are created by the

@@ -1,7 +1,7 @@
 # Base schema (v5)
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5, Drizzle data layer. Task **T-2.1** of `docs/evo/EVO_FRAMEWORK.md`.
+> Target: `@volcanicminds/backend` v5, Drizzle data layer.
 > Nothing here is a suggestion: if a column, a type or an index is missing from your
 > implementation, the task is not done. If something here turns out to be wrong **in practice**,
 > stop, report it, and fix this document first.
@@ -29,7 +29,7 @@ touches them.
 | `identity_provider` | control plane only | a tenant's own identity providers, with the client secret encrypted |
 | `governance_log` | control plane only | what the operators did to the platform, kept after the tenant is gone |
 
-**Rule that decides where a table goes** (invariant 7): outside the customer's container sits
+**Rule that decides where a table goes**: outside the customer's container sits
 only what you could publish. The control plane holds identifiers, counters, status and
 configuration. Never customer content.
 
@@ -50,19 +50,20 @@ These apply to every table below. They are not repeated in each definition.
 | Soft delete | `deleted_at` nullable; a row with `deleted_at` set is invisible to every default query |
 
 **A container is chosen by qualifying its tables, never by a session setting.** The Postgres
-factories take the schema name and produce `"tenant_acme"."user"`, which is what makes T-3.1
-possible. One exception is forced by the driver: Drizzle refuses `pgSchema('public')`, because
-Postgres resolves unqualified names there anyway, so a control plane living in `public` emits
-unqualified SQL. Two answers, both applied: prefer a **named** schema for the control plane,
-which is qualified like any other, and when it is `public` the adapter pins `search_path` on
-the connection itself at connect time. A value identical on every connection, that no request
-ever changes, is configuration and not session state.
+factories take the schema name and produce `"tenant_acme"."user"`, which is what lets a request
+reach its container without touching session state. One exception is forced by the driver:
+Drizzle refuses `pgSchema('public')`, because Postgres resolves unqualified names there anyway,
+so a control plane living in `public` emits unqualified SQL. Two answers, both applied: prefer a
+**named** schema for the control plane, which is qualified like any other, and when it is
+`public` the adapter pins `search_path` on the connection itself at connect time. A value
+identical on every connection, that no request ever changes, is configuration and not session
+state.
 
 **Column naming is `snake_case` in the database and `camelCase` in TypeScript.** Drizzle maps
 the two explicitly in the table definition: never rely on an automatic conversion.
 
 **Id generation.** The framework generates UUID **v7** in process. Never ask the database for a
-free identifier with a `do/while` loop (that is defect D-28). v7 is time-ordered, so it keeps
+free identifier with a `do/while` loop. v7 is time-ordered, so it keeps
 b-tree inserts local and gives a free creation-time ordering. Implement it in
 `lib/database/uuid.ts` (about twenty lines: 48-bit big-endian millisecond timestamp, 4-bit
 version, 74 bits of `crypto.randomBytes`, variant bits set); do not add a dependency for it.
@@ -86,9 +87,9 @@ layer on every update. An update whose `version` does not match responds `409`.
 | `username` | text | yes | | unique per container when present |
 | `email` | text | no | | unique per container, stored lowercase, trimmed |
 | `password` | text | no | | bcrypt hash, cost 12. Never selected by default (see §5) |
-| `confirmed` | boolean | no | `false` | `POST /auth/register` always creates `false`; tenant provisioning may create `true` (T-6.1) |
+| `confirmed` | boolean | no | `false` | `POST /auth/register` always creates `false`; tenant provisioning may create `true` |
 | `confirmed_at` | timestamp | yes | | |
-| `approved` | boolean | no | `true` | `false` while an account created under the `approval` mode waits for an administrator (F49, docs/API_V5.md §2.5). True by default, so existing rows and accounts an administrator creates wait for nobody |
+| `approved` | boolean | no | `true` | `false` while an account created under the `approval` mode waits for an administrator (docs/API_V5.md §2.5). True by default, so existing rows and accounts an administrator creates wait for nobody |
 | `approved_at` | timestamp | yes | | when an administrator approved it; null for an account that never waited |
 | `password_changed_at` | timestamp | yes | | drives password expiry |
 | `blocked` | boolean | no | `false` | |
@@ -98,7 +99,7 @@ layer on every update. An update whose `version` does not match responds `409`.
 | `reset_password_token_at` | timestamp | yes | | |
 | `confirmation_token` | text | yes | | never selected by default |
 | `roles` | text[] | no | `[]` | role **codes**, resolved against the role catalogue at boot |
-| `is_founder` | boolean | no | `false` | **new in v5**: replaces the process-wide `ADMIN_EMAIL` comparison (defect D-27). Founder is a property of the row in its container, not of the environment |
+| `is_founder` | boolean | no | `false` | **new in v5**: replaces the process-wide `ADMIN_EMAIL` comparison. Founder is a property of the row in its container, not of the environment |
 | `mfa_enabled` | boolean | no | `false` | |
 | `mfa_secret` | text | yes | | AES-256-GCM, format `v2:salt:iv:authTag:ciphertext`. Never selected by default |
 | `mfa_type` | text | yes | | `totp` is the only value today |
@@ -143,7 +144,7 @@ The audit trail. **Append-only**: rows are never updated and never soft-deleted.
 | `created_at` | timestamp | no | |
 | `user_id` | text | yes | `null` when the write came from a job or a machine token |
 | `token_id` | text | yes | **new in v5**: which credential wrote, when it was not a user |
-| `impersonation_id` | text | yes | **added in T-4.2**: which impersonation session wrote, when one did. A column rather than a key inside `contents`, because an audit trail whose actor cannot be indexed or joined is half an audit trail. `docs/AUTHORIZATION_V5.md` §6 required the fact to be recorded and this table had nowhere to put it |
+| `impersonation_id` | text | yes | **new in v5**: which impersonation session wrote, when one did. A column rather than a key inside `contents`, because an audit trail whose actor cannot be indexed or joined is half an audit trail. `docs/AUTHORIZATION_V5.md` §6 requires the fact to be recorded |
 | `status` | text | no | `create` / `update` / `delete` (this table first said `created`/`updated`/`deleted`; the code has always written the short forms, and the document was the side that was wrong) |
 | `entity_name` | text | no | |
 | `entity_id` | text | no | |
@@ -169,18 +170,17 @@ the tables no longer have. Do not hand-write rows.
 
 **Unique**: `(set, name)`.
 
-**Correction, made in T-5.1.** This section first said the table was "managed by
-`drizzle-kit`". `drizzle-kit` **generates** the SQL and the framework **applies** it, and the
-distinction is not pedantic: the generated files are deliberately unqualified, because the
+**`drizzle-kit` generates the SQL and the framework applies it.** The distinction is not
+pedantic: the generated files are deliberately unqualified, because the
 same file has to land in `tenant_acme` one minute and `tenant_globex` the next, and
 `drizzle-kit`'s runtime migrator has no argument for that. The framework's runner puts each
 migration inside its container with `SET LOCAL search_path` in a transaction, which is the one
-use of a search_path T-3.1 sanctions and the reason that door was left open.
+use of a search_path the framework allows.
 
 ### 2.5 `session`
 
-One row per live login, and the only thing that makes a refresh credential worth anything. Added
-in T-11.1; the mechanism it serves is `docs/AUTHORIZATION_V5.md` §9.
+One row per live login, and the only thing that makes a refresh credential worth anything. The
+mechanism it serves is `docs/AUTHORIZATION_V5.md` §9.
 
 It is declared with the application tables, so it exists **in every container**: a tenant user's
 session inside that tenant's container, a platform identity's inside the control plane. A session
@@ -235,7 +235,7 @@ as the row would have been usable had nobody closed it, and not one day longer.
 
 ### 2.6 `setting`
 
-Settings of the container, one JSON value per key (F49, `SettingManagement` in
+Settings of the container, one JSON value per key (`SettingManagement` in
 docs/MANAGERS_V5.md §12). In every container, because each plane writes where it owns the data: the
 platform's rules for every tenant in the control container, a tenant's own choices in its container.
 
@@ -369,14 +369,14 @@ Columns: same authentication surface as `user` (`id`, `external_id`, `email`, `p
 | Column | Type | Null | Default | Notes |
 |---|---|:---:|---|---|
 | `roles` | text[] | no | `[]` | **system role codes only**, all prefixed `system:` |
-| `mfa_enabled` | boolean | no | `false` | strongly recommended: it is the preferred second factor of tenant destruction, the other being a code by email (T-6.3) |
+| `mfa_enabled` | boolean | no | `false` | strongly recommended: it is the preferred second factor of tenant destruction, the other being a code by email (docs/API_V5.md §6.2) |
 
 It carries **no** `confirmed` / `confirmation_token`: system users are provisioned, never
 self-registered. There is no public registration route for them.
 
 ### 3.3 `impersonation`
 
-Closes defect D-18: in v4 impersonation left no persisted trace.
+In v4 impersonation left no persisted trace.
 
 | Column | Type | Null | Notes |
 |---|---|:---:|---|
@@ -395,7 +395,7 @@ Closes defect D-18: in v4 impersonation left no persisted trace.
 
 ### 3.4 `destruction_request`
 
-The first phase of T-6.3. A row is single-use.
+Phase 1 of a tenant's destruction (docs/API_V5.md §6.2). A row is single-use.
 
 | Column | Type | Null | Notes |
 |---|---|:---:|---|
@@ -468,7 +468,7 @@ quote a connection string: a failure keeps its code.
 `locator` is the only user-influenced value that reaches DDL. Rules, all mandatory:
 
 1. Sanitise **once, before saving**. The stored value and the used value are the same string.
-   In v4 they were not, and a registry row could name a schema that did not exist (defect D-20).
+   In v4 they were not, and a registry row could name a schema that did not exist.
 2. The sanitised form must match `^[a-z][a-z0-9_]{1,62}$`, a Postgres schema or database name.
 3. If the sanitised value differs from what the caller sent, respond **400** and name the
    difference. Never accept silently a name different from the one requested.
@@ -499,7 +499,7 @@ hash is an oracle, and v4 allowed it.
 1. Declare its own tables in its own schema files, importing the framework tables when it needs
    a foreign key to `user`.
 2. Generate migrations for **its** tables with its own drizzle-kit configuration (two sets:
-   control plane and tenants, see T-5.2).
+   control plane and tenants).
 3. Never redefine a framework table. If a framework table lacks a field the application needs,
    the application adds its own table with a foreign key: extending a framework table breaks
    every future framework migration.

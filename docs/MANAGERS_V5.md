@@ -1,10 +1,9 @@
 # Manager contracts (v5)
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5. Tasks **T-1.2**, **T-1.3**, **T-2.5** of `docs/evo/EVO_FRAMEWORK.md`.
+> Target: `@volcanicminds/backend` v5.
 > These interfaces are **the integration surface of the consumer**: they are what a project
-> injects through `start(decorators)`. Changing one of them after v5 ships is a breaking change,
-> so they are decided here, before the code.
+> injects through `start(decorators)`. Changing one of them after v5 ships is a breaking change.
 
 ## 1. The two handles
 
@@ -26,8 +25,8 @@ export type DataHandle = ControlHandle | TenantHandle
 ```
 
 **The core declares the brands, the data layer supplies the client.** The types above live in
-`types/global.d.ts` and carry no ORM in them: invariant 10 says the engine name does not appear
-in the public API, and typing the handle as `DrizzleDatabase & brand` in the core would put it
+`types/global.d.ts` and carry no ORM in them: the engine name does not appear in the public
+API, and typing the handle as `DrizzleDatabase & brand` in the core would put it
 there, in the one file every consumer loads. The data layer re-exports the same handles widened
 to its client — `export type ControlDb = ControlHandle & NodePgDatabase` — and offers
 `asClient(handle)` for the rare place that writes a query by hand instead of going through a
@@ -38,7 +37,7 @@ helper is **exported** (`import { dataContext } from '@volcanicminds/backend'`):
 built on the framework makes the choice with the same function the framework uses.
 
 `dataContext(req)` is **not** `req.tenant ?? req.control`. It answers exactly three cases and
-none of them is a fallback (invariant 3, `lib/util/tenancy.ts`):
+none of them is a fallback (`lib/util/tenancy.ts`):
 
 | The request | What it gets |
 |---|---|
@@ -49,13 +48,13 @@ none of them is a fallback (invariant 3, `lib/util/tenancy.ts`):
 A tenant route that reaches its handler **without** a resolved container gets a
 `NoDataContextError`, never the control plane. Writing `req.tenant ?? req.control` by hand
 inverts that last row: it hands a request that lost its context whatever the control plane
-holds, which is defect D-06 under another spelling. `NoDataContextError` is exported as well,
-because catching it means catching a bug in the resolution and not a bad request.
+holds, which is the v4 fallback to the global connection under another spelling.
+`NoDataContextError` is exported as well, because catching it means catching a bug in the
+resolution and not a bad request.
 
 The brands are phantom types: they cost nothing at runtime and make
-`tenantManager.createTenant(tenantHandle, …)` a **compile error**. That is invariant 6, and it is
-the whole point: the separation is enforced by the compiler, not by the discipline of whoever
-writes the query.
+`tenantManager.createTenant(tenantHandle, …)` a **compile error**. That is the whole point: the
+separation is enforced by the compiler, not by the discipline of whoever writes the query.
 
 On a request:
 
@@ -121,7 +120,7 @@ export interface UserManagement {
 
   blockUserById(ctx: DataHandle, id: string, reason: string): Promise<boolean>
   unblockUserById(ctx: DataHandle, id: string): Promise<boolean>
-  /** Ends the wait of an account created under `approval` (F49); false when it was not waiting. */
+  /** Ends the wait of an account created under `approval`; false when it was not waiting. */
   approveUserById(ctx: DataHandle, id: string): Promise<boolean>
 
   countQuery(ctx: DataHandle, data: VQuery): Promise<number>
@@ -207,7 +206,7 @@ export interface TenantManagement {
   migrateContainer(tenantId: string, target?: string): Promise<string>
   /** Dumps the container. Fails, rather than producing a partial file, if the tool is missing. */
   exportContainer(tenantId: string, destination: string): Promise<ExportResult>
-  /** Irreversible. Only ever called after a successful export (see T-6.3). */
+  /** Irreversible. Only ever called after a successful export. */
   destroyContainer(tenantId: string): Promise<boolean>
   /** Read-only report: schema version, size, row counts. Used by the destruction preview. */
   inspectContainer(tenantId: string): Promise<ContainerReport>
@@ -216,9 +215,8 @@ export interface TenantManagement {
 
 **Gone from v4**: `resolveTenant(req)` and `switchContext(tenant, db)`. Tenant **resolution**
 moves into the core, which reads and verifies the token and passes only the tenant identifier
-(task T-3.2, and the dependency-cruiser boundary forbids the data layer from importing core
-values). Context **switching** disappears entirely: v5 never mutates session state, it opens a
-handle (task T-3.1).
+(the dependency-cruiser boundary forbids the data layer from importing core values). Context
+**switching** disappears entirely: v5 never mutates session state, it opens a handle.
 
 ---
 
@@ -264,15 +262,12 @@ export interface TrackingManagement {
 ```
 
 The v4 name said "database management" while the interface only wrote the audit trail.
-`synchronizeSchemas()` is **removed**: schemas are versioned by migrations (phase 5), and a
+`synchronizeSchemas()` is **removed**: schemas are versioned by migrations, and a
 method that rebuilds a schema from metadata is incompatible with that.
 
-**Correction, made in T-3.5.** This section first typed `retrieveBy` as returning `Change[]`,
-the audit history of an entity. The method has exactly one caller, the tracker, and what the
-tracker needs is the row as it stands *before* the request writes to it, which is what the v4
-method returned. A method whose declared type does not match the single job it exists for is a
-defect of the document, so the document was corrected rather than the caller bent around it
-(precedence rule, `docs/evo/EVO_FRAMEWORK.md` §0).
+**`retrieveBy` returns a row, not `Change[]`.** The method has exactly one caller, the tracker,
+and what the tracker needs is the row as it stands *before* the request writes to it, which is
+what the v4 method returned, not the audit history of an entity.
 
 `retrieveBy` answers `null` in two cases the caller does not need to tell apart: the row does
 not exist, or the table is not one the handle knows. The second is the normal case for a
@@ -281,7 +276,7 @@ gone). Then the consumer supplies the baseline by setting `req.trackingData`, an
 does, the change is recorded with the previous values **absent** rather than invented: an entry
 without an `old` key means "not captured", which is not the same claim as `old: null`.
 
-**Behaviour, and it is a change** (defect D-05): the tracker receives `ctx` and writes inside the
+**Behaviour, and it is a change**: the tracker receives `ctx` and writes inside the
 tenant container. If the write fails, the request fails, with an identifiable error code. A route
 may opt out declaring `tracking: { strict: false }`, and then the failure is logged and the
 request proceeds.
@@ -330,21 +325,20 @@ application's to decide, in the tus hooks.
 
 ---
 
-> **`SessionManagement` belongs here and is written in §11.** It arrived with phase 11, by which
-> time the numbering of this file was already quoted from the code (`lib/database/ports.ts` cites
-> §9 for the section below), so it was appended instead of inserted and the existing numbers were
-> left alone.
+> **`SessionManagement` belongs here and is written in §11.** The code quotes the numbering of
+> this file (`lib/database/ports.ts` cites §9 for the section below), so a new manager is appended
+> at the end and the existing numbers stay.
 
 ## 9. Ports the framework implements (not injected by the consumer)
 
-These are internal, but they are the seam the adapters plug into (task T-1.3), and an
+These are internal, but they are the seam the adapters plug into, and an
 implementer needs them written down:
 
 ```ts
 export interface ConnectionProvider {
   control(): ControlHandle
   /**
-   * Opens or reuses the container a registry row points at; obeys the LRU limit of T-7.1.
+   * Opens or reuses the container a registry row points at; obeys the LRU limit.
    * The row is one the caller just read through the tenant manager: the provider does not
    * read the registry again, and never takes a row built from the request.
    */
@@ -391,7 +385,7 @@ export interface CapabilityMatrix {
 
 ---
 
-## 11. `SessionManagement` (new in v5, phase 11)
+## 11. `SessionManagement` (new in v5)
 
 The registry behind the refresh credential. A row is a **session**, not a token: `sid` is fixed for
 the whole life of the session, what rotates at every renewal is the secret, and `generation` counts
@@ -502,7 +496,7 @@ clock has run out, revoked or not. Revocation by itself deletes nothing: the mom
 stay readable for as long as the row would have been usable had nobody closed it. It is called by
 the CLI and, opportunistically, by the renewal.
 
-**Without this manager there is no renewal at all**, and that is decision F28 rather than an
+**Without this manager there is no renewal at all**, and that is deliberate rather than an
 omission. The null-object default answers `isImplemented(): false`, and the core then refuses the
 renewal and the session routes with `404` instead of issuing a refresh credential nobody could ever
 consume or revoke. A credential that cannot be spent cannot be revoked either, so shipping one and
@@ -512,7 +506,7 @@ in Redis for instance, implements this interface and injects it: that is what th
 
 ---
 
-## 12. `SettingManagement` (new in v5, phase 12)
+## 12. `SettingManagement` (new in v5)
 
 ```typescript
 interface SettingManagement {
@@ -526,7 +520,7 @@ interface SettingManagement {
 
 One JSON value per key, in the `setting` table of a container. **Each plane writes where it owns
 the data**: the platform's rules for every tenant go in the control container, a tenant's choices in
-its own. The first user is the account creation rule of F49 (docs/API_V5.md §2.5): the key
+its own. The first user is the account creation rule (docs/API_V5.md §2.5): the key
 `account_creation` in the control container holds `{ allowed, default }` for every tenant, the key
 `account_creation.mode` in a tenant's container holds what its administrator chose. `set` is one
 upsert on the key, never a read followed by a write, so two administrators saving at once cannot
@@ -539,7 +533,7 @@ back to the deployment's configuration, and the routes that write a setting answ
 
 ---
 
-## 13. `AuthFlowManagement` (new in v5, phase 12)
+## 13. `AuthFlowManagement` (new in v5)
 
 The store of the logins in progress (docs/AUTH_FLOW_V5.md §5, table `auth_flow` in
 docs/SCHEMA_V5.md §2.7). The flow engine is its only caller.
@@ -604,7 +598,7 @@ release the subject slot; the row stays until its sends leave the per-subject wi
 **Without this manager** only a login that closes in one request works (docs/AUTH_FLOW_V5.md §10),
 and the boot refuses a configuration that needs more.
 
-## 14. `ExternalIdentityManagement` (new in v5, phase 12)
+## 14. `ExternalIdentityManagement` (new in v5)
 
 The links between an identity at a provider and a subject (docs/SCHEMA_V5.md §2.8).
 
@@ -624,7 +618,7 @@ A link is found on the four keys and never on an address. `removeLink` takes the
 that removes "one of mine" cannot remove somebody else's by guessing an id. Without this manager a
 provider login resolves nobody and answers `IDP_IDENTITY_NOT_LINKED`.
 
-## 15. `IdentityProviderManagement` (new in v5, phase 12)
+## 15. `IdentityProviderManagement` (new in v5)
 
 A tenant's own identity providers, in the control plane (docs/SCHEMA_V5.md §3.5). Every method
 takes a `ControlHandle`: the registry is the platform's.
@@ -653,7 +647,7 @@ interface IdentityProviderManagement {
 the MFA secrets. `list` never carries the secret. In `update`, a `clientSecret` absent keeps the
 stored one and `null` removes it. Without this manager only the deployment's providers exist.
 
-## 16. `ChallengeDeliveryManagement` (new in v5, phase 12, injected by the consumer)
+## 16. `ChallengeDeliveryManagement` (new in v5, injected by the consumer)
 
 How a code reaches a person. The framework ships no implementation: the backend emits data, not
 presentation, so the consumer composes the subject and the text, in its own language.
@@ -697,7 +691,7 @@ latency of a mail server would tell an observer whether an address has an accoun
 log line. `sms` is in the type for the method that will use it; no built-in method sends one yet.
 **Without it**, a plane that lists `email-otp` refuses the boot.
 
-## 17. `AccessLogManagement` (new in v5, phase 12)
+## 17. `AccessLogManagement` (new in v5)
 
 The access log (docs/SCHEMA_V5.md §2.9, docs/AUTH_FLOW_V5.md §9).
 
@@ -720,7 +714,7 @@ request it describes. Without tenants both planes write into one container, whic
 a parameter of every read rather than a filter the caller may forget. **Without this manager** the
 accesses reach the process log only, and `/access-log` answers 404.
 
-## 18. `GovernanceLogManagement` (new in v5, phase 15)
+## 18. `GovernanceLogManagement` (new in v5)
 
 What the operators did to the platform (docs/SCHEMA_V5.md §3.6, docs/API_V5.md §5.1). Control
 plane only, and read only where the routes it governs exist, which is with tenants.

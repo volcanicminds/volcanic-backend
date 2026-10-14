@@ -1,8 +1,7 @@
 # Migrating from v4 to v5
 
-> **Status: complete for the v5 surface.** This file was written one line at a time, as each
-> break landed, and not reconstructed at the end (task T-8.3); it was then read through in
-> full, once, with the API stable. Everything below is true of the code on the `v5` branch.
+> **Status: complete for the v5 surface.** Everything below is true of the code on the `v5`
+> branch.
 >
 > Twenty-nine sections, in the order a port meets them: the data layer and the configuration
 > first, because nothing else compiles until they are right; then what changed inside a
@@ -14,16 +13,15 @@
 > `volcanic-backend-sample` was carried to v5 and every place the guide fell short became a
 > row here.
 >
-> §24 came later, with the decision to keep the browser session out of the page (phase 10):
-> it is the break an upgrade meets first, because an instance without `COOKIE_SECRET` no
-> longer starts. §27 is later still (phase 11) and is the one break that also hits whoever
-> already runs a 5.0 alpha: the refresh token is no longer a JWT. §28 (phase 12) closes the
-> self-registration by default, on v4 ports and 5.0 alphas alike, and §29 (phase 12) replaces the
-> login routes with a flow: every client that logs anybody in changes.
+> §24 keeps the browser session out of the page, and it is the break an upgrade meets first,
+> because an instance without `COOKIE_SECRET` no longer starts. §27 is the one break that also
+> hits whoever already runs a 5.0 alpha: the refresh token is no longer a JWT. §28 closes the
+> self-registration by default, on v4 ports and 5.0 alphas alike, and §29 replaces the login
+> routes with a flow: every client that logs anybody in changes.
 
 v5 is breaking on purpose. There is no compatibility branch, no deprecated alias and no
-automatic translation of a v4 configuration: invariant 9 of `docs/evo/EVO_FRAMEWORK.md` says the
-compatibility is a document, and this is the document. Where the framework can tell that a
+automatic translation of a v4 configuration: the compatibility with v4 is a document, and this
+is the document. Where the framework can tell that a
 v4 spelling was used, it **refuses to start** and names the replacement, because the failure
 mode of translating silently is not an error, it is an answer from the wrong container.
 
@@ -40,17 +38,15 @@ mode of translating silently is not an error, it is an answer from the wrong con
 
 The subpath carries no engine name any more: in v4 the ORM was part of the public API, so
 changing it was a breaking change for every consumer. PGlite stays for development and unit
-tests, never for isolation tests: it has no pool, so it cannot show the class of defects the
-rewrite exists to remove.
+tests, never for isolation tests: it has no pool, so it cannot show a tenant's `search_path`
+surviving on a pooled connection.
 
 **The framework's `user` has no name any more.** v4 projects added `firstName` and `lastName` by
 subclassing the `User` entity; v5 forbids redefining a framework table (docs/SCHEMA_V5.md §6),
 so names live in a table of the project's own, keyed by `user.id` (the sample's `user_profile`
-is the pattern). Until T-10.22 the framework's JSON schemas still accepted the two fields and
-`PUT /users/me` still listed them as self-editable: the request answered 200 and stored nothing.
-They are gone from `userBodySchema`, `currentUserBodySchema` and the self-edit whitelist, and the
-console titles a user by `email`. A client that still sends them sees them stripped, as before,
-because Fastify removes properties a schema does not declare.
+is the pattern). The two fields are not in `userBodySchema`, `currentUserBodySchema` or the
+self-edit whitelist of `PUT /users/me`, and the console titles a user by `email`. A client that
+still sends them sees them stripped, because Fastify removes properties a schema does not declare.
 
 ## 2. Configuration
 
@@ -68,7 +64,7 @@ options: {
 There is no `enabled` flag: **declaring the `tenants` block is what enables tenancy**, so the
 flag and the strategy can no longer contradict each other. A deployment without tenants omits
 the block entirely. The merge is deep, so declaring one key inside a block no longer erases
-its siblings (defect D-21).
+its siblings.
 
 ## 3. The context of a request
 
@@ -81,7 +77,7 @@ its siblings (defect D-21).
 `ControlHandle` and `TenantHandle` are two different types, so passing a tenant handle where
 the control plane is required does not compile. A call with no context does not fall back to
 a global connection: it throws `NO_DATA_CONTEXT`. That fallback was how a request that lost
-its context read whatever the pool happened to hold (defects D-01 and D-06).
+its context read whatever the pool happened to hold.
 
 ## 4. Route declarations
 
@@ -109,7 +105,7 @@ unchanged and still the safe one, a route without `scope` runs inside the tenant
 The tenant comes from the token's `tid` claim. The header or the subdomain resolves the
 tenant only for requests that carry no token, which is login and public routes, and only one
 of the two is consulted: the configured one. A tenant identifier in a query string ends up in
-access logs, `Referer` headers and browser history, so it is gone (decision 9).
+access logs, `Referer` headers and browser history, so it is gone.
 
 New answers a v4 client did not get: 400 `TENANT_REQUIRED` when nothing names a tenant, 404
 when the named tenant is unknown **or suspended** (the same answer, so the registry cannot be
@@ -167,7 +163,7 @@ TTL is what bounds it: see `docs/CACHE.md` §6.
 
 New in v5, and it is the reason `/system/*` exists at all. In v4 the "super admin" was a row
 in the `user` table of the `public` schema, and the only thing separating it from a tenant's
-admin was which schema the connection happened to resolve. That is defect D-01, which means
+admin was which schema the connection happened to resolve, which meant
 every administrative operation was one defect away from a privilege escalation.
 
 | | v4 | v5 |
@@ -254,10 +250,10 @@ POST /tenants { name, slug, strategy?, engine?, locator?, config?, admin: { emai
 
 - `dbSchema` is now `locator`, and it is **optional**: absent, it is derived from the slug.
   A value that changes under sanitisation is refused with 400 rather than accepted under a
-  different name (defect D-20).
+  different name.
 - `admin` is part of the request, and `adminConfirmed` defaults to **true** on this route. In
   v4 the seeded administrator was created unconfirmed, login refused unconfirmed users, and no
-  API could confirm one: a tenant that could not be used (defect D-08). `POST /auth/register`
+  API could confirm one: a tenant that could not be used. `POST /auth/register`
   still creates unconfirmed users, because self-registration is a different path.
 - The container is created, **migrated**, and the version recorded on the registry row. If any
   step fails the container is dropped and **no registry row is written**: v4 wrote the row
@@ -282,7 +278,7 @@ inherited.
 ## 16. Destroying a tenant
 
 In v4 `DELETE /tenants/:id` was a soft delete of the registry row and the data stayed where it
-was (defect D-09). In v5 that route still only removes the row, and **says so in its response**;
+was. In v5 that route still only removes the row, and **says so in its response**;
 destroying the data is a separate, two-phase operation:
 
 | | |
@@ -301,7 +297,7 @@ data remains in any backup taken before the destruction, and the response says s
 | `POST /tenants/impersonate` | it left no record and its privilege check was dead code; it returns with a persisted, revocable record |
 | `switchContext` on the tenant manager | choosing a container is not a session change any more |
 
-## 18. Authentication answers (defect D-17)
+## 18. Authentication answers
 
 | Situation | v4 | v5 |
 |---|---|---|
@@ -330,7 +326,7 @@ login route itself that reading turns a wrong password into a redirect loop. Bra
 a form that showed «that email is taken» has nothing to show; the account confirmation email
 is the channel that tells the real owner, and the one that does not answer to a stranger.
 
-## 19. `req.data()` merges (defect D-29)
+## 19. `req.data()` merges
 
 | v4 | v5 |
 |---|---|
@@ -355,7 +351,7 @@ so with `req.bodyData()`.
 |---|---|---|
 | CORS | `origin: '*'` with `credentials: true`, compiled in | allowlist from `CORS_ORIGINS`; `credentials` only against a real allowlist; the wildcard pair **refuses to boot in production**, and so does a wildcard that arrived by omission |
 | `onError` | echoed the exception on a 500 whatever `HIDE_ERROR_DETAILS` said | honours it, like every other error path |
-| cron `timezone` | read from a misspelt property, so it was always ignored | honoured (defect D-24) |
+| cron `timezone` | read from a misspelt property, so it was always ignored | honoured |
 
 The v4 CORS pair was not a lax setting, it was a broken one: browsers refuse to honour
 credentials against a wildcard, so cookie mode never worked cross-origin, and in bearer mode
@@ -411,8 +407,8 @@ framework one (`docs/SCHEMA_V5.md` §6). Three things it needs, and where they a
 **Build the table objects per locator.** Drizzle prints the schema name into the SQL, so a
 table object *is* the choice of container: that is what makes tenancy work without touching
 `search_path` on a pooled connection, and it is why a cache of those objects must be keyed by
-`locator`. A cache that ignores it hands tenant B the object naming tenant A's schema —
-defect D-01, rebuilt in application code.
+`locator`. A cache that ignores it hands tenant B the object naming tenant A's schema: the
+pooled `search_path` leak, rebuilt in application code.
 
 **Extending the framework's `user` is the one thing not to do.** v4 subclassed the `User`
 entity to add columns. In v5 those fields go in a table of the project's own, keyed by
@@ -432,7 +428,7 @@ two identical-looking paths, or a runtime that disagrees silently. Collapse the 
 the checkout's copies — `volcanic-backend-sample/scripts/link-peers.mjs` does it on
 `postinstall` and is a development convenience production never sees.
 
-## 24. The session in a cookie, by default (T-10.37, T-10.38, T-10.39)
+## 24. The session in a cookie, by default
 
 | | v4 | v5 |
 |---|---|---|
@@ -487,9 +483,9 @@ account state are loaded from the session row. Both deadlines of the session liv
 cookie is written with the earlier of the two and a browser never holds a credential the server would
 already refuse. `/auth/invalidate-tokens` ends every session of the user in both modes.
 
-## 25. One console per plane (T-10.12, T-10.14, T-10.15)
+## 25. One console per plane
 
-| | before (5.0.0-alpha, until T-10.14) | now |
+| | before (earlier 5.0.0-alpha) | now |
 |---|---|---|
 | `GET /admin/manifest` | control scope: with tenants, a platform identity only | **tenant scope**, the tenant routes only when tenants are declared |
 | the platform console's manifest | the same route | `GET /system/manifest`, control scope, only with tenants |
@@ -516,15 +512,15 @@ and asks for the tenant on the login screen of a customer's console (or takes it
 client reads the platform identity from `/system/auth/me`, sends the tenant header on the login and on
 every call before the session exists, and stops expecting `tenancy.listEndpoint`.
 
-## 26. The second factor, per plane and per tenant (T-10.19)
+## 26. The second factor, per plane and per tenant
 
-| | before (v4 and 5.0.0-alpha until T-10.19) | now |
+| | before (v4 and earlier 5.0.0-alpha) | now |
 |---|---|---|
 | `MFA_POLICY` | one value for the deployment, read only by `/auth/*` | the **floor**: the control plane and each tenant may tighten it, never loosen it |
 | the platform's operators | no policy at all: `MANDATORY` did not oblige them | `SYSTEM_MFA_POLICY`, which defaults to `MFA_POLICY` |
 | a single tenant | nothing of its own | `config.mfa_policy` in its registry row; a value weaker than the floor is refused with `MFA_POLICY_WEAKER`, an unknown one with `MFA_POLICY_INVALID` |
 | values | `OPTIONAL`, `MANDATORY`, `ONE_WAY` | the same, plus `OFF`: no new enrolments, while whoever already has a factor keeps being asked for it |
-| enrolment on the control plane | superuser only (`roles: []` on a control route) | every platform identity, for itself (T-10.24) |
+| enrolment on the control plane | superuser only (`roles: []` on a control route) | every platform identity, for itself |
 | an operator who lost the device | nothing: `POST /system/users/:id/mfa/reset` was in this documentation and the route did not exist | it exists, and belongs to whoever holds `system-users` |
 | `securityPolicy.mfaPolicy` | the deployment value | the policy actually enforced for that caller, on both planes |
 | a policy nothing can honour | accepted, and the first login found out: `MANDATORY` answered «enrol first» and the enrolment answered `500` | refused. The boot stops when `MANDATORY` meets a build with no MFA manager, a tenant that asks for it is refused with `MFA_NOT_AVAILABLE`, and an enrolment attempt answers `503` with the same code |
@@ -540,9 +536,9 @@ not one of the four now refuses the boot instead of being read as the default, a
 a build that can actually issue a second factor: without an MFA manager the boot refuses, because
 the alternative is an instance where the first login locks everybody out.
 
-## 27. The refresh token is a session, not a JWT (T-11.6 to T-11.10)
+## 27. The refresh token is a session, not a JWT
 
-| | v4, and 5.0.0-alpha until T-11.6 | now |
+| | v4, and earlier 5.0.0-alpha | now |
 |---|---|---|
 | what a refresh token is | a second JWT, signed with `JWT_REFRESH_SECRET` or, unset, with `JWT_SECRET` | an opaque credential, `vs1.<routing>.<sid>.<secret>`, whose SHA-256 is a row in the new `session` table |
 | what renewing does to it | nothing: the same string worked until its own expiry | it is spent. Every renewal mints a new secret and increments the generation |
@@ -573,7 +569,7 @@ and it makes the theft an event somebody can count. The full reasoning is `docs/
   `SESSION_GRACE_SECONDS` (10). The same three keys exist as the `sessions` block of
   `config/general.ts`, where the environment wins over the file.
 - **Check that a data layer is injected**, which is the real switch. A deployment that runs the core
-  alone now has no renewal instead of a renewal that protects nothing (decision F28).
+  alone now has no renewal instead of a renewal that protects nothing.
 - Nothing to do to keep renewal off: `JWT_REFRESH=false` still means exactly that.
 
 **What a client has to change.**
@@ -592,9 +588,9 @@ and it makes the theft an event somebody can count. The full reasoning is `docs/
 
 ---
 
-## 28. Registration is closed by default (F49)
+## 28. Registration is closed by default
 
-v4, and the 5.0 alphas up to phase 12, let anybody call `POST /auth/register` on any tenant. v5
+v4, and the earlier 5.0 alphas, let anybody call `POST /auth/register` on any tenant. v5
 decides who may create an account per tenant, on two levels (docs/API_V5.md §2.5): the platform
 decides the set of modes a tenant may choose from, the tenant's administrator picks one. The
 deployment's own default is **`invite`**: accounts are created by an administrator, and
@@ -619,13 +615,13 @@ waits. A console lists the waiting accounts with `GET /users?approved=false`.
 
 ---
 
-## 29. The login is a flow (phase 12)
+## 29. The login is a flow
 
 The login routes of v4 and of the 5.0 alphas are gone, on both planes, together with the temporary
 token between the password and the second factor. The login is a flow of stages, specified in
 docs/AUTH_FLOW_V5.md, and a second factor, an email code or a provider login are stages of it.
 
-| | v4, and 5.0.0-alpha until phase 12 | now |
+| | v4, and earlier 5.0.0-alpha | now |
 |---|---|---|
 | the login | `POST /auth/login { email, password }` | `POST /auth/flow/start { method: 'password', email, password }` |
 | the platform login | `POST /system/auth/login` | `POST /system/auth/flow/start`, same body |
@@ -642,7 +638,7 @@ docs/AUTH_FLOW_V5.md, and a second factor, an email code or a provider login are
 **Why.** The two-step login was written twice, once per plane, with differences nobody chose, and
 held together by a list of routes the temporary token could reach. That list already produced one
 defect: the token opened the enrolment routes to someone who had only the password, and let them
-replace the victim's factor (closed before this phase, commit `1b50994`, with 409
+replace the victim's factor (closed in commit `1b50994`, with 409
 `MFA_ALREADY_ENABLED`). Every new method (an email code, a provider login) would have meant a third
 copy and a longer list. The flow keeps its state in a table, counts attempts there, and has no token
 for a hook to confine.
@@ -683,7 +679,7 @@ for a hook to confine.
 
 ---
 
-## 30. Step-up: fresh authentication for sensitive routes (phase 13)
+## 30. Step-up: fresh authentication for sensitive routes
 
 Opening an impersonation and enrolling or removing a second factor now need a session whose person
 proved to be there in the last `STEP_UP_MAX_AGE` seconds (300 by default). docs/AUTH_FLOW_V5.md §8.5
@@ -803,7 +799,7 @@ served; one without, or with a credential that does not verify, answers 401 `UNA
 the adapter v4 needed around it goes, and an anonymous upload is opted into with
 `setAnonymousAccess(check)` (docs/MANAGERS_V5.md §8).
 
-## 36. What the operators do is written down (F76)
+## 36. What the operators do is written down
 
 v4 kept no record of what a platform operator changed: the registry row showed the last state, not
 who brought it there. v5 writes every change of the platform into `governance_log`, in the control

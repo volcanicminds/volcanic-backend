@@ -1,8 +1,8 @@
 # Configuration (v5)
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5. Tasks **T-1.1** and **T-1.4** of `docs/evo/EVO_FRAMEWORK.md`.
-> Replaces `docs/CONFIGURATION.md`, which describes the v4 data layer.
+> Target: `@volcanicminds/backend` v5.
+> `docs/CONFIGURATION.md` describes the v4 data layer, not this one.
 
 ## 1. Shape
 
@@ -40,7 +40,7 @@ export default {
       }
     },
 
-    // The session registry, which is what a refresh credential means (T-11.13). On wherever a
+    // The session registry, which is what a refresh credential means. On wherever a
     // data layer is injected; `enabled: false` gives up renewal altogether.
     sessions: {
       idleTtl: 2_592_000,                 // seconds without a renewal before the session ends
@@ -48,7 +48,7 @@ export default {
       graceSeconds: 10                    // the just-rotated secret still answers, for tabs renewing together
     },
 
-    // Who may create an account in a tenant (F49, docs/API_V5.md §2.5): the modes a tenant may
+    // Who may create an account in a tenant (docs/API_V5.md §2.5): the modes a tenant may
     // choose from, and the one that applies until its administrator chooses. The platform can
     // replace both at runtime (`PUT /system/account-creation`) and the set of one tenant
     // (`config.account_creation`). A rule that is not one refuses the boot.
@@ -77,14 +77,14 @@ through `start({ authenticators })`, next to the managers.
 control plane and `req.tenant` is never set.
 
 **The declared default is what the code does.** No field is typed, documented and never read.
-That was defect D-11 (`resolver: 'subdomain'` as the default of a resolver nobody read), and it
-must not reappear in another shape.
+v4 had one, `resolver: 'subdomain'` as the default of a resolver nobody read, and it must not
+reappear in another shape.
 
 ---
 
 ## 2. The four supported combinations
 
-Checked at boot by the capability matrix (T-1.4). Anything else logs fatal and exits 1.
+Checked at boot by the capability matrix. Anything else logs fatal and exits 1.
 
 | `control.engine` | `tenants` | Meaning |
 |---|---|---|
@@ -110,7 +110,7 @@ The consumer's configuration is merged **deeply** over the framework defaults: o
 recursively, arrays are **replaced**, `null` explicitly clears a value.
 
 In v4 the merge was shallow (`lib/loader/general.ts:40-43`), so writing
-`multi_tenant: { enabled: true }` erased `resolver`, `header_key` and `query_key` (defect D-21).
+`multi_tenant: { enabled: true }` erased `resolver`, `header_key` and `query_key`.
 There must be a test that declares a single key inside `tenants` and asserts the siblings kept
 their defaults.
 
@@ -173,8 +173,8 @@ figures and their provenance are in `docs/TUNING.md`. The 404 handler carries a 
 
 **Fallback, not override.** For `TENANT_CONTAINERS_MAX_OPEN` the configuration wins and the
 environment is read only when the configuration is silent. That is why the loader does **not**
-fill `containers.maxOpen` with a default: until T-10.9 it did, the configuration was never
-silent, and the variable was ignored on every boot that declared tenants.
+fill `containers.maxOpen` with a default: with one the configuration is never silent, and the
+variable is ignored on every boot that declares tenants.
 
 **Override, and deliberately the other way round.** The three `SESSION_*` variables win over the
 `sessions` block, unlike `TENANT_CONTAINERS_MAX_OPEN` above. The lifetime of a session is the one
@@ -219,7 +219,7 @@ variables are read only when it is empty.
 only be chosen in `config/general.ts`. Whether it should have one is an open decision, not an
 oversight to fill silently.
 
-**Three levels, and one of them is not in the environment at all.** The MFA policy (T-10.19) is
+**Three levels, and one of them is not in the environment at all.** The MFA policy is
 `MFA_POLICY` for the deployment, `SYSTEM_MFA_POLICY` for the control plane, and, for one customer,
 `mfa_policy` inside the `config` of its registry row (`{ "mfa_policy": "MANDATORY" }`). The
 deployment value is the **floor**: a plane or a tenant may only tighten it. A weaker value is
@@ -242,16 +242,16 @@ same URL cannot mean two things on two servers).
 
 | Setting | v4 | v5 | Why |
 |---|---|---|---|
-| CORS | `origin: '*'` with `credentials: true` | allowlist from `CORS_ORIGINS`; `credentials: true` only when the allowlist is not `*`; the insecure pair **refuses to boot in production** | browsers reject that pair anyway, and in bearer mode it leaves the API callable from anywhere (defect D-16) |
-| tracking failure | swallowed, audit silently empty | the request fails, unless the route declares `tracking: { strict: false }` | an untracked write on a system that promises audit is worse than a visible error (defect D-05) |
-| unsupported engine/strategy | warning, boot continues without isolation | fatal, exit 1 | invariant 2 (defect D-04) |
-| query without context in multi-tenant | falls back to the global connection | throws | invariant 3 (defect D-06) |
-| `_logic` that does not parse | silently becomes `AND` of everything | 400 | defect D-13 |
-| MFA policy | one value for the whole deployment, read only by the tenant routes | three levels (deployment floor, control plane, tenant), enforced on both planes | `MANDATORY` obliged every customer's users and none of the operators who can destroy a customer (T-10.19) |
-| refresh token | a second JWT, verified and never consumed: one string from the login to its expiry | an opaque credential against the `session` registry, rotated at every renewal, with reuse detection | a credential that cannot be spent cannot be revoked: the theft of one was invisible, `logout` cleared cookies while the copy kept renewing, and rotating `external_id` was the only revocation there was (T-11.8) |
-| renewal without a data layer | a refresh token that verified and renewed for ever | the renewal routes answer `404` | a refresh credential nobody can consume never expires; F28 prefers no renewal to one that only looks like a session |
-| log format | `pino-pretty` always, production included | JSON lines in production, `pino-pretty` otherwise; `LOG_FORMAT` wins | a collector parses JSON; colours and padding are for a console (F63) |
-| Fastify's logger | its own, off unless `LOG_FASTIFY`, so `req.log` wrote nowhere | the framework's instance, with the redaction; `LOG_FASTIFY` only adds the per-request lines | an error a route logged with `req.log` was lost (F63) |
+| CORS | `origin: '*'` with `credentials: true` | allowlist from `CORS_ORIGINS`; `credentials: true` only when the allowlist is not `*`; the insecure pair **refuses to boot in production** | browsers reject that pair anyway, and in bearer mode it leaves the API callable from anywhere |
+| tracking failure | swallowed, audit silently empty | the request fails, unless the route declares `tracking: { strict: false }` | an untracked write on a system that promises audit is worse than a visible error |
+| unsupported engine/strategy | warning, boot continues without isolation | fatal, exit 1 | the boot fails closed: a combination the framework cannot isolate does not start (§2) |
+| query without context in multi-tenant | falls back to the global connection | throws | a query without an explicit context is an error, never a read of the control plane |
+| `_logic` that does not parse | silently becomes `AND` of everything | 400 | a different result set than the one asked is worse than an error (`docs/MAGIC_QUERY_V5.md` §5) |
+| MFA policy | one value for the whole deployment, read only by the tenant routes | three levels (deployment floor, control plane, tenant), enforced on both planes | `MANDATORY` obliged every customer's users and none of the operators who can destroy a customer |
+| refresh token | a second JWT, verified and never consumed: one string from the login to its expiry | an opaque credential against the `session` registry, rotated at every renewal, with reuse detection | a credential that cannot be spent cannot be revoked: the theft of one was invisible, `logout` cleared cookies while the copy kept renewing, and rotating `external_id` was the only revocation there was |
+| renewal without a data layer | a refresh token that verified and renewed for ever | the renewal routes answer `404` | a refresh credential nobody can consume never expires, and no renewal is better than one that only looks like a session |
+| log format | `pino-pretty` always, production included | JSON lines in production, `pino-pretty` otherwise; `LOG_FORMAT` wins | a collector parses JSON; colours and padding are for a console |
+| Fastify's logger | its own, off unless `LOG_FASTIFY`, so `req.log` wrote nowhere | the framework's instance, with the redaction; `LOG_FASTIFY` only adds the per-request lines | an error a route logged with `req.log` was lost |
 
 ---
 

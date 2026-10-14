@@ -23,7 +23,7 @@
 | `/tenants/*` | control | the tenant registry and container life cycle |
 
 **`/tool/*` does not exist in v5.** Its only route, `POST /tool/synchronize-schemas`, rebuilt a
-schema from entity metadata; that is incompatible with versioned migrations (phase 5) and is
+schema from entity metadata; that is incompatible with versioned migrations and is
 removed with no replacement.
 
 ---
@@ -44,7 +44,7 @@ removed with no replacement.
 | GET | `/auth/identities` | authenticated | the provider accounts linked to the caller |
 | DELETE | `/auth/identities/:id` | authenticated | unlinks one of them; one of somebody else answers 404 |
 | POST | `/auth/logout` | authenticated | **revokes the session row** of the presenting token, then clears the cookies (§2.3) |
-| POST | `/auth/refresh-token` | public (valid refresh credential) | rotates the session: §2.3. **Verifies the routing segment** against the resolved tenant (defect D-19). 60/min per IP |
+| POST | `/auth/refresh-token` | public (valid refresh credential) | rotates the session: §2.3. **Verifies the routing segment** against the resolved tenant. 60/min per IP |
 | POST | `/auth/invalidate-tokens` | authenticated | revokes **every** session of the user, then rotates `external_id` |
 | GET | `/auth/sessions` | authenticated | where this account is logged in, with the current session marked (§2.4) |
 | DELETE | `/auth/sessions/:id` | authenticated | closes one session of the caller; somebody else's answers **404** (§2.4) |
@@ -61,7 +61,7 @@ removed with no replacement.
 five-minute temporary token that connected them. The login is `/auth/flow/*`, and a JWT carrying a
 `role` claim is refused on every route with 401 (docs/MIGRATION_V4_V5.md §29 lists the old paths).
 
-### 2.1 Uniform failure messages (defect D-17)
+### 2.1 Uniform failure messages
 
 `POST /auth/flow/start` with `password` and `POST /auth/register` answer with **one** message for
 every rejection that happens before a successful password verification, on both planes:
@@ -87,7 +87,7 @@ depends on the distinct client messages: `volcanic-admin` contains none of those
 ### 2.2 Tenant resolution for these routes
 
 They are the only routes where the tenant **cannot** come from a token, so it comes from the
-resolver: header or subdomain, whichever is configured, never both (task T-3.2). If no tenant is
+resolver: header or subdomain, whichever is configured, never both. If no tenant is
 resolved and tenancy is enabled, the response is 400 `TENANT_REQUIRED`.
 
 The return from a provider is the one exception: a navigation from another site carries neither a
@@ -98,7 +98,7 @@ return with no `state` answers 400 `FLOW_REQUIRED`.
 
 ### 2.3 Renewal, logout and revocation
 
-Since T-11.8 the refresh token is not a JWT: it is an opaque credential, `vs1.<routing>.<sid>.<secret>`,
+The refresh token is not a JWT: it is an opaque credential, `vs1.<routing>.<sid>.<secret>`,
 backed by a row in the `session` table of the subject's container. The mechanism and the reasons
 are in `docs/AUTHORIZATION_V5.md` §9; what a client has to know is here.
 
@@ -138,8 +138,8 @@ integrations may have stored.
 
 ### 2.4 Listing and closing sessions
 
-Once a registry exists, "where am I logged in" is a question with an answer, and answering it in
-the framework instead of in every consuming project is what T-11.14 is for.
+With the session registry, "where am I logged in" is a question with an answer, and the framework
+answers it so that no consuming project has to.
 
 `GET /auth/sessions` returns the caller's own live sessions, one object each: `sid`, `current`,
 `createdAt`, `lastUsedAt`, `idleExpiresAt`, `absoluteExpiresAt`, `ip` and `userAgent`. `current`
@@ -184,11 +184,11 @@ after it.
 It governs both doors. `POST /auth/register` answers 403 `REGISTRATION_CLOSED` under `invite`
 (the rule of the tenant, the same for every address); under `approval` it creates the account with
 `approved: false` and writes `account.pending` in the access log. The just-in-time provisioning of
-a provider (F40) under `invite` creates accounts only for an address in the provider's
-`emailDomains`; under `approval` it creates a waiting account, already linked, and the login
-answers `ACCOUNT_PENDING_APPROVAL` until the approval: a distinct code there, because the provider
-has just authenticated the person who owns the account. A password or `email-otp` login of a
-waiting account gets the uniform answer of §2.1. Administrators list the waiting accounts with
+a provider (`docs/AUTH_FLOW_V5.md` §7) under `invite` creates accounts only for an address in the
+provider's `emailDomains`; under `approval` it creates a waiting account, already linked, and the
+login answers `ACCOUNT_PENDING_APPROVAL` until the approval: a distinct code there, because the
+provider has just authenticated the person who owns the account. A password or `email-otp` login
+of a waiting account gets the uniform answer of §2.1. Administrators list the waiting accounts with
 `GET /users?approved=false` and approve them with `POST /users/:id/approve` (§3), which writes
 `account.approved`.
 
@@ -286,11 +286,11 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 
 ### `/access-log` (tenant scope, new in v5)
 
-The accesses of this tenant's users (F44): logins, flow steps, second factors, logouts, session
-revocations, reuse of a spent refresh credential. Written by the framework, removed by retention,
-never by a client. Rows carry the fields of the table and nothing else: no user agent, no address
-tried for an unknown subject, never a password, a code or a token; the IP is truncated to /24 or
-/48, or absent with `ACCESS_LOG_IP=none`.
+The accesses of this tenant's users (`docs/AUTH_FLOW_V5.md` §9): logins, flow steps, second
+factors, logouts, session revocations, reuse of a spent refresh credential. Written by the
+framework, removed by retention, never by a client. Rows carry the fields of the table and
+nothing else: no user agent, no address tried for an unknown subject, never a password, a code or
+a token; the IP is truncated to /24 or /48, or absent with `ACCESS_LOG_IP=none`.
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -317,7 +317,7 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/auth/refresh-token` | valid control refresh credential | literally the same code as `/auth/refresh-token` (§2.3), with the `control_refresh_token` cookie, the `ctl` routing segment and `scope: 'control'` on the row. A tenant session presented here is `SCOPE_MISMATCH` |
 | POST | `/system/auth/mfa/setup` | any platform identity, fresh (§2.6) | starts the operator's own enrolment: every identity enrols itself, and `roles: []` here would have meant the superuser alone |
 | POST | `/system/auth/mfa/enable` | any platform identity | finishes it with a code from the authenticator, and issues no session; both answer 409 `MFA_ALREADY_ENABLED` for an operator who already has a factor |
-| GET | `/system/auth/me` | any platform identity (`public` role gate plus `isAuthenticated`) | the operator behind the session with its roles, never the credential columns. A console reads it instead of `/users/me`, which refuses a control token (T-10.14) |
+| GET | `/system/auth/me` | any platform identity (`public` role gate plus `isAuthenticated`) | the operator behind the session with its roles, never the credential columns. A console reads it instead of `/users/me`, which refuses a control token |
 | GET | `/system/auth/sessions` | any platform identity | the operator's own platform sessions, the twin of §2.4 and with the same shape |
 | DELETE | `/system/auth/sessions/:id` | any platform identity | closes one of them; a session of another operator answers 404, as on the tenant side |
 | GET | `/system/manifest` | capability `manifest` (control catalogue) | the platform console's manifest, §7. Mounted with tenants and `options.manifest.enabled` |
@@ -376,7 +376,7 @@ exists.
 | POST | `/tenants/:id/migrate` | `migrations` | applies the pending migrations to one container |
 | POST | `/tenants/:id/export` | `tenants:export` | the container's dump (`pg_dump` of the schema, or of the whole database under `container`), then `artifacts`: what each package keeps outside the container, `{ name, path, bytes }`, written next to the dump. A package that fails removes the dump and every artifact, and the export fails |
 | POST | `/tenants/:id/impersonate` | `tenants:impersonate` | body: `{ userId, reason }`. `reason` is **required**. Fresh: an operator whose proof is older than `STEP_UP_MAX_AGE` gets 403 `STEP_UP_REQUIRED` (§2.6) |
-| POST | `/tenants/impersonate/end` | `tenants:impersonate` | revokes the impersonation record. Body: `{ impersonationId }`. First written as "authenticated (control)", which on a control route resolves to the superuser alone: whoever can open a session must be able to end one, and that is the capability |
+| POST | `/tenants/impersonate/end` | `tenants:impersonate` | revokes the impersonation record. Body: `{ impersonationId }`. Not "authenticated (control)", which on a control route resolves to the superuser alone: whoever can open a session must be able to end one, and that is the capability |
 | POST | `/tenants/:id/destruction-request` | `tenants:destroy` | phase 1, see §6.2 |
 | DELETE | `/tenants/:id/data` | `tenants:destroy` | phase 2, see §6.2 |
 | GET | `/tenants/:id/identity-providers` | `tenants` | the tenant's own identity providers (docs/AUTH_FLOW_V5.md §6.1), never their client secret. `tenants` for reading too: the rows describe the customer's IdP |
@@ -393,9 +393,9 @@ Body: `{ name, slug, strategy, engine, locator?, config?, admin: { email, passwo
   may choose from (§2.5), stored in their order; anything else is 400 `ACCOUNT_CREATION_INVALID`,
   on creation and on `PUT /tenants/:id` alike.
 - `locator` absent is derived from the slug, then sanitised. If the sanitised value differs from
-  a value the caller **did** send, the response is 400 (defect D-20).
+  a value the caller **did** send, the response is 400.
 - `admin.adminConfirmed` defaults to **`true`** on this route: a tenant whose administrator
-  cannot log in is not provisioned, it is broken (defect D-08). `POST /auth/register` keeps
+  cannot log in is not provisioned, it is broken. `POST /auth/register` keeps
   creating unconfirmed users: they are different paths with different meanings.
 - `strategy` is the deployment's, `tenants.strategy`: absent, it is taken from there; another one
   answers 400 `TENANT_STRATEGY_MISMATCH`, because the row would describe a container that does not
@@ -463,7 +463,7 @@ operator, all answer `DESTRUCTION_TOKEN_INVALID`: the remedy is the same, a new 
 | GET | `/admin/manifest` | tenant | capability `manifest` (tenant catalogue) | the manifest of a customer's console |
 | GET | `/system/manifest` | control | capability `manifest` (control catalogue) | the manifest of the platform console; only with tenants |
 
-**One console, one plane (T-10.14).** With tenants declared the two manifests describe disjoint
+**One console, one plane.** With tenants declared the two manifests describe disjoint
 sets of routes: `/admin/manifest` the tenant routes, with `auth.plane: 'tenant'` and the `/auth/*`
 endpoints; `/system/manifest` the control routes, with `auth.plane: 'control'` and the
 `/system/auth/*` endpoints. Each plane's `auth.endpoints` names the flow routes (`flowOptions`,
@@ -473,7 +473,7 @@ There is no login endpoint to name: a login is the flow. A customer's users ther
 receive the platform's route map and role codes. Without tenants there is one identity space:
 `/admin/manifest` describes every route and `/system/manifest` is not mounted.
 
-**`tenancy` (T-10.15).** `header` is named only on the tenant plane under the `header` resolver,
+**`tenancy`.** `header` is named only on the tenant plane under the `header` resolver,
 where a console must send it from the login on; `switchable` is always `false`, because the token
 binds the tenant and a different one is a new login. `listEndpoint` is no longer emitted.
 
@@ -484,7 +484,7 @@ route list and role codes, so grant it to the roles that operate the console. `M
 chooses which of the two `MANIFEST_DUMP` writes; the platform one cannot be pulled in cookie mode,
 where the header accepts integration tokens only and the control plane has none.
 
-### 7.1 Action input (T-10.16)
+### 7.1 Action input
 
 A custom action, a route that is not CRUD, may carry `input`: the fields a console asks for before
 calling it. From the platform manifest of a deployment with tenants:
@@ -524,7 +524,7 @@ calling it. From the platform manifest of a deployment with tenants:
 
 Every error body is `{ statusCode, error, code, message }`, where `code` is stable and
 machine-readable and `message` is for humans. `HIDE_ERROR_DETAILS` is honoured by **every** error
-path, including the `onError` hook, which in v4 leaked the exception message on 500 (defect D-23).
+path, including the `onError` hook, which in v4 leaked the exception message on 500.
 
 | Status | When |
 |---|---|

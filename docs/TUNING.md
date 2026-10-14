@@ -9,12 +9,11 @@ npm run tune -- --force           # measure anyway on a machine that is not fit 
 
 ## Why this exists
 
-Appendix A of `docs/evo/EVO_FRAMEWORK.md` carries the numbers that size the password work factor, the
-pools, the LRU bound on containers and the page ceiling. The line under them says not to use
-them, because they came from a shared laptop.
+The password work factor, the pools, the LRU bound on containers and the page ceiling each need
+a number, and a number taken on a shared laptop is not one to size them with.
 
-A number the document itself calls unreliable is not a measurement, it is a placeholder — and
-every default derived from it is a guess wearing a figure. So: measure on the machine that will
+A number taken on another machine is not a measurement, it is a placeholder, and every default
+derived from it is a guess wearing a figure. So: measure on the machine that will
 run it, and write the answers down **with their provenance**.
 
 ## Provenance is the point
@@ -23,11 +22,10 @@ run it, and write the answers down **with their provenance**.
 Node version, the load average at the time, the date, how many runs it took and the spread
 across them.
 
-That list is what appendix A was missing. A number without provenance is indistinguishable from
-a number somebody invented, which is exactly how appendix A ended up where it is.
+A number without provenance is indistinguishable from a number somebody invented.
 
 `tuning.json` is **not committed** by default, and that is deliberate: a laptop's measurements
-committed to the repository is precisely the mistake being corrected here. Commit one when it
+committed to the repository are precisely the guess this file exists to replace. Commit one when it
 came from a machine that resembles production, and let its provenance say which machine that
 was.
 
@@ -89,10 +87,10 @@ has no real server to be measured against.
 the budget at both shapes measured, so it stays.
 
 **The TTL is unchanged, and this bench is not what decides it.** 3600s without a `tenants` block
-and 60s with one is a staleness policy (D-26), not a performance one: the number bounds how long
-a replica may keep serving a value whose invalidation never reached it. A bench can measure the
-mechanism, the expiry and the sweep, and it did. It cannot measure how stale a deployment is
-willing to be.
+and 60s with one is a staleness policy (`docs/CACHE.md` §6), not a performance one: the number
+bounds how long a replica may keep serving a value whose invalidation never reached it. A bench
+can measure the mechanism, the expiry and the sweep, and it did. It cannot measure how stale a
+deployment is willing to be.
 
 ### The rate limit
 
@@ -113,10 +111,9 @@ attacker anything, because the limit is per address and a botnet's budget is add
 rather than a hash, so one address costs 1.2 ms of CPU a minute and it would take 50,000 of them
 to saturate one core. That limit exists to blunt path scanning, and it is not a CPU defence.
 
-An earlier version of this bench priced the 404 limit with a bcrypt verification and reported a
-quarter of a core per address, which made a sane limit look reckless. The model was wrong, not
-the limit. The cost of the work behind a limit is a parameter now, because the two limits guard
-different work, and that correction is the reason the numbers above are worth reading.
+The cost of the work behind a limit is a parameter of the bench, because the two limits guard
+different work: priced with a bcrypt verification, the 404 limit would cost a quarter of a core
+per address and a sane limit would look reckless.
 
 ## It refuses to measure a machine it cannot measure
 
@@ -216,9 +213,9 @@ any noise the bench can see.
 the unnamed one: no difference on PGlite (it ignores the name), 0.69 to 0.79 on Postgres at
 concurrency 1, 0.98 to 1.06 at concurrency 10. That is 16 to 35 µs of latency per lookup when
 the server is idle and nothing under load, paid with session state: the statement stays on the
-connection, which T-3.1 forbids, and a PgBouncer in transaction mode needs 1.21 or later with
-`max_prepared_statements` above 0. `test/db/prepared.spec.ts` fails if a lookup leaves a named
-statement on its connection.
+connection, which the framework never allows (`docs/MANAGERS_V5.md` §5), and a PgBouncer in
+transaction mode needs 1.21 or later with `max_prepared_statements` above 0.
+`test/db/prepared.spec.ts` fails if a lookup leaves a named statement on its connection.
 
 **One registry read per request.** `provider.tenant()` takes the row the resolution has just
 read and opens its container without reading the registry again. Against the unnamed run

@@ -1,8 +1,7 @@
 # Magic Query (v5)
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5. Tasks **T-0.3** (this document) and **T-2.4** (its
-> implementation) of `docs/evo/EVO_FRAMEWORK.md`.
+> Target: `@volcanicminds/backend` v5.
 > This is also the **client migration guide**: section 9 maps every v4 form to its v5 form.
 > The v4 behaviour is described in `docs/DATA_LAYER_MAGIC.md`, which v5 replaces.
 
@@ -147,7 +146,7 @@ split into five parts and the condition was **silently dropped**. A malformed ra
 
 | Removed | Why | Use instead |
 |---|---|---|
-| `:raw` | interpolates a caller-supplied SQL fragment into the query. With a tenant container in reach it is a way across the boundary (defect D-12). The environment flag that gated it is removed too | write the query in your own service |
+| `:raw` | interpolates a caller-supplied SQL fragment into the query. With a tenant container in reach it is a way across the boundary. The environment flag that gated it is removed too | write the query in your own service |
 | `:eqs` `:neqs` `:containss` `:ncontainss` `:startss` `:nstartss` `:endss` `:nendss` `:likes` `:nlikes` | the `s` suffix meant "strict", which is now the meaning of the base form | drop the `s` |
 | `:notNull` `:isEmpty` `:isNotEmpty` | see §4.1 | `:null=false`, `:empty=true|false` |
 
@@ -180,7 +179,7 @@ else. **Limits, all enforced, all responding 400 when exceeded:**
 | condition defined but never used in `_logic` | condition silently dropped | **400** `QUERY_LOGIC_UNUSED_ALIAS` |
 | `_logic` present and some conditions have no alias | ambiguous | **400** `QUERY_LOGIC_MISSING_ALIAS` |
 
-The silent fallback of v4 (`query.ts:199-202`) is the defect D-13 and does not survive in any
+The silent fallback of v4 (`query.ts:199-202`) does not survive in any
 form: an invalid expression is a caller error, and answering with a different query than the one
 asked is worse than answering with an error.
 
@@ -271,8 +270,7 @@ locale-aware.
 | unknown sort field silently skipped | 400 | |
 | `amount:contains=50%` treated `%` as a wildcard | `%` is escaped | use `:like` for patterns |
 
-Every row of this table must appear in `docs/MIGRATION_V4_V5.md` (task T-8.3) and must be
-checked against `volcanic-admin` during T-8.4.
+Every row of this table must appear in `docs/MIGRATION_V4_V5.md`.
 
 ---
 
@@ -281,14 +279,14 @@ checked against `volcanic-admin` during T-8.4.
 `req.data()` returns the **merge of query string and body**, with the **body winning** on a
 duplicate key. In v4 it returned one **or** the other (`lib/util/common.ts:9`): if the query
 string had a single non-null value, the body was discarded entirely, so a v4 login posted to a URL
-ending in `?x=1`, with the credentials in the body, failed with "Email not valid" (defect D-29).
+ending in `?x=1`, with the credentials in the body, failed with "Email not valid".
 
 Two explicit accessors exist for code that must not guess: `req.queryData()` and
 `req.bodyData()`. `req.data()` stays the default for controllers.
 
 ---
 
-## 11. Implementation notes for T-2.4
+## 11. Implementation notes
 
 1. One catalogue module declares, for each operator, its name and its builder.
 2. The parser rejects before it builds. Validation order: reserved parameters, then field
@@ -297,7 +295,7 @@ Two explicit accessors exist for code that must not guess: `req.queryData()` and
 3. No condition is ever dropped silently. If the code has a branch that skips a condition, that
    branch is a bug: it must throw.
 4. Views (`executeFindView` in v4) keep the same guard as entity queries: without an explicit
-   handle in multi-tenant mode the call **throws** (defect D-06). There is no global fallback to
+   handle in multi-tenant mode the call **throws**. There is no global fallback to
    fall back to any more.
 5. The test suite runs the battery on PGlite: the rows a query returns, and the 400 with the
    right `code` when it is refused.

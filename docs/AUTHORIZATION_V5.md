@@ -1,7 +1,7 @@
 # Authorization (v5): scopes, roles, capabilities
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5. Tasks **T-4.1**, **T-4.2**, **T-4.3** of `docs/evo/EVO_FRAMEWORK.md`.
+> Target: `@volcanicminds/backend` v5.
 > This document **extends** `docs/AUTHORIZATION_MODEL.md` (roles, capabilities, the boot-time
 > gate); it does not replace it. Everything that document says about the tenant scope stays
 > true. What is new in v5 is the **control scope** and the fact that the two can never be
@@ -11,8 +11,8 @@
 
 In v4 the difference between "the super admin of the platform" and "the admin of a tenant" is
 **which schema resolved the `user` table** when the request was authenticated. Nothing else.
-That is a runtime coincidence, and defect D-01 broke it: a poisoned connection could resolve the
-`user` table inside a tenant's schema, and a tenant admin became a platform admin. This is not a
+That is a runtime coincidence, and it breaks: a poisoned connection can resolve the `user` table
+inside a tenant's schema, and a tenant admin becomes a platform admin. This is not a
 misconfiguration to document, it is a privilege-escalation path to remove by construction.
 
 **v5 rule: identity, roles and routes all carry a scope, and the scopes never mix.**
@@ -85,7 +85,7 @@ framework route, exactly as in the tenant scope.
 The tenant catalogue is unchanged: `manifest`, `users`, `tokens` (see
 `docs/AUTHORIZATION_MODEL.md` §3.2), plus whatever the consumer coins for its own routes.
 
-`manifest` is the one name both catalogues reserve, each for its own plane (T-10.14): with the
+`manifest` is the one name both catalogues reserve, each for its own plane: with the
 tenant catalogue it gates `GET /admin/manifest`, the manifest of a customer's console; with the
 control catalogue it gates `GET /system/manifest`, the platform console's. Every other control
 capability is refused on a tenant route at boot (`SHARED_CAPABILITIES`, `lib/loader/roles.ts`).
@@ -123,13 +123,13 @@ second.
 | `imp` | impersonation record id, when the session is an impersonation | absent |
 | `auth_time` | when the person last proved to be there, in seconds (§10), when the session has a row | the same |
 
-**The tenant of a request comes from `tid`, never from a header, whenever a token is present**
-(task T-3.2). The header or the subdomain resolves the tenant only for requests that have no
+**The tenant of a request comes from `tid`, never from a header, whenever a token is present.**
+The header or the subdomain resolves the tenant only for requests that have no
 token: login and public routes. If a token carries `tid` and the header names another tenant,
 the request is **refused**, not resolved to the more likely one. An integration token (`/token`)
-carries `tid` too, the tenant it was created in (T-16.3): a machine names its tenant the way a
+carries `tid` too, the tenant it was created in: a machine names its tenant the way a
 session does, with the token alone. Under tenants, a tenant-plane token without `tid` is refused
-with 401 `TOKEN_TENANT_MISSING` (T-16.5): it was signed where there were no tenants, and the
+with 401 `TOKEN_TENANT_MISSING`: it was signed where there were no tenants, and the
 header next to it would be the only thing naming one.
 
 **No token carries a `role` claim, and one that does is refused** on every route with 401. v4 signed
@@ -142,7 +142,7 @@ still alive across the upgrade would otherwise pass for a session.
 
 ## 6. Impersonation
 
-Closes defect D-18. In v4 impersonation left only a claim in a token, lasted 24 hours, and its
+In v4 impersonation left only a claim in a token, lasted 24 hours, and its
 `req.user?.tenantId === 'system'` branch was dead code comparing a field that does not exist.
 
 **v5 flow:**
@@ -165,7 +165,7 @@ Closes defect D-18. In v4 impersonation left only a claim in a token, lasted 24 
 ## 7. Founder
 
 `isFounderEmail` compared an email against a process environment variable, so in multi-tenant
-the same address was "founder" inside **every** tenant (defect D-27).
+the same address was "founder" inside **every** tenant.
 
 In v5 the founder is the `is_founder` column of the `user` row, inside its own container. The
 environment variable survives for exactly one purpose: seeding the **first system user** on an
