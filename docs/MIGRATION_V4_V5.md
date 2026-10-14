@@ -22,7 +22,7 @@
 > login routes with a flow: every client that logs anybody in changes.
 
 v5 is breaking on purpose. There is no compatibility branch, no deprecated alias and no
-automatic translation of a v4 configuration: invariant 9 of `EVO_FRAMEWORK.md` says the
+automatic translation of a v4 configuration: invariant 9 of `docs/evo/EVO_FRAMEWORK.md` says the
 compatibility is a document, and this is the document. Where the framework can tell that a
 v4 spelling was used, it **refuses to start** and names the replacement, because the failure
 mode of translating silently is not an error, it is an answer from the wrong container.

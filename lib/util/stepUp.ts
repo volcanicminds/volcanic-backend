@@ -3,7 +3,7 @@ import { httpError } from './httpError.js'
 import { withoutQuery } from './logger.js'
 
 //
-// Step-up (EVO_FASE_13.md, F50 to F56): a route marked `freshAuth: true` answers only to a
+// Step-up: a route marked `freshAuth: true` answers only to a
 // session whose person proved to be there within the last `STEP_UP_MAX_AGE` seconds.
 //
 // The moment of that proof is `auth_time` in the access token, in seconds, copied from

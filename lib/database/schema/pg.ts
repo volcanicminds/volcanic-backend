@@ -152,7 +152,7 @@ export function appTables(schemaName: string) {
   )
 
   //
-  // A live session (T-11.1, decisions F18 to F24 in EVO_FASE_11.md).
+  // A live session.
   //
   // One row per session and not per token: `sid` is stable for the whole life of the session
   // and what rotates is the secret, so "close this device" and "close the family because a

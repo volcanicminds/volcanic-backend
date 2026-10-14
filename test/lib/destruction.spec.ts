@@ -478,7 +478,7 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
 
     expect(res.statusCode).toBe(409)
     expect(JSON.parse(res.body).code).toBe('DESTRUCTION_EXPORT_FAILED')
-    // No export, no destruction. Decision 2 of EVO_PUNTI_APERTI.
+    // No export, no destruction.
     expect(dropped).toEqual([])
     expect(steps).toEqual([])
     await server.close()

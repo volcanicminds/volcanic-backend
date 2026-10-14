@@ -1,7 +1,7 @@
 # Configuration (v5)
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5. Tasks **T-1.1** and **T-1.4** of `EVO_FRAMEWORK.md`.
+> Target: `@volcanicminds/backend` v5. Tasks **T-1.1** and **T-1.4** of `docs/evo/EVO_FRAMEWORK.md`.
 > Replaces `docs/CONFIGURATION.md`, which describes the v4 data layer.
 
 ## 1. Shape

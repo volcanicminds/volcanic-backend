@@ -117,7 +117,7 @@
   - Persist the audit log; reduce the TTL; consider step-up MFA; mandatory audit on the MFA reset via env.
   - **Done in v5:** the impersonation session is persisted and every request it makes is
     logged; the TTL is 1800 s (`IMPERSONATION_TTL`, `lib/config/general.ts`). The step-up is
-    reopened (2026-09-27) as phase 13 (`EVO_FASE_13.md`): the impersonation route asks for a
+    reopened (2026-09-27) as phase 13 (`docs/evo/EVO_FASE_13.md`): the impersonation route asks for a
     re-authentication younger than five minutes (`freshAuth` in `lib/api/tenants/routes.ts`).
     The reset via env writes `mfa.emergency_reset` in the access log of the control container
     (`lib/loader/mfaReset.ts`), proven in `test/lib/mfaReset.spec.ts` and `test/db/mfaReset.spec.ts`.

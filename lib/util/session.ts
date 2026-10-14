@@ -2,7 +2,7 @@
 import crypto from 'crypto'
 
 //
-// The refresh credential (T-11.6, decisions F20 to F24 in EVO_FASE_11.md).
+// The refresh credential.
 //
 // The refresh token is opaque and self-describing: `vs1.<routing>.<sid>.<secret>`. Only the
 // secret is a credential; the first three fields are addressing, and none of them is trusted

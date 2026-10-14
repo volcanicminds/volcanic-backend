@@ -1,21 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// Isolation bench on REAL Postgres — T-0.2 of EVO_FRAMEWORK.md, specified in
-// docs/TESTING_V5.md §2.
+// Isolation bench on REAL Postgres, specified in docs/TESTING_V5.md §2.
 //
 // Why it exists: every other suite runs on PGlite, which returns the same single
-// connection from `connect()`. Without a pool the whole D-01 class of defects (session
-// state surviving into the next request) is not merely unobserved, it is unobservable.
+// connection from `connect()`. Without a pool the whole class of defects where session
+// state survives into the next request is not merely unobserved, it is unobservable.
 //
 // Two rules govern this file:
 //
 //   1. It talks to the framework through its PUBLIC surface only: HTTP for behaviour,
 //      plain `pg` for setup and for looking at the database from outside. It never
-//      imports the data layer, so it survives the change of ORM unchanged.
-//   2. It never works around a defect. In v4 the multi-tenant harness confirmed seeded
-//      admins with a raw UPDATE and reset `search_path` by hand between requests; both
-//      hid a real defect (D-08, D-01). Nothing of the sort belongs here: if a tenant
-//      cannot be provisioned through the API and used immediately, that IS the finding.
+//      imports the data layer, so it does not depend on the ORM.
+//   2. It never works around a defect: no raw UPDATE to confirm a seeded admin, no
+//      `search_path` reset by hand between requests. If a tenant cannot be provisioned
+//      through the API and used immediately, that IS the finding.
 //
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -152,8 +150,8 @@ export async function setup(extra: Record<string, unknown> = {}, options: { stra
     dataLayer = await import(dataLayerPath)
   } catch (e: any) {
     throw new Error(
-      `data layer not available yet: expected ${dataLayerPath} to export start() and the managers ` +
-        `(T-1.3 of EVO_FRAMEWORK.md, contract in docs/MANAGERS_V5.md). Underlying error: ${e?.message}`
+      `data layer not available: expected ${dataLayerPath} to export start() and the managers ` +
+        `(contract in docs/MANAGERS_V5.md). Underlying error: ${e?.message}`
     )
   }
 

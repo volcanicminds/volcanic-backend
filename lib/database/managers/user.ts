@@ -8,12 +8,10 @@ import { firstBy } from '../prepared.js'
 import { envInt } from '../env.js'
 
 //
-// The user manager (T-2.5), over Drizzle.
+// The user manager, over Drizzle.
 //
-// Everything appendix B of EVO_FRAMEWORK.md lists as already correct is carried over on
-// purpose, because losing it in the port would be a security regression and not a detail:
-// bcrypt at cost 12, a comparison that costs the same whether or not the email exists, and a
-// reset token that carries its own expiry.
+// Three properties are security and not detail: bcrypt at cost 12, a comparison that costs the
+// same whether or not the email exists, and a reset token that carries its own expiry.
 //
 //
 // The work factor, from the environment with a FLOOR.

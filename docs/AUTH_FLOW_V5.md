@@ -1,7 +1,7 @@
 # Authentication flows (v5)
 
 > **Status: specification of what the code does.** Target: `@volcanicminds/backend` v5, phase 12
-> (`EVO_FASE_12.md`, decisions F33 to F49). Replaces `docs/AUTH_COMPOSABLE_EVOLUTION.md`, the v4
+> (`docs/evo/EVO_FASE_12.md`, decisions F33 to F49). Replaces `docs/AUTH_COMPOSABLE_EVOLUTION.md`, the v4
 > design this engine grew out of, which is removed: where the two differed, this one is the code.
 > If this document and the code disagree, the code wins and this document has a defect.
 

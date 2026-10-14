@@ -1,7 +1,7 @@
 # Manager contracts (v5)
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5. Tasks **T-1.2**, **T-1.3**, **T-2.5** of `EVO_FRAMEWORK.md`.
+> Target: `@volcanicminds/backend` v5. Tasks **T-1.2**, **T-1.3**, **T-2.5** of `docs/evo/EVO_FRAMEWORK.md`.
 > These interfaces are **the integration surface of the consumer**: they are what a project
 > injects through `start(decorators)`. Changing one of them after v5 ships is a breaking change,
 > so they are decided here, before the code.
@@ -272,7 +272,7 @@ the audit history of an entity. The method has exactly one caller, the tracker, 
 tracker needs is the row as it stands *before* the request writes to it, which is what the v4
 method returned. A method whose declared type does not match the single job it exists for is a
 defect of the document, so the document was corrected rather than the caller bent around it
-(precedence rule, `EVO_FRAMEWORK.md` §0).
+(precedence rule, `docs/evo/EVO_FRAMEWORK.md` §0).
 
 `retrieveBy` answers `null` in two cases the caller does not need to tell apart: the row does
 not exist, or the table is not one the handle knows. The second is the normal case for a

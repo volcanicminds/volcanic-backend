@@ -12,19 +12,15 @@ import { enterTenant, registerRequestContext } from '../util/requestContext.js'
 //
 // The data context of a request: what it gets, and where it gives it back.
 //
-// v4 did three things here, and two of them were the defect: it created a QueryRunner per
-// request, mutated its session with `SET search_path`, and tried to undo that from a
-// listener on `finish` that Fastify never reached in time, so the tenant's schema went back
-// into the pool with the connection (D-01, proved in appendix A.2 of EVO_FRAMEWORK.md).
-//
-// v5 does not switch a session at all: the container is chosen by qualifying the tables
-// (T-3.1), so nothing is left behind to clean up and the order in which the hooks run stops
-// being a security property. What remains is bookkeeping, and it has exactly ONE address,
+// A request never switches a database session: the container is chosen by qualifying the
+// tables, so nothing is left behind to clean up and the order in which the hooks run is not a
+// security property. A session switched with `SET search_path` would go back into the pool
+// still pointing at the tenant. What remains is bookkeeping, and it has exactly ONE address,
 // `release()` below. The response hook and the abort listener both call it, and the second
 // caller finds the scope already released.
 //
-// Which tenant a request belongs to is decided below, and the order of the sources is the
-// whole of T-3.2: the token first, the resolver only for a request that carries no token.
+// Which tenant a request belongs to is decided below: the token first, the resolver only for a
+// request that carries no token.
 //
 const providerOf = (server: FastifyInstance): DataProvider | undefined =>
   (server as unknown as Record<string, DataProvider | undefined>)['provider']

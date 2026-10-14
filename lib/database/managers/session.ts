@@ -4,12 +4,11 @@ import type { DataHandle, Session, SessionLookup, SessionManagement } from '../.
 import { runtime, table, column } from './runtime.js'
 
 //
-// The registry of live sessions (T-11.1 → T-11.5, decisions F18 to F26 in EVO_FASE_11.md).
+// The registry of live sessions.
 //
 // A row is a session and not a token: `sid` is fixed for its whole life, the secret rotates at
-// every renewal, and `generation` counts the rotations. Everything the fase asks for follows
-// from that shape. Closing a device, closing a family because a stolen secret came back, and
-// listing what is open are all the same row.
+// every renewal, and `generation` counts the rotations. Closing a device, closing a family
+// because a stolen secret came back, and listing what is open are all the same row.
 //
 // The secret is never stored. What the container keeps is its SHA-256, the same choice the
 // destruction token makes (./destruction.ts): a database that leaks its tables leaks nothing

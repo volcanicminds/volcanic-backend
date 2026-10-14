@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// T-2.5, against a container migrated on PGlite. What matters here is not that an insert works but
-// the properties appendix B of EVO_FRAMEWORK.md lists as already correct in v4 and that the
-// port must not lose: constant-cost password comparison, a reset token that carries its own
-// expiry, and a context that is never inferred.
+// The user and token managers, against a container migrated on PGlite. What matters here is not
+// that an insert works but the properties that are security and not detail: constant-cost
+// password comparison, a reset token that carries its own expiry, and a context that is never
+// inferred.
 //
 import { expect } from 'expect'
 import { createUserManager } from '../../lib/database/managers/user.js'

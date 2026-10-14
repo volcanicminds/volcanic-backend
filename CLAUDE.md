@@ -7,9 +7,9 @@
 > (controller, service, tabelle di dominio) si riferiscono a un repo consumer separato
 > (`volcanic-backend-sample`), non a questo. Qui si lavora sugli interni in `lib/`.
 >
-> **Stato dei lavori**: `EVO_STATO.md` (stato, una riga per compito), `EVO_FRAMEWORK.md` (piano;
-> la sezione 0 dice in che ordine leggere), `EVO_PUNTI_APERTI.md` (decisioni), `EVO_FASE_10.md`
-> (igiene e consumer). Lo stato sta lì, non in questo file.
+> **Stato dei lavori**, in `docs/evo/`: `EVO_STATO.md` (stato, una riga per compito),
+> `EVO_FRAMEWORK.md` (piano; la sezione 0 dice in che ordine leggere), `EVO_PUNTI_APERTI.md`
+> (decisioni), `EVO_FASE_10.md` (igiene e consumer). Lo stato sta lì, non in questo file.
 
 ## Ecosistema npm
 
@@ -73,7 +73,7 @@ npm run tune              # banco di taratura (docs/TUNING.md)
 
 **Senza `DATABASE_URL` le suite che vogliono Postgres saltano invece di fallire**: un verde senza
 quella variabile non dice quello che sembra. Il comando Docker per il Postgres di prova è in
-`EVO_STATO.md`.
+`docs/evo/EVO_STATO.md`.
 
 ## Architettura interna (`lib/`)
 

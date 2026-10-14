@@ -3,19 +3,13 @@ import type { TrackingManagement, DataHandle, NewChange } from '../../../types/g
 import { runtime, table, tableIfKnown, column } from './runtime.js'
 
 //
-// The audit trail (T-2.5, and the persistence half of T-3.5).
+// The audit trail.
 //
-// v4 called this the database manager and it only ever wrote changes; worse, in multi-tenant
-// it was called without a context, the write threw, the tracker swallowed the exception into
-// a log line, and the audit trail was silently empty (D-05). Here the context is a parameter,
-// so a call without one cannot compile, and a failed write raises.
+// The context is a parameter, so a call without one cannot compile, and a failed write raises:
+// an audit write that fails quietly leaves the trail empty and nobody told.
 //
-// A correction to docs/MANAGERS_V5.md §7, made per the precedence rule of EVO_FRAMEWORK.md
-// §0: the specification typed `retrieveBy` as returning `Change[]`, the audit history of an
-// entity. Its only caller is the tracker, and what the tracker needs is the row as it stands
-// BEFORE the request writes to it, which is what the v4 method returned. A method whose
-// declared type does not match the single job it exists for is a defect of the document, so
-// the document was corrected rather than the caller bent around it.
+// `retrieveBy` returns the row as it stands BEFORE the request writes to it, not the audit
+// history of the entity: its only caller is the tracker, and that row is what the tracker needs.
 //
 const NAME = 'trackingManager'
 

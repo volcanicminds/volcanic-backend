@@ -1,4 +1,4 @@
-// Probe fixture for the isolation bench (T-0.2 of EVO_FRAMEWORK.md).
+// Probe fixture for the isolation bench.
 //
 // Two routes that read the SAME unqualified table name, one in each scope. The
 // table exists in the control plane and inside every tenant container with a

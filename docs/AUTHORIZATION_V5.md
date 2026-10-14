@@ -1,7 +1,7 @@
 # Authorization (v5): scopes, roles, capabilities
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5. Tasks **T-4.1**, **T-4.2**, **T-4.3** of `EVO_FRAMEWORK.md`.
+> Target: `@volcanicminds/backend` v5. Tasks **T-4.1**, **T-4.2**, **T-4.3** of `docs/evo/EVO_FRAMEWORK.md`.
 > This document **extends** `docs/AUTHORIZATION_MODEL.md` (roles, capabilities, the boot-time
 > gate); it does not replace it. Everything that document says about the tenant scope stays
 > true. What is new in v5 is the **control scope** and the fact that the two can never be

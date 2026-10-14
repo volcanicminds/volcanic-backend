@@ -1,7 +1,7 @@
 # Testing (v5)
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5. Tasks **T-0.1** and **T-0.2** of `EVO_FRAMEWORK.md`.
+> Target: `@volcanicminds/backend` v5. Tasks **T-0.1** and **T-0.2** of `docs/evo/EVO_FRAMEWORK.md`.
 > It answers, without leaving anything to invent: which suites exist, how each one boots, with
 > which environment, against which engine, and what "covered" means.
 

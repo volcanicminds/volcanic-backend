@@ -736,7 +736,7 @@ export interface DestructionManagement {
 export type SessionScope = 'tenant' | 'control'
 
 /**
- * A live session (T-11.1, decisions F18 to F24 in EVO_FASE_11.md).
+ * A live session.
  *
  * One row per session, not per token: `sid` never changes, and what rotates at every renewal
  * is the secret, with `generation` counting the rotations. That is what makes "close this
@@ -857,7 +857,7 @@ export interface MfaManagement {
 }
 
 // ---------------------------------------------------------------------------------------
-// Composable authentication (EVO_FASE_12.md, F33 to F47)
+// Composable authentication
 //
 // A login is a flow: one `identify` stage that says who the subject is, then the ordered stages
 // of the first flow whose roles meet the subject's. Every method is an `Authenticator`; the

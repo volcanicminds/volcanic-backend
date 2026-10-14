@@ -1,7 +1,7 @@
 # Base schema (v5)
 
 > **Status: specification. Implement exactly this.**
-> Target: `@volcanicminds/backend` v5, Drizzle data layer. Task **T-2.1** of `EVO_FRAMEWORK.md`.
+> Target: `@volcanicminds/backend` v5, Drizzle data layer. Task **T-2.1** of `docs/evo/EVO_FRAMEWORK.md`.
 > Nothing here is a suggestion: if a column, a type or an index is missing from your
 > implementation, the task is not done. If something here turns out to be wrong **in practice**,
 > stop, report it, and fix this document first.

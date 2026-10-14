@@ -1,16 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// The tuning bench (T-9.4).
+// The tuning bench.
 //
-// Appendix A of EVO_FRAMEWORK.md carries the numbers that size the work factor, the pools, the
-// LRU bound and the page ceiling — and the line under them says not to use them, because they
-// came from a shared laptop. A number the document itself calls unreliable is not a
-// measurement, it is a placeholder, and every default derived from it is a guess wearing a
-// figure.
-//
-// So: measure on the machine that will run it, and write the answers down WITH their
-// provenance. A number without provenance is indistinguishable from a number somebody invented,
-// which is how appendix A ended up where it is.
+// It measures, on the machine that will run the server, the numbers that size the work factor,
+// the pools, the LRU bound and the page ceiling, and writes each answer down WITH its
+// provenance: a number without provenance is indistinguishable from a number somebody invented.
 //
 //   npx tsx scripts/tune.ts                 # measure, write tuning.json, print what it would change
 //   npx tsx scripts/tune.ts --write-config  # also apply it to .env, after a backup and a diff

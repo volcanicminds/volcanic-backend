@@ -9,7 +9,7 @@ npm run tune -- --force           # measure anyway on a machine that is not fit 
 
 ## Why this exists
 
-Appendix A of `EVO_FRAMEWORK.md` carries the numbers that size the password work factor, the
+Appendix A of `docs/evo/EVO_FRAMEWORK.md` carries the numbers that size the password work factor, the
 pools, the LRU bound on containers and the page ceiling. The line under them says not to use
 them, because they came from a shared laptop.
 

@@ -2,7 +2,7 @@
 
 > **Status: specification. Implement exactly this.**
 > Target: `@volcanicminds/backend` v5. Tasks **T-0.3** (this document) and **T-2.4** (its
-> implementation) of `EVO_FRAMEWORK.md`.
+> implementation) of `docs/evo/EVO_FRAMEWORK.md`.
 > This is also the **client migration guide**: section 9 maps every v4 form to its v5 form.
 > The v4 behaviour is described in `docs/DATA_LAYER_MAGIC.md`, which v5 replaces.
 

@@ -646,8 +646,7 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
   const intent = await intend(req, { ...destroyed, detail: { requestId: request.id } })
   const stopped = (reason: string) => settle(req, intent, 'failure', { ...destroyed, detail: { requestId: request.id, reason } })
 
-  // The export happens first, and a failure stops everything. Decision 2 of
-  // EVO_PUNTI_APERTI: no export, no destruction.
+  // The export happens first, and a failure stops everything: no export, no destruction.
   let exported: (ExportedContainer & { artifacts: ExportedArtifact[] }) | undefined
   try {
     const migrations = migrationsOf(req)

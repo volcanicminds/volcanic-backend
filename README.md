@@ -20,8 +20,7 @@ A Node.js framework based on Fastify to build robust APIs quickly, featuring an 
 >
 > **For production today, use 4.x from `main`.** The contracts are in `docs/SCHEMA_V5.md`,
 > `docs/MAGIC_QUERY_V5.md`, `docs/MANAGERS_V5.md`, `docs/AUTHORIZATION_V5.md`,
-> `docs/API_V5.md`, `docs/CONFIGURATION_V5.md` and `docs/TESTING_V5.md`; the plan that
-> produced them is `EVO_FRAMEWORK.md`.
+> `docs/API_V5.md`, `docs/CONFIGURATION_V5.md` and `docs/TESTING_V5.md`.
 
 ## What goes in the control plane
 
@@ -1658,7 +1657,7 @@ enough tenants to matter.
 of each container, plus the control pool, has to leave room under the server's
 `max_connections` for everything else that talks to it: superuser slots, replication, the
 monitoring agent, the operator's own `psql`. The measured constraint is the connection and not
-the ORM (`EVO_FRAMEWORK.md` appendix A.3): at `max_connections = 100`, 150 containers each
+the ORM: at `max_connections = 100`, 150 containers each
 holding one connection fail with *sorry, too many clients already*. Discovering that at the
 two-hundredth tenant means discovering it in production.
 
