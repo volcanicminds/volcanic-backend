@@ -90,4 +90,3 @@ fase 16.
   fuori dal database. Da scrivere in `volcanic-rag/TASKS.md`.
 - `volcanic-rag-sample/test-tenants/tenants.spec.ts` prova l'export di un tenant con il suo
   corpus, non il ripristino.
-- `docs/_BRAINSTORMING_STACK.md` resta non tracciato.
