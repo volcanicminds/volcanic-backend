@@ -113,6 +113,18 @@ fase 16.
   **Chiuso il 15 ottobre 2026.** La sezione "Exporting a container" del README non c'è più dopo
   la riscrittura a istantanea: F88 sta in un paragrafo di "What it gives you", e per esteso in
   `docs/API_V5.md` §6.3 e in `llms.txt` §2.12.
+- [x] **T-17.9** La firma del pacchetto (opzione A del proprietario, 15 ottobre 2026). La
+  revisione di sicurezza ha aggirato il lettore dei meta-comandi in quattro modi (barra a metà
+  riga, fine di `COPY` con `\.\r`, riga di `COPY` dentro `$$`, `client_encoding` SJIS): un hash
+  dice che niente è cambiato, non chi ha sigillato. La busta porta un HMAC-SHA256 con
+  `PACKAGE_SIGNING_KEY`; `PACKAGE_VERIFY_KEYS` verifica soltanto (chiave ruotata, istanza di
+  provenienza di un trasloco). Senza chiave l'export scrive la busta non firmata e risponde
+  `signed: false`; il ripristino risponde 503 `RESTORE_NOT_AVAILABLE` senza chiavi e 422
+  `RESTORE_SIGNATURE_INVALID` a una busta non firmata, di un'altra chiave o alterata. Il cliente
+  apre il pacchetto senza chiave, quindi F83 regge. Il lettore resta come seconda linea.
+  **Chiuso il 15 ottobre 2026.** `lib/util/tenantPackage.ts`, `importTenant`, controllo di
+  robustezza all'avvio in `index.ts`. Prove in `tenantPackage.spec.ts`, compreso un pacchetto
+  riscritto e risigillato senza chiave.
 
 ## 3. Segnalato, non toccato
 

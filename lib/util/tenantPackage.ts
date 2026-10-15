@@ -50,6 +50,15 @@ export interface PackageEnvelope {
   tenant: Tenant
   /** Without their secrets, which never leave: an operator enters each one again after a restore. */
   identityProviders: IdentityProvider[]
+  /** Absent when the exporting instance holds no signing key; such a package downloads but never restores. */
+  signature?: PackageSignature
+}
+
+/** HMAC-SHA256 over the envelope without this field; `kid` names the key, so a rotated one still verifies. */
+export interface PackageSignature {
+  alg: 'HMAC-SHA256'
+  kid: string
+  value: string
 }
 
 /** A package that cannot be trusted as it is: missing, altered, or not one at all. */
@@ -58,6 +67,62 @@ export class PackageInvalidError extends Error {
   constructor(message: string) {
     super(`The package cannot be used: ${message}`)
     this.name = 'PackageInvalidError'
+  }
+}
+
+/** A package this platform did not sign: its dump would run as SQL with the data layer's role. */
+export class PackageSignatureError extends Error {
+  readonly code = 'RESTORE_SIGNATURE_INVALID'
+  constructor(message: string) {
+    super(`The package is not one this platform signed: ${message}`)
+    this.name = 'PackageSignatureError'
+  }
+}
+
+//
+// The signature is what makes a restore safe, not the hashes: anyone can rewrite a dump and hash
+// it again, and a dump is SQL that `psql` runs with the data layer's role. Only an envelope signed
+// with a key of this platform is restored. `PACKAGE_SIGNING_KEY` signs and verifies;
+// `PACKAGE_VERIFY_KEYS`, comma-separated, only verify: a rotated key, or the key of the instance a
+// tenant moves from. The envelope binds the manifest by its hash and the manifest binds every
+// file, so one MAC covers the whole package.
+//
+const SIGNATURE_ALG = 'HMAC-SHA256'
+const SIGNATURE_CONTEXT = `${ENVELOPE_FORMAT}.v1\n`
+
+/** The key that signs, if any, and every key that verifies, the signing one first. */
+export function packageKeys(): { signing: string | null; verifying: string[] } {
+  const signing = process.env.PACKAGE_SIGNING_KEY || null
+  const previous = (process.env.PACKAGE_VERIFY_KEYS || '')
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean)
+  return { signing, verifying: [...(signing ? [signing] : []), ...previous] }
+}
+
+/** A key's public name: enough to tell keys apart, nothing to rebuild one from. */
+export const keyId = (key: string): string => crypto.createHash('sha256').update(key).digest('hex').slice(0, 16)
+
+const mac = (key: string, unsigned: Omit<PackageEnvelope, 'signature'>): string =>
+  crypto.createHmac('sha256', key).update(SIGNATURE_CONTEXT + JSON.stringify(unsigned)).digest('hex')
+
+/**
+ * Refuses an envelope that no key of this instance signed. The MAC is computed over the envelope
+ * as parsed, without its signature: what the restore reads is what was verified.
+ */
+export function verifyEnvelope(envelope: PackageEnvelope): void {
+  const { signature, ...unsigned } = envelope
+  if (!signature || signature.alg !== SIGNATURE_ALG || typeof signature.kid !== 'string' || typeof signature.value !== 'string') {
+    throw new PackageSignatureError('the envelope carries no signature: export it on an instance with PACKAGE_SIGNING_KEY')
+  }
+  const key = packageKeys().verifying.find((k) => keyId(k) === signature.kid)
+  if (!key) {
+    throw new PackageSignatureError(`it is signed with key ${signature.kid}, which is not in PACKAGE_SIGNING_KEY or PACKAGE_VERIFY_KEYS`)
+  }
+  const expected = Buffer.from(mac(key, unsigned), 'hex')
+  const given = Buffer.from(signature.value, 'hex')
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
+    throw new PackageSignatureError('the signature does not match: the envelope or the manifest changed after the export')
   }
 }
 
@@ -121,9 +186,14 @@ export async function sealPackage(
   return { manifest, sha256: await sha256(path.join(dir, MANIFEST)), bytes }
 }
 
-export function writeEnvelope(dir: string, body: Omit<PackageEnvelope, 'format' | 'version'>): void {
-  const envelope: PackageEnvelope = { format: ENVELOPE_FORMAT, version: 1, ...body }
+export function writeEnvelope(dir: string, body: Omit<PackageEnvelope, 'format' | 'version' | 'signature'>): { signed: boolean } {
+  const unsigned: Omit<PackageEnvelope, 'signature'> = { format: ENVELOPE_FORMAT, version: 1, ...body }
+  const key = packageKeys().signing
+  const envelope: PackageEnvelope = key
+    ? { ...unsigned, signature: { alg: SIGNATURE_ALG, kid: keyId(key), value: mac(key, unsigned) } }
+    : unsigned
   fs.writeFileSync(path.join(dir, ENVELOPE), JSON.stringify(envelope, null, 2), { flag: 'wx' })
+  return { signed: !!key }
 }
 
 const readJson = (file: string): Record<string, unknown> => {

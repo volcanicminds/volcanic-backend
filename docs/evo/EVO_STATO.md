@@ -218,9 +218,12 @@ contenitore temporaneo, il download in tar, `POST /tenants/import`, `POST /tenan
 `POST /token/:id/reissue`, gli indici unici che lasciano fuori le righe `destroyed`. 1080 prove
 con `DATABASE_URL`, banco `tenantLifecycle.e2e` 16 sulle due strategie, copertura 90,0% di righe
 (pavimento 82%). In rag `describe` e `restore` del corpus restano in T-7.12 di
-`volcanic-rag/TASKS.md`, ora sbloccato. Segnalato e non toccato: il ripristino esegue l'SQL del
-dump con il ruolo del data layer (pacchetti solo sotto custodia dell'operatore), nessun evento per
-un download, e le tabelle del consumer con dati cifrati non vengono svuotate.
+`volcanic-rag/TASKS.md`, ora sbloccato. Il ripristino esegue l'SQL del dump con il ruolo del data
+layer, e la revisione di sicurezza ha mostrato che il lettore dei meta-comandi si aggira (barra a
+metà riga, `\.\r`, `$$`, codifiche client): dal 15 ottobre 2026 (T-17.9, opzione A del
+proprietario) la busta è firmata con `PACKAGE_SIGNING_KEY` e un pacchetto non firmato da questa
+piattaforma non si ripristina (422 `RESTORE_SIGNATURE_INVALID`). Segnalato e non toccato: nessun
+evento per un download, e le tabelle del consumer con dati cifrati non vengono svuotate.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

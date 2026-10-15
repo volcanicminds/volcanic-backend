@@ -27,8 +27,8 @@ presented again after a short grace window closes the whole session. The login i
 OIDC, configured per plane, with an MFA policy set per deployment, per plane and per tenant.
 
 A tenant leaves as a package: its dump without credentials, a manifest of hashes the customer can check
-offline, and an envelope only the operator keeps. The same package restores it as a new tenant, here or on
-another instance. A single-tenant deployment and the control plane are backed up by the infrastructure
+offline, and an envelope only the operator keeps, signed with the platform key. The same package restores it
+as a new tenant, here or on another instance that holds the key; an unsigned one is never restored. A single-tenant deployment and the control plane are backed up by the infrastructure
 instead, because there the customer owns the whole database.
 
 The schema is committed SQL, applied in order and recorded inside each container. An instance refuses to boot

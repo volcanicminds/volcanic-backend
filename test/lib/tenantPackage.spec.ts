@@ -12,7 +12,17 @@ import { expect } from 'expect'
 import fastify from 'fastify'
 import { downloadPackage, exportContainer, importTenant, move } from '../../lib/api/tenants/controller/tenants.js'
 import { getData, getParams } from '../../lib/util/common.js'
-import { createPackage, openPackage, packageDir, sealPackage, tarPackage, writeEnvelope } from '../../lib/util/tenantPackage.js'
+import {
+  createPackage,
+  keyId,
+  openPackage,
+  packageDir,
+  packageKeys,
+  sealPackage,
+  tarPackage,
+  verifyEnvelope,
+  writeEnvelope
+} from '../../lib/util/tenantPackage.js'
 import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 ;(global as any).log = {}
@@ -35,10 +45,52 @@ const scratch = (prefix = 'vm-package-') => {
   made.push(dir)
   return dir
 }
+// Every package here is signed, as on an instance that can restore; the tests without a key drop it.
+const KEY = 'package-signing-key-for-the-tests-0123456789'
+const OLD_KEY = 'a-rotated-package-signing-key-for-tests-9876'
+beforeEach(() => {
+  process.env.PACKAGE_SIGNING_KEY = KEY
+  delete process.env.PACKAGE_VERIFY_KEYS
+})
 after(() => {
   for (const dir of made) fs.rmSync(dir, { recursive: true, force: true })
   ;(global as any).config = undefined
+  delete process.env.PACKAGE_SIGNING_KEY
+  delete process.env.PACKAGE_VERIFY_KEYS
 })
+
+/** The error `verifyEnvelope` throws, or null: `toMatchObject` then matches its message against a pattern. */
+const signatureRefusal = (envelope: any): any => {
+  try {
+    verifyEnvelope(envelope)
+    return null
+  } catch (error) {
+    return error
+  }
+}
+
+/**
+ * What anybody can do to a package without the key: rewrite the dump, then seal the manifest and
+ * write the envelope again, so every hash matches. Only the signature is left to refuse it.
+ */
+async function forge(dir: string, keepSignature: boolean) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'))
+  const envelope = JSON.parse(fs.readFileSync(path.join(dir, 'envelope.json'), 'utf8'))
+  fs.appendFileSync(path.join(dir, 'tenant.sql'), 'grant all on schema public to public;\n')
+  fs.rmSync(path.join(dir, 'manifest.json'))
+  fs.rmSync(path.join(dir, 'envelope.json'))
+  const { format: _f, version: _v, files: _files, ...body } = manifest
+  const resealed = await sealPackage(dir, body)
+  const unsigned = {
+    format: envelope.format,
+    version: envelope.version,
+    manifestSha256: resealed.sha256,
+    tenant: envelope.tenant,
+    identityProviders: envelope.identityProviders
+  }
+  const written = keepSignature ? { ...unsigned, signature: envelope.signature } : unsigned
+  fs.writeFileSync(path.join(dir, 'envelope.json'), JSON.stringify(written, null, 2))
+}
 
 const useExports = () => {
   const dir = scratch()
@@ -115,6 +167,53 @@ describe('the package of a tenant (T-17.1, T-17.5)', () => {
         message: /is not a file of this package/
       })
     }
+  })
+
+  it('signs the envelope with the platform key, and verifies it with that key or a previous one', async () => {
+    const { dir } = await sealed()
+    const envelope = JSON.parse(fs.readFileSync(path.join(dir, 'envelope.json'), 'utf8'))
+    expect(envelope.signature).toEqual({
+      alg: 'HMAC-SHA256',
+      kid: keyId(KEY),
+      value: expect.stringMatching(/^[0-9a-f]{64}$/)
+    })
+    expect(JSON.stringify(envelope)).not.toContain(KEY)
+    expect(() => verifyEnvelope(envelope)).not.toThrow()
+
+    // Rotated: the old key only verifies, and still opens what it signed.
+    process.env.PACKAGE_SIGNING_KEY = 'a-new-package-signing-key-for-the-tests-555'
+    process.env.PACKAGE_VERIFY_KEYS = `${OLD_KEY}, ${KEY}`
+    expect(() => verifyEnvelope(envelope)).not.toThrow()
+    expect(packageKeys().verifying).toEqual(['a-new-package-signing-key-for-the-tests-555', OLD_KEY, KEY])
+
+    // A key this instance does not hold, and no key at all.
+    delete process.env.PACKAGE_VERIFY_KEYS
+    expect(signatureRefusal(envelope)).toMatchObject({
+      code: 'RESTORE_SIGNATURE_INVALID',
+      message: /is not in PACKAGE_SIGNING_KEY/
+    })
+    delete process.env.PACKAGE_SIGNING_KEY
+    expect(packageKeys()).toEqual({ signing: null, verifying: [] })
+  })
+
+  it('refuses an envelope changed after the signature, one without it, and a short or garbled one', async () => {
+    const { dir } = await sealed()
+    const envelope = JSON.parse(fs.readFileSync(path.join(dir, 'envelope.json'), 'utf8'))
+    const refused = (e: any, message: RegExp) =>
+      expect(signatureRefusal(e)).toMatchObject({ code: 'RESTORE_SIGNATURE_INVALID', message })
+
+    refused({ ...envelope, tenant: { ...envelope.tenant, slug: 'other' } }, /does not match/)
+    refused({ ...envelope, manifestSha256: '0'.repeat(64) }, /does not match/)
+    refused({ ...envelope, signature: { ...envelope.signature, value: 'ab' } }, /does not match/)
+    refused({ ...envelope, signature: { ...envelope.signature, value: 'not hex at all' } }, /does not match/)
+    const { signature: _s, ...unsigned } = envelope
+    refused(unsigned, /carries no signature/)
+    refused({ ...envelope, signature: { ...envelope.signature, alg: 'none' } }, /carries no signature/)
+
+    // Without a key the envelope is written unsigned, and says so.
+    delete process.env.PACKAGE_SIGNING_KEY
+    const bare = await sealed()
+    expect(JSON.parse(fs.readFileSync(path.join(bare.dir, 'envelope.json'), 'utf8'))).not.toHaveProperty('signature')
   })
 
   it('looks a package up by a file name only', async () => {
@@ -374,6 +473,47 @@ describe('tenants · the restore of a package (T-17.4)', () => {
     expect(refused.statusCode).toBe(503)
     expect(JSON.parse(refused.body).code).toBe('RESTORE_NOT_AVAILABLE')
     await unable.server.close()
+  })
+
+  it('refuses a package rewritten and hashed again without the key, signed or not, with RESTORE_SIGNATURE_INVALID', async () => {
+    // Every hash matches after the forgery: the signature is the only thing that stops a dump
+    // somebody else wrote from running as SQL here.
+    const { server, steps, exports } = build()
+    for (const keepSignature of [true, false]) {
+      const name = await exported(server)
+      await forge(path.join(exports, name), keepSignature)
+      await expect(openPackage(path.join(exports, name))).resolves.toBeTruthy()
+      const res = await restore(server, { package: name, slug: 'b', founderPassword: PASSWORD })
+      expect([res.statusCode, JSON.parse(res.body).code]).toEqual([422, 'RESTORE_SIGNATURE_INVALID'])
+    }
+    expect(steps).toEqual([])
+    await server.close()
+  })
+
+  it('exports without a key as an unsigned package, and restores nothing without a key to verify with', async () => {
+    const { server, steps } = build()
+    delete process.env.PACKAGE_SIGNING_KEY
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    expect([res.statusCode, JSON.parse(res.body).signed]).toEqual([200, false])
+
+    const refused = await restore(server, {
+      package: JSON.parse(res.body).package,
+      slug: 'b',
+      founderPassword: PASSWORD
+    })
+    expect([refused.statusCode, JSON.parse(refused.body).code]).toEqual([503, 'RESTORE_NOT_AVAILABLE'])
+    expect(JSON.parse(refused.body).message).toMatch(/PACKAGE_SIGNING_KEY/)
+
+    // A key that only verifies cannot open what was never signed.
+    process.env.PACKAGE_VERIFY_KEYS = OLD_KEY
+    const unsigned = await restore(server, {
+      package: JSON.parse(res.body).package,
+      slug: 'b',
+      founderPassword: PASSWORD
+    })
+    expect([unsigned.statusCode, JSON.parse(unsigned.body).code]).toEqual([422, 'RESTORE_SIGNATURE_INVALID'])
+    expect(steps).toEqual([])
+    await server.close()
   })
 
   it('answers TENANT_LOCATOR_TAKEN to a container already there, and drops nothing', async () => {

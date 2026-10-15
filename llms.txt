@@ -703,6 +703,8 @@ it, and either case logs a warning.
 | `TENANT_CONTAINERS_MAX_OPEN` | `20` | LRU bound on live tenant containers, range 1 to 10000. A `tenants.containers.maxOpen` in `config/general.ts` wins. |
 | `DESTRUCTION_TOKEN_TTL` | `600` | Seconds a container-destruction request stays valid, range 30 to 3600. |
 | `EXPORT_DIRECTORY` | `./data/exports` | Where tenant packages are written, one folder each, and where a restore reads them. Configuration, never a request field. Feeds `export_directory`. |
+| `PACKAGE_SIGNING_KEY` | unset | Signs the envelope of a tenant package and verifies it on restore (2.12). Unset, a package is written unsigned and no restore runs. When set, the same strength check as `JWT_SECRET`. |
+| `PACKAGE_VERIFY_KEYS` | unset | Comma-separated keys that only verify a package: a rotated signing key, or the one of the instance a tenant moves from. |
 | **Tenant governance** | | |
 | `ACCOUNT_CREATION_ALLOWED` | `invite,approval,open` | Comma-separated account-creation modes a tenant may choose from. Feeds `accountCreation.allowed`. |
 | `ACCOUNT_CREATION_DEFAULT` | `invite` | The mode in force until a tenant's administrator chooses one. An unknown mode, or a default outside the allowed set, refuses the boot; the control plane may replace both at runtime. Feeds `accountCreation.default`. |
@@ -1352,8 +1354,10 @@ An export writes the tenant's **package**: a folder in `options.export_directory
 holding `tenant.sql` (the dump), `tenant.<name>` for each package of 2.8 that keeps something,
 `manifest.json` (every file with its bytes and SHA-256, the schema version, strategy, engine, rows
 per table, and each package's `describe`) and `envelope.json` (the registry row and the identity
-providers, bound to the manifest by its hash). The response is `{ tenant: { id, slug }, package,
-manifestSha256, bytes, schemaVersion, artifacts }`, never a path on the server. The export is
+providers, bound to the manifest by its hash and signed, HMAC-SHA256, with `PACKAGE_SIGNING_KEY`).
+The response is `{ tenant: { id, slug }, package, manifestSha256, signed, bytes, schemaVersion,
+artifacts }`, never a path on the server; without a signing key the export still runs and answers
+`signed: false`, and no instance restores that package. The export is
 recorded in the governance log (`tenant.exported`) before the dump starts, and its outcome after,
 with the path and the manifest hash.
 
@@ -1376,7 +1380,9 @@ export 503 `EXPORT_NOT_AVAILABLE`.
 
 **Restore.** `POST /tenants/import` with `{ package, founderPassword, name?, slug?, locator? }`
 creates a **new tenant with a new id** from a package in the export directory. Before anything is
-built: the hashes are checked (422 `RESTORE_PACKAGE_INVALID`; 404 for an unknown name), and so are
+built: a key to verify with must exist (503 `RESTORE_NOT_AVAILABLE`), the hashes are checked (422
+`RESTORE_PACKAGE_INVALID`; 404 for an unknown name), the signature too (422
+`RESTORE_SIGNATURE_INVALID`: unsigned, a key this instance does not hold, or changed), and so are
 the strategy (409 `RESTORE_STRATEGY_MISMATCH`), a schema version newer than this build (409
 `RESTORE_SCHEMA_AHEAD`), a part no package here can restore (409 `RESTORE_PACKAGE_UNAVAILABLE`),
 the policies of this deployment, the slug and the container, as on a creation. Then the dump is
@@ -1386,8 +1392,10 @@ emptied again, the migrations run, every integration token gets a new `external_
 gets `founderPassword` (422 `RESTORE_FOUNDER_MISSING` without one), the packages restore their part,
 and the row is written, with the identity providers `disabled` until an operator enters their
 secrets again. A failure drops everything that was built. The event is `tenant.imported`, with the
-source tenant id and the manifest hash. The dump's SQL runs with the data layer's role: restore
-only a package that stayed in the operator's custody.
+source tenant id and the manifest hash. The dump's SQL runs with the data layer's role, so the
+signature is the boundary: anybody can rewrite a dump and hash it again, and the meta-command
+reader is a second line, not a parser of `psql`. `PACKAGE_VERIFY_KEYS` holds the keys that only
+verify: a rotated one, or the source's on a move.
 
 **Move.** `POST /tenants/:id/move` with `{ destination, package }` turns the tenant `moved`, with
 `movedTo`, and it stops resolving requests; the container stays. The package must be one exported

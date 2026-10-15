@@ -370,7 +370,7 @@ no governance log manager answers every one of these routes with 503
 | DELETE | `/tenants/:id` | `tenants` | soft-deletes **the registry row only**. The response says so explicitly |
 | GET | `/tenants/migrations` | `migrations` | which container is at which schema version |
 | POST | `/tenants/:id/migrate` | `migrations` | applies the pending migrations to one container |
-| POST | `/tenants/:id/export` | `tenants:export` | writes the tenant's package (§6.3) and answers `{ tenant, package, manifestSha256, bytes, schemaVersion, artifacts: [{ name, bytes }] }`, never a path on the server. A package of `tenantLifecycles` that fails removes the whole package, and the export fails |
+| POST | `/tenants/:id/export` | `tenants:export` | writes the tenant's package (§6.3) and answers `{ tenant, package, manifestSha256, signed, bytes, schemaVersion, artifacts: [{ name, bytes }] }`, never a path on the server; `signed: false` without `PACKAGE_SIGNING_KEY`, and no instance restores that package. A package of `tenantLifecycles` that fails removes the whole package, and the export fails |
 | GET | `/tenants/:id/exports/:package` | `tenants:export` | the package as one tar file, checked against its manifest first (§6.3) |
 | POST | `/tenants/import` | `tenants` | a new tenant from a package (§6.4) |
 | POST | `/tenants/:id/move` | `tenants` | records that the tenant moved (§6.5) |
@@ -471,17 +471,24 @@ slug, the schema version, the instant and a random suffix:
 | `tenant.sql` | the dump of the container, without credentials. Under `schema` it names `vm_package` instead of the locator |
 | `tenant.<name>` | what each package of `tenantLifecycles` keeps outside the container, a file or a folder |
 | `manifest.json` | every file above with its bytes and SHA-256, the schema version, the strategy and engine, the rows per table, and what each package says of itself (`describe`) |
-| `envelope.json` | the operator's part: the registry row and the tenant's identity providers, bound to the manifest by its hash |
+| `envelope.json` | the operator's part: the registry row and the tenant's identity providers, bound to the manifest by its hash and signed with the platform key |
 
 The manifest is the customer's: it names no tenant id, no locator and no path of the server. The
 envelope is not: it travels only in the operator's copy.
+
+The signature is an HMAC-SHA256 of the envelope, `signature: { alg, kid, value }`, where `kid` is
+the start of the key's SHA-256 and never the key. `PACKAGE_SIGNING_KEY` signs and verifies;
+`PACKAGE_VERIFY_KEYS`, comma-separated, only verify: a rotated key, or the key of the instance a
+tenant comes from. The envelope binds the manifest and the manifest binds every file, so one
+signature covers the package. Without a signing key the export still runs, writes the envelope
+unsigned, logs a warning and answers `signed: false`.
 
 What the dump does not carry, because it is a credential: every password (replaced by a value no
 password matches, the column stays `NOT NULL`), `mfa_secret` and `mfa_enabled` (false),
 `mfa_type`, the reset and confirmation tokens, and every row of `session` and `auth_flow`. A
 user's `external_id` stays: the external identities and the access log point at it. The identity
 providers in the envelope carry no client secret. Nothing encrypted leaves, so a package opens
-on any machine and depends on no key.
+on any machine and depends on no key; the signature decides only whether a platform restores it.
 
 The raw dump never reaches a disk: it is loaded into a scratch container, emptied of credentials
 there, and dumped to the package. That file is then loaded into a second scratch container and its
@@ -506,9 +513,10 @@ In order, each refusal before anything is built:
 
 | Status | Code | When |
 |---|---|---|
-| 503 | `RESTORE_NOT_AVAILABLE` | the data layer cannot restore (PGlite has no server for `psql`), or cannot renew the integration tokens |
+| 503 | `RESTORE_NOT_AVAILABLE` | the data layer cannot restore (PGlite has no server for `psql`), cannot renew the integration tokens, or holds no key to verify with (neither `PACKAGE_SIGNING_KEY` nor `PACKAGE_VERIFY_KEYS`) |
 | 404 | `RESTORE_PACKAGE_INVALID` | no package with that name |
 | 422 | `RESTORE_PACKAGE_INVALID` | a file differs from the manifest, a file is not listed, a link, a package part that is not one of its files, or an envelope of another manifest |
+| 422 | `RESTORE_SIGNATURE_INVALID` | the envelope is unsigned, signed with a key this instance does not hold, or changed after the signature |
 | 409 | `RESTORE_STRATEGY_MISMATCH` | the package was made under another strategy |
 | 409 | `RESTORE_SCHEMA_AHEAD` | the package is at a schema version this build does not have |
 | 409 | `RESTORE_PACKAGE_UNAVAILABLE` | a package of `tenantLifecycles` kept a part this build cannot restore |
@@ -533,8 +541,11 @@ no row is written. The event is `tenant.imported`, with `sourceTenantId`, `packa
 users set a password through the reset flow, or receive one from an administrator, and enrol their
 second factor again.
 
-The dump's SQL runs with the data layer's role: restore only a package that stayed in the
-operator's custody. The hashes say a file did not change since it was sealed, not who sealed it.
+The dump's SQL runs with the data layer's role, which is why the signature is the boundary: the
+hashes say a file did not change since it was sealed, not who sealed it, and anybody can rewrite a
+dump and seal it again. The reader that refuses meta-commands is a second line, not a parser of
+`psql`. A signing key is a credential of the platform: whoever holds it can make an instance run
+SQL, so it lives where `JWT_SECRET` lives, and it meets the same strength check at boot.
 
 ### 6.5 Move
 
@@ -542,7 +553,8 @@ operator's custody. The hashes say a file did not change since it was sealed, no
 with `movedTo: destination`, and no longer resolves requests; its container stays. `package` must
 be a package exported from this tenant, or 409 `TENANT_PACKAGE_MISMATCH`. The event `tenant.moved`
 records the destination, the package and the manifest hash. `POST /tenants/:id/restore` makes the
-tenant active again and clears `movedTo`.
+tenant active again and clears `movedTo`. The destination restores the package only if it holds
+the source's signing key, as its own `PACKAGE_SIGNING_KEY` or in `PACKAGE_VERIFY_KEYS`.
 
 ---
 

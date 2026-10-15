@@ -555,10 +555,10 @@ export class PostgresProvider {
    * Creates the container `locator` from a package's dump, and answers `false`, having touched
    * nothing, when a container with that name is already there.
    *
-   * The dump goes through the same reader as an export, so a meta-command in it is refused before
-   * `psql` runs; its SQL then runs with this provider's role, which is why only a package that stayed
-   * in the operator's custody is restored. The credentials are emptied again, the rows are counted
-   * against the manifest's, and on any failure the container is dropped. Answers what the caller
+   * The dump goes through the same reader as an export, so a meta-command at the start of a line
+   * is refused before `psql` runs; its SQL then runs with this provider's role, which is why the
+   * caller restores only a package whose signature it verified. The credentials are emptied again,
+   * the rows are counted against the manifest's, and on any failure the container is dropped. Answers what the caller
    * renews next: the integration tokens, whose `external_id` changes, and the founder, whose
    * password it sets, since after the scrub no password of the container matches anything.
    */

@@ -16,7 +16,9 @@ import { pipeline } from 'node:stream/promises'
 //     string, and the file is one the core created inside the configured directory;
 //   - **a dump is read line by line before `psql` sees it.** Outside a `COPY` block a line that
 //     starts with a backslash is a `psql` meta-command, and a meta-command runs on the machine,
-//     not in the database: a package that carries one is refused, whoever wrote it.
+//     not in the database: one is refused. This is a second line and not a parser of `psql`,
+//     which also reads a backslash in the middle of a line: what keeps a hostile dump out is the
+//     package signature (lib/util/tenantPackage.ts), checked before any of this runs.
 //
 
 /** The schema a package's dump names under the `schema` strategy, in place of the tenant's locator. */

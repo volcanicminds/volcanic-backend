@@ -42,11 +42,14 @@ import {
   DUMP,
   ENVELOPE,
   PackageInvalidError,
+  PackageSignatureError,
   createPackage,
   openPackage,
   packageDir,
+  packageKeys,
   sealPackage,
   tarPackage,
+  verifyEnvelope,
   writeEnvelope
 } from '../../../util/tenantPackage.js'
 
@@ -92,6 +95,8 @@ interface PackagedDump {
 interface ExportedPackage {
   package: string
   manifestSha256: string
+  /** False without PACKAGE_SIGNING_KEY: such a package can be downloaded, never restored. */
+  signed: boolean
   bytes: number
   schemaVersion: string | null
   artifacts: { name: string; bytes: number }[]
@@ -175,15 +180,17 @@ async function exportTenant(
       })
     })
     const idps: IdentityProviderManagement | undefined = req.server['identityProviderManager']
-    writeEnvelope(dir, {
+    const { signed } = writeEnvelope(dir, {
       manifestSha256: sealed.sha256,
       tenant,
       identityProviders: isImplemented(idps) ? await idps!.list(control(req), tenant.id) : []
     })
+    if (!signed && log.w) log.warn(`Tenant ${tenant.slug}: package ${name} is not signed, and no instance will restore it (PACKAGE_SIGNING_KEY)`)
     return {
       package: name,
       dir,
       manifestSha256: sealed.sha256,
+      signed,
       bytes: sealed.bytes,
       schemaVersion,
       artifacts: artifacts.map((a) => ({ name: a.name, bytes: a.bytes }))
@@ -196,7 +203,9 @@ async function exportTenant(
 
 /** A package's refusal as an answer; any other error goes on. */
 function refusePackage(reply: FastifyReply, error: unknown) {
-  if (error instanceof PackageInvalidError) return reply.status(422).send(httpError(422, error.message, error.code))
+  if (error instanceof PackageInvalidError || error instanceof PackageSignatureError) {
+    return reply.status(422).send(httpError(422, error.message, error.code))
+  }
   throw error
 }
 
@@ -595,9 +604,10 @@ export async function downloadPackage(req: FastifyRequest, reply: FastifyReply) 
  * integration token has a new `external_id`. The identity providers come back disabled and
  * without a secret, which an operator enters again.
  *
- * The dump's SQL runs with the data layer's role. A package is checked against its manifest and
- * its envelope, and a dump carrying a `psql` meta-command is refused, but a hash proves only that
- * nothing changed since it was sealed: restore only a package that stayed in the operator's custody.
+ * The dump's SQL runs with the data layer's role, so only a package this platform signed is
+ * restored: a hash proves only that nothing changed since somebody sealed it, and anybody can seal.
+ * The reader that refuses `psql` meta-commands on the way in is a second line, not a parser of
+ * `psql`: it does not make an unsigned dump safe.
  */
 export async function importTenant(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
@@ -608,12 +618,17 @@ export async function importTenant(req: FastifyRequest, reply: FastifyReply) {
   if (!provider?.restoreContainer || !migrations?.apply) {
     return reply.status(503).send(httpError(503, 'This data layer cannot restore a container', 'RESTORE_NOT_AVAILABLE'))
   }
+  if (!packageKeys().verifying.length) {
+    const message = 'No key to verify a package with: set PACKAGE_SIGNING_KEY, or PACKAGE_VERIFY_KEYS'
+    return reply.status(503).send(httpError(503, message, 'RESTORE_NOT_AVAILABLE'))
+  }
 
   const dir = packageDir(data.package)
   if (!dir) return reply.status(404).send(httpError(404, 'No package with that name in the export directory', 'RESTORE_PACKAGE_INVALID'))
   let opened: Awaited<ReturnType<typeof openPackage>>
   try {
     opened = await openPackage(dir)
+    verifyEnvelope(opened.envelope)
   } catch (error) {
     return refusePackage(reply, error)
   }

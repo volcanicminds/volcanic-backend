@@ -138,7 +138,9 @@ where it is used without passing through the configuration at all.
 | `CORS_ORIGINS` | — | **required in production**: comma-separated allowlist | `origin` of the `cors` entry in `config/plugins.ts` |
 | `HIDE_ERROR_DETAILS` | `true` in production | honoured by every error path, `onError` included | no key |
 | `BODY_LIMIT` | `1048576` | bytes of the largest request body Fastify parses; also the default `fileSize` of a multipart upload, which additionally caps `files` at 10, `fields` at 50 and `parts` at 60 unless `options.limits` of the `multipart` entry says otherwise | no key |
-| `JWT_SECRET` `MFA_DB_SECRET` | — | minimum 32 characters; a weak or missing secret refuses the boot | no key |
+| `JWT_SECRET` `MFA_DB_SECRET` | none | minimum 32 characters; a weak or missing secret refuses the boot | no key |
+| `PACKAGE_SIGNING_KEY` | unset | signs the envelope of a tenant package and verifies it on restore; unset, a package is written unsigned and no restore runs. Same strength check as `JWT_SECRET` when set | no key |
+| `PACKAGE_VERIFY_KEYS` | unset | comma-separated keys that only verify a package: a rotated signing key, or the one of the instance a tenant moves from | no key |
 | `AUTH_MODE` | `COOKIE` | where the session travels: `COOKIE` (httpOnly cookies; the header for integration tokens only) or `BEARER`. Any other value refuses the boot | no key |
 | `COOKIE_SECRET` | — | signs the session cookies; **required in cookie mode**, so required by default, with the same strength rule as the other secrets | `secret` of the `cookie` entry in `config/plugins.ts` |
 | `COOKIE_PATH_PREFIX` | — | the path a prefix-stripping proxy publishes the API under; the refresh cookie's `Path` starts with it | no key |

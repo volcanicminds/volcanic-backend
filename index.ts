@@ -43,6 +43,7 @@ import cookie from '@fastify/cookie'
 
 import require from './lib/util/require.js'
 import { assertSecretStrength } from './lib/util/secret.js'
+import { packageKeys } from './lib/util/tenantPackage.js'
 import { assertCorsOptions, withTenantHeader } from './lib/util/cors.js'
 import { tenantsConfig } from './lib/util/tenancy.js'
 import { assertPolicies, controlPolicy, floorPolicy, mfaAvailable } from './lib/util/mfaPolicy.js'
@@ -374,6 +375,12 @@ const start = async (decorators: StartOptions = {}) => {
   // Missing is always fatal; weak is fatal in production, a warning otherwise.
   const prod = process.env.NODE_ENV === 'production'
   assertSecretStrength('JWT_SECRET', JWT_SECRET, { prod })
+  // Optional: without them a package is written unsigned and no restore runs. Set, they meet the
+  // same bar, because a weak one lets anybody sign a dump that runs as SQL here.
+  if (process.env.PACKAGE_SIGNING_KEY) assertSecretStrength('PACKAGE_SIGNING_KEY', process.env.PACKAGE_SIGNING_KEY, { prod })
+  packageKeys()
+    .verifying.slice(process.env.PACKAGE_SIGNING_KEY ? 1 : 0)
+    .forEach((key, i) => assertSecretStrength(`PACKAGE_VERIFY_KEYS[${i}]`, key, { prod }))
 
   if (log.t) log.trace(`Add JWT - expiresIn: ${JWT_EXPIRES_IN}`)
   await server.register(jwtValidator, {
