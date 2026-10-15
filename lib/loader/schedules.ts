@@ -3,6 +3,7 @@ import _ from 'lodash'
 import type { DataHandle, DataProvider, JobFunction, JobRun, JobSchedule, Tenant, TenantManagement } from '../../types/global.js'
 import { normalizePatterns } from '../util/path.js'
 import { CronJob, SimpleIntervalJob, Task, AsyncTask } from 'toad-scheduler'
+import { Cron } from 'croner'
 import { globSync } from 'glob'
 import path from 'path'
 import require from '../util/require.js'
@@ -27,6 +28,21 @@ import { runInTenant } from '../util/requestContext.js'
 //
 const MAX_CONCURRENCY = 16
 const TENANT_PAGE = 100
+
+// The scheduler parses an expression only when the job is added, after listen(), and a refusal
+// there stops the start. Read here by the same parser with the same timezone, a wrong expression
+// or zone is one more reason not to load the job. `croner` is pinned to the major toad-scheduler
+// depends on, so both read the same syntax.
+function cronRefusal(expression: string, timezone?: string): string | null {
+  try {
+    const probe = new Cron(expression, { timezone, paused: true })
+    probe.nextRun()
+    probe.stop()
+    return null
+  } catch (e) {
+    return (e as Error).message
+  }
+}
 
 export function load(): any[] {
   const patterns = normalizePatterns(['..', 'schedules', '*.job.{ts,js}'], ['src', 'schedules', '*.job.{ts,js}'])
@@ -80,8 +96,11 @@ export function load(): any[] {
           reject('schedule.type must be cron or interval')
         }
 
-        if (schedule.type === 'cron' && !schedule.cron?.expression) {
-          reject('schedule.cron.expression not defined')
+        if (schedule.type === 'cron') {
+          const { expression, timezone } = schedule.cron || {}
+          const unreadable = expression ? cronRefusal(expression, timezone) : null
+          if (!expression) reject('schedule.cron.expression not defined')
+          else if (unreadable) reject(`schedule.cron is not readable: ${unreadable}`)
         }
 
         if (schedule.type === 'interval') {

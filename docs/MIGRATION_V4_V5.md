@@ -365,9 +365,10 @@ The cron fix moves jobs that declared a timezone: they ran on the host's zone, w
 container is an hour or two away from `Europe/Rome` and drifts twice a year. Check any cron
 expression whose hour matters.
 
-The syntax is checked when the job is added, after the server listens: an expression croner 10
-refuses stops the start with croner's message. Rewrite `0/10` as `*/10`, and replace a `?` that
-meant "now" with the value it stood for.
+The expression and the timezone are read when the job loads: one croner 10 refuses keeps that job
+off the scheduler, with `* Job <name>: schedule.cron is not readable: ...` in the error log, and the
+server starts without it. Rewrite `0/10` as `*/10`, and replace a `?` that meant "now" with the
+value it stood for.
 
 ## 21. Bootstrapping, in an order that matters
 

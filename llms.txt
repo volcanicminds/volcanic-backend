@@ -3239,7 +3239,7 @@ export type JobFunction = (ctx: DataHandle, run: JobRun) => unknown | Promise<un
 
 A job is checked when it loads, and a broken one is not scheduled: the reason goes to the error log
 (`* Job <name>: ...`) and the server starts without it. The checks are an exported `job` function, a `type` of
-`cron` or `interval`, a `cron.expression` with cron, an interval of at least 1 second, a known `scope`, a `tenant`
+`cron` or `interval`, a `cron.expression` with cron that croner reads, with its `timezone`, an interval of at least 1 second, a known `scope`, a `tenant`
 slug with scope `tenant`, and a `tenants` block for any scope other than `control`. A schedule without
 `active: true` is not loaded.
 

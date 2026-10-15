@@ -200,9 +200,25 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
     const names = jobs.map((j: any) => j.jobName).sort()
 
     // `plain` declares nothing and is kept: its plane is the control plane, by default.
-    expect(names).toEqual(['good.job', 'plain.job'])
+    expect(names).toEqual(['cron.job', 'good.job', 'plain.job'])
     expect(jobs.find((j: any) => j.jobName === 'good.job').schedule.concurrency).toBe(2)
     expect(jobs.find((j: any) => j.jobName === 'plain.job').schedule.scope).toBe('control')
+  })
+
+  it('refuses at load a cron expression or a timezone the scheduler would refuse, naming the job', () => {
+    // Left to the scheduler, the refusal comes after listen() and stops the start.
+    const previousLog = (global as any).log
+    const errors: string[] = []
+    ;(global as any).log = { e: true, error: (m: string) => errors.push(m) }
+    try {
+      load()
+    } finally {
+      ;(global as any).log = previousLog
+    }
+
+    expect(errors.find((m) => m.startsWith('* Job stepped.job: schedule.cron is not readable'))).toMatch(/0\/10/)
+    expect(errors.find((m) => m.startsWith('* Job zoned.job: schedule.cron is not readable'))).toMatch(/Mars\/Olympus/)
+    expect(errors.some((m) => m.startsWith('* Job cron.job'))).toBe(false)
   })
 })
 
@@ -256,8 +272,8 @@ describe('loader/schedules · the cron timezone reaches the scheduler (D-24)', (
 
 describe('loader/schedules · the cron syntax the scheduler reads', () => {
   //
-  // The expression is parsed by croner when the job is added, not when it loads. Strict ranges
-  // are the documented syntax (docs/MIGRATION_V4_V5.md §20): a step needs a wildcard or a range
+  // The scheduler parses the expression again when the job is added. Strict ranges are the
+  // documented syntax (docs/MIGRATION_V4_V5.md §20): a step needs a wildcard or a range
   // before it, and `?` is a wildcard, not the minute the process started in.
   //
   async function scheduler() {
