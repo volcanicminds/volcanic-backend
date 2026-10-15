@@ -168,6 +168,33 @@ describe('database/query (T-2.4)', () => {
       expect(codeOf(() => parseQuery(pg.user, { _fields: 'password' }, options))).toBe('QUERY_SENSITIVE_FIELD')
     })
 
+    it('never returns a sensitive field, whoever calls and whatever the route declares', async () => {
+      // An internal caller has no response schema to strip them: the select must leave them out.
+      const { records } = await find({ 'email:eq': 'Anna@acme.test' })
+      expect(records[0]).toMatchObject({ id: '1', email: 'Anna@acme.test', externalId: 'x-1' })
+      for (const name of ['password', 'mfaSecret', 'resetPasswordToken', 'confirmationToken']) {
+        expect(records[0]).not.toHaveProperty(name)
+      }
+      // A route's own list replaces the default, and is what stays out.
+      const own = await find({ 'email:eq': 'Anna@acme.test' }, { sensitiveFields: ['externalId'] })
+      expect(own.records[0]).not.toHaveProperty('externalId')
+      expect(own.records[0]).toHaveProperty('password', 'hash-a')
+    })
+
+    it('selects only the fields _fields names, in every record', async () => {
+      const { records, headers } = await find({ _fields: 'id,email', _sort: 'id' })
+      expect(records).toEqual([
+        { id: '1', email: 'Anna@acme.test' },
+        { id: '2', email: 'bruno@acme.test' },
+        { id: '3', email: 'carla@acme.test' }
+      ])
+      expect(headers['v-total']).toBe(3)
+      // A field it filters or sorts on need not be one it returns.
+      expect((await find({ _fields: 'username', 'email:eq': 'bruno@acme.test', _sort: '-createdAt' })).records).toEqual([
+        { username: 'bruno' }
+      ])
+    })
+
     it('refuses an unknown field, an unknown operator and a wrongly cased one', () => {
       expect(codeOf(() => parseQuery(pg.user, { 'nope:eq': 'x' }, options))).toBe('QUERY_UNKNOWN_FIELD')
       expect(codeOf(() => parseQuery(pg.user, { 'email:nope': 'x' }, options))).toBe('QUERY_UNKNOWN_OPERATOR')

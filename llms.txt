@@ -1499,7 +1499,7 @@ export async function find(req: FastifyRequest, reply: FastifyReply) {
   const { product } = tablesFor(container)
 
   const { headers, records } = await executeFind({ db }, product, req.data(), {
-    // Replaces the default list, so the defaults are repeated. Never filterable, sortable or selectable.
+    // Replaces the default list, so the defaults are repeated. Never returned, filterable or sortable.
     sensitiveFields: [...DEFAULT_SENSITIVE_FIELDS, 'secret'],
     extraWhere: onlyMine(req)          // row-level security the URL cannot argue with
   })
@@ -1517,7 +1517,7 @@ Underscore-prefixed, so a column called `page` is a column and not a directive.
 | `_page` | 1-based. `_page=0` answers 400 `QUERY_INVALID_PAGE` |
 | `_pageSize` | default 25 (or the route's `defaultPageSize`), clamped to `maxPageSize`, else `VOLCANIC_MAX_PAGE_SIZE` (100). The applied value comes back in `v-pageSize`; a value below 1 answers 400 `QUERY_INVALID_PAGE` |
 | `_sort` | comma-separated, a leading `-` is descending: `_sort=-createdAt,name`. An unknown field answers 400 `QUERY_UNKNOWN_FIELD` |
-| `_fields` | a comma-separated list of fields: `_fields=id,name`. An unknown or sensitive one answers 400 |
+| `_fields` | a comma-separated list of fields, applied to the select: `_fields=id,name` returns those two. An unknown or sensitive one answers 400 |
 | `_relations` | relations, dot notation for depth; one the route does not allow answers 400 `QUERY_RELATION_NOT_ALLOWED` |
 | `_logic` | boolean expression over aliased conditions |
 | `_withDeleted` | `true` only where the route declares `allowWithDeleted`, otherwise 400 `QUERY_WITH_DELETED_NOT_ALLOWED` |
@@ -1618,8 +1618,9 @@ manifest is for.
 
 ## 3.7 Security hardening
 
-- **Sensitive fields are never filterable**, nor sortable, nor named in `_fields`: 400
-  `QUERY_SENSITIVE_FIELD`. The default list is `DEFAULT_SENSITIVE_FIELDS` (`password`,
+- **Sensitive fields are never returned**: `executeFind` leaves them out of the select, so an
+  internal caller and a route without a response schema do not receive them either. Nor are they
+  filterable, sortable, or named in `_fields`: 400 `QUERY_SENSITIVE_FIELD`. The default list is `DEFAULT_SENSITIVE_FIELDS` (`password`,
   `mfaSecret`, `resetPasswordToken`, `confirmationToken`). `sensitiveFields` in `QueryOptions`
   **replaces** it, so a route that adds a field spreads the defaults in (3.1). Filtering a hash is
   an oracle: it answers questions about a value nobody is allowed to read.

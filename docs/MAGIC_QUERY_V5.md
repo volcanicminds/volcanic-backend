@@ -38,7 +38,7 @@ a column.
 | `_page` | `1` | page number, **1-based**. `_page=0` or negative responds 400 |
 | `_pageSize` | `25` | rows per page. Clamped to `maxPageSize` (default 100, configurable per app or via `VOLCANIC_MAX_PAGE_SIZE`). The applied value is reported in the `v-pageSize` response header |
 | `_sort` | none | comma-separated fields; a leading `-` means descending: `_sort=-createdAt,name`. An unknown field responds **400** |
-| `_fields` | all | comma-separated projection: `_fields=id,name`. An unknown or sensitive field responds **400** |
+| `_fields` | all but the sensitive | comma-separated projection, applied to the select: `_fields=id,name` returns those two. An unknown or sensitive field responds **400**. A sensitive field is never selected, with or without `_fields`, so no caller receives it |
 | `_relations` | none | comma-separated relations to join, dot-notation for depth: `_relations=client,client.address`. A relation the route does not allow responds **400** |
 | `_logic` | none | boolean expression over aliased conditions, see section 5 |
 | `_withDeleted` | `false` | include soft-deleted rows. Allowed **only** if the route declares `allowWithDeleted: true`, otherwise 400 |

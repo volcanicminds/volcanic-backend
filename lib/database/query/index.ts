@@ -61,13 +61,27 @@ export interface ParsedQuery {
 
 type Condition = { alias: string; sql: SQL; explicitAlias: boolean }
 
+const sensitiveFieldsOf = (options: QueryOptions): Set<string> => new Set(options.sensitiveFields ?? DEFAULT_SENSITIVE_FIELDS)
+
+/**
+ * The columns a find selects: those `_fields` names, or every one but the sensitive. The select
+ * is where a sensitive column stays behind, not the response schema: an internal caller, or a
+ * consumer route without one, sends what the query returned.
+ */
+function projectionOf(table: Table, parsed: ParsedQuery, options: QueryOptions): Record<string, Column> {
+  const columns = getTableColumns(table) as unknown as Record<string, Column>
+  const sensitive = sensitiveFieldsOf(options)
+  const wanted = (name: string) => (parsed.fields ? parsed.fields.includes(name) : true) && !sensitive.has(name)
+  return Object.fromEntries(Object.entries(columns).filter(([name]) => wanted(name)))
+}
+
 const ALIAS_SUFFIX = /\[([A-Za-z_][A-Za-z0-9_]{0,31})\]$/
 
 export function parseQuery(table: Table, params: Record<string, unknown>, options: QueryOptions = {}): ParsedQuery {
   // Keyed by the TypeScript property name, which is the name a client sees in the response
   // and therefore the name it filters on: `createdAt`, not `created_at`.
   const columns = getTableColumns(table) as unknown as Record<string, Column>
-  const sensitive = new Set(options.sensitiveFields ?? DEFAULT_SENSITIVE_FIELDS)
+  const sensitive = sensitiveFieldsOf(options)
   // The route's own option wins: the variable is the deployment's ceiling, not a way to raise a
   // limit a route deliberately lowered.
   const maxPageSize = options.maxPageSize ?? envInt('VOLCANIC_MAX_PAGE_SIZE', 100, { min: 1, max: 10_000 })
@@ -267,7 +281,7 @@ export async function executeFind<T>(
 ): Promise<FindResult<T>> {
   const parsed = parseQuery(table, params, options)
 
-  let query = handle.db.select().from(table)
+  let query = handle.db.select(projectionOf(table, parsed, options)).from(table)
   if (parsed.where) query = query.where(parsed.where)
   if (parsed.orderBy.length) query = query.orderBy(...parsed.orderBy)
   const records = await query.limit(parsed.limit).offset(parsed.offset)
