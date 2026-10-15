@@ -21,6 +21,8 @@ import type { IdentityProvider, Tenant, TenantStrategy } from '../../types/globa
 export const MANIFEST = 'manifest.json'
 export const ENVELOPE = 'envelope.json'
 export const DUMP = 'tenant.sql'
+/** A lifecycle's part is named after the dump's stem, as `exportFromPackages` writes it: `tenant.<name>`. */
+const PART_PREFIX = `${path.basename(DUMP, path.extname(DUMP))}.`
 
 const PACKAGE_FORMAT = 'volcanic-tenant-package'
 const ENVELOPE_FORMAT = 'volcanic-tenant-envelope'
@@ -160,6 +162,15 @@ export async function openPackage(dir: string): Promise<{ manifest: PackageManif
     }
   }
   if (!listed.has(manifest.dump?.file)) throw new PackageInvalidError('the manifest names no dump')
+  // A part is handed to a lifecycle's `restore` as a path: only the one name an export writes, and
+  // only if the files list holds it, so a manifest cannot point a restore at a folder elsewhere.
+  for (const part of Array.isArray(manifest.packages) ? manifest.packages : []) {
+    if (part?.file == null) continue
+    const named = typeof part.name === 'string' && NAME.test(part.name) && part.file === `${PART_PREFIX}${part.name}`
+    if (!named || !(listed.has(part.file) || [...listed].some((rel) => rel.startsWith(`${part.file}/`)))) {
+      throw new PackageInvalidError(`the part ${String(part.file)} is not a file of this package`)
+    }
+  }
   return { manifest, envelope, sha256: digest }
 }
 

@@ -4210,7 +4210,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Users | `POST /users/:id/block` · `/unblock` | `users` cap⁵ | **yes** | `userManager` |
 | Users | `POST /users/:id/mfa/reset` · `/password/reset`⁶ | `users` cap (admin-only)⁶ | **yes** | `userManager` |
 | Token | `GET /token` · `/count` · `/:id` | `tokens` cap | (read)³ | `tokenManager` |
-| Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/:id/block` · `/:id/unblock` | `tokens` cap⁵ | **yes** | `tokenManager` |
+| Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/:id/block` · `/:id/unblock` · `/:id/reissue` | `tokens` cap⁵ | **yes** | `tokenManager` |
 | Tenants | `GET /tenants` · `GET /tenants/:id` | `tenants:read` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants` · `PUT /tenants/:id` · `POST /tenants/:id/suspend` · `/restore` · `DELETE /tenants/:id` | `tenants` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants/:id/export` | `tenants:export` cap | **yes** | `provider.exportContainer` |

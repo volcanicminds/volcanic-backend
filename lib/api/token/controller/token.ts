@@ -93,7 +93,9 @@ async function signBearer(req: FastifyRequest, reply: FastifyReply, externalId: 
 /**
  * A new bearer for an existing token, shown once. The `externalId` changes first, so every bearer
  * signed before stops resolving to the row; name, roles and expiry stay. A blocked token is
- * reissued too: its new bearer is refused like the old one until the token is unblocked.
+ * reissued too: its new bearer is refused like the old one until the token is unblocked. A bearer
+ * carries the row's roles, so Rule A applies as on a creation: whoever could not mint an admin
+ * token cannot take the bearer of one either.
  */
 export async function reissue(req: FastifyRequest, reply: FastifyReply) {
   const { id } = req.parameters()
@@ -101,6 +103,9 @@ export async function reissue(req: FastifyRequest, reply: FastifyReply) {
 
   const token = await tokens.retrieveTokenById(dataContext(req), id)
   if (!token?.id || token.deletedAt) return reply.status(404).send()
+  if (assignsAdmin(req, token.roles)) {
+    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot reissue a token with the admin role' })
+  }
 
   const expiresAt = token.expiresAt ? new Date(token.expiresAt) : null
   if (expiresAt && !(expiresAt.getTime() > Date.now())) {

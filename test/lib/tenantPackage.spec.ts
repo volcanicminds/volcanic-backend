@@ -46,9 +46,12 @@ const useExports = () => {
   return dir
 }
 
-async function sealed(files: Record<string, string> = { 'tenant.sql': 'create table x();\n' }) {
+async function sealed(files: Record<string, string> = { 'tenant.sql': 'create table x();\n' }, packages: any[] = []) {
   const { name, dir } = createPackage(ACME, '0001_init')
-  for (const [rel, content] of Object.entries(files)) fs.writeFileSync(path.join(dir, rel), content)
+  for (const [rel, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
+    fs.writeFileSync(path.join(dir, rel), content)
+  }
   const seal = await sealPackage(dir, {
     createdAt: new Date().toISOString(),
     tenant: { name: ACME.name, slug: ACME.slug },
@@ -56,7 +59,7 @@ async function sealed(files: Record<string, string> = { 'tenant.sql': 'create ta
     strategy: 'schema',
     engine: 'postgres',
     dump: { file: 'tenant.sql', schema: 'vm_package', rowCounts: { user: 1 } },
-    packages: []
+    packages
   })
   writeEnvelope(dir, { manifestSha256: seal.sha256, tenant: ACME, identityProviders: [] })
   return { name, dir, seal }
@@ -97,6 +100,21 @@ describe('the package of a tenant (T-17.1, T-17.5)', () => {
     const other = await sealed({ 'tenant.sql': 'another dump\n' })
     fs.copyFileSync(path.join(other.dir, 'envelope.json'), path.join(one.dir, 'envelope.json'))
     await expect(openPackage(one.dir)).rejects.toThrow(/envelope.json does not belong to this manifest/)
+  })
+
+  it('refuses a part the manifest points outside the package, or at a file it does not hold', async () => {
+    // The part's path goes to a lifecycle's `restore` as its source: a manifest that named
+    // `../../<other tenant>` would copy another tenant's folder into this one.
+    const files = { 'tenant.sql': 'create table x();\n', 'tenant.notes/a.txt': 'note\n' }
+    const part = (file: string, name = 'notes') => [{ name, file, description: null }]
+    await expect(openPackage((await sealed(files, part('tenant.notes'))).dir)).resolves.toBeTruthy()
+
+    for (const [file, name] of [['../../outside', 'notes'], ['tenant.notes/../..', 'notes'], ['tenant.sql', 'notes'], ['tenant.rag', 'rag'], ['tenant.x', '../x']]) {
+      await expect(openPackage((await sealed(files, part(file, name))).dir)).rejects.toMatchObject({
+        code: 'RESTORE_PACKAGE_INVALID',
+        message: /is not a file of this package/
+      })
+    }
   })
 
   it('looks a package up by a file name only', async () => {

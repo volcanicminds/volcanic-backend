@@ -279,4 +279,23 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
     expect([...missing.calls, ...removed.calls, ...expired.calls]).toEqual([])
   })
+
+  it('refuses the bearer of an admin token to whoever could not create one, and rotates nothing (T-17.7)', async () => {
+    // A `tokens` holder who reissued an admin row would sign themselves an admin bearer: the
+    // escalation Rule A closes on creation, reached through the back door.
+    ;(global as any).config = { options: { allow_multiple_admin: true } }
+    const editor = request({ callerRoles: ['editor'], existing: { roles: ['admin', 'public'] } })
+    await reissue(editor.req, editor.reply)
+    expect(editor.reply.sent.code).toBe(403)
+
+    ;(global as any).config = { options: { allow_multiple_admin: false } }
+    const single = request({ callerRoles: ['admin'], existing: { roles: ['admin'] } })
+    await reissue(single.req, single.reply)
+    expect(single.reply.sent.code).toBe(403)
+    expect([...editor.calls, ...single.calls]).toEqual([])
+
+    ;(global as any).config = { options: { allow_multiple_admin: true } }
+    const admin = request({ callerRoles: ['admin'], existing: { roles: ['admin'] } })
+    expect(await reissue(admin.req, admin.reply)).toMatchObject({ token: 'signed:t-ext-rotated' })
+  })
 })

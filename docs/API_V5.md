@@ -283,6 +283,7 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | DELETE | `/token/:id` | capability `tokens` | |
 | POST | `/token/:id/block` | capability `tokens` | **path changed**: v4 was `/token/block/:id` |
 | POST | `/token/:id/unblock` | capability `tokens` | **path changed**: v4 was `/token/unblock/:id` |
+| POST | `/token/:id/reissue` | capability `tokens` | a new `externalId`, then a new bearer, shown once: every bearer issued before stops authenticating. Name, roles and expiry stay; an expired token is 409 `TOKEN_EXPIRED`. A token with the admin role is 403 to whoever could not create one |
 
 ### `/access-log` (tenant scope, new in v5)
 
@@ -507,7 +508,7 @@ In order, each refusal before anything is built:
 |---|---|---|
 | 503 | `RESTORE_NOT_AVAILABLE` | the data layer cannot restore (PGlite has no server for `psql`), or cannot renew the integration tokens |
 | 404 | `RESTORE_PACKAGE_INVALID` | no package with that name |
-| 422 | `RESTORE_PACKAGE_INVALID` | a file differs from the manifest, a file is not listed, a link, or an envelope of another manifest |
+| 422 | `RESTORE_PACKAGE_INVALID` | a file differs from the manifest, a file is not listed, a link, a package part that is not one of its files, or an envelope of another manifest |
 | 409 | `RESTORE_STRATEGY_MISMATCH` | the package was made under another strategy |
 | 409 | `RESTORE_SCHEMA_AHEAD` | the package is at a schema version this build does not have |
 | 409 | `RESTORE_PACKAGE_UNAVAILABLE` | a package of `tenantLifecycles` kept a part this build cannot restore |
