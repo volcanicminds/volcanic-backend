@@ -352,6 +352,7 @@ so with `req.bodyData()`.
 | CORS | `origin: '*'` with `credentials: true`, compiled in | allowlist from `CORS_ORIGINS`; `credentials` only against a real allowlist; the wildcard pair **refuses to boot in production**, and so does a wildcard that arrived by omission |
 | `onError` | echoed the exception on a 500 whatever `HIDE_ERROR_DETAILS` said | honours it, like every other error path |
 | cron `timezone` | read from a misspelt property, so it was always ignored | honoured |
+| cron syntax | croner 8: `0/10` stepped from 0, `?` took the value of the moment the job started | croner 10: a step needs a wildcard or a range (`*/10`, `0-50/10`), `0/10` is refused; `?` is a wildcard like `*`; an optional seventh field is the year |
 
 The v4 CORS pair was not a lax setting, it was a broken one: browsers refuse to honour
 credentials against a wildcard, so cookie mode never worked cross-origin, and in bearer mode
@@ -363,6 +364,10 @@ credentials with it.
 The cron fix moves jobs that declared a timezone: they ran on the host's zone, which on a UTC
 container is an hour or two away from `Europe/Rome` and drifts twice a year. Check any cron
 expression whose hour matters.
+
+The syntax is checked when the job is added, after the server listens: an expression croner 10
+refuses stops the start with croner's message. Rewrite `0/10` as `*/10`, and replace a `?` that
+meant "now" with the value it stood for.
 
 ## 21. Bootstrapping, in an order that matters
 

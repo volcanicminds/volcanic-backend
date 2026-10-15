@@ -3232,7 +3232,8 @@ export type JobFunction = (ctx: DataHandle, run: JobRun) => unknown | Promise<un
 - `async` runs the job as an async task; `preventOverrun` keeps a second run from starting while the first is
   still going.
 - `type: 'cron'` reads `cron`, and `cron.expression` is mandatory. A six-field expression starts with the seconds:
-  `'*/2 * * * * *'` runs every 2 seconds.
+  `'*/2 * * * * *'` runs every 2 seconds. The parser is croner 10: a step follows a wildcard or a range (`*/10`,
+  `0-50/10`, never `0/10`), `?` means `*`, and an optional seventh field is the year.
 - `type: 'interval'` reads `interval`, whose fields add up and must reach 1 second. `runImmediately` runs the job
   once at start instead of after the first wait.
 

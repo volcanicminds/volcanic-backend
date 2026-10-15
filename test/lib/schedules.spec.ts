@@ -9,6 +9,7 @@
 import { expect } from 'expect'
 import fastify from 'fastify'
 import { fastifySchedule } from '@fastify/schedule'
+import { CronJob, Task } from 'toad-scheduler'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { closingSignal, load, runnerFor, start } from '../../lib/loader/schedules.js'
@@ -250,6 +251,32 @@ describe('loader/schedules · the cron timezone reaches the scheduler (D-24)', (
   it('leaves it undefined when nothing is declared, so the host timezone stays the default', () => {
     const job = capture({ expression: '0 3 * * *' })
     expect(job.schedule.timezone).toBeUndefined()
+  })
+})
+
+describe('loader/schedules · the cron syntax the scheduler reads', () => {
+  //
+  // The expression is parsed by croner when the job is added, not when it loads. Strict ranges
+  // are the documented syntax (docs/MIGRATION_V4_V5.md §20): a step needs a wildcard or a range
+  // before it, and `?` is a wildcard, not the minute the process started in.
+  //
+  async function scheduler() {
+    const server = fastify()
+    await server.register(fastifySchedule)
+    await server.ready()
+    return server
+  }
+
+  function add(server: any, cronExpression: string) {
+    server.scheduler.addCronJob(new CronJob({ cronExpression }, new Task('probe', () => {}), { id: cronExpression }))
+  }
+
+  it('reads a step after a wildcard or a range, and refuses one after a number', async () => {
+    const server = await scheduler()
+    add(server, '*/10 * * * * *')
+    add(server, '0-30/10 * * * * *')
+    expect(() => add(server, '0/10 * * * * *')).toThrow(/0\/10/)
+    await server.close()
   })
 })
 
