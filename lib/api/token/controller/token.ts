@@ -65,7 +65,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not registered' })
   }
 
-  const bearerToken = await signBearer(req, reply, token.externalId, expiresAt)
+  const bearerToken = signBearer(req, token.externalId, expiresAt)
   if (!bearerToken) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not signed' })
   }
@@ -80,14 +80,13 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
  * The bearer of a row. The tenant the row lives in is signed into it, as into a session's: with a
  * token the tenant of a request comes from `tid`, and a header may only agree with it
  * (docs/AUTHORIZATION_V5.md §5). Without tenants there is none, and no claim. It expires when the
- * row says, and only then: `expiresIn: undefined` replaces the session lifetime (JWT_EXPIRES_IN)
- * that @fastify/jwt would otherwise apply.
+ * row says, and only then. `reply.jwtSign` would add the session lifetime (JWT_EXPIRES_IN) over the
+ * row's `exp`, and drops an `expiresIn: undefined` meant to clear it; `jwt.sign` given options signs
+ * with those alone, so the registered lifetime never applies.
  */
-async function signBearer(req: FastifyRequest, reply: FastifyReply, externalId: string, expiresAt: Date | null): Promise<string> {
+function signBearer(req: FastifyRequest, externalId: string, expiresAt: Date | null): string {
   const claims = { sub: externalId, ...(req.tenantInfo && { tid: req.tenantInfo.id }) }
-  return await reply.jwtSign(expiresAt ? { ...claims, exp: Math.floor(expiresAt.getTime() / 1000) } : claims, {
-    sign: { expiresIn: undefined }
-  })
+  return req.server.jwt.sign(expiresAt ? { ...claims, exp: Math.floor(expiresAt.getTime() / 1000) } : claims, {})
 }
 
 /**
@@ -115,7 +114,7 @@ export async function reissue(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const externalId = await tokens.resetExternalId(dataContext(req), token.id)
-  const bearerToken = await signBearer(req, reply, externalId, expiresAt)
+  const bearerToken = signBearer(req, externalId, expiresAt)
   return { ...token, externalId, token: bearerToken }
 }
 

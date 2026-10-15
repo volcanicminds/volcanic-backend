@@ -11,9 +11,24 @@
 // signature. The bearer goes back in the answer and is not stored anywhere.
 //
 import { expect } from 'expect'
+import fastify from 'fastify'
+import jwt from '@fastify/jwt'
 import { create, update, remove, findOne, block, unblock, reissue } from '../../lib/api/token/controller/token.js'
 
 ;(global as any).log = {}
+
+// A real signer, registered with a session lifetime as index.ts registers it: what a bearer must
+// not inherit is the library's behaviour, so a fake of the library cannot pin it.
+const signer = fastify()
+before(async () => {
+  await signer.register(jwt, { secret: 'token-apex-test-secret-at-least-32-chars', sign: { expiresIn: '1h' } })
+  await signer.ready()
+})
+after(() => signer.close())
+const claimsOf = (token: string) => {
+  const { iat: _iat, ...claims } = signer.jwt.decode(token) as any
+  return claims
+}
 
 const EXISTING: any = { id: 't1', externalId: 't-ext-1', name: 'ci', roles: ['public'] }
 
@@ -34,10 +49,6 @@ function fakeReply() {
     headers() {
       return reply
     },
-    jwtSign: async (payload: any, options: any) => {
-      sent.signed = { payload, options }
-      return payload?.sub ? `signed:${payload.sub}` : ''
-    },
     sent
   }
   return reply
@@ -56,6 +67,9 @@ function request(opts: any = {}) {
     hasRole: (r: any) => callerRoles.includes(r?.code),
     roles: () => callerRoles,
     server: {
+      get jwt() {
+        return signer.jwt
+      },
       tokenManager: {
         isImplemented: () => true,
         retrieveTokenById: async (_c: any, id: string) =>
@@ -167,7 +181,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
     const created: any = await create(req, reply)
     expect(calls.map((c) => c[0])).toEqual(['createToken'])
-    expect(created.token).toBe('signed:t-ext-new')
+    expect(claimsOf(created.token)).toEqual({ sub: 't-ext-new' })
     expect(created.externalId).toBe('t-ext-new')
   })
 
@@ -189,16 +203,15 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     const at = new Date(Date.now() + 3600_000)
     const dated = request({ data: { name: 'ci', expiresAt: at.toISOString() } })
 
-    await create(dated.req, dated.reply)
+    const signedDated: any = await create(dated.req, dated.reply)
     expect(dated.calls[0][1].expiresAt).toEqual(at)
-    expect(dated.reply.sent.signed.payload.exp).toBe(Math.floor(at.getTime() / 1000))
+    // The row's instant, not the signer's hour from now.
+    expect(claimsOf(signedDated.token).exp).toBe(Math.floor(at.getTime() / 1000))
 
-    // `expiresIn` is named and undefined: absent, @fastify/jwt would apply JWT_EXPIRES_IN.
     const permanent = request({ data: { name: 'ci', expiresAt: null } })
-    await create(permanent.req, permanent.reply)
+    const signedPermanent: any = await create(permanent.req, permanent.reply)
     expect(permanent.calls[0][1].expiresAt).toBeNull()
-    expect(permanent.reply.sent.signed.payload.exp).toBeUndefined()
-    expect(permanent.reply.sent.signed.options.sign).toHaveProperty('expiresIn', undefined)
+    expect(claimsOf(signedPermanent.token)).not.toHaveProperty('exp')
   })
 
   it('signs the tenant the row lives in into the bearer, and no tenant without tenants', async () => {
@@ -206,12 +219,12 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     // which the resolution refuses to believe for every other token (docs/AUTHORIZATION_V5.md §5).
     ;(global as any).config = { options: {} }
     const inTenant = request({ data: { name: 'ci', expiresAt: null }, tenantInfo: { id: 'tenant-acme', slug: 'acme' } })
-    await create(inTenant.req, inTenant.reply)
-    expect(inTenant.reply.sent.signed.payload).toEqual({ sub: 't-ext-new', tid: 'tenant-acme' })
+    const tenantBearer: any = await create(inTenant.req, inTenant.reply)
+    expect(claimsOf(tenantBearer.token)).toEqual({ sub: 't-ext-new', tid: 'tenant-acme' })
 
     const single = request({ data: { name: 'ci', expiresAt: new Date(Date.now() + 3600_000).toISOString() } })
-    await create(single.req, single.reply)
-    expect(single.reply.sent.signed.payload).not.toHaveProperty('tid')
+    const singleBearer: any = await create(single.req, single.reply)
+    expect(claimsOf(singleBearer.token)).not.toHaveProperty('tid')
   })
 
   it('reports a row it could not write, instead of signing a bearer for nothing', async () => {
@@ -259,8 +272,9 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
     const reissued: any = await reissue(req, reply)
     expect(calls).toEqual([['resetExternalId', EXISTING.id]])
-    expect(reply.sent.signed.payload).toEqual({ sub: 't-ext-rotated', tid: 'tenant-acme', exp: Math.floor(at.getTime() / 1000) })
-    expect(reissued).toMatchObject({ id: EXISTING.id, name: 'ci', externalId: 't-ext-rotated', token: 'signed:t-ext-rotated' })
+    expect(reply.sent.code).toBe(200)
+    expect(claimsOf(reissued.token)).toEqual({ sub: 't-ext-rotated', tid: 'tenant-acme', exp: Math.floor(at.getTime() / 1000) })
+    expect(reissued).toMatchObject({ id: EXISTING.id, name: 'ci', externalId: 't-ext-rotated' })
   })
 
   it('refuses to reissue a token that is gone or expired, and rotates nothing (T-17.7)', async () => {
@@ -296,6 +310,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
     ;(global as any).config = { options: { allow_multiple_admin: true } }
     const admin = request({ callerRoles: ['admin'], existing: { roles: ['admin'] } })
-    expect(await reissue(admin.req, admin.reply)).toMatchObject({ token: 'signed:t-ext-rotated' })
+    const adminBearer: any = await reissue(admin.req, admin.reply)
+    expect(claimsOf(adminBearer.token)).toMatchObject({ sub: 't-ext-rotated' })
   })
 })
