@@ -95,7 +95,7 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",
     "@fastify/jwt": "^10.1.0",
-    "@fastify/multipart": "^9.3.0",
+    "@fastify/multipart": "^10.1.4",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/schedule": "^6.0.0",
     "@fastify/static": "^10.1.3",
