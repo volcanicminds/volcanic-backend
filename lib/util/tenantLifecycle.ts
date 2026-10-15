@@ -93,6 +93,49 @@ export async function exportFromPackages(lifecycles: readonly TenantLifecycle[],
   }
 }
 
+/** What each package says of itself for the manifest; null for one without `describe`. */
+export async function describePackages(
+  lifecycles: readonly TenantLifecycle[],
+  tenant: Tenant
+): Promise<Map<string, Record<string, unknown> | null>> {
+  const described = new Map<string, Record<string, unknown> | null>()
+  for (const lifecycle of lifecycles) {
+    described.set(lifecycle.name, lifecycle.describe ? await named(lifecycle, 'describe', () => lifecycle.describe!(tenant)) : null)
+  }
+  return described
+}
+
+/**
+ * The packages a restore cannot rebuild, given the parts the export holds: a part whose package is
+ * not in this build, or whose package has no `restore`. Checked before anything is built.
+ */
+export function unrestorable(lifecycles: readonly TenantLifecycle[], parts: readonly string[]): string[] {
+  return parts.filter((name) => !lifecycles.find((l) => l.name === name)?.restore)
+}
+
+/**
+ * The creation's step for a restored tenant: `restore` from its part for a package the export holds
+ * one for, `create` for the others. Pushed on `started` before each runs, as on a creation.
+ */
+export async function restoreInPackages(
+  lifecycles: readonly TenantLifecycle[],
+  place: TenantPlace,
+  handle: TenantHandle,
+  parts: ReadonlyMap<string, string>,
+  started: TenantLifecycle[]
+): Promise<void> {
+  for (const lifecycle of lifecycles) {
+    const source = parts.get(lifecycle.name)
+    if (source) {
+      started.push(lifecycle)
+      await named(lifecycle, 'restore', () => lifecycle.restore!(place, handle, source))
+    } else if (lifecycle.create) {
+      started.push(lifecycle)
+      await named(lifecycle, 'create', () => lifecycle.create!(place, handle))
+    }
+  }
+}
+
 /** Runs every `destroy`, in order, and stops at the first failure: the tenant is then still there to destroy again. */
 export async function destroyInPackages(lifecycles: readonly TenantLifecycle[], place: TenantPlace): Promise<void> {
   for (const lifecycle of lifecycles) {

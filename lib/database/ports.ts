@@ -50,6 +50,14 @@ export interface ExportResult {
   readonly schemaVersion: string | null
 }
 
+/** The dump of a package: what the manifest records of it. */
+export interface PackagedDump extends ExportResult {
+  /** The schema the dump names, `PACKAGE_SCHEMA` under the `schema` strategy; null when it names none. */
+  readonly schema: string | null
+  /** Rows per table after the credentials were emptied, as the dump loads back. */
+  readonly rowCounts: Record<string, number>
+}
+
 export interface ContainerReport {
   readonly locator: string
   readonly sizeBytes: number

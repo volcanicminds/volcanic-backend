@@ -9,6 +9,9 @@
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import { destructionRequest, destroyData, restore } from '../../lib/api/tenants/controller/tenants.js'
 import { hashToken } from '../../lib/database/managers/destruction.js'
 import { challengeMac } from '../../lib/database/managers/authFlow.js'
@@ -17,7 +20,15 @@ import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 ;(global as any).log = {}
 
-const ACME: any = { id: 'id-acme', slug: 'acme', status: 'active', locator: 'tenant_acme', schemaVersion: '0001_init' }
+// The export directory of the last build: each test gets its own, and the packages land in it.
+let exports = ''
+const made: string[] = []
+after(() => {
+  for (const dir of made) fs.rmSync(dir, { recursive: true, force: true })
+})
+const packages = () => fs.readdirSync(exports)
+
+const ACME: any = { id: 'id-acme', name: 'Acme', slug: 'acme', status: 'active', engine: 'postgres', locator: 'tenant_acme', schemaVersion: '0001_init' }
 const ACTOR: any = { id: 'sys-1', externalId: 'sys-ext-1', email: 'root@system.test', mfaEnabled: true, mfaLastUsedCounter: null }
 
 function fakes(over: any = {}) {
@@ -107,9 +118,11 @@ function fakes(over: any = {}) {
         rowCounts: { user: 3, widget: 17 },
         schemaVersion: '0001_init'
       }),
-      exportContainer: async () => {
+      strategy: 'schema',
+      exportContainer: async (_t: any, request: any) => {
         if (over.exportFails) throw new Error('pg_dump is not available')
-        const result = { path: '/tmp/acme-0001_init.sql', bytes: over.emptyExport ? 0 : 2048, schemaVersion: '0001_init' }
+        fs.writeFileSync(request.target, over.emptyExport ? '' : 'x'.repeat(2048))
+        const result = { path: request.target, bytes: over.emptyExport ? 0 : 2048, schemaVersion: '0001_init', schema: 'vm_package', rowCounts: { user: 3 } }
         exported.push(result)
         return result
       },
@@ -120,6 +133,7 @@ function fakes(over: any = {}) {
     },
     identityProviderManager: {
       isImplemented: () => !over.noIdentityProviders,
+      list: async (_c: any, tenantId: string) => idps.filter((p) => p.tenantId === tenantId),
       removeAll: async (_c: any, tenantId: string) => {
         steps.push('removeAll')
         const before = idps.length
@@ -153,7 +167,9 @@ function fakes(over: any = {}) {
 }
 
 async function build(over: any = {}) {
-  ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' }, export_directory: '/tmp' } }
+  exports = fs.mkdtempSync(path.join(os.tmpdir(), 'destruction-'))
+  made.push(exports)
+  ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' }, export_directory: exports } }
   ;(global as any).authFlows = { limits: { otpMaxAttempts: 5 } }
   const f = fakes(over)
 
@@ -288,7 +304,15 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     // destruction, and no record without the reference.
     expect(exported.length).toBe(1)
     expect(dropped).toEqual([ACME.locator])
-    expect([...requests.values()][0].exportRef).toBe('/tmp/acme-0001_init.sql')
+    // The reference is the package's name, never a path of the server.
+    const [written] = packages()
+    expect(written).toMatch(/^acme-0001_init-/)
+    expect([...requests.values()][0].exportRef).toBe(written)
+    expect(JSON.parse(res.body)).toMatchObject({ exportRef: written, manifestSha256: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    expect(res.body).not.toContain(exports)
+    // The envelope keeps the providers the destruction removes: after it, they are only there.
+    const envelope = JSON.parse(fs.readFileSync(path.join(exports, written, 'envelope.json'), 'utf8'))
+    expect(envelope.identityProviders.map((p: any) => p.key)).toEqual(['entra', 'okta'])
     await server.close()
   })
 
@@ -307,7 +331,11 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
   const rag = (failDestroy = false) => (steps: string[]) => [
     {
       name: 'rag',
-      export: async (_t: any, target: string) => (steps.push(`rag export ${target}`), 9),
+      export: async (_t: any, target: string) => {
+        steps.push(`rag export ${path.basename(target)}`)
+        fs.writeFileSync(target, 'index')
+        return 5
+      },
       destroy: async (place: any) => {
         steps.push(`rag destroy ${place.locator}`)
         if (failDestroy) throw new Error('the folder is busy')
@@ -320,9 +348,9 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     const res = await destroy(server, { token, slug: 'acme', otp: '123456' })
 
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).artifacts).toEqual(['/tmp/acme-0001_init.rag'])
+    expect(JSON.parse(res.body).artifacts).toEqual(['rag'])
     expect(steps).toEqual([
-      'rag export /tmp/acme-0001_init.rag',
+      'rag export tenant.rag',
       'removeAll',
       'rag destroy tenant_acme',
       'dropContainer',
@@ -330,7 +358,7 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     ])
     expect(governanceLogManager.rows.at(-1)).toMatchObject({
       outcome: 'success',
-      detail: { artifacts: ['/tmp/acme-0001_init.rag'], packages: ['rag'] }
+      detail: { artifacts: ['rag'], packages: ['rag'] }
     })
     await server.close()
   })
@@ -518,7 +546,7 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
       action: 'tenant.destroyed',
       outcome: 'success',
       intentId: intent.id,
-      detail: { requestId: requested.detail?.requestId, exportRef: '/tmp/acme-0001_init.sql', identityProviders: 2 }
+      detail: { requestId: requested.detail?.requestId, exportRef: packages()[0], identityProviders: 2 }
     })
     await server.close()
   })
@@ -529,6 +557,8 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
 
     expect(res.statusCode).toBe(409)
     expect(dropped).toEqual([])
+    // And it does not stay behind looking like one.
+    expect(packages()).toEqual([])
     await server.close()
   })
 

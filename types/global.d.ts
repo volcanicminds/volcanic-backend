@@ -325,8 +325,12 @@ export interface Tenant {
   engine: Engine
   /** Where the data is: schema name, database name, or file path. */
   locator: string
-  /** `destroyed` is final: the container is gone and no registry method moves the row out of it. */
-  status: 'active' | 'suspended' | 'archived' | 'destroyed'
+  /**
+   * `destroyed` is final: the container is gone and no registry method moves the row out of it.
+   * `moved` serves nothing, like `suspended`, and says where the tenant went in `movedTo`.
+   */
+  status: 'active' | 'suspended' | 'archived' | 'moved' | 'destroyed'
+  movedTo?: string | null
   schemaVersion?: string | null
   config?: Record<string, unknown>
 }
@@ -362,6 +366,19 @@ export interface TenantLifecycle {
    * fails the export, and with it the destruction that needed it.
    */
   export?(tenant: Tenant, target: string): Promise<number>
+  /**
+   * What the package declares of itself in the manifest of an export, for whoever opens it without
+   * the platform: an engine, a model, a format. JSON, no secret: the manifest goes to the customer.
+   */
+  describe?(tenant: Tenant): Promise<Record<string, unknown>>
+  /**
+   * Rebuilds what `export` wrote, from `source`, for a tenant restored from a package. Runs after
+   * the dump is loaded and migrated, before the registry row, where `create` runs on a creation,
+   * and a throw is undone the same way. A package whose export holds a part for a package without
+   * `restore` is refused before anything is built; a package the export holds nothing for gets
+   * `create` instead.
+   */
+  restore?(tenant: TenantPlace, handle: TenantHandle, source: string): Promise<void>
   /**
    * Removes what the package keeps for the tenant outside the container. Runs before the
    * container is dropped, so a failure leaves a tenant that can still be destroyed again.
@@ -1485,6 +1502,8 @@ export type GovernanceAction =
   | 'tenant.restored'
   | 'tenant.deleted'
   | 'tenant.exported'
+  | 'tenant.imported'
+  | 'tenant.moved'
   | 'tenant.destruction_requested'
   | 'tenant.destroyed'
   | 'impersonation.started'
@@ -1585,6 +1604,7 @@ export interface TenantManagement {
   /** Soft-deletes the registry row only. It does NOT remove data: that is destroyContainer. */
   softDeleteTenant(ctx: ControlHandle, id: string): Promise<boolean>
   /** Marks the row `destroyed` once its container is gone. Update, suspend, restore and soft delete leave such a row alone. */
+  markTenantMoved(ctx: ControlHandle, id: string, destination: string): Promise<boolean>
   markTenantDestroyed(ctx: ControlHandle, id: string): Promise<boolean>
 
   openContainer(tenantId: string): Promise<TenantHandle>

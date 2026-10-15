@@ -350,13 +350,16 @@ Replaces the v4 entity, whose `dbSchema` / `dbName` pair could not describe a co
 | `engine` | text | no | | always `postgres`: the tenants API accepts no other engine |
 | `locator` | text | no | | **the one field that says where the data is**: the schema name for `schema`, the database name for `container`. Sanitised **once, before saving** (§4) |
 | `config` | jsonb | no | `{}` | per-tenant options: connection overrides, limits, feature flags. Never customer content |
-| `status` | text | no | `active` | `active` \| `suspended` \| `archived` \| `destroyed`. `destroyed` is final: written by the destruction once the container is gone, and no registry method moves a row out of it |
+| `status` | text | no | `active` | `active` \| `suspended` \| `archived` \| `moved` \| `destroyed`. `moved` is written by `POST /tenants/:id/move` and left by a restore. `destroyed` is final: written by the destruction once the container is gone, and no registry method moves a row out of it |
+| `moved_to` | text | yes | | where a `moved` tenant went, as the operator named it; cleared by a restore |
 | `schema_version` | text | yes | | last migration applied to this container, mirrored from its own `migration` table for read-only reporting. **Not** the source of truth |
 | `created_at` | timestamp | no | now | |
 | `updated_at` | timestamp | no | now | |
 | `deleted_at` | timestamp | yes | | soft delete of the **registry row**. It does not remove data: that is `destruction_request` |
 
-**Indexes**: unique on `slug`, unique on `(engine, locator)`, index on `status`.
+**Indexes**: unique on `slug` and unique on `(engine, locator)`, both over the rows that are not
+`destroyed`, so a package can be restored under the names of a destroyed tenant as a new row;
+index on `status`.
 
 ### 3.2 `system_user`
 

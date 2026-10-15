@@ -190,7 +190,7 @@ The package has no mailer, storage or AI code of its own.
     - **2.9 The fleet migrator** (`npx volcanic migrate --tenants`)
     - **2.10 The schema version gate**
     - **2.11 One container per tenant** (pools, the sweep, `max_connections`)
-    - **2.12 Exporting a container**
+    - **2.12 Exporting, restoring and moving a tenant**
     - **2.13 Destroying a container**
 
 3.  **[Part 3: Magic Query and data access](#part-3-magic-query-and-data-access)**
@@ -702,7 +702,7 @@ it, and either case logs a warning.
 | `VOLCANIC_MAX_PAGE_SIZE` | `100` | Upper clamp on `_pageSize`, range 1 to 10000. |
 | `TENANT_CONTAINERS_MAX_OPEN` | `20` | LRU bound on live tenant containers, range 1 to 10000. A `tenants.containers.maxOpen` in `config/general.ts` wins. |
 | `DESTRUCTION_TOKEN_TTL` | `600` | Seconds a container-destruction request stays valid, range 30 to 3600. |
-| `EXPORT_DIRECTORY` | `./data/exports` | Where container exports are written. Configuration, never a request field. Feeds `export_directory`. |
+| `EXPORT_DIRECTORY` | `./data/exports` | Where tenant packages are written, one folder each, and where a restore reads them. Configuration, never a request field. Feeds `export_directory`. |
 | **Tenant governance** | | |
 | `ACCOUNT_CREATION_ALLOWED` | `invite,approval,open` | Comma-separated account-creation modes a tenant may choose from. Feeds `accountCreation.allowed`. |
 | `ACCOUNT_CREATION_DEFAULT` | `invite` | The mode in force until a tenant's administrator chooses one. An unknown mode, or a default outside the allowed set, refuses the boot; the control plane may replace both at runtime. Feeds `accountCreation.default`. |
@@ -1216,14 +1216,18 @@ await startServer({ ...layer, tenantLifecycles: [ragLifecycle()] })
 | Method | When | A throw |
 |---|---|---|
 | `create(place, handle)` | after the container is created and migrated, before the registry row; `handle` is the new container | undoes the creation: every package that started, last first, then the container; no row |
-| `export(tenant, target)` | after the dump; writes at `target`, next to it, and returns the bytes | fails the export, and any destruction that needed it |
+| `export(tenant, target)` | after the dump; writes at `target`, a file or a folder inside the package, and returns the bytes | fails the export, and any destruction that needed it |
+| `describe(tenant)` | at export, for the manifest: an engine, a model, a format, as JSON with no secret | fails the export |
+| `restore(place, handle, source)` | on a restore from a package, after the dump is loaded and migrated, before the registry row; `source` is what `export` wrote | undoes the restore as `create` undoes a creation |
 | `destroy(place)` | before the container is dropped | stops the destruction with the container still there, to run again |
 
 `place` is `{ slug, locator, strategy }`: no id at creation, because the registry assigns it last,
 and the locator is what a package keys its data by. Every method is optional; they run in the
 order given to `start()`. Names are checked at boot (letters, digits, `-` and `_`, each one
-once), because they end up in the export's file names: `<dump without extension>.<name>`, listed
-in the response's `artifacts` as `{ name, path, bytes }`.
+once), because they end up in the package's file names: `tenant.<name>`, listed in the response's
+`artifacts` as `{ name, bytes }`. On a restore, a package whose export holds a part gets
+`restore`, and one it holds nothing for gets `create`; a part for a package without `restore`
+refuses the restore before anything is built (409 `RESTORE_PACKAGE_UNAVAILABLE`).
 
 A package that writes its own SQL instead of using the ORM reaches the container through
 `access(handle).raw`: `query(text, params)` and `transaction(run)`, under the same rule as
@@ -1334,31 +1338,65 @@ names the numbers and says to lower `maxOpen` or `poolMax`, or to raise `max_con
 holds no session state on a connection, so it already works under that mode. `docs/TUNING.md` has
 the measurements.
 
-## 2.12 Exporting a container
+## 2.12 Exporting, restoring and moving a tenant
 
 ```
-POST /tenants/:id/export        capability `tenants:export`
+POST /tenants/:id/export                 capability `tenants:export`
+GET  /tenants/:id/exports/:package       capability `tenants:export`   ?profile=client|operator
+POST /tenants/import                     capability `tenants`
+POST /tenants/:id/move                   capability `tenants`
 ```
 
-Writes one tenant's container to a file with `pg_dump`: its schema, or under the `container`
-strategy its whole database. The response is `{ tenant: { id, slug }, path, bytes, schemaVersion,
-artifacts }`. `schemaVersion` is read from the container itself, not from the registry row, and
-`artifacts` lists what each package keeps outside the container for that tenant, written next to
-the dump (2.8). The export is recorded in the governance log (`tenant.exported`) before the dump
-starts, and its outcome after.
+An export writes the tenant's **package**: a folder in `options.export_directory`
+(`EXPORT_DIRECTORY`, default `./data/exports`) named `<slug>-<schema version>-<instant>-<random>`,
+holding `tenant.sql` (the dump), `tenant.<name>` for each package of 2.8 that keeps something,
+`manifest.json` (every file with its bytes and SHA-256, the schema version, strategy, engine, rows
+per table, and each package's `describe`) and `envelope.json` (the registry row and the identity
+providers, bound to the manifest by its hash). The response is `{ tenant: { id, slug }, package,
+manifestSha256, bytes, schemaVersion, artifacts }`, never a path on the server. The export is
+recorded in the governance log (`tenant.exported`) before the dump starts, and its outcome after,
+with the path and the manifest hash.
 
-- **The caller does not choose the path.** The directory is `options.export_directory`
-  (`EXPORT_DIRECTORY`, default `./data/exports`); the file is `<slug>-<schema version>-<instant>.sql`
-  (`no-migration` when the container has none), and a name that resolves outside the directory is
-  refused.
-- **No partial export.** A missing `pg_dump`, or one older than the server, fails with
-  `EXPORT_TOOL_MISSING`; a non-zero exit, no file or an empty file fails with `EXPORT_FAILED`, and a
-  half-written file is removed.
-- **Nobody else's data.** The dump is limited to that tenant's schema, or to that tenant's database.
+- **No credential leaves.** The raw dump is loaded into a scratch container, and there every
+  password becomes a value no password matches, `mfa_secret`, `mfa_type` and the reset and
+  confirmation tokens are emptied, `mfa_enabled` turns false, and `session` and `auth_flow` lose
+  their rows. A user's `external_id` stays. The identity providers in the envelope carry no client
+  secret. Nothing encrypted leaves, so no package depends on the key of the machine that made it.
+- **The customer's part names nothing of the platform.** The manifest carries no tenant id, no
+  locator, no path; under `schema` the dump names `vm_package` instead of the locator. The download
+  with `profile=client` (the default) leaves the envelope out; `profile=operator` keeps it.
+- **A dump that does not restore fails the export.** It is loaded into a second scratch container
+  and its rows counted against the first.
+- **No partial export.** A missing `pg_dump` or `psql`, or a `pg_dump` older than the server, fails
+  with `EXPORT_TOOL_MISSING`; any other failure with `EXPORT_FAILED`, and the package is removed.
 - **No export on PGlite**: there is no server for `pg_dump` to reach.
 
 An unknown tenant answers 404, a destroyed one 409 `TENANT_DESTROYED`, and a data layer that cannot
 export 503 `EXPORT_NOT_AVAILABLE`.
+
+**Restore.** `POST /tenants/import` with `{ package, founderPassword, name?, slug?, locator? }`
+creates a **new tenant with a new id** from a package in the export directory. Before anything is
+built: the hashes are checked (422 `RESTORE_PACKAGE_INVALID`; 404 for an unknown name), and so are
+the strategy (409 `RESTORE_STRATEGY_MISMATCH`), a schema version newer than this build (409
+`RESTORE_SCHEMA_AHEAD`), a part no package here can restore (409 `RESTORE_PACKAGE_UNAVAILABLE`),
+the policies of this deployment, the slug and the container, as on a creation. Then the dump is
+loaded through a reader that refuses any `psql` meta-command outside the data
+(`RESTORE_INTEGRITY_FAILED`, also for rows that differ from the manifest), the credentials are
+emptied again, the migrations run, every integration token gets a new `external_id`, the founder
+gets `founderPassword` (422 `RESTORE_FOUNDER_MISSING` without one), the packages restore their part,
+and the row is written, with the identity providers `disabled` until an operator enters their
+secrets again. A failure drops everything that was built. The event is `tenant.imported`, with the
+source tenant id and the manifest hash. The dump's SQL runs with the data layer's role: restore
+only a package that stayed in the operator's custody.
+
+**Move.** `POST /tenants/:id/move` with `{ destination, package }` turns the tenant `moved`, with
+`movedTo`, and it stops resolving requests; the container stays. The package must be one exported
+from this tenant (409 `TENANT_PACKAGE_MISMATCH`). The event is `tenant.moved`. `POST
+/tenants/:id/restore` makes it active again.
+
+A single-tenant deployment and the control plane are outside all of this: the customer owns the
+instance there, and the backup is the infrastructure's (`pg_dump` of the whole database, a managed
+provider's snapshots).
 
 ## 2.13 Destroying a container
 
@@ -1401,10 +1439,12 @@ lands in proxy access logs, browser history and tracing systems:
 
 Then, in this order: the second factor is verified, and a TOTP step is spent so the same code cannot
 destroy a second container; the intent is recorded; **the container is exported** (2.12) and the
-file must exist and not be empty; the token is spent with the export's path; the tenant's identity
+file must exist and not be empty; the token is spent with the package's name; the tenant's identity
 providers and what the packages keep outside the container (2.8) are removed; the container is
 dropped; the registry row is marked `destroyed`. The response is `{ id, slug, destroyed: true,
-exportRef, artifacts, warning }`.
+exportRef, manifestSha256, artifacts, warning }`, where `exportRef` names the package and
+`artifacts` the packages of 2.8 that wrote a part. After the destruction the package's envelope is
+the only place where the tenant's identity providers remain.
 
 | Situation | Answer |
 |---|---|

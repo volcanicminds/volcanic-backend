@@ -28,6 +28,8 @@ const ACTIONS: Record<GovernanceAction, true> = {
   'tenant.restored': true,
   'tenant.deleted': true,
   'tenant.exported': true,
+  'tenant.imported': true,
+  'tenant.moved': true,
   'tenant.destruction_requested': true,
   'tenant.destroyed': true,
   'impersonation.started': true,

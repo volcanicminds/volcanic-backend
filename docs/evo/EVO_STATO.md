@@ -212,8 +212,15 @@ tenant esiste e niente lo ricarica: il pacchetto di un tenant esportato, verific
 ripristinato, per il cliente che esce o vuole una copia e per il trasloco. Dieci decisioni del
 proprietario, da F82 a F91: un formato in due profili, cliente e operatore; la chiave di
 cifratura non esce mai e le credenziali viaggiano svuotate; ogni ripristino scrive una riga nuova
-con un id nuovo e cambia l'`external_id` dei token. Otto compiti, da T-17.1 a T-17.8, tutti da
-fare. In rag il `restore` del corpus è da scrivere in `volcanic-rag/TASKS.md`.
+con un id nuovo e cambia l'`external_id` dei token. **Fase 17 chiusa il 15 ottobre 2026**, otto
+compiti su otto: il pacchetto in cartella con manifest e busta, le credenziali svuotate in un
+contenitore temporaneo, il download in tar, `POST /tenants/import`, `POST /tenants/:id/move`,
+`POST /token/:id/reissue`, gli indici unici che lasciano fuori le righe `destroyed`. 1080 prove
+con `DATABASE_URL`, banco `tenantLifecycle.e2e` 16 sulle due strategie, copertura 90,0% di righe
+(pavimento 82%). In rag `describe` e `restore` del corpus restano in T-7.12 di
+`volcanic-rag/TASKS.md`, ora sbloccato. Segnalato e non toccato: il ripristino esegue l'SQL del
+dump con il ruolo del data layer (pacchetti solo sotto custodia dell'operatore), nessun evento per
+un download, e le tabelle del consumer con dati cifrati non vengono svuotate.
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

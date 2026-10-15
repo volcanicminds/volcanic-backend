@@ -270,18 +270,39 @@ suite('containers · the lifecycle of a database per tenant (T-16.1)', function 
     expect(preview.sizeBytes).toBeGreaterThan(0)
   })
 
+  let exported: any
   it('exports the whole database of the tenant, and nothing of the control one', async function () {
-    let result: any
+    const handle: any = await provider.forLocator(TENANT.locator, TENANT.id)
+    await handle.execute('create table "user" (id text primary key, password text not null, is_founder boolean, deleted_at timestamptz, created_at timestamptz default now())')
+    await handle.execute('create table token (id text primary key)')
+    await handle.execute(`insert into "user" (id, password, is_founder) values ('u-life', '$2b$10$LIFEHASH', true)`)
     try {
-      result = await provider.exportContainer(TENANT, { directory: dir, schemaVersion: '0001_init' })
+      exported = await provider.exportContainer(TENANT, { target: path.join(dir, 'tenant.sql'), schemaVersion: '0001_init' })
     } catch (e) {
       if (e instanceof ExportToolMissingError) return this.skip() // no pg_dump as recent as the server
       throw e
     }
-    const dump = fs.readFileSync(result.path, 'utf8')
+    const dump = fs.readFileSync(exported.path, 'utf8')
     expect(dump).toContain('LIFE PRIVATE ROW')
     expect(dump).not.toContain(CONTROL_ROW)
-    expect(result.schemaVersion).toBe('0001_init')
+    expect(dump).not.toContain('LIFEHASH')
+    // A database names no schema of its own: the dump loads into the `public` of the next one.
+    expect(exported).toMatchObject({ schemaVersion: '0001_init', schema: null, rowCounts: { widget: 2, user: 1, token: 0 } })
+  })
+
+  it('restores the dump into a new database, and drops nothing it did not make', async function () {
+    if (!exported) return this.skip()
+    const back = 'test_ctr_life_back'
+    try {
+      const renew = await provider.restoreContainer(back, { dump: exported.path, schema: null, rowCounts: exported.rowCounts })
+      expect(renew).toEqual({ tokenIds: [], founderId: 'u-life' })
+      const handle: any = await provider.forLocator(back, back)
+      expect((await handle.execute('select tag from widget order by id')).rows).toEqual([{ tag: 'LIFE PRIVATE ROW' }, { tag: 'other' }])
+      expect(await provider.restoreContainer(TENANT.locator, { dump: exported.path, schema: null, rowCounts: exported.rowCounts })).toBeNull()
+      expect(await databaseExists()).toBe(true)
+    } finally {
+      await provider.dropContainer(back)
+    }
   })
 
   it('survives the server ending an idle connection, and opens a new one', async () => {

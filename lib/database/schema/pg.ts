@@ -346,11 +346,15 @@ export function registryTables(schemaName: string) {
       // Mirrored from the container's own migration log, for reporting. Not the source of
       // truth: a tenant restored from a backup brings its version back with it.
       schemaVersion: text('schema_version'),
+      // Where a `moved` tenant went, as the operator wrote it. Null for every other status.
+      movedTo: text('moved_to'),
       ...stamps()
     },
     (t) => [
-      uniqueIndex('tenant_slug_uq').on(t.slug),
-      uniqueIndex('tenant_locator_uq').on(t.engine, t.locator),
+      // A `destroyed` row keeps its slug and locator for the history, and frees both: a tenant
+      // restored from its package takes them again, under a new row and a new id.
+      uniqueIndex('tenant_slug_uq').on(t.slug).where(sql`${t.status} <> 'destroyed'`),
+      uniqueIndex('tenant_locator_uq').on(t.engine, t.locator).where(sql`${t.status} <> 'destroyed'`),
       index('tenant_status_idx').on(t.status)
     ]
   )

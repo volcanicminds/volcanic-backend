@@ -367,14 +367,12 @@ no governance log manager answers every one of these routes with 503
 | POST | `/tenants/:id/suspend` | `tenants` | **new**: explicit, instead of a `status` field edited by hand |
 | POST | `/tenants/:id/restore` | `tenants` | |
 | DELETE | `/tenants/:id` | `tenants` | soft-deletes **the registry row only**. The response says so explicitly |
-
-A tenant whose data was destroyed (§6.2) keeps its row with `status: 'destroyed'`, as the record of
-the destruction. Update, suspend, restore, delete, export and a new destruction request answer 409
-`TENANT_DESTROYED`: restored to `active`, it would resolve requests into a container that no longer
-exists.
 | GET | `/tenants/migrations` | `migrations` | which container is at which schema version |
 | POST | `/tenants/:id/migrate` | `migrations` | applies the pending migrations to one container |
-| POST | `/tenants/:id/export` | `tenants:export` | the container's dump (`pg_dump` of the schema, or of the whole database under `container`), then `artifacts`: what each package keeps outside the container, `{ name, path, bytes }`, written next to the dump. A package that fails removes the dump and every artifact, and the export fails |
+| POST | `/tenants/:id/export` | `tenants:export` | writes the tenant's package (§6.3) and answers `{ tenant, package, manifestSha256, bytes, schemaVersion, artifacts: [{ name, bytes }] }`, never a path on the server. A package of `tenantLifecycles` that fails removes the whole package, and the export fails |
+| GET | `/tenants/:id/exports/:package` | `tenants:export` | the package as one tar file, checked against its manifest first (§6.3) |
+| POST | `/tenants/import` | `tenants` | a new tenant from a package (§6.4) |
+| POST | `/tenants/:id/move` | `tenants` | records that the tenant moved (§6.5) |
 | POST | `/tenants/:id/impersonate` | `tenants:impersonate` | body: `{ userId, reason }`. `reason` is **required**. Fresh: an operator whose proof is older than `STEP_UP_MAX_AGE` gets 403 `STEP_UP_REQUIRED` (§2.6) |
 | POST | `/tenants/impersonate/end` | `tenants:impersonate` | revokes the impersonation record. Body: `{ impersonationId }`. Not "authenticated (control)", which on a control route resolves to the superuser alone: whoever can open a session must be able to end one, and that is the capability |
 | POST | `/tenants/:id/destruction-request` | `tenants:destroy` | phase 1, see §6.2 |
@@ -384,6 +382,12 @@ exists.
 | GET | `/tenants/:id/identity-providers/:key` | `tenants` | with `hasClientSecret`, never the secret |
 | PUT | `/tenants/:id/identity-providers/:key` | `tenants` | `config` replaced whole; `clientSecret` absent keeps the stored one, `null` removes it |
 | DELETE | `/tenants/:id/identity-providers/:key` | `tenants` | removes the row and its secret |
+
+A tenant whose data was destroyed (§6.2) keeps its row with `status: 'destroyed'`, as the record of
+the destruction. Update, suspend, restore, delete, export, move and a new destruction request answer
+409 `TENANT_DESTROYED`: restored to `active`, it would resolve requests into a container that no
+longer exists. Its slug and locator are free again: the unique indexes on them leave `destroyed`
+rows out, so a package can come back under the same names as a new row (§6.4).
 
 ### 6.1 Creation
 
@@ -452,6 +456,92 @@ Failure modes and their codes: `DESTRUCTION_TOKEN_INVALID`, `DESTRUCTION_SLUG_MI
 `DESTRUCTION_OTP_INVALID`, `DESTRUCTION_EXPORT_FAILED`, and on phase 1
 `DESTRUCTION_FACTOR_NOT_AVAILABLE`. An expired, spent or unknown token, and one opened by another
 operator, all answer `DESTRUCTION_TOKEN_INVALID`: the remedy is the same, a new phase 1.
+
+The `exportRef` of a destruction is the name of the package it wrote: after the destruction it is
+the only place where the tenant's identity providers remain (§6.3).
+
+### 6.3 The package of a tenant
+
+An export writes one folder in `export_directory` (`./data/exports` by default), named after the
+slug, the schema version, the instant and a random suffix:
+
+| File | Holds |
+|---|---|
+| `tenant.sql` | the dump of the container, without credentials. Under `schema` it names `vm_package` instead of the locator |
+| `tenant.<name>` | what each package of `tenantLifecycles` keeps outside the container, a file or a folder |
+| `manifest.json` | every file above with its bytes and SHA-256, the schema version, the strategy and engine, the rows per table, and what each package says of itself (`describe`) |
+| `envelope.json` | the operator's part: the registry row and the tenant's identity providers, bound to the manifest by its hash |
+
+The manifest is the customer's: it names no tenant id, no locator and no path of the server. The
+envelope is not: it travels only in the operator's copy.
+
+What the dump does not carry, because it is a credential: every password (replaced by a value no
+password matches, the column stays `NOT NULL`), `mfa_secret` and `mfa_enabled` (false),
+`mfa_type`, the reset and confirmation tokens, and every row of `session` and `auth_flow`. A
+user's `external_id` stays: the external identities and the access log point at it. The identity
+providers in the envelope carry no client secret. Nothing encrypted leaves, so a package opens
+on any machine and depends on no key.
+
+The raw dump never reaches a disk: it is loaded into a scratch container, emptied of credentials
+there, and dumped to the package. That file is then loaded into a second scratch container and its
+rows counted against the first; a dump that does not load back to the same rows fails the export.
+
+`GET /tenants/:id/exports/:package` answers the package as `application/x-tar` (POSIX ustar, one
+folder named after the package). Query `profile=client` (the default) leaves `envelope.json` out,
+`profile=operator` keeps it. The package is checked against its manifest before a byte is sent; a
+name that is not a package of this tenant answers 404.
+
+The export of a single-tenant deployment and of the control plane is not this route's: there the
+customer owns the instance, and the infrastructure backup (`pg_dump` of the whole database, a
+managed provider's snapshots) is the backup.
+
+### 6.4 Restore from a package
+
+`POST /tenants/import`, body `{ package, founderPassword, name?, slug?, locator? }`. The package is
+a name in `export_directory`, never a path: an operator places a downloaded package there first.
+`name` and `slug` default to the envelope's; `locator` is derived as on a creation.
+
+In order, each refusal before anything is built:
+
+| Status | Code | When |
+|---|---|---|
+| 503 | `RESTORE_NOT_AVAILABLE` | the data layer cannot restore (PGlite has no server for `psql`), or cannot renew the integration tokens |
+| 404 | `RESTORE_PACKAGE_INVALID` | no package with that name |
+| 422 | `RESTORE_PACKAGE_INVALID` | a file differs from the manifest, a file is not listed, a link, or an envelope of another manifest |
+| 409 | `RESTORE_STRATEGY_MISMATCH` | the package was made under another strategy |
+| 409 | `RESTORE_SCHEMA_AHEAD` | the package is at a schema version this build does not have |
+| 409 | `RESTORE_PACKAGE_UNAVAILABLE` | a package of `tenantLifecycles` kept a part this build cannot restore |
+| 400, 503 | the codes of a creation | the tenant's configuration breaks a policy of this deployment (§6.1) |
+| 409 | `TENANT_EXISTS`, `TENANT_LOCATOR_TAKEN` | as on a creation |
+
+Then the container is created from the dump, which goes through the same reader as an export: a
+line `psql` would run on the machine (a meta-command outside the data) is refused with
+`RESTORE_INTEGRITY_FAILED`, and so is a dump whose rows differ from the manifest's. The
+credentials are emptied again, in case the package was written by hand. The migrations bring the
+container to this build's version; every integration token gets a new `external_id`, so no bearer
+issued before the restore authenticates (`POST /token/:id/reissue` shows a new one); the founder,
+the user with `is_founder`, gets `founderPassword`. A package with no founder answers 422
+`RESTORE_FOUNDER_MISSING`. The packages of `tenantLifecycles` restore their part, or create it
+when the package holds none. Last, a new registry row with a new id, and the identity providers
+of the envelope with `status: 'disabled'`: an operator enters each client secret again, then
+enables it.
+
+Any failure after the container exists undoes every package that started and drops the container;
+no row is written. The event is `tenant.imported`, with `sourceTenantId`, `package`,
+`manifestSha256`, `schemaVersion` and how many tokens and identity providers came back. The other
+users set a password through the reset flow, or receive one from an administrator, and enrol their
+second factor again.
+
+The dump's SQL runs with the data layer's role: restore only a package that stayed in the
+operator's custody. The hashes say a file did not change since it was sealed, not who sealed it.
+
+### 6.5 Move
+
+`POST /tenants/:id/move`, body `{ destination, package }`. The tenant turns `status: 'moved'`
+with `movedTo: destination`, and no longer resolves requests; its container stays. `package` must
+be a package exported from this tenant, or 409 `TENANT_PACKAGE_MISMATCH`. The event `tenant.moved`
+records the destination, the package and the manifest hash. `POST /tenants/:id/restore` makes the
+tenant active again and clears `movedTo`.
 
 ---
 

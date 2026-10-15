@@ -21,10 +21,21 @@ import { tenantLifecyclesOf } from '../../lib/util/tenantLifecycle.js'
 
 ;(global as any).log = {}
 
-const ACME: any = { id: 'id-acme', slug: 'acme', status: 'active', locator: 'tenant_acme', schemaVersion: '0001_init' }
+const ACME: any = { id: 'id-acme', name: 'Acme', slug: 'acme', status: 'active', engine: 'postgres', locator: 'tenant_acme', schemaVersion: '0001_init' }
+
+const made: string[] = []
+const scratch = () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-provisioning-'))
+  made.push(dir)
+  return dir
+}
+after(() => {
+  for (const dir of made) fs.rmSync(dir, { recursive: true, force: true })
+})
 
 async function build(over: any = {}) {
-  ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' }, export_directory: '/tmp' } }
+  const exports = over.exportDirectory ?? scratch()
+  ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' }, export_directory: exports } }
 
   const created: any[] = []
 
@@ -69,13 +80,10 @@ async function build(over: any = {}) {
     ...(over.canExport === false
       ? {}
       : {
-          exportContainer: async () => {
+          exportContainer: async (_t: any, request: any) => {
             started.push('export')
-            if (!over.exportDirectory) return { path: '/tmp/acme.sql', bytes: 2048 }
-            // A real file, where a test looks at what is left on the disk.
-            const file = path.join(over.exportDirectory, 'acme-0001_init.sql')
-            fs.writeFileSync(file, 'dump')
-            return { path: file, bytes: 4 }
+            fs.writeFileSync(request.target, 'dump')
+            return { path: request.target, bytes: 4, schemaVersion: '0001_init', schema: 'vm_package', rowCounts: { user: 1 } }
           }
         })
   })
@@ -96,7 +104,7 @@ async function build(over: any = {}) {
   server.post('/tenants/:id/export', { config: { tenantContext: false } }, exportContainer)
 
   await server.ready()
-  return { server, created, started, governance }
+  return { server, created, started, governance, exports }
 }
 
 const provision = (server: any, payload: any) => server.inject({ method: 'POST', url: '/tenants', payload })
@@ -163,17 +171,27 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
   })
 
   it('records the export as an intent before it starts, and its outcome after', async () => {
-    const { server, started, governance } = await build()
+    const { server, started, governance, exports } = await build()
     const order: string[] = []
     const record = governance.record.bind(governance)
     governance.record = async (ctx, entry) => (order.push(`${entry.action} ${entry.outcome}`), record(ctx, entry))
     const before = started.length
 
-    expect((await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })).statusCode).toBe(200)
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    expect(res.statusCode).toBe(200)
     expect(started.slice(before)).toEqual(['export'])
     expect(order).toEqual(['tenant.exported intent', 'tenant.exported success'])
+    const answer = JSON.parse(res.body)
+    // Named, never located: the path stays in the operator's log.
+    expect(answer).toMatchObject({ package: expect.stringMatching(/^acme-0001_init-/), manifestSha256: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    expect(res.body).not.toContain(exports)
     const [intent, success] = governance.rows
-    expect(success).toMatchObject({ intentId: intent.id, tenantId: ACME.id, actorId: 'sys-1', detail: { path: '/tmp/acme.sql', bytes: 2048 } })
+    expect(success).toMatchObject({
+      intentId: intent.id,
+      tenantId: ACME.id,
+      actorId: 'sys-1',
+      detail: { path: path.join(exports, answer.package), package: answer.package, manifestSha256: answer.manifestSha256, bytes: 4 }
+    })
     await server.close()
   })
 
@@ -404,11 +422,18 @@ describe('tenants · the packages that follow a tenant (T-16.2)', () => {
 
     const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
     expect(res.statusCode).toBe(200)
-    const artifact = { name: 'rag', path: path.join(dir, 'acme-0001_init.rag'), bytes: 9 }
-    expect(JSON.parse(res.body).artifacts).toEqual([artifact])
-    expect(fs.readFileSync(artifact.path, 'utf8')).toBe('rag data')
+    const answer = JSON.parse(res.body)
+    expect(answer.artifacts).toEqual([{ name: 'rag', bytes: 9 }])
+    expect(fs.readFileSync(path.join(dir, answer.package, 'tenant.rag'), 'utf8')).toBe('rag data')
     expect(started).toEqual(['export', `rag export ${ACME.id}`])
-    expect(governance.rows.at(-1)).toMatchObject({ outcome: 'success', detail: { artifacts: [artifact] } })
+    expect(governance.rows.at(-1)).toMatchObject({ outcome: 'success', detail: { artifacts: [{ name: 'rag', bytes: 9 }] } })
+    // The manifest lists both packages, the one that kept nothing outside the container too.
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, answer.package, 'manifest.json'), 'utf8'))
+    expect(manifest.packages).toEqual([
+      { name: 'rag', file: 'tenant.rag', description: null },
+      { name: 'quiet', file: null, description: null }
+    ])
+    expect(manifest.files.map((f: any) => f.path)).toEqual(['tenant.rag', 'tenant.sql'])
     await server.close()
   })
 

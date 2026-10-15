@@ -133,7 +133,7 @@ where it is used without passing through the configuration at all.
 | `DB_POOL_IDLE_MS` | `30000` | how long an idle control plane connection is kept | `control.pool.idleTimeoutMs` |
 | `PGLITE_DATA_DIR` | in memory | where PGlite keeps the database; unset, it ends with the process | `control.dataDir` |
 | `TENANT_CONTAINERS_MAX_OPEN` | `20` | LRU limit of live containers | fallback of `tenants.containers.maxOpen` |
-| `EXPORT_DIRECTORY` | `./data/exports` | where container exports are written | `export_directory` |
+| `EXPORT_DIRECTORY` | `./data/exports` | where tenant packages are written, one folder each, and where a restore reads them | `export_directory` |
 | `VOLCANIC_MAX_PAGE_SIZE` | `100` | Magic Query page-size clamp | no key: read by the query layer |
 | `CORS_ORIGINS` | — | **required in production**: comma-separated allowlist | `origin` of the `cors` entry in `config/plugins.ts` |
 | `HIDE_ERROR_DETAILS` | `true` in production | honoured by every error path, `onError` included | no key |

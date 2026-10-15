@@ -41,22 +41,34 @@
 Ogni compito si chiude con le sue prove e con un difetto piantato che le fa cadere, come nella
 fase 16.
 
-- [ ] **T-17.1** Il manifest (F82). Accanto al dump, un file che elenca ogni file del pacchetto
+- [x] **T-17.1** Il manifest (F82). Accanto al dump, un file che elenca ogni file del pacchetto
   con il suo hash, la versione di schema (oggi sta solo nel nome del file), la strategia e ciò che
   ogni pacchetto di `tenantLifecycles` dichiara di sé; per il rag, il motore e il modello di
   embedding. Due parti: quella che va al cliente e quella interna, con l'id del tenant e il
   locator. La risposta di `POST /tenants/:id/export` porta l'hash del manifest.
-- [ ] **T-17.2** Il pacchetto cliente (F82, F84, F89). Le credenziali svuotate secondo F84. Sotto
+  **Chiuso il 15 ottobre 2026.** Il pacchetto è una cartella (`lib/util/tenantPackage.ts`):
+  `tenant.sql`, `tenant.<nome>` per ogni pacchetto, `manifest.json` senza id, locator né percorsi,
+  `envelope.json` legata all'hash del manifest; `describe` nuovo su `TenantLifecycle`. Prove in
+  `test/lib/tenantPackage.spec.ts` (18); difetto piantato (controllo hash spento): 4 cadute.
+- [x] **T-17.2** Il pacchetto cliente (F82, F84, F89). Le credenziali svuotate secondo F84. Sotto
   la strategia `schema` il dump non porta il nome dello schema, che è il locator. Un download per
   l'operatore di sistema, nel piano di controllo: la risposta non porta più il percorso sul disco
   del server, che oggi è l'unico modo di raggiungere il file. Via proposta: il dump grezzo
   ricaricato in un contenitore temporaneo, ripulito lì e riesportato, che è lo stesso passaggio
   di T-17.5.
-- [ ] **T-17.3** La busta dell'operatore (F82, F84). La riga di registro, i provider di identità
+  **Chiuso il 15 ottobre 2026** sulla via proposta: dump grezzo in un contenitore temporaneo,
+  `lib/database/containers/scrub.ts` lì, poi il dump del pacchetto con lo schema rinominato in
+  `vm_package`. `GET /tenants/:id/exports/:package` risponde un tar ustar, `profile=client` senza
+  busta. Prove in `test/migrations/export.spec.ts` (10 su Postgres) e nel banco
+  `tenantLifecycle.e2e`; difetto piantato (`mfa_secret` non svuotato): cadute.
+- [x] **T-17.3** La busta dell'operatore (F82, F84). La riga di registro, i provider di identità
   del tenant con `secret_enc` vuoto, la parte interna del manifest. La distruzione rimuove i
   provider (`lib/api/tenants/controller/tenants.ts`): dopo una distruzione la busta è l'unico
   posto in cui restano.
-- [ ] **T-17.4** Il ripristino (F84, F85, F86, F90, F91). Un'operazione del framework che crea il
+  **Chiuso il 15 ottobre 2026.** La busta porta la riga e i provider senza segreto; l'`exportRef`
+  della distruzione è il nome del pacchetto. Prove nel banco (`profile=operator` con la busta,
+  `client` senza) e in `test/lib/destruction.spec.ts`.
+- [x] **T-17.4** Il ripristino (F84, F85, F86, F90, F91). Un'operazione del framework che crea il
   contenitore dal pacchetto: la creazione rifiuta un contenitore già lì (F80), quindi un dump
   caricato a mano non si può registrare dopo. `TenantLifecycle` prende `restore`, chiamato dopo
   il caricamento del dump, con lo stesso annullamento di F78 quando un pacchetto fallisce. Sotto
@@ -68,21 +80,39 @@ fase 16.
   primo amministratore; via proposta: l'utente con `is_founder`, quello che la creazione scrive
   per primo. Al termine: nessuna sessione, nessun flusso di login, ogni token con un
   `external_id` nuovo.
-- [ ] **T-17.5** La verifica di integrità. Gli hash del manifest ricontrollati, poi il dump
+  **Chiuso il 15 ottobre 2026.** `POST /tenants/import` con `{ package, founderPassword }`;
+  `restoreContainer` del provider con il lettore che rifiuta i meta-comandi di `psql`; indici
+  parziali `WHERE status <> 'destroyed'` in `0000_initial_control.sql`; provider di identità
+  ripristinati `disabled`. Prove: 16 nel banco `tenantLifecycle.e2e` sulle due strategie (giro
+  completo, slug di un tenant distrutto riusato), rifiuti in `tenantPackage.spec.ts`; difetti
+  piantati (token non rinnovati, indice senza `WHERE`, stato del provider tenuto): cadute.
+- [x] **T-17.5** La verifica di integrità. Gli hash del manifest ricontrollati, poi il dump
   ricaricato in un contenitore temporaneo e i conteggi di riga confrontati con quelli
   dell'origine, gli stessi che `inspect` calcola per l'anteprima di distruzione. Un hash dice che
   il file non è cambiato, non che si apre.
-- [ ] **T-17.6** La traccia (F87). Lo stato del tenant traslocato e la sua destinazione sulla
+  **Chiuso il 15 ottobre 2026.** All'export il pacchetto si ricarica in un secondo contenitore
+  temporaneo e i conteggi si confrontano; al ripristino gli hash, poi i conteggi del manifest
+  (`RESTORE_INTEGRITY_FAILED`, contenitore eliminato). Prove in `export.spec.ts`; difetto
+  piantato (controllo dei meta-comandi spento): cadute.
+- [x] **T-17.6** La traccia (F87). Lo stato del tenant traslocato e la sua destinazione sulla
   riga di registro; l'hash del manifest nel `detail` di `tenant.exported`, accanto al percorso;
   gli eventi di import, con il loro nome e la provenienza: l'id di origine del tenant e l'hash
   del manifest da cui è stato caricato.
-- [ ] **T-17.7** La riemissione di un token (F86). `lib/api/token/routes.ts` ha otto rotte
+  **Chiuso il 15 ottobre 2026.** Stato `moved` e colonna `moved_to`, `POST /tenants/:id/move`
+  (`TENANT_PACKAGE_MISMATCH` per un pacchetto d'altri), eventi `tenant.imported` e `tenant.moved`.
+  Prove in `governanceLog.e2e.spec.ts` e nel banco.
+- [x] **T-17.7** La riemissione di un token (F86). `lib/api/token/routes.ts` ha otto rotte
   (elenco, conteggio, lettura, creazione, modifica, cancellazione, blocco, sblocco) e nessuna
   riemette un bearer. La nuova cambia l'`external_id` e risponde con il bearer, una volta; il
   ripristino usa la stessa operazione su tutti i token del tenant, senza mostrare niente.
-- [ ] **T-17.8** La documentazione di F88, nel README accanto a "Exporting a container": che
+  **Chiuso il 15 ottobre 2026.** `POST /token/:id/reissue` e `resetExternalId` del manager. Prove
+  in `tokenApex.spec.ts` e `integrationToken.e2e.spec.ts`.
+- [x] **T-17.8** La documentazione di F88, nel README accanto a "Exporting a container": che
   cosa copre l'export di un tenant, e che un deployment con un solo tenant e il piano di
   controllo si salvano con i backup dell'infrastruttura.
+  **Chiuso il 15 ottobre 2026.** La sezione "Exporting a container" del README non c'è più dopo
+  la riscrittura a istantanea: F88 sta in un paragrafo di "What it gives you", e per esteso in
+  `docs/API_V5.md` §6.3 e in `llms.txt` §2.12.
 
 ## 3. Segnalato, non toccato
 

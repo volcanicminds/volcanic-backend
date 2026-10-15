@@ -26,6 +26,11 @@ integrations. The refresh credential is an opaque session row, rotated at every 
 presented again after a short grace window closes the whole session. The login is a flow of stages: password, TOTP, an email code and
 OIDC, configured per plane, with an MFA policy set per deployment, per plane and per tenant.
 
+A tenant leaves as a package: its dump without credentials, a manifest of hashes the customer can check
+offline, and an envelope only the operator keeps. The same package restores it as a new tenant, here or on
+another instance. A single-tenant deployment and the control plane are backed up by the infrastructure
+instead, because there the customer owns the whole database.
+
 The schema is committed SQL, applied in order and recorded inside each container. An instance refuses to boot
 behind its own schema, and a fleet migrator brings every tenant forward and names the ones that failed.
 

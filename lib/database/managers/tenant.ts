@@ -130,7 +130,7 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       const { handle, tenant } = registry(ctx, 'restoreTenant')
       const rows = await handle.db
         .update(tenant)
-        .set({ status: 'active', deletedAt: null, updatedAt: new Date() })
+        .set({ status: 'active', movedTo: null, deletedAt: null, updatedAt: new Date() })
         .where(alive(tenant, id))
         .returning()
       return rows.length > 0
@@ -141,6 +141,17 @@ export function createTenantManager(provider: TenantProvider): TenantManagement 
       const rows = await handle.db
         .update(tenant)
         .set({ deletedAt: new Date(), status: 'archived', updatedAt: new Date() })
+        .where(alive(tenant, id))
+        .returning()
+      return rows.length > 0
+    },
+
+    /** The tenant went to `destination`; its container stays until a destruction removes it. */
+    async markTenantMoved(ctx: ControlHandle, id: string, destination: string) {
+      const { handle, tenant } = registry(ctx, 'markTenantMoved')
+      const rows = await handle.db
+        .update(tenant)
+        .set({ status: 'moved', movedTo: destination, updatedAt: new Date() })
         .where(alive(tenant, id))
         .returning()
       return rows.length > 0

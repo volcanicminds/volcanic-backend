@@ -72,6 +72,7 @@ CREATE TABLE "tenant" (
 	"config" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"status" text DEFAULT 'active' NOT NULL,
 	"schema_version" text,
+	"moved_to" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"deleted_at" timestamp with time zone
@@ -129,8 +130,8 @@ CREATE INDEX "impersonation_actor_idx" ON "impersonation" USING btree ("system_u
 CREATE UNIQUE INDEX "migration_set_name_uq" ON "migration" USING btree ("set","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "system_user_email_uq" ON "system_user" USING btree ("email");--> statement-breakpoint
 CREATE UNIQUE INDEX "system_user_external_id_uq" ON "system_user" USING btree ("external_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "tenant_slug_uq" ON "tenant" USING btree ("slug");--> statement-breakpoint
-CREATE UNIQUE INDEX "tenant_locator_uq" ON "tenant" USING btree ("engine","locator");--> statement-breakpoint
+CREATE UNIQUE INDEX "tenant_slug_uq" ON "tenant" USING btree ("slug") WHERE "tenant"."status" <> 'destroyed';--> statement-breakpoint
+CREATE UNIQUE INDEX "tenant_locator_uq" ON "tenant" USING btree ("engine","locator") WHERE "tenant"."status" <> 'destroyed';--> statement-breakpoint
 CREATE INDEX "tenant_status_idx" ON "tenant" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "token_external_id_uq" ON "token" USING btree ("external_id");--> statement-breakpoint
 CREATE INDEX "token_deleted_at_idx" ON "token" USING btree ("deleted_at");--> statement-breakpoint

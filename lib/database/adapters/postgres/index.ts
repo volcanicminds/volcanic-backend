@@ -6,7 +6,20 @@ import { sql, type SQLWrapper } from 'drizzle-orm'
 import type { ControlHandle, TenantHandle, GeneralConfig, Tenant, DataRequestScope } from '../../../../types/global.js'
 import { appTables, registryTables, type AppTables, type RegistryTables } from '../../schema/pg.js'
 import { RequestLeases } from '../../leases.js'
-import { exportPostgres } from '../../containers/export.js'
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import {
+  copyContainer,
+  dumpInto,
+  ExportFailedError,
+  loadFrom,
+  PACKAGE_SCHEMA,
+  rebase,
+  requireTools,
+  RestoreIntegrityError
+} from '../../containers/export.js'
+import { countRows, countsDiffer, scrubCredentials } from '../../containers/scrub.js'
+import type { PackagedDump } from '../../ports.js'
 import { guardPglite, guardPool } from './guard.js'
 import { firstBy } from '../../prepared.js'
 import { envInt } from '../../env.js'
@@ -500,19 +513,93 @@ export class PostgresProvider {
   }
 
   /**
-   * Takes a customer's data out, through `pg_dump`: their schema, or under the `container`
-   * strategy their whole database.
+   * Writes the dump of a package at `request.target`: a customer's data, with no credential and no
+   * name of this platform in it.
    *
-   * The connection string is the provider's, not the caller's: an export route reachable over
-   * HTTP must not decide which database it reads from any more than it decides where it
-   * writes. On PGlite there is no server for `pg_dump` to reach, so the export is refused.
+   * The raw dump never reaches a disk. It is loaded into a scratch container, the credentials are
+   * emptied there, and the scratch container is dumped to the target; under `schema` the dump names
+   * `PACKAGE_SCHEMA` instead of the locator. The target is then loaded into a second scratch
+   * container and its rows counted against the first: a file that exists is not yet a file that
+   * restores. Both scratch containers are dropped, whatever happens.
+   *
+   * The connection string is the provider's, not the caller's: an export route reachable over HTTP
+   * must not decide which database it reads from. On PGlite there is no server for `pg_dump` to
+   * reach, so the export is refused.
    */
-  async exportContainer(tenant: Tenant, request: { directory?: string; schemaVersion: string | null }) {
+  async exportContainer(tenant: Tenant, request: { target: string; schemaVersion: string | null }): Promise<PackagedDump> {
     const server = this.serverUrl('Export (pg_dump)')
-    if (this.strategy === 'container') {
-      return await exportPostgres(tenant, { ...request, url: databaseUrl(server, tenant.locator), wholeDatabase: true })
+    await requireTools('pg_dump', 'psql')
+    const schemaOf = (locator: string) => (this.strategy === 'schema' ? locator : null)
+    const urlOf = (locator: string) => (this.strategy === 'container' ? databaseUrl(server, locator) : server)
+    const schema = schemaOf(PACKAGE_SCHEMA)
+
+    const rowCounts = await this.withScratch(async (scratch) => {
+      await copyContainer(urlOf(tenant.locator), schemaOf(tenant.locator), urlOf(scratch), schemaOf(scratch))
+      const handle = await this.forLocator(scratch, scratch)
+      await scrubCredentials(handle, this.innerSchema(scratch))
+      const counts = await countRows(handle, this.innerSchema(scratch))
+      await dumpInto(urlOf(scratch), schemaOf(scratch), rebase(schemaOf(scratch), schema), fs.createWriteStream(request.target, { flags: 'wx' }))
+      return counts
+    })
+
+    await this.withScratch(async (scratch) => {
+      await loadFrom(urlOf(scratch), fs.createReadStream(request.target), rebase(schema, schemaOf(scratch)))
+      const differs = countsDiffer(rowCounts, await countRows(await this.forLocator(scratch, scratch), this.innerSchema(scratch)))
+      if (differs) throw new ExportFailedError(`the dump does not load back to the rows it was made from (${differs})`)
+    })
+
+    return { path: request.target, bytes: fs.statSync(request.target).size, schemaVersion: request.schemaVersion, schema, rowCounts }
+  }
+
+  /**
+   * Creates the container `locator` from a package's dump, and answers `false`, having touched
+   * nothing, when a container with that name is already there.
+   *
+   * The dump goes through the same reader as an export, so a meta-command in it is refused before
+   * `psql` runs; its SQL then runs with this provider's role, which is why only a package that stayed
+   * in the operator's custody is restored. The credentials are emptied again, the rows are counted
+   * against the manifest's, and on any failure the container is dropped. Answers what the caller
+   * renews next: the integration tokens, whose `external_id` changes, and the founder, whose
+   * password it sets, since after the scrub no password of the container matches anything.
+   */
+  async restoreContainer(locator: string, source: { dump: string; schema: string | null; rowCounts: Record<string, number> }) {
+    const server = this.serverUrl('Restore (psql)')
+    await requireTools('psql')
+    if (!(await this.createContainer({ locator } as Tenant))) return null
+
+    try {
+      const url = this.strategy === 'container' ? databaseUrl(server, locator) : server
+      await loadFrom(url, fs.createReadStream(source.dump), rebase(source.schema, this.strategy === 'schema' ? locator : null))
+      const handle = await this.forLocator(locator, locator)
+      await scrubCredentials(handle, this.innerSchema(locator))
+      const differs = countsDiffer(source.rowCounts, await countRows(handle, this.innerSchema(locator)))
+      if (differs) throw new RestoreIntegrityError(differs)
+
+      const tokens = await handle.execute<{ id: string }>(sql.raw(`select id from "token" order by id`))
+      const founder = await handle.execute<{ id: string }>(
+        sql.raw(`select id from "user" where is_founder and deleted_at is null order by created_at limit 1`)
+      )
+      return { tokenIds: (tokens.rows ?? []).map((r) => r.id), founderId: founder.rows?.[0]?.id ?? null }
+    } catch (error) {
+      await this.dropContainer(locator)
+      throw error
     }
-    return await exportPostgres(tenant, { ...request, url: server })
+  }
+
+  /** Where a container's tables sit, as `information_schema` names it: under `container` the database's own `public`. */
+  private innerSchema(locator: string): string {
+    return this.strategy === 'container' ? 'public' : locator
+  }
+
+  /** Runs `fn` on a container nobody else knows the name of, and drops it after, whatever happened. */
+  private async withScratch<T>(fn: (locator: string) => Promise<T>): Promise<T> {
+    const scratch = `vm_scratch_${crypto.randomBytes(8).toString('hex')}`
+    if (!(await this.createContainer({ locator: scratch } as Tenant))) throw new ExportFailedError(`the scratch container ${scratch} exists`)
+    try {
+      return await fn(scratch)
+    } finally {
+      await this.dropContainer(scratch)
+    }
   }
 
   /**
@@ -525,23 +612,7 @@ export class PostgresProvider {
   async inspectContainer(tenant: Tenant) {
     assertLocator(tenant.locator)
     const handle = await this.forLocator(tenant.locator, tenant.id)
-    // Under `container` the tables sit in the tenant database's own `public`.
-    const schema = this.strategy === 'container' ? 'public' : tenant.locator
-
-    const tables = await handle.execute<{ table_name: string }>(
-      sql.raw(
-        `select table_name from information_schema.tables ` +
-          `where table_schema = '${schema}' and table_type = 'BASE TABLE' order by table_name`
-      )
-    )
-
-    const rowCounts: Record<string, number> = {}
-    for (const row of tables.rows ?? []) {
-      const counted = await handle.execute<{ n: number }>(
-        sql.raw(`select count(*)::int as n from ${escapeIdentifier(row.table_name)}`)
-      )
-      rowCounts[row.table_name] = Number(counted.rows?.[0]?.n ?? 0)
-    }
+    const rowCounts = await countRows(handle, this.innerSchema(tenant.locator))
 
     const size = await this.controlHandle.execute<{ bytes: string | number }>(
       sql.raw(

@@ -53,6 +53,49 @@ export const tenantUpdateBodySchema = {
   }
 }
 
+// A package is named, never located: the folder is looked up inside the export directory, and a
+// name that is not a file name is not looked up at all.
+const packageName = { type: 'string', minLength: 1, maxLength: 200, pattern: '^[A-Za-z0-9_-]+$' }
+
+export const tenantImportBodySchema = {
+  $id: 'tenantImportBodySchema',
+  type: 'object',
+  required: ['package', 'founderPassword'],
+  properties: {
+    package: packageName,
+    // Both default to the package's: a tenant restored next to the one it came from takes another.
+    name: { type: 'string', minLength: 1, maxLength: 255 },
+    slug: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[a-z0-9_-]+$' },
+    locator: { type: 'string', minLength: 1, maxLength: 63, pattern: '^[a-zA-Z0-9_]+$' },
+    // Every password in a package is a placeholder: without this one nobody could enter the tenant
+    // to reset the others, on a machine whose mail may not work yet.
+    founderPassword: { type: 'string', minLength: 8, maxLength: 128 }
+  }
+}
+
+export const tenantMoveBodySchema = {
+  $id: 'tenantMoveBodySchema',
+  type: 'object',
+  required: ['destination', 'package'],
+  properties: {
+    destination: { type: 'string', minLength: 1, maxLength: 500 },
+    package: packageName
+  }
+}
+
+export const tenantPackageParamsSchema = {
+  $id: 'tenantPackageParamsSchema',
+  type: 'object',
+  required: ['id', 'package'],
+  properties: { id: { type: 'string' }, package: packageName }
+}
+
+export const tenantPackageQuerySchema = {
+  $id: 'tenantPackageQuerySchema',
+  type: 'object',
+  properties: { profile: { type: 'string', enum: ['client', 'operator'], default: 'client' } }
+}
+
 export const tenantResponseSchema = {
   $id: 'tenantResponseSchema',
   type: 'object',
@@ -67,7 +110,9 @@ export const tenantResponseSchema = {
     // Which migration this container was last brought to. Null on a container that
     // predates the version, which a serializer must be able to say rather than drop.
     schemaVersion: { type: ['string', 'null'] },
-    status: { type: 'string', enum: ['active', 'suspended', 'archived', 'destroyed'] },
+    status: { type: 'string', enum: ['active', 'suspended', 'archived', 'moved', 'destroyed'] },
+    // Where a `moved` tenant went, as the operator wrote it; null for every other status.
+    movedTo: { type: ['string', 'null'] },
     config: { type: 'object', additionalProperties: true },
     createdAt: { type: 'string' },
     updatedAt: { type: 'string' }

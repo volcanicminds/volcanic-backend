@@ -1622,6 +1622,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "moved_to": {
+          "name": "moved_to",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1655,6 +1661,7 @@
             }
           ],
           "isUnique": true,
+          "where": "\"tenant\".\"status\" <> 'destroyed'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1676,6 +1683,7 @@
             }
           ],
           "isUnique": true,
+          "where": "\"tenant\".\"status\" <> 'destroyed'",
           "concurrently": false,
           "method": "btree",
           "with": {}

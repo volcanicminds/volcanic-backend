@@ -1,43 +1,26 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { execFile } from 'node:child_process'
-import fs from 'node:fs'
-import path from 'node:path'
-import { promisify } from 'node:util'
-import type { Tenant } from '../../../types/global.js'
-import type { ExportResult } from '../ports.js'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
+import { Transform, type Readable, type Writable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 
 //
-// Taking a customer's data out.
+// Moving a container's SQL between Postgres and a file, through `pg_dump` and `psql`.
 //
 // Three refusals, and they are the whole design:
 //
-//   - **a missing tool is a failure, not a smaller export.** If `pg_dump` is not on the path,
-//     or exits non-zero, the operation fails and the partial file is removed. An export that
-//     "mostly worked" is worse than none: it is a backup somebody will trust;
-//   - **the caller never chooses a path.** The destination is a configured directory and the
-//     file name is generated. A route that takes a filesystem path from a request is a path
-//     traversal with extra steps, and this route is reachable by an operator over HTTP;
-//   - **the export states its schema version.** A dump whose version is unknown can be
-//     restored into a container the code no longer matches, and nothing would say so until
-//     the data did.
+//   - **a missing tool is a failure, not a smaller export.** If `pg_dump` or `psql` is not on
+//     the path, or exits non-zero, the operation fails. An export that "mostly worked" is worse
+//     than none: it is a backup somebody will trust;
+//   - **the caller never chooses a path or a server.** The provider passes its own connection
+//     string, and the file is one the core created inside the configured directory;
+//   - **a dump is read line by line before `psql` sees it.** Outside a `COPY` block a line that
+//     starts with a backslash is a `psql` meta-command, and a meta-command runs on the machine,
+//     not in the database: a package that carries one is refused, whoever wrote it.
 //
-const run = promisify(execFile)
 
-export const DEFAULT_EXPORT_DIRECTORY = './data/exports'
-
-export interface ExportRequest {
-  /** Where exports live. Configured, never taken from a request. */
-  directory?: string
-  /** The version the container is at, read before the dump starts. */
-  schemaVersion: string | null
-  /** Connection string handed to `pg_dump`. */
-  url?: string
-  /**
-   * The database at `url` is the container (strategy `container`): dumped whole, not one schema
-   * of it. Only correct when nobody else's data lives in that database.
-   */
-  wholeDatabase?: boolean
-}
+/** The schema a package's dump names under the `schema` strategy, in place of the tenant's locator. */
+export const PACKAGE_SCHEMA = 'vm_package'
 
 export class ExportToolMissingError extends Error {
   readonly code = 'EXPORT_TOOL_MISSING'
@@ -55,84 +38,150 @@ export class ExportFailedError extends Error {
   }
 }
 
-/**
- * The file an export writes to.
- *
- * Built from the tenant, the version and the instant, and resolved INSIDE the configured
- * directory: a slug that tried to climb out of it lands back in, and the caller has no say
- * in either half.
- */
-export function exportPath(tenant: Tenant, request: ExportRequest, extension: string): string {
-  const root = path.resolve(request.directory || DEFAULT_EXPORT_DIRECTORY)
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const safeSlug = String(tenant.slug || tenant.id).replace(/[^a-z0-9_-]/gi, '')
-  const version = (request.schemaVersion || 'no-migration').replace(/[^a-z0-9_-]/gi, '')
-
-  const file = path.resolve(root, `${safeSlug}-${version}-${stamp}.${extension}`)
-  const relative = path.relative(root, file)
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new ExportFailedError(`the export path escapes ${root}`)
-  }
-
-  fs.mkdirSync(root, { recursive: true })
-  return file
-}
-
-/** Removes what a failed export left behind: a truncated dump is a trap, not a partial result. */
-function discard(file: string): void {
-  try {
-    if (fs.existsSync(file)) fs.unlinkSync(file)
-  } catch {
-    // Reported through the caller's error; nothing here can do better.
+/** A dump that does not load back to the rows it was made from, or carries a line `psql` would run on the machine. */
+export class RestoreIntegrityError extends Error {
+  readonly code = 'RESTORE_INTEGRITY_FAILED'
+  constructor(message: string) {
+    super(`The package does not restore to what it recorded: ${message}`)
+    this.name = 'RestoreIntegrityError'
   }
 }
 
+/** Fails with the tool's name when it is not installed: the one failure a retry never fixes. */
+export async function requireTools(...tools: string[]): Promise<void> {
+  for (const tool of tools) await finished(tool, spawn(tool, ['--version'], { stdio: 'ignore' }))
+}
+
 /**
- * A Postgres container, through `pg_dump`: the schema that holds it, or under the `container`
- * strategy the database that is it.
- *
- * `--schema` unless the database is the tenant's own: a container's export must contain that
- * customer's data and no trace of anybody else's: the file will be handed to them.
+ * The exit of a child process, as a promise. `ENOENT` is the tool missing. A `pg_dump` older than
+ * the server refuses to dump it, which is the same situation: the tool on this machine cannot
+ * produce this export, and saying so with the two versions is what tells an operator to install
+ * the right client instead of debugging their schema.
  */
-export async function exportPostgres(tenant: Tenant, request: ExportRequest): Promise<ExportResult> {
+function finished(tool: string, child: ReturnType<typeof spawn>): Promise<void> {
+  let stderr = ''
+  child.stderr?.on('data', (chunk) => {
+    if (stderr.length < 8192) stderr += String(chunk)
+  })
+  return new Promise((resolve, reject) => {
+    child.on('error', (error: any) => reject(error?.code === 'ENOENT' ? new ExportToolMissingError(tool) : new ExportFailedError(error?.message)))
+    child.on('close', (code) => {
+      if (code === 0) return resolve()
+      const reason = stderr.trim().split('\n')[0] || `${tool} exited with ${code}`
+      if (/server version/i.test(reason) && /pg_dump version/i.test(reason)) {
+        return reject(new ExportToolMissingError(`pg_dump (${reason.replace(/^pg_dump: error: /, '')})`))
+      }
+      reject(new ExportFailedError(reason))
+    })
+  })
+}
+
+/**
+ * Runs `tool` with `args` while `use` consumes or feeds its streams, and settles when both are
+ * done. A failure on either side ends the process, so no half-fed `psql` commits and no `pg_dump`
+ * writes on after its reader is gone.
+ */
+async function running(tool: string, args: string[], use: (child: ChildProcess) => Promise<void>): Promise<void> {
+  const child = spawn(tool, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+  const exit = finished(tool, child)
   try {
-    await run('pg_dump', ['--version'])
-  } catch {
-    throw new ExportToolMissingError('pg_dump')
-  }
-
-  const file = exportPath(tenant, request, 'sql')
-  const args = [
-    ...(request.wholeDatabase ? [] : ['--schema', tenant.locator]),
-    '--no-owner',
-    '--no-privileges',
-    '--file',
-    file,
-    ...(request.url ? ['--dbname', request.url] : [])
-  ]
-
-  try {
-    await run('pg_dump', args, { maxBuffer: 64 * 1024 * 1024 })
-  } catch (error: any) {
-    discard(file)
-    const reason = String(error?.stderr || error?.message || error).split('\n')[0]
-
-    // A `pg_dump` older than the server refuses to dump it, and that is the same situation as
-    // not having one: the tool on this machine cannot produce this export. Saying so with the
-    // two version numbers is the difference between an operator installing the right client
-    // and an operator debugging their schema.
-    if (/server version/i.test(reason) && /pg_dump version/i.test(reason)) {
-      throw new ExportToolMissingError(`pg_dump (${reason.replace(/^pg_dump: error: /, '')})`)
+    await Promise.all([use(child), exit])
+  } catch (error) {
+    // A pipe that broke is the process that died, and its own words say why.
+    if (['EPIPE', 'ERR_STREAM_PREMATURE_CLOSE'].includes((error as any)?.code)) {
+      const exited = await exit.then(() => null, (e) => e)
+      if (exited) throw exited
     }
-    throw new ExportFailedError(reason)
+    child.kill()
+    await exit.catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * `pg_dump` of `url`: one schema, or the whole database when `schema` is null.
+ * `--no-owner --no-privileges`: the roles of this server mean nothing where the dump is loaded.
+ */
+const dumpArgs = (url: string, schema: string | null) => [
+  ...(schema ? ['--schema', schema] : []),
+  '--no-owner',
+  '--no-privileges',
+  '--dbname',
+  url
+]
+
+/** The dump of `url` and `schema`, through `rewrite`, into `sink`. */
+export async function dumpInto(url: string, schema: string | null, rewrite: Transform, sink: Writable): Promise<void> {
+  await running('pg_dump', dumpArgs(url, schema), (child) => pipeline(child.stdout!, rewrite, sink))
+}
+
+/** `source`, through `rewrite`, into `psql` on `url`, in ONE transaction: a failure leaves nothing loaded. */
+export async function loadFrom(url: string, source: Readable, rewrite: Transform): Promise<void> {
+  const args = ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '--dbname', url]
+  await running('psql', args, (child) => {
+    child.stdout!.resume()
+    return pipeline(source, rewrite, child.stdin!)
+  })
+}
+
+/** One container straight into another, renamed on the way: nothing is written to a disk. */
+export async function copyContainer(fromUrl: string, fromSchema: string | null, toUrl: string, toSchema: string | null): Promise<void> {
+  await running('pg_dump', dumpArgs(fromUrl, fromSchema), (child) => loadFrom(toUrl, child.stdout!, rebase(fromSchema, toSchema)))
+}
+
+/**
+ * The lines of a plain `pg_dump`, with the schema `from` renamed `to`, and every meta-command
+ * refused but the two `pg_dump` writes itself (`\restrict` and `\unrestrict`).
+ *
+ * The rename is lexical: the name as a whole identifier, bare or quoted, outside `COPY` data,
+ * whose lines are the customer's values and pass untouched. A table or column with the exact name
+ * of the schema would be renamed too; locators are `tenant_<slug>` and the package's is fixed, so
+ * neither collides with a table of the framework. `CREATE SCHEMA` gains `IF NOT EXISTS`: the
+ * provider creates the container before loading into it, under both strategies.
+ */
+export function rebase(from: string | null, to: string | null): Transform {
+  const quoted = (name: string) => `"${name}"`
+  const pattern =
+    from && to
+      ? new RegExp(`(?<![A-Za-z0-9_$".])(?:${quoted(from)}${/^[a-z_][a-z0-9_]*$/.test(from) ? `|${from}` : ''})(?![A-Za-z0-9_$"])`, 'g')
+      : null
+
+  let inCopy = false
+  const line = (text: string): string => {
+    if (inCopy) {
+      if (text === '\\.') inCopy = false
+      return text
+    }
+    if (text.startsWith('\\')) {
+      if (/^\\(?:un)?restrict [A-Za-z0-9]+$/.test(text)) return text
+      throw new RestoreIntegrityError(`a psql meta-command outside the data: ${text.slice(0, 40)}`)
+    }
+    let out = pattern ? text.replace(pattern, quoted(to!)) : text
+    out = out.replace(/^CREATE SCHEMA (?!IF NOT EXISTS )/, 'CREATE SCHEMA IF NOT EXISTS ')
+    if (/^COPY .* FROM stdin;$/.test(out)) inCopy = true
+    return out
   }
 
-  if (!fs.existsSync(file)) throw new ExportFailedError('pg_dump wrote no file')
-  const { size } = fs.statSync(file)
-  if (size === 0) {
-    discard(file)
-    throw new ExportFailedError('pg_dump produced an empty file')
-  }
-
-  return { path: file, bytes: size, schemaVersion: request.schemaVersion }
+  // A chunk may end inside a multi-byte character: the decoder holds it for the next one.
+  const decoder = new StringDecoder('utf8')
+  let rest = ''
+  return new Transform({
+    transform(chunk, _encoding, done) {
+      try {
+        const lines = (rest + decoder.write(chunk)).split('\n')
+        rest = lines.pop()!
+        done(null, lines.map((l) => line(l) + '\n').join(''))
+      } catch (error) {
+        done(error as Error)
+      }
+    },
+    flush(done) {
+      try {
+        rest += decoder.end()
+        done(null, rest ? line(rest) : '')
+      } catch (error) {
+        done(error as Error)
+      }
+    }
+  })
 }

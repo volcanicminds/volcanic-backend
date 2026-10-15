@@ -148,8 +148,11 @@ describe('database/adapters/postgres · PGlite (T-14.1)', function () {
 
     it('refuses by name what needs a server', async () => {
       const acme = { id: 'id-acme', slug: 'acme', locator: 'acme' } as any
-      await expect(provider.exportContainer(acme, { schemaVersion: null })).rejects.toThrow(
+      await expect(provider.exportContainer(acme, { target: '/nonexistent/tenant.sql', schemaVersion: null })).rejects.toThrow(
         'Export (pg_dump) needs a Postgres server'
+      )
+      await expect(provider.restoreContainer('acme', { dump: '/nonexistent/tenant.sql', schema: null, rowCounts: {} })).rejects.toThrow(
+        'Restore (psql) needs a Postgres server'
       )
       const noContainers = 'PGlite cannot run the container strategy'
       expect(() => new PostgresProvider({ pglite: db, strategy: 'container' })).toThrow(noContainers)

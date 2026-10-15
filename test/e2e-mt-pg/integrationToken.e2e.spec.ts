@@ -108,4 +108,24 @@ describe('Integration tokens on real Postgres (T-14.7)', function () {
     expect(removed.statusCode).toBe(403)
     expect(body(removed).code).toBe('TOKEN_NOT_VALID')
   })
+
+  it('reissues a bearer that works, and the bearer before it stops at the next request (T-17.7)', async () => {
+    const first = body(await mint({ name: 'reissued', expiresAt: null }))
+    const use = (token: string) => inject({ method: 'GET', url: '/probe/subject', headers: bearer(token) })
+    expect((await use(first.token)).statusCode).toBe(200)
+
+    const res = await inject({ method: 'POST', url: `/token/${first.id}/reissue`, headers: bearer(admin, ACME.slug) })
+    expect(res.statusCode).toBe(200)
+    const second = body(res)
+    expect([second.id, second.name]).toEqual([first.id, 'reissued'])
+    expect(second.externalId).not.toBe(first.externalId)
+    expect(app().jwt.verify(second.token)).toMatchObject({ sub: second.externalId, tid: acme.id })
+
+    expect((await use(second.token)).statusCode).toBe(200)
+    // The row is still there, under another externalId: the old `sub` names nobody.
+    const stale = await use(first.token)
+    expect([stale.statusCode, body(stale).code]).toEqual([404, 'SUBJECT_NOT_FOUND'])
+    const row = (await sql().query(`select * from "${ACME.locator}".token where id = $1`, [first.id])).rows[0]
+    expect(JSON.stringify(row)).not.toContain(second.token)
+  })
 })

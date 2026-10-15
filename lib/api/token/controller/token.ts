@@ -65,23 +65,53 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not registered' })
   }
 
-  // The tenant the row lives in is signed into the bearer, as into a session's: with a token the
-  // tenant of a request comes from `tid`, and a header may only agree with it
-  // (docs/AUTHORIZATION_V5.md §5). Without tenants there is none, and no claim.
-  const claims = { sub: token.externalId, ...(req.tenantInfo && { tid: req.tenantInfo.id }) }
-  // The bearer expires when the row says, and only then: `expiresIn: undefined` replaces the
-  // session lifetime (JWT_EXPIRES_IN) that @fastify/jwt would otherwise apply.
-  const bearerToken = await reply.jwtSign(expiresAt ? { ...claims, exp: Math.floor(expiresAt.getTime() / 1000) } : claims, {
-    sign: { expiresIn: undefined }
-  })
+  const bearerToken = await signBearer(req, reply, token.externalId, expiresAt)
   if (!bearerToken) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not signed' })
   }
 
   // The bearer is returned here once and never stored: the row keeps the `externalId` it
   // resolves to, so whoever reads the table holds no credential, and a lost bearer is replaced
-  // by a new token, not read back.
+  // by a reissue, not read back.
   return { ...token, token: bearerToken }
+}
+
+/**
+ * The bearer of a row. The tenant the row lives in is signed into it, as into a session's: with a
+ * token the tenant of a request comes from `tid`, and a header may only agree with it
+ * (docs/AUTHORIZATION_V5.md §5). Without tenants there is none, and no claim. It expires when the
+ * row says, and only then: `expiresIn: undefined` replaces the session lifetime (JWT_EXPIRES_IN)
+ * that @fastify/jwt would otherwise apply.
+ */
+async function signBearer(req: FastifyRequest, reply: FastifyReply, externalId: string, expiresAt: Date | null): Promise<string> {
+  const claims = { sub: externalId, ...(req.tenantInfo && { tid: req.tenantInfo.id }) }
+  return await reply.jwtSign(expiresAt ? { ...claims, exp: Math.floor(expiresAt.getTime() / 1000) } : claims, {
+    sign: { expiresIn: undefined }
+  })
+}
+
+/**
+ * A new bearer for an existing token, shown once. The `externalId` changes first, so every bearer
+ * signed before stops resolving to the row; name, roles and expiry stay. A blocked token is
+ * reissued too: its new bearer is refused like the old one until the token is unblocked.
+ */
+export async function reissue(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.parameters()
+  const tokens = req.server['tokenManager']
+
+  const token = await tokens.retrieveTokenById(dataContext(req), id)
+  if (!token?.id || token.deletedAt) return reply.status(404).send()
+
+  const expiresAt = token.expiresAt ? new Date(token.expiresAt) : null
+  if (expiresAt && !(expiresAt.getTime() > Date.now())) {
+    return reply
+      .status(409)
+      .send(httpError(409, 'This token has expired, and a reissued bearer would be refused too: create a new token', 'TOKEN_EXPIRED'))
+  }
+
+  const externalId = await tokens.resetExternalId(dataContext(req), token.id)
+  const bearerToken = await signBearer(req, reply, externalId, expiresAt)
+  return { ...token, externalId, token: bearerToken }
 }
 
 export async function remove(req: FastifyRequest, reply: FastifyReply) {

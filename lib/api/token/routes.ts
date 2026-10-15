@@ -82,6 +82,24 @@ export default {
       }
     },
     {
+      method: 'POST',
+      path: '/:id/reissue',
+      requireCapability: 'tokens',
+      handler: 'token.reissue',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Reissue a token',
+        description: 'A new bearer for the token: every bearer issued before stops working. Name, roles and expiry stay',
+        params: { $ref: 'onlyIdSchema#' },
+        response: {
+          200: {
+            description: 'The token, with its new bearer: shown here once, never stored',
+            $ref: 'tokenCreatedSchema#'
+          }
+        }
+      }
+    },
+    {
       method: 'PUT',
       path: '/:id',
       requireCapability: 'tokens',

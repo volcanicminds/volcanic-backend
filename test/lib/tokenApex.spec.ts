@@ -11,7 +11,7 @@
 // signature. The bearer goes back in the answer and is not stored anywhere.
 //
 import { expect } from 'expect'
-import { create, update, remove, findOne, block, unblock } from '../../lib/api/token/controller/token.js'
+import { create, update, remove, findOne, block, unblock, reissue } from '../../lib/api/token/controller/token.js'
 
 ;(global as any).log = {}
 
@@ -58,7 +58,12 @@ function request(opts: any = {}) {
     server: {
       tokenManager: {
         isImplemented: () => true,
-        retrieveTokenById: async (_c: any, id: string) => (opts.missing ? null : id === EXISTING.id ? EXISTING : null),
+        retrieveTokenById: async (_c: any, id: string) =>
+          opts.missing ? null : id === EXISTING.id ? { ...EXISTING, ...opts.existing } : null,
+        resetExternalId: async (_c: any, id: string) => {
+          calls.push(['resetExternalId', id])
+          return 't-ext-rotated'
+        },
         createToken: async (_c: any, data: any) => {
           calls.push(['createToken', data])
           return opts.createFails ? null : { id: 't-new', externalId: 't-ext-new', ...data }
@@ -243,5 +248,35 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     const released = request()
     expect(await unblock(released.req, released.reply)).toEqual({ ok: true })
     expect(released.calls[0]).toEqual(['unblockTokenById', EXISTING.id])
+  })
+
+  it('reissues a bearer for the same row under a new externalId, with its expiry and its tenant (T-17.7)', async () => {
+    // The old bearer carries the old externalId in `sub`: once the row has a new one, nothing
+    // resolves it any more. The order is the property: rotated first, then signed.
+    ;(global as any).config = { options: {} }
+    const at = new Date(Date.now() + 3600_000)
+    const { req, calls, reply } = request({ existing: { expiresAt: at.toISOString() }, tenantInfo: { id: 'tenant-acme', slug: 'acme' } })
+
+    const reissued: any = await reissue(req, reply)
+    expect(calls).toEqual([['resetExternalId', EXISTING.id]])
+    expect(reply.sent.signed.payload).toEqual({ sub: 't-ext-rotated', tid: 'tenant-acme', exp: Math.floor(at.getTime() / 1000) })
+    expect(reissued).toMatchObject({ id: EXISTING.id, name: 'ci', externalId: 't-ext-rotated', token: 'signed:t-ext-rotated' })
+  })
+
+  it('refuses to reissue a token that is gone or expired, and rotates nothing (T-17.7)', async () => {
+    ;(global as any).config = { options: {} }
+    const missing = request({ missing: true })
+    await reissue(missing.req, missing.reply)
+    expect(missing.reply.sent.code).toBe(404)
+
+    const removed = request({ existing: { deletedAt: new Date().toISOString() } })
+    await reissue(removed.req, removed.reply)
+    expect(removed.reply.sent.code).toBe(404)
+
+    const expired = request({ existing: { expiresAt: new Date(Date.now() - 1000).toISOString() } })
+    await reissue(expired.req, expired.reply)
+    expect([expired.reply.sent.code, expired.reply.sent.body.code]).toEqual([409, 'TOKEN_EXPIRED'])
+
+    expect([...missing.calls, ...removed.calls, ...expired.calls]).toEqual([])
   })
 })

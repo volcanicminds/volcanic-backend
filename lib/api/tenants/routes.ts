@@ -141,7 +141,47 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Export a container',
-        description: 'Writes a dump of one customer container, stamped with the schema version it was at'
+        description: 'Writes the package of one tenant: the dump without credentials, the parts of its packages, a manifest and the operator envelope'
+      }
+    },
+    {
+      method: 'GET',
+      path: '/:id/exports/:package',
+      requireCapability: 'tenants:export',
+      handler: 'tenants.downloadPackage',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Download a package',
+        description: 'One tar file, checked against its manifest first; the client profile leaves the operator envelope out',
+        params: { $ref: 'tenantPackageParamsSchema#' },
+        query: { $ref: 'tenantPackageQuerySchema#' }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/import',
+      requireCapability: 'tenants',
+      handler: 'tenants.importTenant',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Restore a tenant from a package',
+        description: 'A new tenant with a new id, from a package in the export directory; the founder password is set by the request',
+        body: { $ref: 'tenantImportBodySchema#' },
+        response: {
+          201: { $ref: 'tenantResponseSchema#' }
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/:id/move',
+      requireCapability: 'tenants',
+      handler: 'tenants.move',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Record that a tenant moved',
+        description: 'The tenant turns moved, with its destination and the package it went with; restore makes it active again',
+        body: { $ref: 'tenantMoveBodySchema#' }
       }
     },
     {
