@@ -118,8 +118,8 @@ jobs:
         with: { node-version-file: .nvmrc, cache: npm, registry-url: 'https://registry.npmjs.org' }
       - run: npm ci
       - run: npm run build
-      # A version with a suffix (5.0.0-alpha.0) goes out on dist-tag `next`, never on `latest`:
-      # `latest` moves to 5 only once the migration guide exists.
+      # A version with a suffix (5.1.0-rc.0) goes out on dist-tag `next`, never on `latest`; a plain
+      # version (5.0.0) goes out on `latest`.
       # Block scalar, not a plain one: the ternary inside puts `? ` and ` : ` in the value, which
       # YAML reads as a complex mapping key and rejects.
       - run: |
