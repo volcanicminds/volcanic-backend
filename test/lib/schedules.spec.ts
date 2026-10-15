@@ -186,7 +186,7 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
   const cwd = process.cwd()
 
   before(() => {
-    ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }
+    ;(global as any).config = { options: { scheduler: true, tenants: { strategy: 'schema', engine: 'postgres' } } }
     process.chdir(FIXTURES)
   })
 
@@ -219,6 +219,25 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
     expect(errors.find((m) => m.startsWith('* Job stepped.job: schedule.cron is not readable'))).toMatch(/0\/10/)
     expect(errors.find((m) => m.startsWith('* Job zoned.job: schedule.cron is not readable'))).toMatch(/Mars\/Olympus/)
     expect(errors.some((m) => m.startsWith('* Job cron.job'))).toBe(false)
+  })
+
+  it('loads no job while the scheduler is off, and says how to turn it on', () => {
+    // Left to the start, the first job is added to a scheduler that was never registered.
+    const previousLog = (global as any).log
+    const previousConfig = (global as any).config
+    const errors: string[] = []
+    ;(global as any).log = { e: true, error: (m: string) => errors.push(m) }
+    ;(global as any).config = { options: { ...previousConfig.options, scheduler: false } }
+    let jobs: any[] = []
+    try {
+      jobs = load()
+    } finally {
+      ;(global as any).log = previousLog
+      ;(global as any).config = previousConfig
+    }
+
+    expect(jobs).toEqual([])
+    expect(errors).toContain('* Job plain.job: the scheduler is off: set `scheduler: true` in config/general.ts')
   })
 })
 

@@ -90,6 +90,10 @@ export function load(): any[] {
           isLoadedAndEnabled = false
         }
 
+        // Without the option the scheduler plugin is never registered, and the first job added
+        // to it would stop the start after listen().
+        if (!global.config?.options?.scheduler) reject('the scheduler is off: set `scheduler: true` in config/general.ts')
+
         if (!job || typeof job !== 'function') reject('no exported `job` function')
 
         if (!schedule.type || !['cron', 'interval'].includes(schedule.type)) {
