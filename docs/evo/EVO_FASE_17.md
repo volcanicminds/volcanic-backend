@@ -164,7 +164,7 @@ fase 16.
 - [ ] **T-17.11** Chi esporta, scarica e ripristina (F89). Due rotte nel piano del tenant, solo
   per il ruolo `admin` e con `freshAuth`: l'export del proprio tenant, sempre `client`, e il suo
   download, con il tenant preso dal token e mai dai parametri. Nel piano di controllo
-  `POST /tenants/:id/export`, `GET /tenants/:id/exports/:package`, `POST /tenants/import` e
+  `POST /tenants/:id/exports`, `GET /tenants/:id/exports/:package`, `POST /tenants/import` e
   `POST /tenants/:id/move` passano al solo ruolo `system:admin`, senza permesso del catalogo;
   `tenants:export` esce da `SYSTEM_CAPABILITIES`, dai tipi, da `docs/AUTHORIZATION_V5.md`,
   `docs/API_V5.md` e `llms.txt`.
@@ -175,6 +175,34 @@ fase 16.
   ricevono 403 sulle quattro rotte; un token senza conferma recente riceve `STEP_UP_REQUIRED` sui
   due piani; il download scrive l'evento; difetto piantato (tenant preso dal parametro,
   `freshAuth` tolto, `tenants` di nuovo sull'import).
+  **Decisioni del proprietario del 19 ottobre 2026, prima del codice.** Percorsi: una rotta ha un
+  piano solo e il router rifiuta all'avvio quella che li mescola (`docs/AUTHORIZATION_V5.md`
+  §2.1), quindi i due piani hanno gli stessi nomi e prefissi diversi. Nel controllo
+  `POST /tenants/:id/exports` (prima `/:id/export`) e `GET /tenants/:id/exports/:package`; nel
+  tenant `POST /exports` e `GET /exports/:package`, in `lib/api/exports`, accese solo con i
+  tenant. Il rinomino tocca il mock dell'admin, il test del rag-sample, gli e2e e i documenti.
+  Export e download stanno in un solo modulo comune, e le rotte dei due piani sono due ingressi
+  sottili. Nel tenant un pacchetto di un altro tenant o `operator` risponde 404, come un nome
+  sconosciuto. Il manifest porta l'id del tenant, che decide di chi è un pacchetto: lo slug si
+  sceglie di nuovo all'import. Evento: azione `tenant.downloaded` con pacchetto, hash del
+  manifest, profilo e byte; l'intenzione si scrive prima del primo byte, e se non si scrive il
+  download non parte (503); l'esito a fine flusso. L'autore porta la colonna `actor_plane`
+  (`control` o `tenant`), scritta direttamente in `0006_governance_log_control.sql` senza una
+  migrazione nuova, perché non c'è produzione; i database locali che l'hanno già applicata si
+  ricreano. Rotazione: un solo pacchetto `client` per tenant, da qualunque piano venga, perché
+  è lo stesso pacchetto; un export nuovo riuscito cancella il precedente dopo aver scritto il
+  suo, e i pacchetti `operator` non ruotano mai. Un export mentre è in corso un altro export o un
+  download dello stesso tenant risponde 409. Quota: `TENANT_EXPORT_MAX` export (default 3) ogni
+  `TENANT_EXPORT_WINDOW` (default un'ora) per tenant, contati sul registro di governance dopo
+  aver preso il blocco: solo gli export del piano del tenant, partiti, riusciti o no; oltre, 429
+  con `Retry-After`. Anti-flood: il plugin `rateLimit` per IP sulle quattro rotte di export e
+  download dei due piani, a dieci volte la quota al minuto, ricavato e senza una variabile sua;
+  vale solo dove il progetto tiene acceso il plugin, che resta una sua scelta libera (una
+  intranet può spegnerlo), mentre la quota vale sempre.
+  Le due variabili entrano in `docs/CONFIGURATION_V5.md`. Conseguenza nota: chi impersona o usa
+  un token d'integrazione riceve `STEP_UP_NOT_AVAILABLE` e non esporta. Prove in più: la
+  rotazione (il secondo export cancella il primo `client`, l'`operator` resta), il 409, il 429
+  con `Retry-After`, e la quota non consumata dagli export del controllo.
 
 ## 3. Segnalato, non toccato
 
