@@ -144,11 +144,13 @@ describe('manifest · the framework own routes, through the loader', () => {
       ])
     })
 
-    it('leaves phase 1 and the export without an input, because they take no body', () => {
-      // An input here would be a promise the controller cannot keep: both read only the id in
-      // the URL.
+    it('leaves phase 1 without an input, because it takes no body', () => {
+      // An input here would be a promise the controller cannot keep: it reads only the id in the URL.
       expect(action('destruction-request').input).toBeUndefined()
-      expect(action('export').input).toBeUndefined()
+    })
+
+    it('asks the export for its profile, which has no default (T-17.10)', () => {
+      expect(action('export').input.fields).toEqual([{ name: 'profile', type: 'enum', required: true }])
     })
   })
 

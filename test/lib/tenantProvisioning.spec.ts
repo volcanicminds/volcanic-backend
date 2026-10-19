@@ -160,7 +160,7 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     expect(res.statusCode).toBe(503)
     expect(JSON.parse(res.body).code).toBe('GOVERNANCE_LOG_NOT_AVAILABLE')
 
-    const exported = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    const exported = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
     expect(exported.statusCode).toBe(503)
     expect(JSON.parse(exported.body).code).toBe('GOVERNANCE_LOG_NOT_AVAILABLE')
 
@@ -177,7 +177,7 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     governance.record = async (ctx, entry) => (order.push(`${entry.action} ${entry.outcome}`), record(ctx, entry))
     const before = started.length
 
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(200)
     expect(started.slice(before)).toEqual(['export'])
     expect(order).toEqual(['tenant.exported intent', 'tenant.exported success'])
@@ -200,7 +200,7 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     governance.record = async () => {
       throw new Error('the control plane is gone')
     }
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(500)
     expect(started).toEqual([])
     await server.close()
@@ -301,7 +301,7 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     // sentence and a different thing for the operator to go and fix.
     const { server } = await build({ canExport: false })
 
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: {} })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(503)
     expect(JSON.parse(res.body).code).toBe('EXPORT_NOT_AVAILABLE')
     await server.close()
@@ -420,7 +420,7 @@ describe('tenants · the packages that follow a tenant (T-16.2)', () => {
     const { server, started, governance } = await build({ lifecycles, exportDirectory: dir })
     lifecycles.push(recording('rag', started), recording('quiet', started, { export: false }))
 
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(200)
     const answer = JSON.parse(res.body)
     expect(answer.artifacts).toEqual([{ name: 'rag', bytes: 9 }])
@@ -430,8 +430,8 @@ describe('tenants · the packages that follow a tenant (T-16.2)', () => {
     // The manifest lists both packages, the one that kept nothing outside the container too.
     const manifest = JSON.parse(fs.readFileSync(path.join(dir, answer.package, 'manifest.json'), 'utf8'))
     expect(manifest.packages).toEqual([
-      { name: 'rag', file: 'tenant.rag', description: null },
-      { name: 'quiet', file: null, description: null }
+      { name: 'rag', file: 'tenant.rag', unpack: false, description: null },
+      { name: 'quiet', file: null, unpack: false, description: null }
     ])
     expect(manifest.files.map((f: any) => f.path)).toEqual(['tenant.rag', 'tenant.sql'])
     await server.close()
@@ -442,7 +442,7 @@ describe('tenants · the packages that follow a tenant (T-16.2)', () => {
     const { server, started, governance } = await build({ lifecycles, exportDirectory: dir })
     lifecycles.push(recording('rag', started), recording('audit', started, { failOn: 'export' }))
 
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(500)
     // An export missing part of the tenant must not sit in the directory looking like a whole one.
     expect(fs.readdirSync(dir)).toEqual([])

@@ -517,16 +517,20 @@ export class PostgresProvider {
    * name of this platform in it.
    *
    * The raw dump never reaches a disk. It is loaded into a scratch container, the credentials are
-   * emptied there, and the scratch container is dumped to the target; under `schema` the dump names
-   * `PACKAGE_SCHEMA` instead of the locator. The target is then loaded into a second scratch
-   * container and its rows counted against the first: a file that exists is not yet a file that
-   * restores. Both scratch containers are dropped, whatever happens.
+   * emptied there, `request.pack` treats the application's data on it, and the scratch container is
+   * dumped to the target; under `schema` the dump names `PACKAGE_SCHEMA` instead of the locator. The
+   * rows are counted after `pack`, which may remove some. The target is then loaded into a second
+   * scratch container and its rows counted against the first: a file that exists is not yet a file
+   * that restores. Both scratch containers are dropped, whatever happens.
    *
    * The connection string is the provider's, not the caller's: an export route reachable over HTTP
    * must not decide which database it reads from. On PGlite there is no server for `pg_dump` to
    * reach, so the export is refused.
    */
-  async exportContainer(tenant: Tenant, request: { target: string; schemaVersion: string | null }): Promise<PackagedDump> {
+  async exportContainer(
+    tenant: Tenant,
+    request: { target: string; schemaVersion: string | null; pack?: (handle: TenantHandle) => Promise<void> }
+  ): Promise<PackagedDump> {
     const server = this.serverUrl('Export (pg_dump)')
     await requireTools('pg_dump', 'psql')
     const schemaOf = (locator: string) => (this.strategy === 'schema' ? locator : null)
@@ -537,6 +541,7 @@ export class PostgresProvider {
       await copyContainer(urlOf(tenant.locator), schemaOf(tenant.locator), urlOf(scratch), schemaOf(scratch))
       const handle = await this.forLocator(scratch, scratch)
       await scrubCredentials(handle, this.innerSchema(scratch))
+      await request.pack?.(handle as unknown as TenantHandle)
       const counts = await countRows(handle, this.innerSchema(scratch))
       await dumpInto(urlOf(scratch), schemaOf(scratch), rebase(schemaOf(scratch), schema), fs.createWriteStream(request.target, { flags: 'wx' }))
       return counts

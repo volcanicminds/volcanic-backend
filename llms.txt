@@ -1220,6 +1220,8 @@ await startServer({ ...layer, tenantLifecycles: [ragLifecycle()] })
 | `create(place, handle)` | after the container is created and migrated, before the registry row; `handle` is the new container | undoes the creation: every package that started, last first, then the container; no row |
 | `export(tenant, target)` | after the dump; writes at `target`, a file or a folder inside the package, and returns the bytes | fails the export, and any destruction that needed it |
 | `describe(tenant)` | at export, for the manifest: an engine, a model, a format, as JSON with no secret | fails the export |
+| `pack(tenant, handle, profile)` | at export, on the scratch copy of the container, after the framework emptied its credentials and before the rows are counted and dumped; `profile` is the export's, `client` or `operator`; answers `true` when it wrote values in clear that a restore has to encrypt again | fails the export |
+| `unpack(place, handle)` | on a restore, after the dump is loaded and migrated and before `restore` or `create`, only for a package whose `pack` answered `true`; encrypts again, with this machine's key, what `pack` wrote in clear | undoes the restore as `create` undoes a creation |
 | `restore(place, handle, source)` | on a restore from a package, after the dump is loaded and migrated, before the registry row; `source` is what `export` wrote | undoes the restore as `create` undoes a creation |
 | `destroy(place)` | before the container is dropped | stops the destruction with the container still there, to run again |
 
@@ -1229,7 +1231,17 @@ order given to `start()`. Names are checked at boot (letters, digits, `-` and `_
 once), because they end up in the package's file names: `tenant.<name>`, listed in the response's
 `artifacts` as `{ name, bytes }`. On a restore, a package whose export holds a part gets
 `restore`, and one it holds nothing for gets `create`; a part for a package without `restore`
-refuses the restore before anything is built (409 `RESTORE_PACKAGE_UNAVAILABLE`).
+refuses the restore before anything is built (409 `RESTORE_PACKAGE_UNAVAILABLE`), and so does a
+package whose `pack` answered `true` (the manifest records it as `unpack: true`) on a build where
+it has no `unpack`.
+
+The data the application keeps in its own tables is the customer's, encrypted or not: the
+framework neither reads nor empties it. `pack` is where the application decides, column by
+column and for the profile asked, whether a value stays as it is, is written in clear or is
+emptied. It works on the scratch copy, never on the live container: under `schema` through the
+`handle` it receives, never by the locator's name. Without `pack` a value encrypted with the
+backend's `encrypt()` travels as it is, and opens neither for the customer nor after a restore on
+a machine with another key.
 
 A package that writes its own SQL instead of using the ORM reaches the container through
 `access(handle).raw`: `query(text, params)` and `transaction(run)`, under the same rule as
@@ -1343,17 +1355,21 @@ the measurements.
 ## 2.12 Exporting, restoring and moving a tenant
 
 ```
-POST /tenants/:id/export                 capability `tenants:export`
-GET  /tenants/:id/exports/:package       capability `tenants:export`   ?profile=client|operator
+POST /tenants/:id/export                 capability `tenants:export`   { profile: client|operator }
+GET  /tenants/:id/exports/:package       capability `tenants:export`
 POST /tenants/import                     capability `tenants`
 POST /tenants/:id/move                   capability `tenants`
 ```
 
-An export writes the tenant's **package**: a folder in `options.export_directory`
+An export writes the tenant's **package** in one **profile**, which the body names and has no
+default (400 `EXPORT_PROFILE_REQUIRED`): `client`, the customer's copy, or `operator`, the one a
+restore accepts. The profile reaches each package's `pack` (2.8), so the dump may differ between
+the two, and it is written in the manifest. The package is a folder in `options.export_directory`
 (`EXPORT_DIRECTORY`, default `./data/exports`) named `<slug>-<schema version>-<instant>-<random>`,
 holding `tenant.sql` (the dump), `tenant.<name>` for each package of 2.8 that keeps something,
-`manifest.json` (every file with its bytes and SHA-256, the schema version, strategy, engine, rows
-per table, and each package's `describe`) and `envelope.json` (the registry row and the identity
+`manifest.json` (the profile, every file with its bytes and SHA-256, the schema version, strategy,
+engine, rows per table, and for each package its `describe` and whether it asks for `unpack`) and
+`envelope.json` (the registry row and the identity
 providers, bound to the manifest by its hash and signed, HMAC-SHA256, with `PACKAGE_SIGNING_KEY`).
 The response is `{ tenant: { id, slug }, package, manifestSha256, signed, bytes, schemaVersion,
 artifacts }`, never a path on the server; without a signing key the export still runs and answers
@@ -1365,10 +1381,13 @@ with the path and the manifest hash.
   password becomes a value no password matches, `mfa_secret`, `mfa_type` and the reset and
   confirmation tokens are emptied, `mfa_enabled` turns false, and `session` and `auth_flow` lose
   their rows. A user's `external_id` stays. The identity providers in the envelope carry no client
-  secret. Nothing encrypted leaves, so no package depends on the key of the machine that made it.
+  secret. Nothing the framework encrypted leaves, so no package depends on the key of the machine
+  that made it for the framework's part; the application's own columns are its `pack`'s (2.8).
 - **The customer's part names nothing of the platform.** The manifest carries no tenant id, no
-  locator, no path; under `schema` the dump names `vm_package` instead of the locator. The download
-  with `profile=client` (the default) leaves the envelope out; `profile=operator` keeps it.
+  locator, no path; under `schema` the dump names `vm_package` instead of the locator. The
+  envelope is written on the server for both profiles; the download serves the profile the export
+  chose and no other: the tar of a `client` package leaves the envelope out, an `operator` one
+  keeps it.
 - **A dump that does not restore fails the export.** It is loaded into a second scratch container
   and its rows counted against the first.
 - **No partial export.** A missing `pg_dump` or `psql`, or a `pg_dump` older than the server, fails
@@ -1383,12 +1402,13 @@ creates a **new tenant with a new id** from a package in the export directory. B
 built: a key to verify with must exist (503 `RESTORE_NOT_AVAILABLE`), the hashes are checked (422
 `RESTORE_PACKAGE_INVALID`; 404 for an unknown name), the signature too (422
 `RESTORE_SIGNATURE_INVALID`: unsigned, a key this instance does not hold, or changed), and so are
-the strategy (409 `RESTORE_STRATEGY_MISMATCH`), a schema version newer than this build (409
-`RESTORE_SCHEMA_AHEAD`), a part no package here can restore (409 `RESTORE_PACKAGE_UNAVAILABLE`),
+the profile (409 `RESTORE_PROFILE_MISMATCH` for a `client` package), the strategy (409
+`RESTORE_STRATEGY_MISMATCH`), a schema version newer than this build (409 `RESTORE_SCHEMA_AHEAD`),
+a part no package here can restore or an `unpack` none here runs (409 `RESTORE_PACKAGE_UNAVAILABLE`),
 the policies of this deployment, the slug and the container, as on a creation. Then the dump is
 loaded through a reader that refuses any `psql` meta-command outside the data
 (`RESTORE_INTEGRITY_FAILED`, also for rows that differ from the manifest), the credentials are
-emptied again, the migrations run, every integration token gets a new `external_id`, the founder
+emptied again, the migrations run, the packages that asked for it `unpack`, every integration token gets a new `external_id`, the founder
 gets `founderPassword` (422 `RESTORE_FOUNDER_MISSING` without one), the packages restore their part,
 and the row is written, with the identity providers `disabled` until an operator enters their
 secrets again. A failure drops everything that was built. The event is `tenant.imported`, with the
@@ -1399,7 +1419,8 @@ verify: a rotated one, or the source's on a move.
 
 **Move.** `POST /tenants/:id/move` with `{ destination, package }` turns the tenant `moved`, with
 `movedTo`, and it stops resolving requests; the container stays. The package must be one exported
-from this tenant (409 `TENANT_PACKAGE_MISMATCH`). The event is `tenant.moved`. `POST
+from this tenant (409 `TENANT_PACKAGE_MISMATCH`) in the `operator` profile (409
+`RESTORE_PROFILE_MISMATCH`), the one the destination restores. The event is `tenant.moved`. `POST
 /tenants/:id/restore` makes it active again.
 
 A single-tenant deployment and the control plane are outside all of this: the customer owns the

@@ -9,6 +9,7 @@ import type {
   MfaManagement,
   SystemUserManagement,
   ExportedArtifact,
+  PackageProfile,
   Tenant,
   TenantHandle,
   TenantLifecycle,
@@ -34,8 +35,10 @@ import {
   describePackages,
   destroyInPackages,
   exportFromPackages,
+  packInPackages,
   restoreInPackages,
   undoPackages,
+  unpackInPackages,
   unrestorable
 } from '../../../util/tenantLifecycle.js'
 import {
@@ -94,6 +97,7 @@ interface PackagedDump {
 /** What an export answers: a package is named, never located. */
 interface ExportedPackage {
   package: string
+  profile: PackageProfile
   manifestSha256: string
   /** False without PACKAGE_SIGNING_KEY: such a package can be downloaded, never restored. */
   signed: boolean
@@ -117,7 +121,11 @@ interface ContainerProvider extends DataProvider {
   createContainer(tenant: Tenant): Promise<boolean>
   forLocator(locator: string, tenantId: string): Promise<TenantHandle>
   dropContainer(locator: string): Promise<void>
-  exportContainer(tenant: Tenant, request: { target: string; schemaVersion: string | null }): Promise<PackagedDump>
+  /** `pack` runs on the scratch copy, after the credentials are emptied and before the rows are counted. */
+  exportContainer(
+    tenant: Tenant,
+    request: { target: string; schemaVersion: string | null; pack?: (handle: TenantHandle) => Promise<void> }
+  ): Promise<PackagedDump>
   /** null when a container with that locator is already there, untouched. */
   restoreContainer?(
     locator: string,
@@ -152,31 +160,45 @@ const lifecyclesOf = (req: FastifyRequest): readonly TenantLifecycle[] => req.se
 /**
  * The package of a tenant (lib/util/tenantPackage.ts): the dump, what each package keeps for the
  * tenant outside the container, the manifest over all of them, and the operator's envelope bound
- * to it. A failure anywhere removes the folder: a package missing a part must not sit in the
- * directory looking like a whole one.
+ * to it. The profile is chosen here and only here: the packages' `pack` writes the dump for it,
+ * and the envelope is written on the server for both, since the download reads it. A failure
+ * anywhere removes the folder: a package missing a part must not sit in the directory looking like
+ * a whole one.
  */
 async function exportTenant(
   req: FastifyRequest,
   provider: ContainerProvider,
   tenant: Tenant,
-  schemaVersion: string | null
+  schemaVersion: string | null,
+  profile: PackageProfile
 ): Promise<ExportedPackage & { dir: string }> {
   const { name, dir } = createPackage(tenant, schemaVersion)
   try {
-    const dump = await provider.exportContainer(tenant, { target: path.join(dir, DUMP), schemaVersion })
     const lifecycles = lifecyclesOf(req)
+    const packed: { unpack?: Set<string> } = {}
+    const pack = async (handle: TenantHandle) => void (packed.unpack = await packInPackages(lifecycles, tenant, handle, profile))
+    const dump = await provider.exportContainer(tenant, { target: path.join(dir, DUMP), schemaVersion, pack })
+    // A data layer written by a project may not know the hook: its dump would hand out what the
+    // application meant to empty.
+    if (!packed.unpack && lifecycles.some((l) => l.pack)) throw new Error('The data layer exported the container without running pack')
     const artifacts: ExportedArtifact[] = await exportFromPackages(lifecycles, tenant, dump.path)
     const described = await describePackages(lifecycles, tenant)
     const sealed = await sealPackage(dir, {
       createdAt: new Date().toISOString(),
       tenant: { name: tenant.name, slug: tenant.slug },
+      profile,
       schemaVersion,
       strategy: provider.strategy,
       engine: tenant.engine,
       dump: { file: DUMP, schema: dump.schema, rowCounts: dump.rowCounts },
       packages: lifecycles.map((l) => {
         const artifact = artifacts.find((a) => a.name === l.name)
-        return { name: l.name, file: artifact ? path.basename(artifact.path) : null, description: described.get(l.name) ?? null }
+        return {
+          name: l.name,
+          file: artifact ? path.basename(artifact.path) : null,
+          unpack: packed.unpack?.has(l.name) ?? false,
+          description: described.get(l.name) ?? null
+        }
       })
     })
     const idps: IdentityProviderManagement | undefined = req.server['identityProviderManager']
@@ -189,6 +211,7 @@ async function exportTenant(
     return {
       package: name,
       dir,
+      profile,
       manifestSha256: sealed.sha256,
       signed,
       bytes: sealed.bytes,
@@ -525,11 +548,18 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
  * name is generated, because this route is reachable over HTTP and a destination taken from a
  * request is a path traversal with extra steps. The answer names the package and its manifest's
  * hash, never a path of this machine: the file is reached through the download.
+ *
+ * The profile has no default: a `client` package does not restore, and an `operator` one carries
+ * the envelope, so neither is the one to get by leaving a field out.
  */
 export async function exportContainer(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const { id } = req.parameters()
+  const { profile } = req.data()
+  if (profile !== 'client' && profile !== 'operator') {
+    return reply.status(400).send(httpError(400, 'profile is required: client or operator', 'EXPORT_PROFILE_REQUIRED'))
+  }
   const tenant = await managerOf(req).getTenant(control(req), id)
   if (!tenant) return reply.status(404).send()
   const destroyed = refuseDestroyed(reply, tenant)
@@ -548,10 +578,10 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
   // A dump is a copy of a customer's data leaving the database, and no transaction reaches it: the
   // intent is written first, and without it the dump does not start.
   const exported = { action: 'tenant.exported', tenantId: tenant.id } as const
-  const intent = await intend(req, { ...exported, detail: { schemaVersion } })
+  const intent = await intend(req, { ...exported, detail: { schemaVersion, profile } })
   let result: ExportedPackage & { dir: string }
   try {
-    result = await exportTenant(req, provider, tenant, schemaVersion)
+    result = await exportTenant(req, provider, tenant, schemaVersion, profile)
   } catch (error) {
     await settle(req, intent, 'failure', { ...exported, detail: { reason: failureOf(error) } })
     throw error
@@ -560,21 +590,21 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
   // The log is the operator's, so it keeps where the package is next to what it is.
   await settle(req, intent, 'success', { ...exported, detail: { path: dir, ...packaged } })
 
-  if (log.i) log.info(`Tenant ${tenant.slug}: exported ${result.bytes} bytes at ${schemaVersion ?? 'no migration'}`)
+  if (log.i) log.info(`Tenant ${tenant.slug}: exported a ${profile} package of ${result.bytes} bytes at ${schemaVersion ?? 'no migration'}`)
   return reply.send({ tenant: { id: tenant.id, slug: tenant.slug }, ...packaged })
 }
 
 /**
- * The package as one tar file (docs/API_V5.md §6.3). The `client` profile leaves the envelope out,
- * and is what goes to a customer; the `operator` profile is the whole package, for a restore
- * elsewhere. Checked before it is sent, as an import checks it: a package that no longer matches
- * its manifest is not handed to anyone as if it did.
+ * The package as one tar file (docs/API_V5.md §6.3), in the profile its manifest names and in no
+ * other: the dump was written for that profile. A `client` package leaves the envelope out, and is
+ * what goes to a customer; an `operator` package is whole, for a restore elsewhere. Checked before
+ * it is sent, as an import checks it: a package that no longer matches its manifest is not handed
+ * to anyone as if it did.
  */
 export async function downloadPackage(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const { id, package: name } = req.parameters()
-  const profile = req.data().profile === 'operator' ? 'operator' : 'client'
   const dir = packageDir(name)
   if (!dir) return reply.status(404).send()
 
@@ -587,6 +617,7 @@ export async function downloadPackage(req: FastifyRequest, reply: FastifyReply) 
   // A package of another tenant is not this tenant's, whatever its name says.
   if (opened.envelope.tenant?.id !== id) return reply.status(404).send()
 
+  const { profile } = opened.manifest
   const file = profile === 'operator' ? `${name}.operator.tar` : `${name}.tar`
   return reply
     .type('application/x-tar')
@@ -602,7 +633,8 @@ export async function downloadPackage(req: FastifyRequest, reply: FastifyReply) 
  * container and undoes the packages. After it no session and no login flow of the package is
  * left, every password is a placeholder except the founder's, which the request sets, and every
  * integration token has a new `external_id`. The identity providers come back disabled and
- * without a secret, which an operator enters again.
+ * without a secret, which an operator enters again. Only an `operator` package restores, and one
+ * whose packages left values in clear only on a build where each of them has `unpack`.
  *
  * The dump's SQL runs with the data layer's role, so only a package this platform signed is
  * restored: a hash proves only that nothing changed since somebody sealed it, and anybody can seal.
@@ -633,6 +665,12 @@ export async function importTenant(req: FastifyRequest, reply: FastifyReply) {
     return refusePackage(reply, error)
   }
   const { manifest, envelope } = opened
+  // Read after the signature: a client package's dump is what `pack` wrote for a customer, emptied
+  // or in clear, and nothing on the way in can tell which values are which.
+  if (manifest.profile !== 'operator') {
+    const message = 'A client package does not restore: export the tenant with the operator profile'
+    return reply.status(409).send(httpError(409, message, 'RESTORE_PROFILE_MISMATCH'))
+  }
 
   const strategy = provider.strategy
   if (manifest.strategy !== strategy) {
@@ -650,7 +688,8 @@ export async function importTenant(req: FastifyRequest, reply: FastifyReply) {
   }
   const lifecycles = lifecyclesOf(req)
   const parts = manifest.packages.filter((p) => p.file)
-  const missing = unrestorable(lifecycles, parts.map((p) => p.name))
+  const unpack = manifest.packages.filter((p) => p.unpack).map((p) => p.name)
+  const missing = unrestorable(lifecycles, parts.map((p) => p.name), unpack)
   if (missing.length) {
     return reply
       .status(409)
@@ -706,7 +745,10 @@ export async function importTenant(req: FastifyRequest, reply: FastifyReply) {
 
     const schemaVersion = await migrations.apply({ tenantId: locator, locator })
     const container = await provider.forLocator(locator, locator)
-    const tokens = req.server['tokenManager'] as { resetExternalId?(ctx: unknown, id: string): Promise<string> } | undefined
+    // Before anything else reads the container: what `pack` left in clear is encrypted again here,
+    // with this machine's key. It lives in the container only, so dropping it undoes it.
+    await unpackInPackages(lifecycles, place, container, unpack)
+    const tokens =req.server['tokenManager'] as { resetExternalId?(ctx: unknown, id: string): Promise<string> } | undefined
     if (restored.tokenIds.length && !tokens?.resetExternalId) {
       throw Object.assign(new Error('This build cannot renew the integration tokens of the package'), {
         statusCode: 503,
@@ -788,6 +830,11 @@ export async function move(req: FastifyRequest, reply: FastifyReply) {
   }
   if (opened.envelope.tenant?.id !== tenant.id) {
     return reply.status(409).send(httpError(409, 'That package was not exported from this tenant', 'TENANT_PACKAGE_MISMATCH'))
+  }
+  // The tenant goes with the package, and the destination restores only an operator one.
+  if (opened.manifest.profile !== 'operator') {
+    const message = 'A client package does not restore: move the tenant with an operator package'
+    return reply.status(409).send(httpError(409, message, 'RESTORE_PROFILE_MISMATCH'))
   }
 
   const done = await governed(
@@ -979,7 +1026,8 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
       ? await migrations.version({ tenantId: tenant.id, locator: tenant.locator })
       : (tenant.schemaVersion ?? null)
 
-    exported = await exportTenant(req, provider, tenant, schemaVersion)
+    // The package that outlives the tenant is the one that restores it.
+    exported = await exportTenant(req, provider, tenant, schemaVersion, 'operator')
   } catch (error) {
     if (log.e) log.error(`Destruction of ${tenant.slug} stopped: the export failed: ${(error as Error)?.message}`)
     await stopped('DESTRUCTION_EXPORT_FAILED')

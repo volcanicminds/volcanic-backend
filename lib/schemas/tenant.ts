@@ -90,10 +90,15 @@ export const tenantPackageParamsSchema = {
   properties: { id: { type: 'string' }, package: packageName }
 }
 
-export const tenantPackageQuerySchema = {
-  $id: 'tenantPackageQuerySchema',
+// Required, and refused by the controller when missing (EXPORT_PROFILE_REQUIRED): the dump is
+// written for one profile, and the download sends that one.
+export const tenantExportBodySchema = {
+  $id: 'tenantExportBodySchema',
   type: 'object',
-  properties: { profile: { type: 'string', enum: ['client', 'operator'], default: 'client' } }
+  nullable: true,
+  properties: {
+    profile: { type: 'string', enum: ['client', 'operator'], description: 'client for the customer, operator for a restore' }
+  }
 }
 
 export const tenantResponseSchema = {

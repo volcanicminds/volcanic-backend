@@ -191,6 +191,37 @@ suite('export · a Postgres container, out and back (T-17.1, T-17.4)', function 
     expect((await handle.execute('select count(*)::int as n from widget')).rows).toEqual([{ n: 1 }])
   })
 
+  it('hands pack the scrubbed copy before the rows are counted, and leaves the live container as it was (T-17.10)', async () => {
+    const seen: any[] = []
+    const packed = await provider.exportContainer(
+      { id: 'id-acme', slug: 'acme', locator: SOURCE },
+      {
+        target: path.join(dir, 'packed.sql'),
+        schemaVersion: '0001_init',
+        pack: async (handle: any) => {
+          seen.push(...(await handle.execute('select password, mfa_secret from "user" order by id')).rows)
+          await handle.execute('delete from widget')
+        }
+      }
+    )
+    expect(seen).toEqual([
+      { password: RESTORED_PASSWORD, mfa_secret: null },
+      { password: RESTORED_PASSWORD, mfa_secret: null }
+    ])
+    expect(packed.rowCounts).toMatchObject({ user: 2, widget: 0 })
+    expect(fs.readFileSync(packed.path, 'utf8')).not.toContain('ACME PRIVATE ROW')
+    const live: any = await provider.forLocator(SOURCE, SOURCE)
+    expect((await live.execute('select tag from widget')).rows).toEqual([{ tag: 'ACME PRIVATE ROW' }])
+
+    // A pack that throws fails the export, and no scratch container outlives it.
+    const failed = provider.exportContainer(
+      { id: 'id-acme', slug: 'acme', locator: SOURCE },
+      { target: path.join(dir, 'failed.sql'), schemaVersion: '0001_init', pack: async () => Promise.reject(new Error('pack refused')) }
+    )
+    await expect(failed).rejects.toThrow('pack refused')
+    expect((await provider.db.execute("select nspname from pg_namespace where nspname like 'vm_scratch_%'")).rows).toEqual([])
+  })
+
   it('refuses a dump that does not hold the rows it claims, or carries a meta-command, and drops what it made', async () => {
     const exists = async () => (await provider.db.execute(`select 1 from pg_namespace where nspname = '${BAD}'`)).rows.length
 

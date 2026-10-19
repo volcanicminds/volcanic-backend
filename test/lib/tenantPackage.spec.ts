@@ -98,7 +98,7 @@ const useExports = () => {
   return dir
 }
 
-async function sealed(files: Record<string, string> = { 'tenant.sql': 'create table x();\n' }, packages: any[] = []) {
+async function sealed(files: Record<string, string> = { 'tenant.sql': 'create table x();\n' }, packages: any[] = [], profile: any = 'operator') {
   const { name, dir } = createPackage(ACME, '0001_init')
   for (const [rel, content] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
@@ -107,6 +107,7 @@ async function sealed(files: Record<string, string> = { 'tenant.sql': 'create ta
   const seal = await sealPackage(dir, {
     createdAt: new Date().toISOString(),
     tenant: { name: ACME.name, slug: ACME.slug },
+    profile,
     schemaVersion: '0001_init',
     strategy: 'schema',
     engine: 'postgres',
@@ -158,13 +159,29 @@ describe('the package of a tenant (T-17.1, T-17.5)', () => {
     // The part's path goes to a lifecycle's `restore` as its source: a manifest that named
     // `../../<other tenant>` would copy another tenant's folder into this one.
     const files = { 'tenant.sql': 'create table x();\n', 'tenant.notes/a.txt': 'note\n' }
-    const part = (file: string, name = 'notes') => [{ name, file, description: null }]
+    const part = (file: string, name = 'notes') => [{ name, file, unpack: false, description: null }]
     await expect(openPackage((await sealed(files, part('tenant.notes'))).dir)).resolves.toBeTruthy()
 
     for (const [file, name] of [['../../outside', 'notes'], ['tenant.notes/../..', 'notes'], ['tenant.sql', 'notes'], ['tenant.rag', 'rag'], ['tenant.x', '../x']]) {
       await expect(openPackage((await sealed(files, part(file, name))).dir)).rejects.toMatchObject({
         code: 'RESTORE_PACKAGE_INVALID',
         message: /is not a file of this package/
+      })
+    }
+  })
+
+  it('refuses a manifest that names no profile, and a package that does not say whether it unpacks (T-17.10)', async () => {
+    for (const profile of ['client', 'operator']) await expect(openPackage((await sealed(undefined, [], profile)).dir)).resolves.toBeTruthy()
+    for (const profile of [null, 'admin']) {
+      await expect(openPackage((await sealed(undefined, [], profile)).dir)).rejects.toMatchObject({
+        code: 'RESTORE_PACKAGE_INVALID',
+        message: /names no profile/
+      })
+    }
+    for (const unpack of [undefined, 'yes', 1]) {
+      await expect(openPackage((await sealed(undefined, [{ name: 'vault', file: null, unpack, description: null }])).dir)).rejects.toMatchObject({
+        code: 'RESTORE_PACKAGE_INVALID',
+        message: /vault does not say whether it unpacks/
       })
     }
   })
@@ -272,6 +289,8 @@ function build(over: any = {}) {
   server.decorate('provider', {
     strategy: over.strategy ?? 'schema',
     exportContainer: async (_t: any, request: any) => {
+      // As the provider does: on the scratch copy, after the scrub and before the rows are counted.
+      if (!over.skipsPack) await request.pack?.({ kind: 'tenant', locator: 'vm_scratch' })
       fs.writeFileSync(request.target, 'create table widget();\n')
       return { path: request.target, bytes: 24, schemaVersion: '0001_init', schema: 'vm_package', rowCounts: { user: 2, token: 1 } }
     },
@@ -325,8 +344,8 @@ function build(over: any = {}) {
   return { server, governance, steps, rows, exports }
 }
 
-const exported = async (server: any) => {
-  const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+const exported = async (server: any, profile = 'operator') => {
+  const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile } })
   expect(res.statusCode).toBe(200)
   return JSON.parse(res.body).package as string
 }
@@ -336,19 +355,25 @@ const restore = (server: any, payload: any) => server.inject({ method: 'POST', u
 describe('tenants · the download of a package (T-17.2)', () => {
   afterEach(() => (ACME.status = 'active'))
 
-  it('sends the client profile without the envelope, and the operator profile with it', async () => {
-    const { server } = build()
-    const name = await exported(server)
+  it('sends a client package without the envelope and an operator package with it, whatever the query asks (T-17.10)', async () => {
+    const { server, exports } = build()
+    const name = await exported(server, 'client')
+    // On the server the envelope is there for both: the download reads it to know the tenant.
+    expect(fs.existsSync(path.join(exports, name, 'envelope.json'))).toBe(true)
 
-    const client = await server.inject({ method: 'GET', url: `/tenants/${ACME.id}/exports/${name}` })
-    expect(client.statusCode).toBe(200)
-    expect(client.headers['content-type']).toBe('application/x-tar')
-    expect(client.headers['content-disposition']).toBe(`attachment; filename="${name}.tar"`)
-    expect(client.rawPayload.includes(Buffer.from('envelope.json'))).toBe(false)
-    expect(client.rawPayload.includes(Buffer.from(ACME.id))).toBe(false)
+    for (const query of ['', '?profile=operator']) {
+      const client = await server.inject({ method: 'GET', url: `/tenants/${ACME.id}/exports/${name}${query}` })
+      expect(client.statusCode).toBe(200)
+      expect(client.headers['content-type']).toBe('application/x-tar')
+      expect(client.headers['content-disposition']).toBe(`attachment; filename="${name}.tar"`)
+      expect(client.rawPayload.includes(Buffer.from('envelope.json'))).toBe(false)
+      expect(client.rawPayload.includes(Buffer.from(ACME.id))).toBe(false)
+    }
 
-    const operator = await server.inject({ method: 'GET', url: `/tenants/${ACME.id}/exports/${name}?profile=operator` })
+    const whole = await exported(server, 'operator')
+    const operator = await server.inject({ method: 'GET', url: `/tenants/${ACME.id}/exports/${whole}?profile=client` })
     expect(operator.statusCode).toBe(200)
+    expect(operator.headers['content-disposition']).toBe(`attachment; filename="${whole}.operator.tar"`)
     expect(operator.rawPayload.includes(Buffer.from('envelope.json'))).toBe(true)
     await server.close()
   })
@@ -372,8 +397,112 @@ describe('tenants · the download of a package (T-17.2)', () => {
   })
 })
 
+describe('tenants · the export in a profile (T-17.10)', () => {
+  it('refuses an export without a profile, or with another, before anything is written', async () => {
+    const { server, governance, exports } = build()
+    for (const payload of [undefined, {}, { profile: 'admin' }]) {
+      const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload })
+      expect([res.statusCode, JSON.parse(res.body).code]).toEqual([400, 'EXPORT_PROFILE_REQUIRED'])
+    }
+    expect(fs.readdirSync(exports)).toEqual([])
+    expect(governance.rows).toEqual([])
+    await server.close()
+  })
+
+  it('runs every pack on the scratch copy with the profile, and records it with the packages that unpack', async () => {
+    const lifecycles = (steps: string[]) => [
+      { name: 'vault', pack: async (t: any, handle: any, profile: string) => (steps.push(`vault ${t.slug} ${handle.locator} ${profile}`), true) },
+      { name: 'audit', pack: async (_t: any, _h: any, profile: string) => (steps.push(`audit ${profile}`), false) },
+      { name: 'rag', describe: async () => ({ engine: 'lancedb' }) }
+    ]
+    const { server, steps, governance, exports } = build({ lifecycles })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'client' } })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.profile).toBe('client')
+    expect(steps).toEqual(['vault acme vm_scratch client', 'audit client'])
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(exports, body.package, 'manifest.json'), 'utf8'))
+    expect(manifest.profile).toBe('client')
+    expect(manifest.packages).toEqual([
+      { name: 'vault', file: null, unpack: true, description: null },
+      { name: 'audit', file: null, unpack: false, description: null },
+      { name: 'rag', file: null, unpack: false, description: { engine: 'lancedb' } }
+    ])
+    expect(governance.rows.at(-1)).toMatchObject({ action: 'tenant.exported', outcome: 'success', detail: { profile: 'client' } })
+    await server.close()
+  })
+
+  it('fails the export, and leaves no folder, on a data layer that never runs pack', async () => {
+    const lifecycles = () => [{ name: 'vault', pack: async () => true }]
+    const { server, exports, governance } = build({ lifecycles, skipsPack: true })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'client' } })
+    expect(res.statusCode).toBe(500)
+    expect(fs.readdirSync(exports)).toEqual([])
+    expect(governance.rows.at(-1)).toMatchObject({ action: 'tenant.exported', outcome: 'failure' })
+    await server.close()
+  })
+})
+
 describe('tenants · the restore of a package (T-17.4)', () => {
   const PASSWORD = 'Founder-pw-123456'
+
+  it('refuses a client package with RESTORE_PROFILE_MISMATCH, before anything is built (T-17.10)', async () => {
+    const { server, steps } = build()
+    const name = await exported(server, 'client')
+    const res = await restore(server, { package: name, slug: 'b', founderPassword: PASSWORD })
+    expect([res.statusCode, JSON.parse(res.body).code]).toEqual([409, 'RESTORE_PROFILE_MISMATCH'])
+    expect(steps).toEqual([])
+    await server.close()
+  })
+
+  it('runs unpack after the migrations and before restore and create, only where pack asked for it (T-17.10)', async () => {
+    const lifecycles = (steps: string[]) => [
+      {
+        name: 'vault',
+        pack: async () => true,
+        unpack: async (place: any, handle: any) => void steps.push(`vault unpack ${place.locator} ${handle.locator}`),
+        create: async (place: any) => void steps.push(`vault create ${place.locator}`)
+      },
+      { name: 'audit', pack: async () => false, unpack: async () => void steps.push('audit unpack') }
+    ]
+    const { server, steps } = build({ lifecycles })
+    const name = await exported(server)
+    const res = await restore(server, { package: name, slug: 'b', founderPassword: PASSWORD })
+    expect(res.statusCode).toBe(201)
+    expect(steps).toEqual([
+      'restore tenant_b tenant.sql vm_package',
+      'migrate',
+      'vault unpack tenant_b tenant_b',
+      'token tok-1',
+      `password u-founder ${PASSWORD}`,
+      'vault create tenant_b',
+      'row b tenant_b',
+      'idp entra disabled no secret'
+    ])
+    await server.close()
+  })
+
+  it('refuses a package whose pack left values in clear on a build without unpack, and undoes a failing unpack (T-17.10)', async () => {
+    const vault: any = { name: 'vault', pack: async () => true, unpack: async () => {} }
+    const { server, steps, rows } = build({ lifecycles: () => [vault] })
+    const name = await exported(server)
+
+    delete vault.unpack
+    const refused = await restore(server, { package: name, slug: 'b', founderPassword: PASSWORD })
+    expect(refused.statusCode).toBe(409)
+    expect(JSON.parse(refused.body)).toMatchObject({ code: 'RESTORE_PACKAGE_UNAVAILABLE', message: /vault/ })
+    expect(steps).toEqual([])
+
+    vault.unpack = async () => {
+      throw new Error('no key to encrypt with')
+    }
+    const failed = await restore(server, { package: name, slug: 'b', founderPassword: PASSWORD })
+    expect(failed.statusCode).toBe(500)
+    expect(steps).toEqual(['restore tenant_b tenant.sql vm_package', 'migrate', 'drop tenant_b'])
+    expect(rows).toEqual([ACME])
+    await server.close()
+  })
 
   it('builds a new tenant in the order of a creation, and records where it came from', async () => {
     const lifecycles = (steps: string[]) => [
@@ -389,7 +518,7 @@ describe('tenants · the restore of a package (T-17.4)', () => {
     const { server, steps, governance, exports } = build({ lifecycles })
     const name = await exported(server)
     const manifest = JSON.parse(fs.readFileSync(path.join(exports, name, 'manifest.json'), 'utf8'))
-    expect(manifest.packages[0]).toEqual({ name: 'rag', file: 'tenant.rag', description: { engine: 'lancedb', model: 'bge-small' } })
+    expect(manifest.packages[0]).toEqual({ name: 'rag', file: 'tenant.rag', unpack: false, description: { engine: 'lancedb', model: 'bge-small' } })
 
     const res = await restore(server, { package: name, slug: 'acme2', founderPassword: PASSWORD })
     expect(res.statusCode).toBe(201)
@@ -493,7 +622,7 @@ describe('tenants · the restore of a package (T-17.4)', () => {
   it('exports without a key as an unsigned package, and restores nothing without a key to verify with', async () => {
     const { server, steps } = build()
     delete process.env.PACKAGE_SIGNING_KEY
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export` })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
     expect([res.statusCode, JSON.parse(res.body).signed]).toEqual([200, false])
 
     const refused = await restore(server, {
@@ -572,6 +701,15 @@ describe('tenants · the move of a tenant (T-17.6)', () => {
       outcome: 'success',
       detail: { destination: 'eu-west-2', package: name, manifestSha256: sha }
     })
+    await server.close()
+  })
+
+  it('refuses a client package with RESTORE_PROFILE_MISMATCH, and leaves the tenant active (T-17.10)', async () => {
+    const { server, rows } = build()
+    const name = await exported(server, 'client')
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/move`, payload: { destination: 'x', package: name } })
+    expect([res.statusCode, JSON.parse(res.body).code]).toEqual([409, 'RESTORE_PROFILE_MISMATCH'])
+    expect(rows[0].status).toBe('active')
     await server.close()
   })
 

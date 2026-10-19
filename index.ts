@@ -671,6 +671,7 @@ export type {
   Tenant,
   TenantPlace,
   TenantLifecycle,
+  PackageProfile,
   ExportedArtifact,
   JobRun,
   JobScope

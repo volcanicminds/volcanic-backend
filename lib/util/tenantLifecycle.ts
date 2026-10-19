@@ -1,5 +1,5 @@
 import fs from 'fs'
-import type { ExportedArtifact, Tenant, TenantHandle, TenantLifecycle, TenantPlace } from '../../types/global.js'
+import type { ExportedArtifact, PackageProfile, Tenant, TenantHandle, TenantLifecycle, TenantPlace } from '../../types/global.js'
 
 //
 // The packages that follow a tenant's life (`TenantLifecycle`).
@@ -106,11 +106,47 @@ export async function describePackages(
 }
 
 /**
- * The packages a restore cannot rebuild, given the parts the export holds: a part whose package is
- * not in this build, or whose package has no `restore`. Checked before anything is built.
+ * Runs every `pack` on the scratch copy of an export, in order, and answers the names of the
+ * packages that wrote values to encrypt again: the manifest records them for the restore.
  */
-export function unrestorable(lifecycles: readonly TenantLifecycle[], parts: readonly string[]): string[] {
-  return parts.filter((name) => !lifecycles.find((l) => l.name === name)?.restore)
+export async function packInPackages(
+  lifecycles: readonly TenantLifecycle[],
+  tenant: Tenant,
+  handle: TenantHandle,
+  profile: PackageProfile
+): Promise<Set<string>> {
+  const unpack = new Set<string>()
+  for (const lifecycle of lifecycles) {
+    if (!lifecycle.pack) continue
+    if ((await named(lifecycle, 'pack', () => lifecycle.pack!(tenant, handle, profile))) === true) unpack.add(lifecycle.name)
+  }
+  return unpack
+}
+
+/**
+ * The packages a restore cannot rebuild, given the parts the export holds and the packages whose
+ * values wait to be encrypted again: a package not in this build, a part without `restore`, a
+ * value in clear without `unpack`. Checked before anything is built.
+ */
+export function unrestorable(lifecycles: readonly TenantLifecycle[], parts: readonly string[], unpack: readonly string[] = []): string[] {
+  const of = (name: string) => lifecycles.find((l) => l.name === name)
+  const missing = [...parts.filter((name) => !of(name)?.restore), ...unpack.filter((name) => !of(name)?.unpack)]
+  return [...new Set(missing)]
+}
+
+/**
+ * Runs `unpack` for the packages the manifest names, in the order of `start()`: before `restore`
+ * and `create`, which then find their data as the live container had it.
+ */
+export async function unpackInPackages(
+  lifecycles: readonly TenantLifecycle[],
+  place: TenantPlace,
+  handle: TenantHandle,
+  unpack: readonly string[]
+): Promise<void> {
+  for (const lifecycle of lifecycles) {
+    if (unpack.includes(lifecycle.name)) await named(lifecycle, 'unpack', () => lifecycle.unpack!(place, handle))
+  }
 }
 
 /**

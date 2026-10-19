@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { Readable } from 'stream'
-import type { IdentityProvider, Tenant, TenantStrategy } from '../../types/global.js'
+import type { IdentityProvider, PackageProfile, Tenant, TenantStrategy } from '../../types/global.js'
 
 //
 // The package of a tenant: a folder in the export directory, written by an export and read by an
@@ -33,13 +33,18 @@ export interface PackageManifest {
   version: 1
   createdAt: string
   tenant: { name: string; slug: string }
+  /** One per package, chosen at the export: the dump is what `pack` wrote for it, and the download sends it as it is. */
+  profile: PackageProfile
   schemaVersion: string | null
   strategy: TenantStrategy
   engine: string
   /** `schema` is the one the dump creates its tables in; null when it names none and loads into `public`. */
   dump: { file: string; schema: string | null; rowCounts: Record<string, number> }
-  /** Every package of `tenantLifecycles` at export time; `file` is null for one that keeps nothing outside the container. */
-  packages: { name: string; file: string | null; description: Record<string, unknown> | null }[]
+  /**
+   * Every package of `tenantLifecycles` at export time; `file` is null for one that keeps nothing
+   * outside the container, `unpack` true for one whose `pack` left values to encrypt again.
+   */
+  packages: { name: string; file: string | null; unpack: boolean; description: Record<string, unknown> | null }[]
   files: { path: string; bytes: number; sha256: string }[]
 }
 
@@ -214,6 +219,10 @@ export async function openPackage(dir: string): Promise<{ manifest: PackageManif
   if (manifest.format !== PACKAGE_FORMAT || manifest.version !== 1 || !Array.isArray(manifest.files)) {
     throw new PackageInvalidError(`${MANIFEST} is not a version 1 ${PACKAGE_FORMAT}`)
   }
+  // The download sends the envelope by this field: a value it does not know is not read as either.
+  if (manifest.profile !== 'client' && manifest.profile !== 'operator') {
+    throw new PackageInvalidError(`${MANIFEST} names no profile, client or operator`)
+  }
   const envelope = readJson(path.join(dir, ENVELOPE)) as unknown as PackageEnvelope
   const digest = await sha256(path.join(dir, MANIFEST))
   if (envelope.format !== ENVELOPE_FORMAT || envelope.version !== 1 || envelope.manifestSha256 !== digest) {
@@ -235,7 +244,9 @@ export async function openPackage(dir: string): Promise<{ manifest: PackageManif
   // A part is handed to a lifecycle's `restore` as a path: only the one name an export writes, and
   // only if the files list holds it, so a manifest cannot point a restore at a folder elsewhere.
   for (const part of Array.isArray(manifest.packages) ? manifest.packages : []) {
-    if (part?.file == null) continue
+    // Read as false, a value that is not a boolean would restore in clear what `pack` decrypted.
+    if (typeof part?.unpack !== 'boolean') throw new PackageInvalidError(`the package ${String(part?.name)} does not say whether it unpacks`)
+    if (part.file == null) continue
     const named = typeof part.name === 'string' && NAME.test(part.name) && part.file === `${PART_PREFIX}${part.name}`
     if (!named || !(listed.has(part.file) || [...listed].some((rel) => rel.startsWith(`${part.file}/`)))) {
       throw new PackageInvalidError(`the part ${String(part.file)} is not a file of this package`)

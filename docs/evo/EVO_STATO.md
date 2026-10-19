@@ -224,8 +224,9 @@ metà riga, `\.\r`, `$$`, codifiche client): dal 15 ottobre 2026 (T-17.9, opzion
 proprietario) la busta è firmata con `PACKAGE_SIGNING_KEY` e un pacchetto non firmato da questa
 piattaforma non si ripristina (422 `RESTORE_SIGNATURE_INVALID`). **Fase 17 riaperta dal
 proprietario il 19 ottobre 2026**, due compiti: i dati dell'app, cifrati o no, sono del cliente e
-li tratta un aggancio dell'app con il profilo scelto all'export (F92, F93, T-17.10);
-l'amministratore del tenant esporta e scarica il suo tenant; export, download, import e
+li tratta un aggancio dell'app con il profilo scelto all'export (F92, F93, T-17.10, chiuso il
+19 ottobre 2026: 1101 prove con `DATABASE_URL`, banco `tenantLifecycle.e2e` 18 sulle due
+strategie); l'amministratore del tenant esporta e scarica il suo tenant; export, download, import e
 trasloco nel piano di controllo restano al solo `system:admin`, con lo step-up; ogni download
 scrive un evento (F89, T-17.11).
 

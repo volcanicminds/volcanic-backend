@@ -313,6 +313,8 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     // The envelope keeps the providers the destruction removes: after it, they are only there.
     const envelope = JSON.parse(fs.readFileSync(path.join(exports, written, 'envelope.json'), 'utf8'))
     expect(envelope.identityProviders.map((p: any) => p.key)).toEqual(['entra', 'okta'])
+    // The package that outlives the tenant is the one a restore accepts (T-17.10).
+    expect(JSON.parse(fs.readFileSync(path.join(exports, written, 'manifest.json'), 'utf8')).profile).toBe('operator')
     await server.close()
   })
 

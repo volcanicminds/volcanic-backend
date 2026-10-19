@@ -370,8 +370,8 @@ no governance log manager answers every one of these routes with 503
 | DELETE | `/tenants/:id` | `tenants` | soft-deletes **the registry row only**. The response says so explicitly |
 | GET | `/tenants/migrations` | `migrations` | which container is at which schema version |
 | POST | `/tenants/:id/migrate` | `migrations` | applies the pending migrations to one container |
-| POST | `/tenants/:id/export` | `tenants:export` | writes the tenant's package (§6.3) and answers `{ tenant, package, manifestSha256, signed, bytes, schemaVersion, artifacts: [{ name, bytes }] }`, never a path on the server; `signed: false` without `PACKAGE_SIGNING_KEY`, and no instance restores that package. A package of `tenantLifecycles` that fails removes the whole package, and the export fails |
-| GET | `/tenants/:id/exports/:package` | `tenants:export` | the package as one tar file, checked against its manifest first (§6.3) |
+| POST | `/tenants/:id/export` | `tenants:export` | body: `{ profile }`, `client` or `operator`, **required** (400 `EXPORT_PROFILE_REQUIRED`). Writes the tenant's package in that profile (§6.3) and answers `{ tenant, package, manifestSha256, signed, bytes, schemaVersion, profile, artifacts: [{ name, bytes }] }`, never a path on the server; `signed: false` without `PACKAGE_SIGNING_KEY`, and no instance restores that package. A package of `tenantLifecycles` that fails removes the whole package, and the export fails |
+| GET | `/tenants/:id/exports/:package` | `tenants:export` | the package as one tar file, in the profile its export chose, checked against its manifest first (§6.3) |
 | POST | `/tenants/import` | `tenants` | a new tenant from a package (§6.4) |
 | POST | `/tenants/:id/move` | `tenants` | records that the tenant moved (§6.5) |
 | POST | `/tenants/:id/impersonate` | `tenants:impersonate` | body: `{ userId, reason }`. `reason` is **required**. Fresh: an operator whose proof is older than `STEP_UP_MAX_AGE` gets 403 `STEP_UP_REQUIRED` (§2.6) |
@@ -464,17 +464,21 @@ the only place where the tenant's identity providers remain (§6.3).
 ### 6.3 The package of a tenant
 
 An export writes one folder in `export_directory` (`./data/exports` by default), named after the
-slug, the schema version, the instant and a random suffix:
+slug, the schema version, the instant and a random suffix, in one profile the body names:
+`client`, the customer's copy, or `operator`, the only one a restore accepts. There is no default:
+nobody gets, by distraction, a package that does not restore. The export of a destruction is
+`operator`.
 
 | File | Holds |
 |---|---|
 | `tenant.sql` | the dump of the container, without credentials. Under `schema` it names `vm_package` instead of the locator |
 | `tenant.<name>` | what each package of `tenantLifecycles` keeps outside the container, a file or a folder |
-| `manifest.json` | every file above with its bytes and SHA-256, the schema version, the strategy and engine, the rows per table, and what each package says of itself (`describe`) |
+| `manifest.json` | the profile, every file above with its bytes and SHA-256, the schema version, the strategy and engine, the rows per table, and for each package what it says of itself (`describe`) and whether a restore has to `unpack` it |
 | `envelope.json` | the operator's part: the registry row and the tenant's identity providers, bound to the manifest by its hash and signed with the platform key |
 
 The manifest is the customer's: it names no tenant id, no locator and no path of the server. The
-envelope is not: it travels only in the operator's copy.
+envelope is not: it is written on the server in both profiles, and travels only in the operator's
+package.
 
 The signature is an HMAC-SHA256 of the envelope, `signature: { alg, kid, value }`, where `kid` is
 the start of the key's SHA-256 and never the key. `PACKAGE_SIGNING_KEY` signs and verifies;
@@ -487,16 +491,26 @@ What the dump does not carry, because it is a credential: every password (replac
 password matches, the column stays `NOT NULL`), `mfa_secret` and `mfa_enabled` (false),
 `mfa_type`, the reset and confirmation tokens, and every row of `session` and `auth_flow`. A
 user's `external_id` stays: the external identities and the access log point at it. The identity
-providers in the envelope carry no client secret. Nothing encrypted leaves, so a package opens
-on any machine and depends on no key; the signature decides only whether a platform restores it.
+providers in the envelope carry no client secret. Nothing the framework encrypted leaves, so the
+framework's part opens on any machine and depends on no key; the signature decides only whether a
+platform restores it.
+
+The data the application keeps in its own tables is the customer's, encrypted or not, and the
+framework neither reads nor empties it: the `pack` of a package of `tenantLifecycles` treats it,
+for the profile asked, writing a value in clear, emptying it or leaving it as it is, and answers
+whether a restore has to encrypt again what it wrote in clear (`unpack`, §6.4). Without `pack` a
+value encrypted with the backend's `encrypt()` travels as it is, and opens neither for the customer
+nor on a machine with another key.
 
 The raw dump never reaches a disk: it is loaded into a scratch container, emptied of credentials
-there, and dumped to the package. That file is then loaded into a second scratch container and its
-rows counted against the first; a dump that does not load back to the same rows fails the export.
+there, handed to each `pack`, its rows counted, and dumped to the package. That file is then loaded
+into a second scratch container and its rows counted against the first; a dump that does not load
+back to the same rows fails the export. A `pack` that throws fails it too.
 
 `GET /tenants/:id/exports/:package` answers the package as `application/x-tar` (POSIX ustar, one
-folder named after the package). Query `profile=client` (the default) leaves `envelope.json` out,
-`profile=operator` keeps it. The package is checked against its manifest before a byte is sent; a
+folder named after the package), in the profile its export chose and no other: a `client` package
+leaves `envelope.json` out, an `operator` one keeps it, and the file is named
+`<package>.<profile>.tar`. The package is checked against its manifest before a byte is sent; a
 name that is not a package of this tenant answers 404.
 
 The export of a single-tenant deployment and of the control plane is not this route's: there the
@@ -517,9 +531,10 @@ In order, each refusal before anything is built:
 | 404 | `RESTORE_PACKAGE_INVALID` | no package with that name |
 | 422 | `RESTORE_PACKAGE_INVALID` | a file differs from the manifest, a file is not listed, a link, a package part that is not one of its files, or an envelope of another manifest |
 | 422 | `RESTORE_SIGNATURE_INVALID` | the envelope is unsigned, signed with a key this instance does not hold, or changed after the signature |
+| 409 | `RESTORE_PROFILE_MISMATCH` | the package was exported in the `client` profile |
 | 409 | `RESTORE_STRATEGY_MISMATCH` | the package was made under another strategy |
 | 409 | `RESTORE_SCHEMA_AHEAD` | the package is at a schema version this build does not have |
-| 409 | `RESTORE_PACKAGE_UNAVAILABLE` | a package of `tenantLifecycles` kept a part this build cannot restore |
+| 409 | `RESTORE_PACKAGE_UNAVAILABLE` | a package of `tenantLifecycles` kept a part this build cannot restore, or asks for an `unpack` this build does not have |
 | 400, 503 | the codes of a creation | the tenant's configuration breaks a policy of this deployment (§6.1) |
 | 409 | `TENANT_EXISTS`, `TENANT_LOCATOR_TAKEN` | as on a creation |
 
@@ -527,7 +542,8 @@ Then the container is created from the dump, which goes through the same reader 
 line `psql` would run on the machine (a meta-command outside the data) is refused with
 `RESTORE_INTEGRITY_FAILED`, and so is a dump whose rows differ from the manifest's. The
 credentials are emptied again, in case the package was written by hand. The migrations bring the
-container to this build's version; every integration token gets a new `external_id`, so no bearer
+container to this build's version; each package whose `pack` wrote values in clear runs its
+`unpack`, which encrypts them again with this machine's key; every integration token gets a new `external_id`, so no bearer
 issued before the restore authenticates (`POST /token/:id/reissue` shows a new one); the founder,
 the user with `is_founder`, gets `founderPassword`. A package with no founder answers 422
 `RESTORE_FOUNDER_MISSING`. The packages of `tenantLifecycles` restore their part, or create it
@@ -551,7 +567,8 @@ SQL, so it lives where `JWT_SECRET` lives, and it meets the same strength check 
 
 `POST /tenants/:id/move`, body `{ destination, package }`. The tenant turns `status: 'moved'`
 with `movedTo: destination`, and no longer resolves requests; its container stays. `package` must
-be a package exported from this tenant, or 409 `TENANT_PACKAGE_MISMATCH`. The event `tenant.moved`
+be a package exported from this tenant, or 409 `TENANT_PACKAGE_MISMATCH`, in the `operator`
+profile, the one the destination restores, or 409 `RESTORE_PROFILE_MISMATCH`. The event `tenant.moved`
 records the destination, the package and the manifest hash. `POST /tenants/:id/restore` makes the
 tenant active again and clears `movedTo`. The destination restores the package only if it holds
 the source's signing key, as its own `PACKAGE_SIGNING_KEY` or in `PACKAGE_VERIFY_KEYS`.

@@ -343,6 +343,12 @@ export interface Tenant {
 export type TenantPlace = Pick<Tenant, 'slug' | 'locator' | 'strategy'>
 
 /**
+ * Who a package is for, chosen at the export and written in its manifest: `client` goes to the
+ * customer, without the envelope; `operator` carries it, and is the only one a restore accepts.
+ */
+export type PackageProfile = 'client' | 'operator'
+
+/**
  * A package's part in the life of a tenant, passed to `start({ tenantLifecycles })`.
  *
  * What a package keeps for a tenant inside the container goes with the container. What it keeps
@@ -371,6 +377,22 @@ export interface TenantLifecycle {
    * the platform: an engine, a model, a format. JSON, no secret: the manifest goes to the customer.
    */
   describe?(tenant: Tenant): Promise<Record<string, unknown>>
+  /**
+   * Treats the package's own data for the export, on `handle`, a scratch copy of the container: the
+   * framework's credentials are already emptied there, and the rows are counted and dumped after.
+   * Under `schema` the copy is not at `tenant.locator`: work through `handle`, never by name. For
+   * each column the package decides whether to keep it, write it in clear or empty it, and may do
+   * it differently for each `profile`. Answers true when it wrote values that `unpack` has to
+   * encrypt again: the manifest records it, and a build without `unpack` refuses the restore. A
+   * throw fails the export; the live container is never touched.
+   */
+  pack?(tenant: Tenant, handle: TenantHandle, profile: PackageProfile): Promise<boolean>
+  /**
+   * Encrypts again, with this machine's key, what `pack` wrote in clear. Runs on a restore after the
+   * dump is loaded and migrated, before `restore` and `create`, and only for a package whose `pack`
+   * answered true; a throw is undone like theirs.
+   */
+  unpack?(tenant: TenantPlace, handle: TenantHandle): Promise<void>
   /**
    * Rebuilds what `export` wrote, from `source`, for a tenant restored from a package. Runs after
    * the dump is loaded and migrated, before the registry row, where `create` runs on a creation,

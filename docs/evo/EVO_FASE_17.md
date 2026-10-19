@@ -128,7 +128,7 @@ fase 16.
   **Chiuso il 15 ottobre 2026.** `lib/util/tenantPackage.ts`, `importTenant`, controllo di
   robustezza all'avvio in `index.ts`. Prove in `tenantPackage.spec.ts`, compreso un pacchetto
   riscritto e risigillato senza chiave.
-- [ ] **T-17.10** Gli agganci dell'app e il profilo all'export (F82, F83, F84, F92, F93). `pack`
+- [x] **T-17.10** Gli agganci dell'app e il profilo all'export (F82, F83, F84, F92, F93). `pack`
   e `unpack` su `TenantLifecycle` in `types/global.d.ts`: `pack` riceve il tenant, il contenitore
   temporaneo e il profilo, e risponde se ha scritto valori da ricifrare; `unpack` riceve il
   tenant e il contenitore di arrivo. In `exportContainer` del provider `pack` gira dopo
@@ -139,6 +139,28 @@ fase 16.
   a un'app che non lo ha. Prove: un aggancio che svuota una colonna e uno che la decifra e la
   ricifra, sulle due strategie; difetto piantato (`pack` chiamato dopo i conteggi, `unpack`
   saltato).
+  **Chiuso il 19 ottobre 2026.** `PackageProfile`, `pack` e `unpack` in `types/global.d.ts`;
+  `packInPackages`, `unpackInPackages` e `unrestorable` in `lib/util/tenantLifecycle.ts`; il
+  provider riceve una funzione `pack(handle)` e non sa niente degli agganci, e l'export fallisce
+  se gli agganci hanno `pack` e il provider non l'ha chiamata. Il manifest porta `profile` e
+  `unpack` per pacchetto, e `openPackage` rifiuta un profilo assente o sconosciuto e un `unpack`
+  non booleano. Un export senza profilo valido risponde 400 `EXPORT_PROFILE_REQUIRED`; import e
+  trasloco rifiutano un pacchetto `client` con 409 `RESTORE_PROFILE_MISMATCH` (decisione del
+  proprietario del 19 ottobre 2026: un solo codice per i due); `unpack` gira solo per i pacchetti
+  segnati, e un pacchetto segnato senza `unpack` in questa build risponde 409
+  `RESTORE_PACKAGE_UNAVAILABLE`. Prove: in `tenantPackage.spec.ts` rifiuti, ordine dei passi al
+  ripristino e annullamento di un `unpack` che fallisce; in `test/migrations/export.spec.ts`
+  `pack` vede la copia già senza credenziali, le righe che toglie non si contano e il contenitore
+  vivo resta com'era; nel banco `tenantLifecycle.e2e`, sulle due strategie, un aggancio `vault`
+  che decifra una colonna cifrata con `encrypt()` in tutti e due i profili e nel profilo `client`
+  svuota una colonna e toglie una riga, il valore ripristinato è di nuovo cifrato e si decifra
+  nell'originale, e il pacchetto `client` non si ripristina né trasloca. Esito con
+  `DATABASE_URL` su un database di prova dedicato: `npm test` 1101 prove, nessuna saltata;
+  `test:e2e:mt:pg` 63, banco `tenantLifecycle.e2e` 18 sulle due strategie; rag-sample
+  `test:tenants` 9 su 9 nelle quattro combinazioni; admin 228. Difetti piantati: `pack` dopo
+  `countRows` fa cadere 1 prova del provider (`ExportFailedError`, `widget: 1 expected, 0 found`)
+  e 4 del banco; `unpack` saltato ne fa cadere 2 in `tenantPackage.spec.ts` e 2 nel banco (il
+  valore ripristinato resta in chiaro).
 - [ ] **T-17.11** Chi esporta, scarica e ripristina (F89). Due rotte nel piano del tenant, solo
   per il ruolo `admin` e con `freshAuth`: l'export del proprio tenant, sempre `client`, e il suo
   download, con il tenant preso dal token e mai dai parametri. Nel piano di controllo

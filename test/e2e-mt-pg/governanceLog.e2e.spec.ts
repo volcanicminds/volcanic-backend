@@ -13,6 +13,8 @@ import { setup, teardown, inject, systemToken, createTenant, sql, bearer, ACME, 
 
 const body = (res: any) => JSON.parse(res.body)
 const TWIN = { slug: 'acme-twin', locator: 'tenant_acme_twin' }
+// The profile an export has to name; the operator's is the one that restores (T-17.10).
+const OPERATOR = { profile: 'operator' }
 
 const ACTIONS = [
   'tenant.created',
@@ -145,10 +147,10 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
   })
 
   it('writes the intent of an export before it, and the outcome after', async () => {
-    const res = await call('POST', `/tenants/${acmeId}/export`)
+    const res = await call('POST', `/tenants/${acmeId}/export`, OPERATOR)
     expect(res.statusCode).toBe(200)
     const [intent, success] = await rows(`where action = 'tenant.exported'`)
-    expect(intent).toMatchObject({ outcome: 'intent', tenant_id: acmeId, intent_id: null })
+    expect(intent).toMatchObject({ outcome: 'intent', tenant_id: acmeId, intent_id: null, detail: { profile: 'operator' } })
     expect(success).toMatchObject({ outcome: 'success', tenant_id: acmeId, intent_id: intent.id })
     // The path stays in the log, for whoever looks the package up on the machine; the response names only the package.
     const { package: name, manifestSha256, bytes } = body(res)
@@ -157,7 +159,7 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
   })
 
   it('writes the restore of a package and the move of a tenant, with the package and its hash', async () => {
-    const { package: name, manifestSha256 } = body(await call('POST', `/tenants/${acmeId}/export`))
+    const { package: name, manifestSha256 } = body(await call('POST', `/tenants/${acmeId}/export`, OPERATOR))
     const restored = await call('POST', '/tenants/import', { package: name, ...TWIN, founderPassword: 'Twin-pw-1234567' })
     expect(restored.statusCode).toBe(201)
     const twinId = body(restored).id
@@ -165,7 +167,7 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
     expect(imported).toMatchObject({ outcome: 'success', tenant_id: twinId, detail: { sourceTenantId: acmeId, package: name, manifestSha256 } })
     expect(JSON.stringify(imported)).not.toContain('Twin-pw-1234567')
 
-    const out = body(await call('POST', `/tenants/${twinId}/export`))
+    const out = body(await call('POST', `/tenants/${twinId}/export`, OPERATOR))
     expect((await call('POST', `/tenants/${twinId}/move`, { destination: 'eu-west-2', package: out.package })).statusCode).toBe(200)
     const [moved] = await rows(`where action = 'tenant.moved'`)
     expect(moved).toMatchObject({

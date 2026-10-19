@@ -141,7 +141,10 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Export a container',
-        description: 'Writes the package of one tenant: the dump without credentials, the parts of its packages, a manifest and the operator envelope'
+        description:
+          'Writes the package of one tenant in one profile: the dump without credentials, the parts of its packages, a manifest and the operator envelope',
+        body: { $ref: 'tenantExportBodySchema#' },
+        manifest: { input: { fields: { profile: { required: true } } } }
       }
     },
     {
@@ -152,9 +155,8 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Download a package',
-        description: 'One tar file, checked against its manifest first; the client profile leaves the operator envelope out',
-        params: { $ref: 'tenantPackageParamsSchema#' },
-        query: { $ref: 'tenantPackageQuerySchema#' }
+        description: 'One tar file in the profile chosen at the export, checked against its manifest first; a client package leaves the operator envelope out',
+        params: { $ref: 'tenantPackageParamsSchema#' }
       }
     },
     {
