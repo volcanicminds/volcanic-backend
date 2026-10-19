@@ -703,6 +703,9 @@ it, and either case logs a warning.
 | `TENANT_CONTAINERS_MAX_OPEN` | `20` | LRU bound on live tenant containers, range 1 to 10000. A `tenants.containers.maxOpen` in `config/general.ts` wins. |
 | `DESTRUCTION_TOKEN_TTL` | `600` | Seconds a container-destruction request stays valid, range 30 to 3600. |
 | `EXPORT_DIRECTORY` | `./data/exports` | Where tenant packages are written, one folder each, and where a restore reads them. Configuration, never a request field. Feeds `export_directory`. |
+| `TENANT_EXPORT_MAX` | `3` | Exports a tenant's `admin` may start in one window, failed ones included, range 1 to 100; past it 429 `EXPORT_QUOTA_EXCEEDED` with `Retry-After` (2.12). The control plane's exports do not count. |
+| `TENANT_EXPORT_WINDOW` | `3600` | Seconds of the window `TENANT_EXPORT_MAX` counts in. |
+| `TENANT_EXPORT_RETENTION_DAYS` | unset (off) | Days an exported package stays before the hourly `exportRetention` job removes it (2.12). Runs only above zero **and** with `scheduler: true`; otherwise a start with tenants logs a WARN. 7 is a sensible value. Not a backup. |
 | `PACKAGE_SIGNING_KEY` | unset | Signs the envelope of a tenant package and verifies it on restore (2.12). Unset, a package is written unsigned and no restore runs. When set, the same strength check as `JWT_SECRET`. |
 | `PACKAGE_VERIFY_KEYS` | unset | Comma-separated keys that only verify a package: a rotated signing key, or the one of the instance a tenant moves from. |
 | **Tenant governance** | | |
@@ -1355,11 +1358,19 @@ the measurements.
 ## 2.12 Exporting, restoring and moving a tenant
 
 ```
-POST /tenants/:id/export                 capability `tenants:export`   { profile: client|operator }
-GET  /tenants/:id/exports/:package       capability `tenants:export`
-POST /tenants/import                     capability `tenants`
-POST /tenants/:id/move                   capability `tenants`
+POST /tenants/:id/exports                role `system:admin`, fresh   { profile: client|operator }
+GET  /tenants/:id/exports/:package       role `system:admin`, fresh
+POST /tenants/import                     role `system:admin`
+POST /tenants/:id/move                   role `system:admin`
+POST /exports                            tenant role `admin`, fresh    always `client`
+GET  /exports/:package                   tenant role `admin`, fresh
 ```
+
+The four control routes answer to `system:admin` alone, with no capability: a role granted
+`tenants`, `system:operator` included, gets 403. The two tenant routes are mounted only with
+tenants and take the tenant from the session, never from a parameter or the body. "Fresh" is
+`freshAuth`: a session older than `STEP_UP_MAX_AGE` gets 403 `STEP_UP_REQUIRED`, an impersonation
+or an integration token `STEP_UP_NOT_AVAILABLE`.
 
 An export writes the tenant's **package** in one **profile**, which the body names and has no
 default (400 `EXPORT_PROFILE_REQUIRED`): `client`, the customer's copy, or `operator`, the one a
@@ -1375,7 +1386,32 @@ The response is `{ tenant: { id, slug }, package, manifestSha256, signed, bytes,
 artifacts }`, never a path on the server; without a signing key the export still runs and answers
 `signed: false`, and no instance restores that package. The export is
 recorded in the governance log (`tenant.exported`) before the dump starts, and its outcome after,
-with the path and the manifest hash.
+with the path, the manifest hash, the slot and what it replaced.
+
+- **One slot per tenant in each plane.** The control plane's holds what `system:admin` exported,
+  in any profile; the tenant plane's what the tenant's `admin` exported. The envelope names the
+  slot. A new export that succeeds removes the previous package of its slot after sealing its
+  own, and lists it in its event (`replaced: [{ package, manifestSha256, removed }]`); a failed
+  export leaves it, and a removal that failed is retried by the next export. The export of a
+  destruction has no slot: it never rotates and the cleanup leaves it.
+- **One export per slot at a time.** The second answers 409 `EXPORT_IN_PROGRESS`, under a lock the
+  data layer holds across processes (`withLock`, a Postgres advisory lock on a connection of its
+  own). A download takes no lock.
+- **A quota on the tenant plane.** `TENANT_EXPORT_MAX` (default 3, at most 100) exports in
+  `TENANT_EXPORT_WINDOW` seconds (default 3600) per tenant, counted on the governance log under
+  the lock, failed ones included; past it 429 `EXPORT_QUOTA_EXCEEDED` with `Retry-After`. The
+  control plane's exports do not count. Where the `rateLimit` plugin is on, the four export and
+  download routes allow ten times the quota per minute and address.
+- **Every download is recorded.** `tenant.downloaded` with the package, the manifest hash and the
+  profile: the intent before the first byte (503 `GOVERNANCE_LOG_NOT_AVAILABLE` and nothing sent
+  without it), the outcome when the response ends, with the bytes. Whose a package is, the
+  envelope's tenant id decides; another tenant's package, and on the tenant plane an `operator`
+  one, answer 404 like an unknown name.
+- **The cleanup is off by default.** The framework job `exportRetention` runs every hour and
+  removes each slot's package older than `TENANT_EXPORT_RETENTION_DAYS` days, writing
+  `tenant.export_expired` with no author. It runs only with the variable above zero and
+  `scheduler: true`; otherwise a start with tenants logs a WARN. 7 is a sensible value. A package
+  on the server is not a backup.
 
 - **No credential leaves.** The raw dump is loaded into a scratch container, and there every
   password becomes a value no password matches, `mfa_secret`, `mfa_type` and the reset and
@@ -1420,8 +1456,9 @@ verify: a rotated one, or the source's on a move.
 **Move.** `POST /tenants/:id/move` with `{ destination, package }` turns the tenant `moved`, with
 `movedTo`, and it stops resolving requests; the container stays. The package must be one exported
 from this tenant (409 `TENANT_PACKAGE_MISMATCH`) in the `operator` profile (409
-`RESTORE_PROFILE_MISMATCH`), the one the destination restores. The event is `tenant.moved`. `POST
-/tenants/:id/restore` makes it active again.
+`RESTORE_PROFILE_MISMATCH`), the one the destination restores. The event is `tenant.moved`. The
+move writes no export of its own: the package it names sits in the control plane's slot and a
+later export may replace it. `POST /tenants/:id/restore` makes it active again.
 
 A single-tenant deployment and the control plane are outside all of this: the customer owns the
 instance there, and the backup is the infrastructure's (`pg_dump` of the whole database, a managed
@@ -2831,7 +2868,9 @@ removes a user's factor with `POST /users/:id/mfa/reset`.
 Every step writes the **access log** (`access_log` table, one per container): `GET /access-log` for the tenant's
 `admin`, `GET /system/access-log` with the `access-log` capability. What the operators change on the platform
 goes to the **governance log** (`governance_log`, control plane only, never purged), read at
-`GET /system/governance-log` with the `governance-log` capability; a change it cannot record is not made.
+`GET /system/governance-log` with the `governance-log` capability; a change it cannot record is not made. A row's
+`actorPlane` says whether its author is an operator (`control`) or a tenant's user (`tenant`, the exports and
+downloads of `/exports`); a job writes author, plane and address null.
 
 ### The MFA manager (`src/services/auth.ts`)
 
@@ -4244,7 +4283,8 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/:id/block` · `/:id/unblock` · `/:id/reissue` | `tokens` cap⁵ | **yes** | `tokenManager` |
 | Tenants | `GET /tenants` · `GET /tenants/:id` | `tenants:read` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants` · `PUT /tenants/:id` · `POST /tenants/:id/suspend` · `/restore` · `DELETE /tenants/:id` | `tenants` cap | **yes** | `tenantManager` |
-| Tenants | `POST /tenants/:id/export` | `tenants:export` cap | **yes** | `provider.exportContainer` |
+| Tenants | `POST /tenants/:id/exports` · `GET /tenants/:id/exports/:package` (fresh) · `POST /tenants/import` · `POST /tenants/:id/move` | `system:admin` only | **yes** | `provider.exportContainer` + `governanceLogManager` |
+| Exports | `POST /exports` · `GET /exports/:package` (tenant plane, only with tenants, fresh) | `admin` role | **yes** | `provider.exportContainer` + `governanceLogManager` |
 | Tenants | `POST /tenants/:id/destruction-request` · `DELETE /tenants/:id/data` | `tenants:destroy` cap⁷ | **yes** | `destructionManager` |
 | Tenants | `POST /tenants/:id/impersonate` · `POST /tenants/impersonate/end` | `tenants:impersonate` cap | **yes** | `impersonationManager` |
 | System | `/system/auth/flow/*` (the six flow routes) · `POST /system/auth/refresh-token` · `/logout` · `/mfa/setup` · `/mfa/enable` | public / control token | varies | `systemUserManager` |

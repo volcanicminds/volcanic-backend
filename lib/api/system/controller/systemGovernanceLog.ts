@@ -4,7 +4,8 @@ import { httpError } from '../../../util/httpError.js'
 
 //
 // The governance log of the platform: what the operators did to the registry, the operators
-// and the providers, read with Magic Query (`tenantId=`, `action=`, `actorId=`, `occurredAt:gte=`).
+// and the providers, and what a tenant's admin took out of the tenant, read with Magic Query
+// (`tenantId=`, `action=`, `actorId=`, `actorPlane=`, `occurredAt:ge=`).
 //
 const manager = (req: FastifyRequest): GovernanceLogManagement => req.server.governanceLogManager
 

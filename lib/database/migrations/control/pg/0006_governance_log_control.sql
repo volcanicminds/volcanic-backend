@@ -5,6 +5,7 @@ CREATE TABLE "governance_log" (
 	"outcome" text NOT NULL,
 	"intent_id" text,
 	"actor_id" text,
+	"actor_plane" text,
 	"tenant_id" text,
 	"target_id" text,
 	"detail" jsonb,

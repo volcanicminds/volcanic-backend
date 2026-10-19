@@ -9,6 +9,7 @@ import { createLogger } from './lib/util/logger.js'
 import * as mark from './lib/util/mark.js'
 import { TranslatedError } from './lib/util/errors.js'
 import { tenantLifecyclesOf } from './lib/util/tenantLifecycle.js'
+import { warnExportCleanupOff } from './lib/util/tenantExport.js'
 import * as loaderPlugins from './lib/loader/plugins.js'
 import * as loaderRoles from './lib/loader/roles.js'
 import * as loaderRouter from './lib/loader/router.js'
@@ -408,6 +409,7 @@ const start = async (decorators: StartOptions = {}) => {
   await addFastifySchedule(server)
 
   const schedules = loaderSchedules.load()
+  warnExportCleanupOff()
   // Before `ready()` and `listen()`, the only moments Fastify accepts a hook.
   const closing = loaderSchedules.closingSignal(server)
 
@@ -646,6 +648,7 @@ export type {
   AccessLogManagement,
   GovernanceAction,
   GovernanceOutcome,
+  GovernanceActorPlane,
   GovernanceLogEntry,
   GovernanceLogRecord,
   GovernanceLogManagement,

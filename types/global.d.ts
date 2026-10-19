@@ -67,7 +67,6 @@ export type SystemCapability =
   | 'tenants:read'
   | 'tenants'
   | 'tenants:impersonate'
-  | 'tenants:export'
   | 'tenants:destroy'
   | 'migrations'
   | 'manifest'
@@ -1524,6 +1523,8 @@ export type GovernanceAction =
   | 'tenant.restored'
   | 'tenant.deleted'
   | 'tenant.exported'
+  | 'tenant.downloaded'
+  | 'tenant.export_expired'
   | 'tenant.imported'
   | 'tenant.moved'
   | 'tenant.destruction_requested'
@@ -1549,14 +1550,22 @@ export type GovernanceAction =
  */
 export type GovernanceOutcome = 'success' | 'intent' | 'failure'
 
+/** The plane of the identity that acted: the two hold ids of different tables. */
+export type GovernanceActorPlane = 'control' | 'tenant'
+
 /** One governance event, as written. Never the value of a secret, a token or a configuration. */
 export interface GovernanceLogEntry {
   action: GovernanceAction
   outcome: GovernanceOutcome
   /** The intent an outcome closes. */
   intentId?: string | null
-  /** The operator's `id`: the `externalId` is rotated by a revocation, the `id` never changes. */
+  /** The actor's `id`: the `externalId` is rotated by a revocation, the `id` never changes. */
   actorId?: string | null
+  /**
+   * Where `actorId` lives: `control` for an operator, `tenant` for a user of `tenantId`'s
+   * container. Null with no actor, as for a job.
+   */
+  actorPlane?: GovernanceActorPlane | null
   tenantId?: string | null
   /** What the action was done to, when it is not the tenant: an operator, a provider key, a user. */
   targetId?: string | null

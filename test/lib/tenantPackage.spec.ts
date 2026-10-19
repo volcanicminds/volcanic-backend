@@ -23,7 +23,11 @@ import {
   verifyEnvelope,
   writeEnvelope
 } from '../../lib/util/tenantPackage.js'
+import * as tenantExports from '../../lib/api/exports/controller/exports.js'
+import { schedule } from '../../lib/schedules/exportRetention.job.js'
+import { expirePackages, exportRetention, warnExportCleanupOff } from '../../lib/util/tenantExport.js'
 import { fakeGovernanceLog } from './fixtures/governanceLog.js'
+import { fakeLock } from './fixtures/lock.js'
 
 ;(global as any).log = {}
 
@@ -262,6 +266,7 @@ describe('the package of a tenant (T-17.1, T-17.5)', () => {
 function build(over: any = {}) {
   const exports = useExports()
   const governance = fakeGovernanceLog()
+  const lock = fakeLock()
   const steps: string[] = []
   const rows: any[] = [ACME]
   const idps: any[] = [{ tenantId: ACME.id, key: 'entra', type: 'oidc', status: 'active', config: { issuer: 'https://login.example.com' } }]
@@ -304,7 +309,8 @@ function build(over: any = {}) {
           }
         }),
     forLocator: async (locator: string) => ({ kind: 'tenant', locator }),
-    dropContainer: async (locator: string) => void steps.push(`drop ${locator}`)
+    dropContainer: async (locator: string) => void steps.push(`drop ${locator}`),
+    withLock: lock.withLock
   })
   server.decorate('migrations', {
     apply: async () => (steps.push('migrate'), '0002_more'),
@@ -334,18 +340,24 @@ function build(over: any = {}) {
     req.data = () => getData(req)
     req.parameters = () => getParams(req)
     req.control = { kind: 'control' }
-    req.systemUser = { id: 'sys-1', email: 'root@system.test' }
+    // The tenant plane's routes are Acme's admin's, as the token says, whatever the request carries.
+    if (req.url.startsWith('/exports')) {
+      req.user = { id: 'u-admin' }
+      req.tenant = { tenantId: over.tenantId ?? ACME.id }
+    } else req.systemUser = { id: 'sys-1', email: 'root@system.test' }
   })
   const control = { config: { tenantContext: false } }
-  server.post('/tenants/:id/export', control, exportContainer)
+  server.post('/tenants/:id/exports', control, exportContainer)
   server.get('/tenants/:id/exports/:package', control, downloadPackage)
   server.post('/tenants/import', control, importTenant)
   server.post('/tenants/:id/move', control, move)
-  return { server, governance, steps, rows, exports }
+  server.post('/exports', tenantExports.create)
+  server.get('/exports/:package', tenantExports.download)
+  return { server, governance, steps, rows, exports, lock }
 }
 
 const exported = async (server: any, profile = 'operator') => {
-  const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile } })
+  const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile } })
   expect(res.statusCode).toBe(200)
   return JSON.parse(res.body).package as string
 }
@@ -401,7 +413,7 @@ describe('tenants · the export in a profile (T-17.10)', () => {
   it('refuses an export without a profile, or with another, before anything is written', async () => {
     const { server, governance, exports } = build()
     for (const payload of [undefined, {}, { profile: 'admin' }]) {
-      const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload })
+      const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload })
       expect([res.statusCode, JSON.parse(res.body).code]).toEqual([400, 'EXPORT_PROFILE_REQUIRED'])
     }
     expect(fs.readdirSync(exports)).toEqual([])
@@ -416,7 +428,7 @@ describe('tenants · the export in a profile (T-17.10)', () => {
       { name: 'rag', describe: async () => ({ engine: 'lancedb' }) }
     ]
     const { server, steps, governance, exports } = build({ lifecycles })
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'client' } })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'client' } })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
     expect(body.profile).toBe('client')
@@ -436,11 +448,290 @@ describe('tenants · the export in a profile (T-17.10)', () => {
   it('fails the export, and leaves no folder, on a data layer that never runs pack', async () => {
     const lifecycles = () => [{ name: 'vault', pack: async () => true }]
     const { server, exports, governance } = build({ lifecycles, skipsPack: true })
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'client' } })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'client' } })
     expect(res.statusCode).toBe(500)
     expect(fs.readdirSync(exports)).toEqual([])
     expect(governance.rows.at(-1)).toMatchObject({ action: 'tenant.exported', outcome: 'failure' })
     await server.close()
+  })
+})
+
+describe('tenants · who exports and downloads, a slot per plane (T-17.11)', () => {
+  const OTHER: any = { ...ACME, id: 'id-other', slug: 'other', locator: 'tenant_other' }
+  const tick = () => new Promise((resolve) => setImmediate(resolve))
+  const controlExport = async (server: any, profile = 'operator', id = ACME.id) => {
+    const res = await server.inject({ method: 'POST', url: `/tenants/${id}/exports`, payload: { profile } })
+    expect(res.statusCode).toBe(200)
+    return JSON.parse(res.body)
+  }
+  const tenantExport = async (server: any, payload: any = {}) => {
+    const res = await server.inject({ method: 'POST', url: '/exports', payload })
+    expect(res.statusCode).toBe(200)
+    return JSON.parse(res.body)
+  }
+  const envelopeOf = (exports: string, name: string) => JSON.parse(fs.readFileSync(path.join(exports, name, 'envelope.json'), 'utf8'))
+  afterEach(() => {
+    delete process.env.TENANT_EXPORT_MAX
+    delete process.env.TENANT_EXPORT_WINDOW
+  })
+
+  it("replaces the previous package of the same slot once the new one is sealed, and leaves the other slot and a destruction's", async () => {
+    const { server, exports, governance } = build()
+    const destruction = await sealed()
+    const first = await controlExport(server, 'operator')
+    const ownFirst = await tenantExport(server)
+    const second = await controlExport(server, 'client')
+
+    expect(fs.readdirSync(exports).sort()).toEqual([destruction.name, ownFirst.package, second.package].sort())
+    expect(envelopeOf(exports, second.package).slot).toBe('control')
+    expect(envelopeOf(exports, ownFirst.package).slot).toBe('tenant')
+    expect(envelopeOf(exports, destruction.name).slot).toBeUndefined()
+    expect(governance.rows.at(-1)).toMatchObject({
+      action: 'tenant.exported',
+      outcome: 'success',
+      actorPlane: 'control',
+      detail: { slot: 'control', replaced: [{ package: first.package, manifestSha256: first.manifestSha256, removed: true }] }
+    })
+
+    const ownSecond = await tenantExport(server)
+    expect(fs.readdirSync(exports).sort()).toEqual([destruction.name, ownSecond.package, second.package].sort())
+    expect(governance.rows.at(-1)).toMatchObject({
+      actorPlane: 'tenant',
+      actorId: 'u-admin',
+      detail: { slot: 'tenant', profile: 'client', replaced: [{ package: ownFirst.package, removed: true }] }
+    })
+    await server.close()
+  })
+
+  it('leaves the previous package where it was when the new export fails', async () => {
+    let fails = false
+    const lifecycles = () => [
+      {
+        name: 'vault',
+        pack: async () => {
+          if (fails) throw new Error('the vault is gone')
+          return true
+        }
+      }
+    ]
+    const { server, exports, governance } = build({ lifecycles })
+    const first = await controlExport(server)
+    fails = true
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'operator' } })
+    expect(res.statusCode).toBe(500)
+    expect(fs.readdirSync(exports)).toEqual([first.package])
+    expect(governance.rows.at(-1)).toMatchObject({ action: 'tenant.exported', outcome: 'failure', detail: { slot: 'control' } })
+    await server.close()
+  })
+
+  it('answers 409 while an export of the same slot runs, and lets the other plane export', async () => {
+    const { server, governance, lock, exports } = build()
+    lock.held.add(`export:${ACME.id}:control`)
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'operator' } })
+    expect([res.statusCode, JSON.parse(res.body).code]).toEqual([409, 'EXPORT_IN_PROGRESS'])
+    expect(governance.rows).toEqual([])
+    expect(fs.readdirSync(exports)).toEqual([])
+    await tenantExport(server)
+    await server.close()
+  })
+
+  it("counts the tenant plane's exports, failed ones too, never the operator's, and answers 429 with Retry-After", async () => {
+    process.env.TENANT_EXPORT_MAX = '2'
+    process.env.TENANT_EXPORT_WINDOW = '3600'
+    let fails = true
+    const lifecycles = () => [
+      {
+        name: 'vault',
+        pack: async () => {
+          if (fails) throw new Error('the vault is gone')
+          return true
+        }
+      }
+    ]
+    const { server, governance, exports } = build({ lifecycles })
+    expect((await server.inject({ method: 'POST', url: '/exports' })).statusCode).toBe(500)
+    fails = false
+    for (let i = 0; i < 3; i++) await controlExport(server)
+    const own = await tenantExport(server)
+
+    const res = await server.inject({ method: 'POST', url: '/exports' })
+    expect([res.statusCode, JSON.parse(res.body).code]).toEqual([429, 'EXPORT_QUOTA_EXCEEDED'])
+    const wait = Number(res.headers['retry-after'])
+    expect(wait).toBeGreaterThan(3500)
+    expect(wait).toBeLessThanOrEqual(3600)
+    // Refused before the intent: the refusal neither counts nor touches the slot.
+    expect(governance.rows.filter((r: any) => r.actorPlane === 'tenant' && r.outcome === 'intent')).toHaveLength(2)
+    expect(fs.readdirSync(exports)).toContain(own.package)
+    // The operator's plane has no quota.
+    await controlExport(server)
+    await server.close()
+  })
+
+  it("exports the tenant of the token, whatever the request names, always as a client package", async () => {
+    const { server, rows, exports } = build()
+    rows.push(OTHER)
+    const answer = await tenantExport(server, { tenantId: OTHER.id, id: OTHER.id, profile: 'operator' })
+    expect(answer.tenant).toEqual({ id: ACME.id, slug: ACME.slug })
+    expect(answer.profile).toBe('client')
+    expect(envelopeOf(exports, answer.package).tenant.id).toBe(ACME.id)
+    await server.close()
+  })
+
+  it("lets the tenant's admin download its own client packages, of either slot, and nothing else as anything but unknown", async () => {
+    const { server, rows } = build()
+    rows.push(OTHER)
+    const own = await tenantExport(server)
+    const fromOperator = await controlExport(server, 'client')
+    const whole = await controlExport(server, 'operator', OTHER.id)
+    const others = await controlExport(server, 'client', OTHER.id)
+
+    for (const name of [own.package, fromOperator.package]) {
+      const res = await server.inject({ method: 'GET', url: `/exports/${name}` })
+      expect(res.statusCode).toBe(200)
+      expect(res.rawPayload.includes(Buffer.from('envelope.json'))).toBe(false)
+    }
+    for (const url of [`/exports/${others.package}`, `/exports/${others.package}?tenantId=${OTHER.id}`, `/exports/${whole.package}`, '/exports/nope']) {
+      expect((await server.inject({ method: 'GET', url })).statusCode).toBe(404)
+    }
+    await server.close()
+
+    // An operator package of its own tenant answers the same.
+    const mine = build()
+    const operator = await controlExport(mine.server, 'operator')
+    expect((await mine.server.inject({ method: 'GET', url: `/exports/${operator.package}` })).statusCode).toBe(404)
+    await mine.server.close()
+  })
+
+  it('records every download, on both planes, with who, the package, its hash, the profile and the bytes that left', async () => {
+    const { server, governance } = build()
+    const own = await tenantExport(server)
+    const operator = await controlExport(server, 'operator')
+
+    const fromTenant = await server.inject({ method: 'GET', url: `/exports/${own.package}` })
+    const fromControl = await server.inject({ method: 'GET', url: `/tenants/${ACME.id}/exports/${operator.package}` })
+    await tick()
+    const downloads = governance.rows.filter((r: any) => r.action === 'tenant.downloaded')
+    expect(downloads).toMatchObject([
+      { outcome: 'intent', tenantId: ACME.id, actorPlane: 'tenant', actorId: 'u-admin', detail: { package: own.package, profile: 'client' } },
+      { outcome: 'success', actorPlane: 'tenant', detail: { manifestSha256: own.manifestSha256, bytes: fromTenant.rawPayload.length } },
+      { outcome: 'intent', actorPlane: 'control', actorId: 'sys-1', detail: { package: operator.package, profile: 'operator' } },
+      { outcome: 'success', actorPlane: 'control', detail: { manifestSha256: operator.manifestSha256, bytes: fromControl.rawPayload.length } }
+    ])
+    expect(downloads[1].intentId).toBe(downloads[0].id)
+    await server.close()
+  })
+
+  it('sends nothing when the intent of the download cannot be written', async () => {
+    const { server, governance } = build()
+    const own = await tenantExport(server)
+    const record = governance.record.bind(governance)
+    governance.record = async (ctx: any, entry: any) => {
+      if (entry.action === 'tenant.downloaded') throw new Error('the log is gone')
+      return record(ctx, entry)
+    }
+    const res = await server.inject({ method: 'GET', url: `/exports/${own.package}` })
+    expect([res.statusCode, JSON.parse(res.body).code]).toEqual([503, 'GOVERNANCE_LOG_NOT_AVAILABLE'])
+    expect(res.headers['content-type']).not.toBe('application/x-tar')
+    await server.close()
+  })
+})
+
+describe('tenants · the cleanup of old packages (T-17.11)', () => {
+  const ctx: any = { kind: 'control' }
+  /** Ages a package as only the clock would: the cleanup reads the date, and checks nothing else. */
+  const age = (exports: string, name: string, days: number) => {
+    const file = path.join(exports, name, 'manifest.json')
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
+    fs.writeFileSync(file, JSON.stringify({ ...manifest, createdAt: new Date(Date.now() - days * 86_400_000).toISOString() }))
+  }
+  const exportIn = async (server: any, url: string, payload?: any) => JSON.parse((await server.inject({ method: 'POST', url, payload })).body).package
+
+  it("removes the slots' packages older than the retention, with an event each, and leaves the rest", async () => {
+    const { server, exports, governance, lock } = build()
+    const old = await exportIn(server, `/tenants/${ACME.id}/exports`, { profile: 'operator' })
+    const fresh = await exportIn(server, '/exports')
+    const destruction = await sealed()
+    age(exports, old, 8)
+    age(exports, fresh, 6)
+    age(exports, destruction.name, 30)
+    fs.mkdirSync(path.join(exports, `.removing-${old}x`))
+    const before = governance.rows.length
+
+    const done = await expirePackages({ governance, ctx, provider: { withLock: lock.withLock } as any }, 7)
+    expect(done).toEqual({ removed: 1, kept: 0 })
+    expect(fs.readdirSync(exports).sort()).toEqual([destruction.name, fresh].sort())
+    const events = governance.rows.slice(before)
+    expect(events).toMatchObject([
+      { action: 'tenant.export_expired', outcome: 'intent', tenantId: ACME.id, actorId: null, actorPlane: null, ip: null },
+      { action: 'tenant.export_expired', outcome: 'success', detail: { package: old, slot: 'control' } }
+    ])
+    expect(events[1].intentId).toBe(events[0].id)
+    await server.close()
+  })
+
+  it('leaves a slot whose export is running for the next run, and refuses to run without a log or a lock', async () => {
+    const { server, exports, governance, lock } = build()
+    const old = await exportIn(server, '/exports')
+    age(exports, old, 8)
+    const before = governance.rows.length
+    lock.held.add(`export:${ACME.id}:tenant`)
+    const provider: any = { withLock: lock.withLock }
+    expect(await expirePackages({ governance, ctx, provider }, 7)).toEqual({ removed: 0, kept: 1 })
+    expect(fs.readdirSync(exports)).toEqual([old])
+    expect(governance.rows.length).toBe(before)
+
+    await expect(expirePackages({ governance: undefined, ctx, provider }, 7)).rejects.toMatchObject({ code: 'GOVERNANCE_LOG_NOT_AVAILABLE' })
+    await expect(expirePackages({ governance, ctx, provider: {} as any }, 7)).rejects.toThrow(/no lock/)
+    await server.close()
+  })
+
+  describe('on only with the variable and the scheduler, and a warning at the start otherwise', () => {
+    const saved = { log: (global as any).log, config: (global as any).config }
+    let warned: string[]
+    beforeEach(() => {
+      warned = []
+      ;(global as any).log = { w: true, warn: (message: string) => warned.push(message) }
+    })
+    afterEach(() => {
+      ;(global as any).log = saved.log
+      ;(global as any).config = saved.config
+      delete process.env.TENANT_EXPORT_RETENTION_DAYS
+    })
+    const configure = (options: any, days?: string) => {
+      ;(global as any).config = { options }
+      if (days === undefined) delete process.env.TENANT_EXPORT_RETENTION_DAYS
+      else process.env.TENANT_EXPORT_RETENTION_DAYS = days
+    }
+    const tenants = { strategy: 'schema' }
+
+    for (const [label, options, days, off] of [
+      ['without the variable', { tenants, scheduler: true }, undefined, 'TENANT_EXPORT_RETENTION_DAYS is not set'],
+      ['with the variable at zero', { tenants, scheduler: true }, '0', 'TENANT_EXPORT_RETENTION_DAYS is not set'],
+      ['without the scheduler', { tenants }, '7', 'the scheduler is off']
+    ] as const) {
+      it(`stays off ${label}, and warns`, () => {
+        configure(options, days)
+        expect(exportRetention().off).toBe(off)
+        expect(schedule.active).toBe(false)
+        expect(warnExportCleanupOff()).toBe(true)
+        expect(warned.filter((m) => m.startsWith('Export cleanup is off'))).toEqual([expect.stringContaining(off)])
+      })
+    }
+
+    it('runs with both, and says nothing', () => {
+      configure({ tenants, scheduler: true }, '7')
+      expect(exportRetention()).toEqual({ days: 7, off: null })
+      expect(schedule.active).toBe(true)
+      expect(warnExportCleanupOff()).toBe(false)
+      expect(warned).toEqual([])
+    })
+
+    it('says nothing where there are no tenants', () => {
+      configure({ scheduler: true }, '7')
+      expect(schedule.active).toBe(false)
+      expect(warnExportCleanupOff()).toBe(false)
+      expect(warned).toEqual([])
+    })
   })
 })
 
@@ -622,7 +913,7 @@ describe('tenants · the restore of a package (T-17.4)', () => {
   it('exports without a key as an unsigned package, and restores nothing without a key to verify with', async () => {
     const { server, steps } = build()
     delete process.env.PACKAGE_SIGNING_KEY
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'operator' } })
     expect([res.statusCode, JSON.parse(res.body).signed]).toEqual([200, false])
 
     const refused = await restore(server, {

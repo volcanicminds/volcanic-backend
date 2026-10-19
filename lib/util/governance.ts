@@ -13,29 +13,53 @@ import type { ControlHandle, GovernanceLogEntry, GovernanceLogManagement } from 
 // undo an effect that already happened: the intent stays without one, which is what an auditor
 // reads as "may have happened", and the process log has the line.
 //
-// The operator, the address and the request id come from the request, never from the route.
+// The actor, its plane, the address and the request id come from the request, never from the route.
+// A job of the framework writes as `Unattended`: nobody, from nowhere.
 //
 
 /** What a route says about its event. */
-export type GovernanceEvent = Omit<GovernanceLogEntry, 'outcome' | 'intentId' | 'actorId' | 'ip' | 'requestId'>
+export type GovernanceEvent = Omit<GovernanceLogEntry, 'outcome' | 'intentId' | 'actorId' | 'actorPlane' | 'ip' | 'requestId'>
 
-const manager = (req: FastifyRequest): GovernanceLogManagement => req.server.governanceLogManager
+/** A job of the framework writing for itself, with no request behind it. */
+export interface Unattended {
+  readonly governance: GovernanceLogManagement | undefined
+  readonly ctx: ControlHandle
+}
+
+type Source = FastifyRequest | Unattended
+type Origin = Pick<GovernanceLogEntry, 'actorId' | 'actorPlane' | 'ip' | 'requestId'>
+
+const isUnattended = (source: Source): source is Unattended => 'governance' in source
+
+/** An operator on a control route, a tenant's user on a tenant route, nobody otherwise. */
+const originOf = (source: Source): Origin => {
+  if (isUnattended(source)) return { actorId: null, actorPlane: null, ip: null, requestId: null }
+  const at = { ip: source.ip ?? null, requestId: source.id ? String(source.id) : null }
+  if (source.systemUser?.id) return { actorId: source.systemUser.id, actorPlane: 'control', ...at }
+  if (source.user?.id) return { actorId: String(source.user.id), actorPlane: 'tenant', ...at }
+  return { actorId: null, actorPlane: null, ...at }
+}
+
+const writerOf = (source: Source): { manager: GovernanceLogManagement | undefined; ctx: ControlHandle | undefined } =>
+  isUnattended(source)
+    ? { manager: source.governance, ctx: source.ctx }
+    : { manager: source.server.governanceLogManager, ctx: source.control as ControlHandle | undefined }
 
 /** Throws the 503 every governance write answers with when this build keeps no governance log. */
-export function assertGovernanceLog(req: FastifyRequest): { manager: GovernanceLogManagement; ctx: ControlHandle } {
-  const found = manager(req)
-  if (!found?.isImplemented?.() || !req.control) {
+export function assertGovernanceLog(source: Source): { manager: GovernanceLogManagement; ctx: ControlHandle } {
+  const { manager, ctx } = writerOf(source)
+  if (!manager?.isImplemented?.() || !ctx) {
     throw Object.assign(new Error('This build keeps no governance log, and no change to the platform is made without one'), {
       statusCode: 503,
       error: 'Service Unavailable',
       code: 'GOVERNANCE_LOG_NOT_AVAILABLE'
     })
   }
-  return { manager: found, ctx: req.control as ControlHandle }
+  return { manager, ctx }
 }
 
 const entryOf = (
-  req: FastifyRequest,
+  source: Source,
   event: GovernanceEvent,
   outcome: GovernanceLogEntry['outcome'],
   intentId?: string
@@ -43,16 +67,15 @@ const entryOf = (
   ...event,
   outcome,
   intentId: intentId ?? null,
-  actorId: req.systemUser?.id ?? null,
-  ip: req.ip ?? null,
-  requestId: req.id ? String(req.id) : null
+  ...originOf(source)
 })
 
-const said = (req: FastifyRequest, event: GovernanceEvent, outcome: string) => {
+const said = (source: Source, event: GovernanceEvent, outcome: string) => {
   if (!log.i) return
   const on = event.tenantId ? ` tenant ${event.tenantId}` : ''
   const target = event.targetId ? ` target ${event.targetId}` : ''
-  log.info(`Governance ${event.action} ${outcome}${on}${target} by ${req.systemUser?.id ?? 'nobody'}`)
+  const { actorId, actorPlane } = originOf(source)
+  log.info(`Governance ${event.action} ${outcome}${on}${target} by ${actorId ? `${actorPlane} ${actorId}` : 'nobody'}`)
 }
 
 /**
@@ -80,23 +103,24 @@ export async function governed<T>(
 }
 
 /** The intent of an effect no transaction reaches. It throws, and the effect must not start, when the row is not written. */
-export async function intend(req: FastifyRequest, event: GovernanceEvent): Promise<string> {
-  const { manager: governance, ctx } = assertGovernanceLog(req)
-  const row = await governance.record(ctx, entryOf(req, event, 'intent'))
-  said(req, event, 'intent')
+export async function intend(source: Source, event: GovernanceEvent): Promise<string> {
+  const { manager: governance, ctx } = assertGovernanceLog(source)
+  const row = await governance.record(ctx, entryOf(source, event, 'intent'))
+  said(source, event, 'intent')
   return row.id
 }
 
 /** The outcome of an intent, once the effect is over. Never throws: the effect already happened. */
 export async function settle(
-  req: FastifyRequest,
+  source: Source,
   intentId: string,
   outcome: 'success' | 'failure',
   event: GovernanceEvent
 ): Promise<void> {
   try {
-    await manager(req).record(req.control as ControlHandle, entryOf(req, event, outcome, intentId))
-    said(req, event, outcome)
+    const { manager: governance, ctx } = writerOf(source)
+    await governance!.record(ctx as ControlHandle, entryOf(source, event, outcome, intentId))
+    said(source, event, outcome)
   } catch (error) {
     if (log.e) {
       log.error(`Governance log: the ${outcome} of ${event.action} (intent ${intentId}) not written (${(error as Error)?.message})`)

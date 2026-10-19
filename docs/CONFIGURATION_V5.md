@@ -134,6 +134,9 @@ where it is used without passing through the configuration at all.
 | `PGLITE_DATA_DIR` | in memory | where PGlite keeps the database; unset, it ends with the process | `control.dataDir` |
 | `TENANT_CONTAINERS_MAX_OPEN` | `20` | LRU limit of live containers | fallback of `tenants.containers.maxOpen` |
 | `EXPORT_DIRECTORY` | `./data/exports` | where tenant packages are written, one folder each, and where a restore reads them | `export_directory` |
+| `TENANT_EXPORT_MAX` | `3` | exports a tenant's administrator may start (`POST /exports`) in one window, failed ones included; past it 429 `EXPORT_QUOTA_EXCEEDED` with `Retry-After`. At most 100. The control plane's exports do not count. The `rateLimit` plugin, where it is on, allows ten times this per minute and address on the four export and download routes | no key |
+| `TENANT_EXPORT_WINDOW` | `3600` | seconds of the window `TENANT_EXPORT_MAX` counts in | no key |
+| `TENANT_EXPORT_RETENTION_DAYS` | unset, off | days a package of an export slot stays on the server before the hourly `exportRetention` job removes it, with a `tenant.export_expired` event. Runs only with a value above zero **and** `scheduler: true`; with either missing it stays off and a start with tenants logs a WARN. 7 is a sensible value. A package of a destruction is never removed, and a package on the server is not a backup (API_V5 §6.3) | no key |
 | `VOLCANIC_MAX_PAGE_SIZE` | `100` | Magic Query page-size clamp | no key: read by the query layer |
 | `CORS_ORIGINS` | — | **required in production**: comma-separated allowlist | `origin` of the `cors` entry in `config/plugins.ts` |
 | `HIDE_ERROR_DETAILS` | `true` in production | honoured by every error path, `onError` included | no key |

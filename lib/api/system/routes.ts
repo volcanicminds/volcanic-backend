@@ -246,7 +246,7 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Find governance log entries',
-        description: 'Magic Query over the fields of the governance log: tenantId, action, actorId, occurredAt',
+        description: 'Magic Query over the fields of the governance log: tenantId, action, actorId, actorPlane, occurredAt',
         manifest: governanceLog,
         query: { $ref: 'getQueryParamsSchema' },
         response: { 200: { type: 'array', items: { $ref: 'governanceLogSchema#' } } }

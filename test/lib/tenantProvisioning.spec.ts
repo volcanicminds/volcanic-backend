@@ -17,6 +17,7 @@ import { buildAuthenticatorRegistry, createAuthenticatorRegistry } from '../../l
 import { passwordAuthenticator } from '../../lib/auth/builtins.js'
 import { tenantBodySchema } from '../../lib/schemas/tenant.js'
 import { fakeGovernanceLog } from './fixtures/governanceLog.js'
+import { fakeLock } from './fixtures/lock.js'
 import { tenantLifecyclesOf } from '../../lib/util/tenantLifecycle.js'
 
 ;(global as any).log = {}
@@ -76,6 +77,7 @@ async function build(over: any = {}) {
     },
     dropContainer: async (locator: string) => void started.push(`drop ${locator}`),
     forLocator: async (locator: string) => ({ kind: 'tenant', locator }),
+    withLock: fakeLock().withLock,
     // A data layer that cannot export: one injected without `exportContainer`.
     ...(over.canExport === false
       ? {}
@@ -101,7 +103,7 @@ async function build(over: any = {}) {
   const body = over.validated ? { schema: { body: { $ref: 'tenantBodySchema#' } } } : {}
 
   server.post('/tenants', { config: { tenantContext: false }, ...body }, create)
-  server.post('/tenants/:id/export', { config: { tenantContext: false } }, exportContainer)
+  server.post('/tenants/:id/exports', { config: { tenantContext: false } }, exportContainer)
 
   await server.ready()
   return { server, created, started, governance, exports }
@@ -160,7 +162,7 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     expect(res.statusCode).toBe(503)
     expect(JSON.parse(res.body).code).toBe('GOVERNANCE_LOG_NOT_AVAILABLE')
 
-    const exported = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
+    const exported = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'operator' } })
     expect(exported.statusCode).toBe(503)
     expect(JSON.parse(exported.body).code).toBe('GOVERNANCE_LOG_NOT_AVAILABLE')
 
@@ -177,7 +179,7 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     governance.record = async (ctx, entry) => (order.push(`${entry.action} ${entry.outcome}`), record(ctx, entry))
     const before = started.length
 
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(200)
     expect(started.slice(before)).toEqual(['export'])
     expect(order).toEqual(['tenant.exported intent', 'tenant.exported success'])
@@ -190,7 +192,15 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
       intentId: intent.id,
       tenantId: ACME.id,
       actorId: 'sys-1',
-      detail: { path: path.join(exports, answer.package), package: answer.package, manifestSha256: answer.manifestSha256, bytes: 4 }
+      actorPlane: 'control',
+      detail: {
+        path: path.join(exports, answer.package),
+        slot: 'control',
+        package: answer.package,
+        manifestSha256: answer.manifestSha256,
+        bytes: 4,
+        replaced: []
+      }
     })
     await server.close()
   })
@@ -200,7 +210,7 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     governance.record = async () => {
       throw new Error('the control plane is gone')
     }
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(500)
     expect(started).toEqual([])
     await server.close()
@@ -301,7 +311,7 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     // sentence and a different thing for the operator to go and fix.
     const { server } = await build({ canExport: false })
 
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(503)
     expect(JSON.parse(res.body).code).toBe('EXPORT_NOT_AVAILABLE')
     await server.close()
@@ -420,7 +430,7 @@ describe('tenants · the packages that follow a tenant (T-16.2)', () => {
     const { server, started, governance } = await build({ lifecycles, exportDirectory: dir })
     lifecycles.push(recording('rag', started), recording('quiet', started, { export: false }))
 
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(200)
     const answer = JSON.parse(res.body)
     expect(answer.artifacts).toEqual([{ name: 'rag', bytes: 9 }])
@@ -442,7 +452,7 @@ describe('tenants · the packages that follow a tenant (T-16.2)', () => {
     const { server, started, governance } = await build({ lifecycles, exportDirectory: dir })
     lifecycles.push(recording('rag', started), recording('audit', started, { failOn: 'export' }))
 
-    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/export`, payload: { profile: 'operator' } })
+    const res = await server.inject({ method: 'POST', url: `/tenants/${ACME.id}/exports`, payload: { profile: 'operator' } })
     expect(res.statusCode).toBe(500)
     // An export missing part of the tenant must not sit in the directory looking like a whole one.
     expect(fs.readdirSync(dir)).toEqual([])

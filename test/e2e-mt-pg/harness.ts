@@ -240,3 +240,12 @@ export async function login(slug: string, email: string, password: string): Prom
 
 export const bearer = (token: string, slug?: string) =>
   slug ? { authorization: `Bearer ${token}`, [HEADER]: slug } : { authorization: `Bearer ${token}` }
+
+export const tenMinutesAgo = () => Math.floor(Date.now() / 1000) - 600
+
+/** The same session, signed as its login signed it ten minutes ago: a `freshAuth` route asks it to confirm. */
+export function staled(token: string) {
+  const claims: any = server.jwt.decode(token)
+  const { iat: _iat, exp: _exp, ...rest } = claims
+  return { claims, token: server.jwt.sign({ ...rest, auth_time: tenMinutesAgo() }) }
+}

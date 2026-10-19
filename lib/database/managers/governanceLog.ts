@@ -1,6 +1,7 @@
 import type {
   ControlHandle,
   GovernanceAction,
+  GovernanceActorPlane,
   GovernanceLogManagement,
   GovernanceLogRecord,
   GovernanceOutcome,
@@ -28,6 +29,8 @@ const ACTIONS: Record<GovernanceAction, true> = {
   'tenant.restored': true,
   'tenant.deleted': true,
   'tenant.exported': true,
+  'tenant.downloaded': true,
+  'tenant.export_expired': true,
   'tenant.imported': true,
   'tenant.moved': true,
   'tenant.destruction_requested': true,
@@ -48,6 +51,7 @@ const ACTIONS: Record<GovernanceAction, true> = {
 }
 
 const OUTCOMES: Record<GovernanceOutcome, true> = { success: true, intent: true, failure: true }
+const PLANES: Record<GovernanceActorPlane, true> = { control: true, tenant: true }
 
 export interface GovernanceLogOptions {
   /** The `ip` of the `accessLog` block: the environment's `ACCESS_LOG_IP` wins over it. */
@@ -77,6 +81,10 @@ export function createGovernanceLogManager(options: GovernanceLogOptions = {}): 
         throw invalid('a governance entry needs an outcome: success, intent or failure')
       }
       if (entry.outcome === 'intent' && entry.intentId) throw invalid('an intent does not close another intent')
+      // Without its plane an actor id names no table: one is written with the other or not at all.
+      const plane = entry.actorPlane ?? null
+      if (plane !== null && !Object.hasOwn(PLANES, String(plane))) throw invalid('the plane of an actor is control or tenant')
+      if ((plane === null) !== (entry.actorId == null)) throw invalid('an actor is written with its plane')
       const detail = entry.detail ?? null
       if (detail !== null && (typeof detail !== 'object' || Array.isArray(detail))) {
         throw invalid('the detail of a governance entry is an object')
@@ -88,6 +96,7 @@ export function createGovernanceLogManager(options: GovernanceLogOptions = {}): 
           outcome: entry.outcome,
           intentId: entry.intentId ?? null,
           actorId: entry.actorId ?? null,
+          actorPlane: plane,
           tenantId: entry.tenantId ?? null,
           targetId: entry.targetId ?? null,
           detail,

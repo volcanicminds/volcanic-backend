@@ -48,11 +48,19 @@ export interface PackageManifest {
   files: { path: string; bytes: number; sha256: string }[]
 }
 
+/**
+ * Whose export a package is, one per tenant in each plane: the next export of the same slot
+ * replaces it, and the retention cleanup removes it. The export of a destruction has none.
+ */
+export type PackageSlot = 'control' | 'tenant'
+
 export interface PackageEnvelope {
   format: typeof ENVELOPE_FORMAT
   version: 1
   manifestSha256: string
+  /** The owner: the download and the rotation read this id, never the package's name. */
   tenant: Tenant
+  slot?: PackageSlot
   /** Without their secrets, which never leave: an operator enters each one again after a restore. */
   identityProviders: IdentityProvider[]
   /** Absent when the exporting instance holds no signing key; such a package downloads but never restores. */
@@ -155,6 +163,65 @@ export function packageDir(name: unknown): string | null {
   if (typeof name !== 'string' || !NAME.test(name)) return null
   const dir = path.join(exportRoot(), name)
   return fs.existsSync(dir) && fs.lstatSync(dir).isDirectory() ? dir : null
+}
+
+/** Every package in the export directory, by name. A folder being removed is not one: its name starts with a dot. */
+export function packageNames(): string[] {
+  const root = exportRoot()
+  if (!fs.existsSync(root)) return []
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && NAME.test(entry.name))
+    .map((entry) => entry.name)
+}
+
+/**
+ * A package's manifest and envelope as written, unchecked, or null when either is missing or is
+ * not JSON, as in a folder still being written. Enough to say whose a package is and how old;
+ * a download or a restore goes through `openPackage`.
+ */
+export function peekPackage(dir: string): { manifest: PackageManifest; envelope: PackageEnvelope } | null {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8')) as PackageManifest
+    const envelope = JSON.parse(fs.readFileSync(path.join(dir, ENVELOPE), 'utf8')) as PackageEnvelope
+    return manifest && envelope && typeof envelope === 'object' ? { manifest, envelope } : null
+  } catch {
+    return null
+  }
+}
+
+const REMOVING = '.removing-'
+
+/**
+ * Removes a package, first out of reach with one rename (`packageDir` refuses the dot), then from
+ * the disk. False when it is still there: renamed, `sweepPackages` retries it; not renamed, the
+ * next look at its slot finds it again.
+ */
+export function removePackage(name: string): boolean {
+  const root = exportRoot()
+  const claimed = path.join(root, `${REMOVING}${name}`)
+  try {
+    fs.renameSync(path.join(root, name), claimed)
+    fs.rmSync(claimed, { recursive: true, force: true })
+    return true
+  } catch (error) {
+    if (log.w) log.warn(`Package ${name} not removed: ${(error as Error)?.message}`)
+    return false
+  }
+}
+
+/** Removes what a `removePackage` renamed and could not delete. */
+export function sweepPackages(): void {
+  const root = exportRoot()
+  if (!fs.existsSync(root)) return
+  for (const entry of fs.readdirSync(root)) {
+    if (!entry.startsWith(REMOVING)) continue
+    try {
+      fs.rmSync(path.join(root, entry), { recursive: true, force: true })
+    } catch (error) {
+      if (log.w) log.warn(`Package ${entry.slice(REMOVING.length)} still not removed: ${(error as Error)?.message}`)
+    }
+  }
 }
 
 const sha256 = async (file: string): Promise<string> => {

@@ -15,6 +15,7 @@
 | `/users/*` | tenant | user management inside a tenant |
 | `/settings/*` | tenant | choices of the tenant's administrator, inside what the platform allows (§2.5) |
 | `/token/*` | tenant | machine credentials inside a tenant |
+| `/exports/*` | tenant | the tenant administrator's copy of the tenant's data, mounted only with tenants (§4.1) |
 | `/health` | control | liveness |
 | `/admin/manifest` | tenant | description of the manageable API, for a customer's console |
 | `/system/manifest` | control | description of the manageable API, for the platform console |
@@ -298,6 +299,21 @@ a token; the IP is truncated to /24 or /48, or absent with `ACCESS_LOG_IP=none`.
 | GET | `/access-log` | role `admin` | Magic Query over `id`, `occurredAt`, `scope`, `event`, `outcome`, `code`, `subjectId`, `methods`, `provider`, `flowId`, `sid`, `ip`; any other field is `QUERY_UNKNOWN_FIELD`. Only `scope: 'tenant'` rows, a condition the URL cannot relax. 404 `NOT_FOUND` in a build without the table |
 | GET | `/access-log/count` | role `admin` | |
 
+### 4.1 `/exports` (tenant scope, new in v5)
+
+The tenant's administrator takes the tenant's data out, in the `client` profile and no other: the
+package of §6.3 without the envelope, which is the operator's. The tenant is the one the request
+was authenticated in, never a parameter or a field of the body. The routes are mounted only in a
+build with tenants; without them the data is the platform's, and its backup the infrastructure's.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/exports` | role `admin`, `freshAuth` | writes a `client` package of this tenant in the tenant plane's slot (§6.3) and answers as `POST /tenants/:id/exports`. 409 `EXPORT_IN_PROGRESS` while another export of this slot runs; 429 `EXPORT_QUOTA_EXCEEDED` with `Retry-After` past `TENANT_EXPORT_MAX` exports in `TENANT_EXPORT_WINDOW` seconds |
+| GET | `/exports/:package` | role `admin`, `freshAuth` | the package as one tar file (§6.3). A package of another tenant, an `operator` package and an unknown name all answer 404 |
+
+A session older than `STEP_UP_MAX_AGE` gets 403 `STEP_UP_REQUIRED` (§2.6); an impersonation and an
+integration token get `STEP_UP_NOT_AVAILABLE`, so they do not export.
+
 ---
 
 ## 5. `/system/auth` and `/system/users` (control scope, new in v5)
@@ -332,7 +348,7 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/users/:id/mfa/reset` | capability `system-users` | |
 | GET | `/system/access-log` | capability `access-log`, granted to `system:auditor` | Magic Query over the access log of the platform (`scope: 'control'` only, a condition the URL cannot relax) |
 | GET | `/system/access-log/count` | capability `access-log` | |
-| GET | `/system/governance-log` | capability `governance-log`, granted to `system:auditor` | Magic Query over what the operators did to the platform (§5.1): `tenantId`, `action`, `actorId`, `outcome`, `occurredAt`. A build without the governance log manager answers 404 `NOT_FOUND` |
+| GET | `/system/governance-log` | capability `governance-log`, granted to `system:auditor` | Magic Query over what the operators did to the platform (§5.1): `tenantId`, `action`, `actorId`, `actorPlane`, `outcome`, `occurredAt`. A build without the governance log manager answers 404 `NOT_FOUND` |
 | GET | `/system/governance-log/count` | capability `governance-log` | |
 | GET | `/system/account-creation` | capability `tenants:read` | the rule for every tenant (§2.5): `allowed`, `default`, `from` (`control` or `deployment`) and the deployment's own rule |
 | PUT | `/system/account-creation` | capability `tenants` | body `{ allowed, default }`, the default inside the set; otherwise 400 `ACCOUNT_CREATION_INVALID` |
@@ -343,13 +359,15 @@ Platform administrators authenticate on their own routes and receive a token car
 Every route that changes the platform writes one row of `governance_log` in the control plane
 (docs/SCHEMA_V5.md §3.6): the tenant routes of §6 that create, update, suspend, restore, delete,
 export, ask to destroy or destroy, impersonation start and end, the `/system/users` writes, the
-identity provider writes of §6 and the two writes of `/system/account-creation`. The operator,
-the address and the request id come from the request; the row names fields and reasons, never a
-value, a password or a client secret.
+identity provider writes of §6 and the two writes of `/system/account-creation`. The exports and
+downloads of the tenant plane (§4.1) write there too, and so does the cleanup of old packages
+(§6.3). The author, the address and the request id come from the request, and `actorPlane` says
+whether the author is an operator (`control`) or a tenant's user (`tenant`); a job writes them all
+null. The row names fields and reasons, never a value, a password or a client secret.
 
 The rule is the opposite of the access log's: a change that cannot be written down is not made.
 A change of the registry and its row share one transaction, so a row that cannot be written
-rolls the change back and the route answers 500. An export and a destruction, which no
+rolls the change back and the route answers 500. An export, a download and a destruction, which no
 transaction reaches, write their intent first and do not start without it; their outcome
 (`success` or `failure`, with `intentId` pointing at the intent) follows. A build with tenants and
 no governance log manager answers every one of these routes with 503
@@ -370,10 +388,10 @@ no governance log manager answers every one of these routes with 503
 | DELETE | `/tenants/:id` | `tenants` | soft-deletes **the registry row only**. The response says so explicitly |
 | GET | `/tenants/migrations` | `migrations` | which container is at which schema version |
 | POST | `/tenants/:id/migrate` | `migrations` | applies the pending migrations to one container |
-| POST | `/tenants/:id/export` | `tenants:export` | body: `{ profile }`, `client` or `operator`, **required** (400 `EXPORT_PROFILE_REQUIRED`). Writes the tenant's package in that profile (§6.3) and answers `{ tenant, package, manifestSha256, signed, bytes, schemaVersion, profile, artifacts: [{ name, bytes }] }`, never a path on the server; `signed: false` without `PACKAGE_SIGNING_KEY`, and no instance restores that package. A package of `tenantLifecycles` that fails removes the whole package, and the export fails |
-| GET | `/tenants/:id/exports/:package` | `tenants:export` | the package as one tar file, in the profile its export chose, checked against its manifest first (§6.3) |
-| POST | `/tenants/import` | `tenants` | a new tenant from a package (§6.4) |
-| POST | `/tenants/:id/move` | `tenants` | records that the tenant moved (§6.5) |
+| POST | `/tenants/:id/exports` | role `system:admin`, `freshAuth` | body: `{ profile }`, `client` or `operator`, **required** (400 `EXPORT_PROFILE_REQUIRED`). Writes the tenant's package in that profile, in the control plane's slot (§6.3), and answers `{ tenant, package, manifestSha256, signed, bytes, schemaVersion, profile, artifacts: [{ name, bytes }] }`, never a path on the server; `signed: false` without `PACKAGE_SIGNING_KEY`, and no instance restores that package. A package of `tenantLifecycles` that fails removes the whole package, and the export fails. 409 `EXPORT_IN_PROGRESS` while another export of this slot runs |
+| GET | `/tenants/:id/exports/:package` | role `system:admin`, `freshAuth` | the package as one tar file, in the profile its export chose, checked against its manifest first (§6.3) |
+| POST | `/tenants/import` | role `system:admin` | a new tenant from a package (§6.4) |
+| POST | `/tenants/:id/move` | role `system:admin` | records that the tenant moved (§6.5) |
 | POST | `/tenants/:id/impersonate` | `tenants:impersonate` | body: `{ userId, reason }`. `reason` is **required**. Fresh: an operator whose proof is older than `STEP_UP_MAX_AGE` gets 403 `STEP_UP_REQUIRED` (§2.6) |
 | POST | `/tenants/impersonate/end` | `tenants:impersonate` | revokes the impersonation record. Body: `{ impersonationId }`. Not "authenticated (control)", which on a control route resolves to the superuser alone: whoever can open a session must be able to end one, and that is the capability |
 | POST | `/tenants/:id/destruction-request` | `tenants:destroy` | phase 1, see §6.2 |
@@ -440,8 +458,9 @@ the path lands in proxy access logs, browser history and tracing systems.
   is fixed at phase 1: a request opened for an emailed code does not take a TOTP, nor the reverse.
   Without MFA and without a delivery, or when the delivery fails, phase 1 answers 503
   `DESTRUCTION_FACTOR_NOT_AVAILABLE` and hands out no token. MFA is the preferred path.
-- The framework **exports first** (`tenants:export` path, §6 of `docs/SCHEMA_V5.md`). If the
-  export fails, or produces an empty file, the destruction does not happen.
+- The framework **exports first**, an `operator` package outside the slots (§6.3, §6 of
+  `docs/SCHEMA_V5.md`). If the export fails, or produces an empty file, the destruction does not
+  happen.
 - The event is written **before** execution, with the export reference.
 - What the packages keep outside the container is exported with it, then removed before the
   container is dropped, each package in order; one that cannot remove its part stops the
@@ -468,6 +487,24 @@ slug, the schema version, the instant and a random suffix, in one profile the bo
 `client`, the customer's copy, or `operator`, the only one a restore accepts. There is no default:
 nobody gets, by distraction, a package that does not restore. The export of a destruction is
 `operator`.
+
+A tenant has one slot in each plane: the control plane's, for the exports `system:admin` asks in
+any profile, and the tenant plane's, for its administrator's (§4.1). The envelope names the slot.
+A new export that succeeds removes the previous package of its slot once its own is sealed, and
+its `tenant.exported` event lists what it replaced (`replaced: [{ package, manifestSha256,
+removed }]`); a failed export leaves the previous one, and a removal that failed is tried again by
+the next export. With one slot only, the tenant's administrator would replace the operator's
+package; the two slots may hold two copies of the same data, a known cost. The export of a
+destruction has no slot: it never rotates and the cleanup leaves it.
+
+Two exports of one slot at once are refused: the second answers 409 `EXPORT_IN_PROGRESS`, under a
+lock the data layer holds across processes. A download does not take the lock, and a download cut
+short by a rotation is asked again. The tenant plane's exports are counted on the governance log,
+after the lock is taken: `TENANT_EXPORT_MAX` (3 by default) in `TENANT_EXPORT_WINDOW` seconds (an
+hour by default), every one that started, failed ones included; past the quota the answer is 429
+`EXPORT_QUOTA_EXCEEDED` with `Retry-After`. The control plane's exports neither count nor consume
+it. Where the project keeps the `rateLimit` plugin on, the four export and download routes allow
+ten times the quota per minute and address, a flood guard with no variable of its own.
 
 | File | Holds |
 |---|---|
@@ -511,7 +548,22 @@ back to the same rows fails the export. A `pack` that throws fails it too.
 folder named after the package), in the profile its export chose and no other: a `client` package
 leaves `envelope.json` out, an `operator` one keeps it, and the file is named
 `<package>.<profile>.tar`. The package is checked against its manifest before a byte is sent; a
-name that is not a package of this tenant answers 404.
+name that is not a package of this tenant answers 404. Whose a package is, the envelope's tenant
+id decides: it stays on the server in both profiles, while the manifest names no tenant because it
+travels in the `client` tar. On the tenant plane (§4.1) an `operator` package answers 404 as well.
+
+Every download, of either plane, writes `tenant.downloaded` with the package, the manifest hash
+and the profile: the intent before the first byte, and without it nothing is sent (503
+`GOVERNANCE_LOG_NOT_AVAILABLE`); the outcome when the response ends, with the bytes sent, a
+`failure` when the client cut it short.
+
+A package stays on the server until the next export of its slot replaces it. The cleanup is a job
+of the framework, `exportRetention`, which runs every hour and removes each slot's package created
+more than `TENANT_EXPORT_RETENTION_DAYS` days ago, under its slot's lock, writing
+`tenant.export_expired` (intent and outcome, with no author). It runs only with the variable above
+zero and the `scheduler` plugin on; it is off by default, and a start with tenants and the cleanup
+off logs a WARN that says which of the two is missing. Seven days is a sensible value. A package
+on the server is not a backup: that stays the infrastructure's.
 
 The export of a single-tenant deployment and of the control plane is not this route's: there the
 customer owns the instance, and the infrastructure backup (`pg_dump` of the whole database, a
@@ -569,7 +621,10 @@ SQL, so it lives where `JWT_SECRET` lives, and it meets the same strength check 
 with `movedTo: destination`, and no longer resolves requests; its container stays. `package` must
 be a package exported from this tenant, or 409 `TENANT_PACKAGE_MISMATCH`, in the `operator`
 profile, the one the destination restores, or 409 `RESTORE_PROFILE_MISMATCH`. The event `tenant.moved`
-records the destination, the package and the manifest hash. `POST /tenants/:id/restore` makes the
+records the destination, the package and the manifest hash. The move writes no export of its own:
+it names a package of the control plane's slot, which a later export may replace, because by then
+the tenant has arrived and its container stays until a destruction exports it again.
+`POST /tenants/:id/restore` makes the
 tenant active again and clears `movedTo`. The destination restores the package only if it holds
 the source's signing key, as its own `PACKAGE_SIGNING_KEY` or in `PACKAGE_VERIFY_KEYS`.
 
@@ -652,8 +707,8 @@ path, including the `onError` hook, which in v4 leaked the exception message on 
 | 401 | missing or invalid credentials, uniformly (§2.1) |
 | 403 | valid identity, insufficient scope, role or capability; expired password; a `freshAuth` route with a stale session (`STEP_UP_REQUIRED`, `STEP_UP_NOT_AVAILABLE`, §2.6) |
 | 404 | the addressed resource does not exist **in the caller's container** |
-| 409 | optimistic lock conflict, or an operation already in progress (fleet migration lock) |
-| 429 | rate limit |
+| 409 | optimistic lock conflict, or an operation already in progress (fleet migration lock, `EXPORT_IN_PROGRESS`) |
+| 429 | rate limit, or the export quota of a tenant (`EXPORT_QUOTA_EXCEEDED`, with `Retry-After`) |
 | 500 | unexpected. Message hidden when `HIDE_ERROR_DETAILS` is on |
 
 **The renewal has its own codes**, listed in §2.3: `REFRESH_REQUIRED` for everything a stranger

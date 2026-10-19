@@ -55,7 +55,7 @@ for (const strategy of ['schema', 'container'] as const) {
 
     // An application table with a value encrypted by the backend's key, one only the operator may
     // take out, and a row only the operator's package keeps. The table is the application's,
-    // written from outside before the exports; `pack` and `unpack` treat it (T-17.10).
+    // written from outside before the exports; `pack` and `unpack` treat it.
     const vault = {
       name: 'vault',
       async pack(_tenant: any, handle: any, profile: string) {
@@ -84,10 +84,15 @@ for (const strategy of ['schema', 'container'] as const) {
       if (strategy === 'container') return (await inTenantDatabase(locator, (c) => c.query(text, params))).rows
       const client = await sql().connect()
       try {
-        await client.query(`set search_path to "${locator}"`)
-        return (await client.query(text, params)).rows
+        await client.query('begin')
+        await client.query(`set local search_path to "${locator}"`)
+        const { rows } = await client.query(text, params)
+        await client.query('commit')
+        return rows
+      } catch (error) {
+        await client.query('rollback')
+        throw error
       } finally {
-        await client.query('reset search_path')
         client.release()
       }
     }
@@ -176,7 +181,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it("exports the package's folder next to the dump, and its table inside the dump", async () => {
-      const res = await inject({ method: 'POST', url: `/tenants/${acmeId}/export`, headers: bearer(system), payload: { profile: 'operator' } })
+      const res = await inject({ method: 'POST', url: `/tenants/${acmeId}/exports`, headers: bearer(system), payload: { profile: 'operator' } })
       expect(res.statusCode).toBe(200)
       const { package: name, artifacts } = body(res)
       expect(artifacts).toEqual([{ name: 'notes', bytes: 'acme file'.length }])
@@ -190,12 +195,12 @@ for (const strategy of ['schema', 'container'] as const) {
         await inContainer(ACME.locator, 'insert into vault values ($1, $2, $3)', [label, await encrypt(`acme ${label} secret`), `acme ${label} private`])
       }
 
-      const missing = await inject({ method: 'POST', url: `/tenants/${acmeId}/export`, headers: bearer(system), payload: {} })
+      const missing = await inject({ method: 'POST', url: `/tenants/${acmeId}/exports`, headers: bearer(system), payload: {} })
       expect([missing.statusCode, body(missing).code]).toEqual([400, 'EXPORT_PROFILE_REQUIRED'])
-      const other = await inject({ method: 'POST', url: `/tenants/${acmeId}/export`, headers: bearer(system), payload: { profile: 'admin' } })
+      const other = await inject({ method: 'POST', url: `/tenants/${acmeId}/exports`, headers: bearer(system), payload: { profile: 'admin' } })
       expect(other.statusCode).toBe(400)
 
-      const res = await inject({ method: 'POST', url: `/tenants/${acmeId}/export`, headers: bearer(system), payload: { profile: 'client' } })
+      const res = await inject({ method: 'POST', url: `/tenants/${acmeId}/exports`, headers: bearer(system), payload: { profile: 'client' } })
       expect(res.statusCode).toBe(200)
       const { package: name } = body(res)
       const manifest = JSON.parse(fs.readFileSync(path.join(exports, name, 'manifest.json'), 'utf8'))
@@ -240,7 +245,7 @@ for (const strategy of ['schema', 'container'] as const) {
       })
       expect(idp.statusCode).toBe(201)
 
-      const exported = await inject({ method: 'POST', url: `/tenants/${acmeId}/export`, headers: bearer(system), payload: { profile: 'operator' } })
+      const exported = await inject({ method: 'POST', url: `/tenants/${acmeId}/exports`, headers: bearer(system), payload: { profile: 'operator' } })
       expect(exported.statusCode).toBe(200)
       const { package: name } = body(exported)
       const onDisk = fs.readdirSync(path.join(exports, name)).join(' ')
@@ -272,7 +277,7 @@ for (const strategy of ['schema', 'container'] as const) {
       expect(await notesOf(COPY.locator)).toEqual([{ body: 'acme note' }])
       expect(fs.readFileSync(path.join(folderOf(COPY.locator), 'note.txt'), 'utf8')).toBe('acme file')
 
-      // What pack wrote in clear is encrypted again on the way in, with this machine's key (T-17.10).
+      // What pack wrote in clear is encrypted again on the way in, with this machine's key.
       const vaulted = await inContainer(COPY.locator, 'select label, secret, private from vault order by label')
       expect(vaulted.map((r: any) => [r.label, r.private])).toEqual([
         ['internal', 'acme internal private'],
@@ -309,8 +314,8 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it('records that a tenant moved, with the package it went with, and keeps it out of service (T-17.6)', async () => {
-      // A client package does not restore, so the tenant does not move with one (T-17.10).
-      const customer = await inject({ method: 'POST', url: `/tenants/${copyId}/export`, headers: bearer(system), payload: { profile: 'client' } })
+      // A client package does not restore, so the tenant does not move with one.
+      const customer = await inject({ method: 'POST', url: `/tenants/${copyId}/exports`, headers: bearer(system), payload: { profile: 'client' } })
       const refused = await inject({
         method: 'POST',
         url: `/tenants/${copyId}/move`,
@@ -319,7 +324,7 @@ for (const strategy of ['schema', 'container'] as const) {
       })
       expect([refused.statusCode, body(refused).code]).toEqual([409, 'RESTORE_PROFILE_MISMATCH'])
 
-      const exported = await inject({ method: 'POST', url: `/tenants/${copyId}/export`, headers: bearer(system), payload: { profile: 'operator' } })
+      const exported = await inject({ method: 'POST', url: `/tenants/${copyId}/exports`, headers: bearer(system), payload: { profile: 'operator' } })
       expect(exported.statusCode).toBe(200)
       const { package: name } = body(exported)
       const other = await inject({ method: 'POST', url: `/tenants/${acmeId}/move`, headers: bearer(system), payload: { destination: 'eu-west-2', package: name } })
@@ -367,7 +372,7 @@ for (const strategy of ['schema', 'container'] as const) {
         { id: body(res).id, status: 'active' }
       ])
       expect(await notesOf(ACME.locator)).toEqual([{ body: 'acme note' }])
-      // The destruction exported for the operator: every row back, encrypted again (T-17.10).
+      // The destruction exported for the operator: every row back, encrypted again.
       const vaulted = await inContainer(ACME.locator, 'select label, secret from vault order by label')
       expect(await Promise.all(vaulted.map((r: any) => decrypt(r.secret)))).toEqual(['acme internal secret', 'acme keep secret'])
       await login(ACME.slug, ACME.adminEmail, COPY.password)

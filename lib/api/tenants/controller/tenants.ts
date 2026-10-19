@@ -8,14 +8,9 @@ import type {
   ImpersonationManagement,
   MfaManagement,
   SystemUserManagement,
-  ExportedArtifact,
-  PackageProfile,
-  Tenant,
-  TenantHandle,
   TenantLifecycle,
   TenantManagement,
   TenantPlace,
-  TenantStrategy,
   UserManagement
 } from '../../../../types/global.js'
 import crypto from 'crypto'
@@ -32,29 +27,24 @@ import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, se
 import { assertGovernanceLog, failureOf, fieldNames, governed, intend, settle } from '../../../util/governance.js'
 import {
   createInPackages,
-  describePackages,
   destroyInPackages,
-  exportFromPackages,
-  packInPackages,
   restoreInPackages,
   undoPackages,
   unpackInPackages,
   unrestorable
 } from '../../../util/tenantLifecycle.js'
+import { openPackage, packageDir, packageKeys, verifyEnvelope } from '../../../util/tenantPackage.js'
 import {
-  DUMP,
-  ENVELOPE,
-  PackageInvalidError,
-  PackageSignatureError,
-  createPackage,
-  openPackage,
-  packageDir,
-  packageKeys,
-  sealPackage,
-  tarPackage,
-  verifyEnvelope,
-  writeEnvelope
-} from '../../../util/tenantPackage.js'
+  exportPackage,
+  exportTenant,
+  lifecyclesOf,
+  migrationsOf,
+  providerOf,
+  refuseDestroyed,
+  refusePackage,
+  sendPackage,
+  type ExportedPackage
+} from '../../../util/tenantExport.js'
 
 //
 // The tenant registry. Control scope: these routes act on the platform, never inside a
@@ -76,70 +66,6 @@ const managerOf = (req: FastifyRequest): TenantManagement => req.server['tenantM
 /** The registry lives in the control plane, and nowhere else. */
 const control = (req: FastifyRequest): ControlHandle => req.control as ControlHandle
 
-//
-// What these routes ask of the data layer beyond `DataProvider`. Restated here because the core
-// may not import `lib/database/ports.ts` (dependency-cruiser). A provider written by a consumer
-// may lack any of these, which is why every route still checks before calling.
-//
-interface ContainerRef {
-  tenantId?: string
-  locator: string
-}
-
-interface PackagedDump {
-  path: string
-  bytes: number
-  schemaVersion: string | null
-  schema: string | null
-  rowCounts: Record<string, number>
-}
-
-/** What an export answers: a package is named, never located. */
-interface ExportedPackage {
-  package: string
-  profile: PackageProfile
-  manifestSha256: string
-  /** False without PACKAGE_SIGNING_KEY: such a package can be downloaded, never restored. */
-  signed: boolean
-  bytes: number
-  schemaVersion: string | null
-  artifacts: { name: string; bytes: number }[]
-}
-
-// A type alias and not an interface: it is stored as `Record<string, unknown>` by the
-// destruction request, and only an alias is assignable to an index signature.
-type ContainerPreview = {
-  locator: string
-  sizeBytes: number
-  rowCounts: Record<string, number>
-  schemaVersion: string | null
-  lastExportAt?: string
-}
-
-interface ContainerProvider extends DataProvider {
-  readonly strategy: TenantStrategy
-  createContainer(tenant: Tenant): Promise<boolean>
-  forLocator(locator: string, tenantId: string): Promise<TenantHandle>
-  dropContainer(locator: string): Promise<void>
-  /** `pack` runs on the scratch copy, after the credentials are emptied and before the rows are counted. */
-  exportContainer(
-    tenant: Tenant,
-    request: { target: string; schemaVersion: string | null; pack?: (handle: TenantHandle) => Promise<void> }
-  ): Promise<PackagedDump>
-  /** null when a container with that locator is already there, untouched. */
-  restoreContainer?(
-    locator: string,
-    source: { dump: string; schema: string | null; rowCounts: Record<string, number> }
-  ): Promise<{ tokenIds: string[]; founderId: string | null } | null>
-  inspectContainer(tenant: Tenant): Promise<ContainerPreview>
-}
-
-interface MigrationPort {
-  apply(container: ContainerRef, target?: string): Promise<string>
-  version(container: ContainerRef): Promise<string | null>
-  expected?(container: ContainerRef): string | null
-}
-
 /** The platform identity the destruction routes act for (`req.systemUser`). */
 interface Operator {
   id: string
@@ -149,88 +75,6 @@ interface Operator {
   mfaLastUsedCounter?: number | null
 }
 
-const providerOf = (req: FastifyRequest): ContainerProvider | undefined =>
-  (req.server as unknown as Record<string, ContainerProvider | undefined>)['provider']
-
-const migrationsOf = (req: FastifyRequest): MigrationPort | undefined =>
-  (req.server as unknown as Record<string, MigrationPort | undefined>)['migrations']
-
-const lifecyclesOf = (req: FastifyRequest): readonly TenantLifecycle[] => req.server.tenantLifecycles ?? []
-
-/**
- * The package of a tenant (lib/util/tenantPackage.ts): the dump, what each package keeps for the
- * tenant outside the container, the manifest over all of them, and the operator's envelope bound
- * to it. The profile is chosen here and only here: the packages' `pack` writes the dump for it,
- * and the envelope is written on the server for both, since the download reads it. A failure
- * anywhere removes the folder: a package missing a part must not sit in the directory looking like
- * a whole one.
- */
-async function exportTenant(
-  req: FastifyRequest,
-  provider: ContainerProvider,
-  tenant: Tenant,
-  schemaVersion: string | null,
-  profile: PackageProfile
-): Promise<ExportedPackage & { dir: string }> {
-  const { name, dir } = createPackage(tenant, schemaVersion)
-  try {
-    const lifecycles = lifecyclesOf(req)
-    const packed: { unpack?: Set<string> } = {}
-    const pack = async (handle: TenantHandle) => void (packed.unpack = await packInPackages(lifecycles, tenant, handle, profile))
-    const dump = await provider.exportContainer(tenant, { target: path.join(dir, DUMP), schemaVersion, pack })
-    // A data layer written by a project may not know the hook: its dump would hand out what the
-    // application meant to empty.
-    if (!packed.unpack && lifecycles.some((l) => l.pack)) throw new Error('The data layer exported the container without running pack')
-    const artifacts: ExportedArtifact[] = await exportFromPackages(lifecycles, tenant, dump.path)
-    const described = await describePackages(lifecycles, tenant)
-    const sealed = await sealPackage(dir, {
-      createdAt: new Date().toISOString(),
-      tenant: { name: tenant.name, slug: tenant.slug },
-      profile,
-      schemaVersion,
-      strategy: provider.strategy,
-      engine: tenant.engine,
-      dump: { file: DUMP, schema: dump.schema, rowCounts: dump.rowCounts },
-      packages: lifecycles.map((l) => {
-        const artifact = artifacts.find((a) => a.name === l.name)
-        return {
-          name: l.name,
-          file: artifact ? path.basename(artifact.path) : null,
-          unpack: packed.unpack?.has(l.name) ?? false,
-          description: described.get(l.name) ?? null
-        }
-      })
-    })
-    const idps: IdentityProviderManagement | undefined = req.server['identityProviderManager']
-    const { signed } = writeEnvelope(dir, {
-      manifestSha256: sealed.sha256,
-      tenant,
-      identityProviders: isImplemented(idps) ? await idps!.list(control(req), tenant.id) : []
-    })
-    if (!signed && log.w) log.warn(`Tenant ${tenant.slug}: package ${name} is not signed, and no instance will restore it (PACKAGE_SIGNING_KEY)`)
-    return {
-      package: name,
-      dir,
-      profile,
-      manifestSha256: sealed.sha256,
-      signed,
-      bytes: sealed.bytes,
-      schemaVersion,
-      artifacts: artifacts.map((a) => ({ name: a.name, bytes: a.bytes }))
-    }
-  } catch (error) {
-    fs.rmSync(dir, { recursive: true, force: true })
-    throw error
-  }
-}
-
-/** A package's refusal as an answer; any other error goes on. */
-function refusePackage(reply: FastifyReply, error: unknown) {
-  if (error instanceof PackageInvalidError || error instanceof PackageSignatureError) {
-    return reply.status(422).send(httpError(422, error.message, error.code))
-  }
-  throw error
-}
 
 function unavailable(req: FastifyRequest, reply: FastifyReply): boolean {
   const tm = managerOf(req)
@@ -478,14 +322,6 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   return reply.send(tenant)
 }
 
-/** A destroyed tenant keeps its row as the record of the destruction, and no change reaches it. */
-function refuseDestroyed(reply: FastifyReply, tenant: Tenant | null) {
-  if (tenant?.status !== 'destroyed') return null
-  return reply
-    .status(409)
-    .send(httpError(409, 'This tenant was destroyed: its row is the record of that, and nothing brings it back', 'TENANT_DESTROYED'))
-}
-
 /** The manager changed nothing: either no such tenant, or one it refused to touch because it was destroyed. */
 async function refuseUnchanged(req: FastifyRequest, reply: FastifyReply, id: string) {
   return refuseDestroyed(reply, await managerOf(req).getTenant(control(req), id)) ?? reply.status(404).send()
@@ -538,16 +374,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * Takes a customer's data out (docs/API_V5.md §6).
- *
- * The version is read from the CONTAINER, not from the registry row, and read before the dump
- * starts: the row says what the last migration run believed, the container says what it
- * actually has, and an export is a file that will outlive both.
- *
- * The caller chooses nothing about where it lands. The directory is configuration and the package
- * name is generated, because this route is reachable over HTTP and a destination taken from a
- * request is a path traversal with extra steps. The answer names the package and its manifest's
- * hash, never a path of this machine: the file is reached through the download.
+ * Takes a customer's data out into the control plane's slot (docs/API_V5.md §6, lib/util/tenantExport.ts).
  *
  * The profile has no default: a `client` package does not restore, and an `operator` one carries
  * the envelope, so neither is the one to get by leaving a field out.
@@ -560,69 +387,15 @@ export async function exportContainer(req: FastifyRequest, reply: FastifyReply) 
   if (profile !== 'client' && profile !== 'operator') {
     return reply.status(400).send(httpError(400, 'profile is required: client or operator', 'EXPORT_PROFILE_REQUIRED'))
   }
-  const tenant = await managerOf(req).getTenant(control(req), id)
-  if (!tenant) return reply.status(404).send()
-  const destroyed = refuseDestroyed(reply, tenant)
-  if (destroyed) return destroyed
-
-  const provider = providerOf(req)
-  const migrations = migrationsOf(req)
-  if (!provider?.exportContainer) {
-    return reply.status(503).send(httpError(503, 'This data layer cannot export a container', 'EXPORT_NOT_AVAILABLE'))
-  }
-
-  const schemaVersion = migrations?.version
-    ? await migrations.version({ tenantId: tenant.id, locator: tenant.locator })
-    : (tenant.schemaVersion ?? null)
-
-  // A dump is a copy of a customer's data leaving the database, and no transaction reaches it: the
-  // intent is written first, and without it the dump does not start.
-  const exported = { action: 'tenant.exported', tenantId: tenant.id } as const
-  const intent = await intend(req, { ...exported, detail: { schemaVersion, profile } })
-  let result: ExportedPackage & { dir: string }
-  try {
-    result = await exportTenant(req, provider, tenant, schemaVersion, profile)
-  } catch (error) {
-    await settle(req, intent, 'failure', { ...exported, detail: { reason: failureOf(error) } })
-    throw error
-  }
-  const { dir, ...packaged } = result
-  // The log is the operator's, so it keeps where the package is next to what it is.
-  await settle(req, intent, 'success', { ...exported, detail: { path: dir, ...packaged } })
-
-  if (log.i) log.info(`Tenant ${tenant.slug}: exported a ${profile} package of ${result.bytes} bytes at ${schemaVersion ?? 'no migration'}`)
-  return reply.send({ tenant: { id: tenant.id, slug: tenant.slug }, ...packaged })
+  return await exportPackage(req, reply, { tenantId: String(id), profile, slot: 'control' })
 }
 
-/**
- * The package as one tar file (docs/API_V5.md §6.3), in the profile its manifest names and in no
- * other: the dump was written for that profile. A `client` package leaves the envelope out, and is
- * what goes to a customer; an `operator` package is whole, for a restore elsewhere. Checked before
- * it is sent, as an import checks it: a package that no longer matches its manifest is not handed
- * to anyone as if it did.
- */
+/** Any package of the tenant in the path, in either profile (lib/util/tenantExport.ts). */
 export async function downloadPackage(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const { id, package: name } = req.parameters()
-  const dir = packageDir(name)
-  if (!dir) return reply.status(404).send()
-
-  let opened: Awaited<ReturnType<typeof openPackage>>
-  try {
-    opened = await openPackage(dir)
-  } catch (error) {
-    return refusePackage(reply, error)
-  }
-  // A package of another tenant is not this tenant's, whatever its name says.
-  if (opened.envelope.tenant?.id !== id) return reply.status(404).send()
-
-  const { profile } = opened.manifest
-  const file = profile === 'operator' ? `${name}.operator.tar` : `${name}.tar`
-  return reply
-    .type('application/x-tar')
-    .header('content-disposition', `attachment; filename="${file}"`)
-    .send(tarPackage(dir, name, (relative) => profile === 'operator' || relative !== ENVELOPE))
+  return await sendPackage(req, reply, { tenantId: String(id), name, operator: true })
 }
 
 /**
@@ -1026,8 +799,8 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
       ? await migrations.version({ tenantId: tenant.id, locator: tenant.locator })
       : (tenant.schemaVersion ?? null)
 
-    // The package that outlives the tenant is the one that restores it.
-    exported = await exportTenant(req, provider, tenant, schemaVersion, 'operator')
+    // The package that outlives the tenant is the one that restores it, in no slot: nothing replaces it.
+    exported = await exportTenant(req, provider, tenant, schemaVersion, 'operator', null)
   } catch (error) {
     if (log.e) log.error(`Destruction of ${tenant.slug} stopped: the export failed: ${(error as Error)?.message}`)
     await stopped('DESTRUCTION_EXPORT_FAILED')

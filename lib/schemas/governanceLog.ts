@@ -12,6 +12,7 @@ export const governanceLogSchema = {
     outcome: { type: 'string', enum: ['success', 'intent', 'failure'] },
     intentId: { type: 'string', nullable: true },
     actorId: { type: 'string', nullable: true },
+    actorPlane: { type: 'string', enum: ['control', 'tenant'], nullable: true },
     tenantId: { type: 'string', nullable: true },
     targetId: { type: 'string', nullable: true },
     detail: { type: 'object', nullable: true, additionalProperties: true },

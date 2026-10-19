@@ -137,7 +137,7 @@ export class PostgresProvider {
   private readonly db: PgDb
   /** Which driver runs underneath. The dialect is Postgres either way. */
   readonly engine: 'postgres' | 'pglite'
-  /** Container locks held by this process: the PGlite form of an advisory lock (`withContainerLock`). */
+  /** Locks held by this process: the PGlite form of an advisory lock (`withLock`). */
   private readonly heldLocks = new Set<string>()
   private readonly controlSchema: string
   private readonly registry: RegistryTables
@@ -695,10 +695,12 @@ export class PostgresProvider {
    * Runs `fn` while holding an advisory lock on a container, or answers `null` when someone
    * else already holds it.
    *
-   * A DEDICATED client, not a pooled query: a Postgres advisory lock belongs to the session
-   * that took it, so taking one on a connection that goes back to the pool would leave the
-   * lock on a connection any later request could be handed. That is why the client is checked
-   * out for the whole of `fn` and released in a `finally`.
+   * A DEDICATED connection, opened for the lock and closed after it, outside the pool: a Postgres
+   * advisory lock belongs to the session that took it, so it has to stay on one connection for
+   * the whole of `fn`, and `fn` runs its own queries through the pool. A lock holding a pooled
+   * connection starves the work it guards: with a pool of one it waits for itself forever, and
+   * with ten, ten exports at once stop the control plane. A connection that drops takes its lock
+   * with it, on the server's side.
    *
    * `pg_try_advisory_lock` and not `pg_advisory_lock`: a fleet migrator that BLOCKS on a
    * container someone else is migrating turns two operators into a deadlock with a queue.
@@ -710,19 +712,33 @@ export class PostgresProvider {
    */
   async withContainerLock<T>(locator: string, fn: () => Promise<T>): Promise<T | null> {
     assertLocator(locator)
+    return this.withLock(locator, fn)
+  }
+
+  /**
+   * The lock of `withContainerLock` on any name, for work that is not a migration: the export of
+   * a tenant takes `export:<tenant id>:<slot>`. A locator never holds a colon, so a name with one
+   * never collides with a container's lock.
+   */
+  async withLock<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
     if (!this.pool) {
-      if (this.heldLocks.has(locator)) return null
-      this.heldLocks.add(locator)
+      if (this.heldLocks.has(name)) return null
+      this.heldLocks.add(name)
       try {
         return await fn()
       } finally {
-        this.heldLocks.delete(locator)
+        this.heldLocks.delete(name)
       }
     }
 
-    const client = await this.pool.connect()
+    const client = new pg.Client({ connectionString: this.url ?? undefined })
+    // An `error` event nobody listens to ends the process; the lock is gone with the connection.
+    client.on('error', (e) => {
+      if (globalThis.log?.w) globalThis.log.warn(`Postgres: the connection holding the lock '${name}' was closed: ${e?.message}`)
+    })
+    await client.connect()
     try {
-      const key = advisoryKey(locator)
+      const key = advisoryKey(name)
       const taken = await client.query('select pg_try_advisory_lock($1) as ok', [key])
       if (!taken.rows[0]?.ok) return null
       try {
@@ -731,7 +747,7 @@ export class PostgresProvider {
         await client.query('select pg_advisory_unlock($1)', [key])
       }
     } finally {
-      client.release()
+      await client.end()
     }
   }
 

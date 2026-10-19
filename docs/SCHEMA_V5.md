@@ -440,7 +440,8 @@ after a removal. Destroying the tenant's data removes all its rows, before the c
 
 ### 3.6 `governance_log`
 
-What the operators did to the platform (docs/API_V5.md §5.1). Append-only like `access_log`, and
+What the operators did to the platform, and what a tenant's administrator took out of it
+(docs/API_V5.md §5.1). Append-only like `access_log`, and
 unlike it never purged by the framework: a row has to outlive the tenant, the operator and the
 provider it names, which is also why no column carries a foreign key.
 
@@ -450,8 +451,9 @@ provider it names, which is also why no column carries a foreign key.
 | `occurred_at` | timestamp | no | now | |
 | `action` | text | no | | one of a closed list, enforced by the manager: `tenant.*`, `impersonation.*`, `system_user.*`, `identity_provider.*`, `account_creation.*` |
 | `outcome` | text | no | | `success`, `intent` or `failure` |
-| `intent_id` | text | yes | | on the outcome of an export or a destruction, the `id` of its intent |
-| `actor_id` | text | yes | | the operator's `system_user.id` |
+| `intent_id` | text | yes | | on the outcome of an export, a download, a package's expiry or a destruction, the `id` of its intent |
+| `actor_id` | text | yes | | the author's `id`: a `system_user.id` or a tenant's `user.id`, as `actor_plane` says |
+| `actor_plane` | text | yes | | `control` for an operator, `tenant` for a user of the tenant's container. Null with no author, as for a job |
 | `tenant_id` | text | yes | | the tenant concerned, if any |
 | `target_id` | text | yes | | the operator, provider key or impersonated user acted upon |
 | `detail` | jsonb | yes | | names and reasons: the fields a patch carried, a suspension reason, an export path, a failure code |

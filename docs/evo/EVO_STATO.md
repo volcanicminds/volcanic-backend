@@ -228,7 +228,10 @@ li tratta un aggancio dell'app con il profilo scelto all'export (F92, F93, T-17.
 19 ottobre 2026: 1101 prove con `DATABASE_URL`, banco `tenantLifecycle.e2e` 18 sulle due
 strategie); l'amministratore del tenant esporta e scarica il suo tenant; export, download, import e
 trasloco nel piano di controllo restano al solo `system:admin`, con lo step-up; ogni download
-scrive un evento (F89, T-17.11).
+scrive un evento; un pacchetto per tenant in ciascun piano, sostituito dal successivo, e una
+pulizia per età che il progetto accende (F89, T-17.11, chiuso il 19 ottobre 2026: 1121 prove con
+`DATABASE_URL`, nessuna saltata; `test:e2e:mt:pg` 69; admin 228; rag-sample `test:tenants` 9 su 9
+nelle quattro combinazioni). **Fase 17 di nuovo chiusa il 19 ottobre 2026.**
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto

@@ -1,6 +1,12 @@
+import { exportRateLimit } from '../../util/tenantExport.js'
+
 // The tenant registry only exists where there are tenants: with no `tenants` block the
 // whole group stays unmounted (docs/CONFIGURATION_V5.md §1).
 const isEnabled = !!global.config?.options?.tenants?.strategy
+
+// A customer's data leaving the platform, or entering it as a new tenant: the platform
+// administrator's alone, with no capability that could hand it to another role.
+const SYSTEM_ADMIN = ['system:admin']
 
 export default {
   config: {
@@ -135,14 +141,16 @@ export default {
     },
     {
       method: 'POST',
-      path: '/:id/export',
-      requireCapability: 'tenants:export',
+      path: '/:id/exports',
+      roles: SYSTEM_ADMIN,
       handler: 'tenants.exportContainer',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
+      rateLimit: exportRateLimit(),
       config: {
         title: 'Export a container',
         description:
-          'Writes the package of one tenant in one profile: the dump without credentials, the parts of its packages, a manifest and the operator envelope',
+          'Writes the package of one tenant in one profile: the dump without credentials, the parts of its packages, a manifest and the operator envelope. It replaces the previous export of the control plane',
         body: { $ref: 'tenantExportBodySchema#' },
         manifest: { input: { fields: { profile: { required: true } } } }
       }
@@ -150,9 +158,11 @@ export default {
     {
       method: 'GET',
       path: '/:id/exports/:package',
-      requireCapability: 'tenants:export',
+      roles: SYSTEM_ADMIN,
       handler: 'tenants.downloadPackage',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
+      rateLimit: exportRateLimit(),
       config: {
         title: 'Download a package',
         description: 'One tar file in the profile chosen at the export, checked against its manifest first; a client package leaves the operator envelope out',
@@ -162,7 +172,7 @@ export default {
     {
       method: 'POST',
       path: '/import',
-      requireCapability: 'tenants',
+      roles: SYSTEM_ADMIN,
       handler: 'tenants.importTenant',
       middlewares: ['global.isAuthenticated'],
       config: {
@@ -177,7 +187,7 @@ export default {
     {
       method: 'POST',
       path: '/:id/move',
-      requireCapability: 'tenants',
+      roles: SYSTEM_ADMIN,
       handler: 'tenants.move',
       middlewares: ['global.isAuthenticated'],
       config: {

@@ -90,6 +90,14 @@ export const tenantPackageParamsSchema = {
   properties: { id: { type: 'string' }, package: packageName }
 }
 
+// The tenant plane's download: the tenant is the token's, so the path names the package alone.
+export const exportPackageParamsSchema = {
+  $id: 'exportPackageParamsSchema',
+  type: 'object',
+  required: ['package'],
+  properties: { package: packageName }
+}
+
 // Required, and refused by the controller when missing (EXPORT_PROFILE_REQUIRED): the dump is
 // written for one profile, and the download sends that one.
 export const tenantExportBodySchema = {

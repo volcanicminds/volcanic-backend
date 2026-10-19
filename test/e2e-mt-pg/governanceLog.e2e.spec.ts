@@ -5,15 +5,21 @@
 // the rows of a tenant stay once its container is gone, and only a holder of `governance-log`
 // reads them. What the rows say is checked from outside too, with plain `pg`.
 //
+import fs from 'fs'
 import { mkdtemp, rm } from 'fs/promises'
 import os from 'os'
 import path from 'path'
 import { expect } from 'expect'
-import { setup, teardown, inject, systemToken, createTenant, sql, bearer, ACME, GLOBEX } from './harness.js'
+import { advisoryKey } from '../../lib/database/adapters/postgres/index.js'
+import { runnerFor } from '../../lib/loader/schedules.js'
+import * as retention from '../../lib/schedules/exportRetention.job.js'
+import { setup, teardown, inject, app, systemToken, createTenant, login, staled, sql, bearer, ACME, GLOBEX } from './harness.js'
 
 const body = (res: any) => JSON.parse(res.body)
 const TWIN = { slug: 'acme-twin', locator: 'tenant_acme_twin' }
-// The profile an export has to name; the operator's is the one that restores (T-17.10).
+// Where an import would land if an operator were let through; dropped after, should a defect let one through.
+const OPS_COPY = { slug: 'acme-ops', locator: 'tenant_acme_ops' }
+// The profile an export has to name; the operator's is the one that restores.
 const OPERATOR = { profile: 'operator' }
 
 const ACTIONS = [
@@ -23,6 +29,8 @@ const ACTIONS = [
   'tenant.restored',
   'tenant.deleted',
   'tenant.exported',
+  'tenant.downloaded',
+  'tenant.export_expired',
   'tenant.imported',
   'tenant.moved',
   'tenant.destruction_requested',
@@ -61,6 +69,15 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
   }
   const rows = async (where = '', params: unknown[] = []) =>
     (await sql().query(`select * from public.governance_log ${where} order by occurred_at, id`, params)).rows
+  // The outcome of a download is written when the stream ends, after the answer: waited for, not assumed.
+  const settled = async (where: string, count: number) => {
+    for (let i = 0; i < 50 && (await rows(where)).length < count; i++) await new Promise((resolve) => setTimeout(resolve, 20))
+    return rows(where)
+  }
+  const asAdmin = async () => bearer(await login(ACME.slug, ACME.adminEmail, ACME.adminPassword), ACME.slug)
+  // The packages of Acme's two slots, as the tests below leave them.
+  let ownPackage: string
+  let operatorPackage: string
 
   before(async () => {
     await setup({
@@ -79,7 +96,7 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
   })
 
   after(async () => {
-    await sql().query(`drop schema if exists "${TWIN.locator}" cascade`)
+    for (const locator of [TWIN.locator, OPS_COPY.locator]) await sql().query(`drop schema if exists "${locator}" cascade`)
     await teardown()
     if (exports) await rm(exports, { recursive: true, force: true })
   })
@@ -147,19 +164,19 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
   })
 
   it('writes the intent of an export before it, and the outcome after', async () => {
-    const res = await call('POST', `/tenants/${acmeId}/export`, OPERATOR)
+    const res = await call('POST', `/tenants/${acmeId}/exports`, OPERATOR)
     expect(res.statusCode).toBe(200)
     const [intent, success] = await rows(`where action = 'tenant.exported'`)
-    expect(intent).toMatchObject({ outcome: 'intent', tenant_id: acmeId, intent_id: null, detail: { profile: 'operator' } })
-    expect(success).toMatchObject({ outcome: 'success', tenant_id: acmeId, intent_id: intent.id })
+    expect(intent).toMatchObject({ outcome: 'intent', tenant_id: acmeId, intent_id: null, actor_plane: 'control', detail: { profile: 'operator', slot: 'control' } })
+    expect(success).toMatchObject({ outcome: 'success', tenant_id: acmeId, intent_id: intent.id, actor_plane: 'control' })
     // The path stays in the log, for whoever looks the package up on the machine; the response names only the package.
     const { package: name, manifestSha256, bytes } = body(res)
-    expect(success.detail).toMatchObject({ path: path.join(exports, name), package: name, manifestSha256, bytes })
+    expect(success.detail).toMatchObject({ path: path.join(exports, name), package: name, manifestSha256, bytes, slot: 'control', replaced: [] })
     expect(body(res).path).toBeUndefined()
   })
 
   it('writes the restore of a package and the move of a tenant, with the package and its hash', async () => {
-    const { package: name, manifestSha256 } = body(await call('POST', `/tenants/${acmeId}/export`, OPERATOR))
+    const { package: name, manifestSha256 } = body(await call('POST', `/tenants/${acmeId}/exports`, OPERATOR))
     const restored = await call('POST', '/tenants/import', { package: name, ...TWIN, founderPassword: 'Twin-pw-1234567' })
     expect(restored.statusCode).toBe(201)
     const twinId = body(restored).id
@@ -167,7 +184,7 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
     expect(imported).toMatchObject({ outcome: 'success', tenant_id: twinId, detail: { sourceTenantId: acmeId, package: name, manifestSha256 } })
     expect(JSON.stringify(imported)).not.toContain('Twin-pw-1234567')
 
-    const out = body(await call('POST', `/tenants/${twinId}/export`, OPERATOR))
+    const out = body(await call('POST', `/tenants/${twinId}/exports`, OPERATOR))
     expect((await call('POST', `/tenants/${twinId}/move`, { destination: 'eu-west-2', package: out.package })).statusCode).toBe(200)
     const [moved] = await rows(`where action = 'tenant.moved'`)
     expect(moved).toMatchObject({
@@ -175,6 +192,141 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
       tenant_id: twinId,
       detail: { destination: 'eu-west-2', package: out.package, manifestSha256: out.manifestSha256 }
     })
+  })
+
+  it("lets the tenant's admin export and download its own tenant, not the operator's package, and records each download (T-17.11)", async () => {
+    const headers = await asAdmin()
+    // The tenant is the token's: a body naming another one changes nothing.
+    const own = await inject({ method: 'POST', url: '/exports', headers, payload: { tenantId: globexId } })
+    expect([own.statusCode, own.statusCode === 200 || own.body]).toEqual([200, true])
+    expect(body(own)).toMatchObject({ tenant: { id: acmeId, slug: ACME.slug }, profile: 'client' })
+    ownPackage = body(own).package
+    const fetched = await inject({ method: 'GET', url: `/exports/${ownPackage}?tenantId=${globexId}`, headers })
+    expect([fetched.statusCode, fetched.statusCode === 200 || fetched.body]).toEqual([200, true])
+    expect(fetched.rawPayload.includes(Buffer.from('envelope.json'))).toBe(false)
+
+    operatorPackage = body(await call('POST', `/tenants/${acmeId}/exports`, OPERATOR)).package
+    expect((await inject({ method: 'GET', url: `/exports/${operatorPackage}`, headers })).statusCode).toBe(404)
+    const whole = await call('GET', `/tenants/${acmeId}/exports/${operatorPackage}`)
+    expect(whole.statusCode).toBe(200)
+
+    const adminId = String((await sql().query(`select id from "${ACME.locator}"."user" where email = $1`, [ACME.adminEmail])).rows[0].id)
+    const founder = (await sql().query(`select id from public.system_user where email = 'super@system.test'`)).rows[0].id
+    const [exported] = await rows(`where action = 'tenant.exported' and actor_plane = 'tenant'`)
+    expect(exported).toMatchObject({ outcome: 'intent', tenant_id: acmeId, actor_id: adminId, detail: { profile: 'client', slot: 'tenant' } })
+
+    const downloads = await settled(`where action = 'tenant.downloaded'`, 4)
+    const of = (plane: string) => downloads.filter((r: any) => r.actor_plane === plane)
+    expect(of('tenant')).toMatchObject([
+      { outcome: 'intent', tenant_id: acmeId, actor_id: adminId, detail: { package: ownPackage, manifestSha256: body(own).manifestSha256, profile: 'client' } },
+      { outcome: 'success', tenant_id: acmeId, actor_id: adminId, detail: { package: ownPackage, bytes: fetched.rawPayload.length } }
+    ])
+    expect(of('control')).toMatchObject([
+      { outcome: 'intent', actor_id: founder, detail: { package: operatorPackage, profile: 'operator' } },
+      { outcome: 'success', actor_id: founder, detail: { bytes: whole.rawPayload.length } }
+    ])
+    expect(of('tenant')[1].intent_id).toBe(of('tenant')[0].id)
+  })
+
+  it('refuses a tenant role other than admin, and a session not confirmed lately, on both planes (T-17.11)', async () => {
+    const headers = await asAdmin()
+    const member = { email: 'member@acme.test', password: 'Member-pw-12345' }
+    expect((await inject({ method: 'POST', url: '/users', headers, payload: member })).statusCode).toBe(200)
+    await sql().query(`update "${ACME.locator}"."user" set confirmed = true where email = $1`, [member.email])
+    const user = await login(ACME.slug, member.email, member.password)
+    const stale = staled(headers.authorization.slice('Bearer '.length)).token
+
+    for (const [method, url] of [
+      ['POST', '/exports'],
+      ['GET', `/exports/${ownPackage}`]
+    ]) {
+      const refused = await inject({ method, url, headers: bearer(user, ACME.slug) })
+      expect([refused.statusCode, body(refused).code]).toEqual([403, 'FORBIDDEN'])
+      const unconfirmed = await inject({ method, url, headers: bearer(stale, ACME.slug) })
+      expect([unconfirmed.statusCode, body(unconfirmed).code]).toEqual([403, 'STEP_UP_REQUIRED'])
+    }
+    const staleSystem = staled(system).token
+    for (const [method, url, payload] of [
+      ['POST', `/tenants/${acmeId}/exports`, OPERATOR],
+      ['GET', `/tenants/${acmeId}/exports/${operatorPackage}`, undefined]
+    ] as const) {
+      const res = await call(method, url, payload, staleSystem)
+      expect([res.statusCode, body(res).code]).toEqual([403, 'STEP_UP_REQUIRED'])
+    }
+  })
+
+  it('gives the export, the download, the import and the move to system:admin alone, not to an operator holding tenants (T-17.11)', async () => {
+    const email = 'ops3@system.test'
+    const password = 'Ops3-pw-12345678'
+    expect((await call('POST', '/system/users', { email, password, roles: ['system:operator'] })).statusCode).toBe(201)
+    const operator = await operatorLogin(email, password)
+    // The same operator reads the tenant: what is refused is these four routes, not the operator.
+    expect((await call('GET', `/tenants/${acmeId}`, undefined, operator)).statusCode).toBe(200)
+    for (const [method, url, payload] of [
+      ['POST', `/tenants/${acmeId}/exports`, OPERATOR],
+      ['GET', `/tenants/${acmeId}/exports/${operatorPackage}`, undefined],
+      ['POST', '/tenants/import', { package: operatorPackage, ...OPS_COPY, founderPassword: 'Copy-pw-12345678' }],
+      ['POST', `/tenants/${acmeId}/move`, { destination: 'eu-west-3', package: operatorPackage }]
+    ] as const) {
+      const res = await call(method, url, payload, operator)
+      expect([res.statusCode, body(res).code]).toEqual([403, 'FORBIDDEN'])
+    }
+  })
+
+  it('answers 409 while another session holds the slot, on the advisory lock of Postgres (T-17.11)', async () => {
+    const headers = await asAdmin()
+    const holder = await sql().connect()
+    try {
+      await holder.query('select pg_advisory_lock($1)', [advisoryKey(`export:${acmeId}:tenant`)])
+      const res = await inject({ method: 'POST', url: '/exports', headers })
+      expect([res.statusCode, body(res).code]).toEqual([409, 'EXPORT_IN_PROGRESS'])
+    } finally {
+      await holder.query('select pg_advisory_unlock_all()')
+      holder.release()
+    }
+  })
+
+  it('stops the tenant plane at its quota with Retry-After, and never the operator (T-17.11)', async () => {
+    const used = (await rows(`where action = 'tenant.exported' and outcome = 'intent' and actor_plane = 'tenant'`)).length
+    process.env.TENANT_EXPORT_MAX = String(used + 1)
+    try {
+      const headers = await asAdmin()
+      const allowed = await inject({ method: 'POST', url: '/exports', headers })
+      expect(allowed.statusCode).toBe(200)
+      ownPackage = body(allowed).package
+      const refused = await inject({ method: 'POST', url: '/exports', headers })
+      expect([refused.statusCode, body(refused).code]).toEqual([429, 'EXPORT_QUOTA_EXCEEDED'])
+      expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0)
+      const operator = await call('POST', `/tenants/${acmeId}/exports`, OPERATOR)
+      expect(operator.statusCode).toBe(200)
+      operatorPackage = body(operator).package
+    } finally {
+      delete process.env.TENANT_EXPORT_MAX
+    }
+  })
+
+  it('expires the packages of the slots older than the retention through the real job, an event each (T-17.11)', async () => {
+    const file = path.join(exports, ownPackage, 'manifest.json')
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
+    fs.writeFileSync(file, JSON.stringify({ ...manifest, createdAt: new Date(Date.now() - 8 * 86_400_000).toISOString() }))
+    process.env.TENANT_EXPORT_RETENTION_DAYS = '7'
+    try {
+      await runnerFor(app(), 'exportRetention', retention.schedule, retention.job, new AbortController().signal)()
+    } finally {
+      delete process.env.TENANT_EXPORT_RETENTION_DAYS
+    }
+    expect(fs.existsSync(path.join(exports, ownPackage))).toBe(false)
+    expect(fs.existsSync(path.join(exports, operatorPackage))).toBe(true)
+    const [intent, success] = await rows(`where action = 'tenant.export_expired'`)
+    expect(intent).toMatchObject({
+      outcome: 'intent',
+      tenant_id: acmeId,
+      actor_id: null,
+      actor_plane: null,
+      ip: null,
+      detail: { package: ownPackage, slot: 'tenant' }
+    })
+    expect(success).toMatchObject({ outcome: 'success', intent_id: intent.id, detail: { package: ownPackage } })
   })
 
   it('keeps the rows of a tenant once its container is destroyed', async () => {

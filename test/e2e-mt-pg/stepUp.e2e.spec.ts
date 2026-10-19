@@ -8,17 +8,24 @@
 // plane refuses a stale session and lets it through once confirmed.
 //
 import { expect } from 'expect'
-import { setup, teardown, inject, app, systemToken, createTenant, sql, bearer, ACME, GLOBEX, HEADER, SYSTEM } from './harness.js'
+import {
+  setup,
+  teardown,
+  inject,
+  app,
+  systemToken,
+  createTenant,
+  sql,
+  bearer,
+  staled,
+  tenMinutesAgo,
+  ACME,
+  GLOBEX,
+  HEADER,
+  SYSTEM
+} from './harness.js'
 
 const body = (res: any) => JSON.parse(res.body)
-const tenMinutesAgo = () => Math.floor(Date.now() / 1000) - 600
-
-/** The same session, signed as its login signed it ten minutes ago. */
-const staled = (token: string) => {
-  const claims: any = app().jwt.decode(token)
-  const { iat: _iat, exp: _exp, ...rest } = claims
-  return { claims, token: app().jwt.sign({ ...rest, auth_time: tenMinutesAgo() }) }
-}
 
 const provenAt = async (schema: string, sid: string) => {
   const rows = await sql().query(`select authenticated_at, auth_methods from "${schema}".session where sid = $1`, [sid])

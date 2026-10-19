@@ -35,6 +35,7 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       action: 'tenant.suspended',
       outcome: 'success',
       actorId: 'op-1',
+      actorPlane: 'control',
       tenantId: 'id-acme',
       detail: { reason: 'unpaid' },
       requestId: 'req-1',
@@ -86,12 +87,25 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       expect(await governance.countQuery(db.control, { action: 'tenant.renamed' })).toBe(0)
     })
 
-    it('reads by tenant, action and actor', async () => {
+    it('refuses an actor without its plane, a plane without its actor, and a plane it does not know (T-17.11)', async () => {
+      const before = await governance.countQuery(db.control, {})
+      for (const actor of [{ actorPlane: null }, { actorId: null }, { actorPlane: 'system' as never }]) {
+        expect(await codeOf(governance.record(db.control, { ...entry, ...actor }))).toBe('GOVERNANCE_LOG_ENTRY_INVALID')
+      }
+      expect(await governance.countQuery(db.control, {})).toBe(before)
+      // Nobody, from no plane: a job of the framework.
+      const unattended = await governance.record(db.control, { ...entry, actorId: null, actorPlane: null })
+      expect(unattended).toMatchObject({ actorId: null, actorPlane: null })
+    })
+
+    it('reads by tenant, action, actor and plane', async () => {
       await governance.record(db.control, { ...entry, action: 'tenant.restored', tenantId: 'id-globex', actorId: 'op-2' })
+      await governance.record(db.control, { ...entry, action: 'tenant.restored', tenantId: 'id-globex', actorId: 'u-2', actorPlane: 'tenant' })
       const found = await governance.findQuery(db.control, { tenantId: 'id-globex' })
-      expect(found.records.map((r) => r.action)).toEqual(['tenant.restored'])
+      expect(found.records.map((r) => r.action)).toEqual(['tenant.restored', 'tenant.restored'])
       expect(await governance.countQuery(db.control, { action: 'tenant.restored', actorId: 'op-2' })).toBe(1)
       expect(await governance.countQuery(db.control, { action: 'tenant.restored', actorId: 'op-1' })).toBe(0)
+      expect(await governance.countQuery(db.control, { tenantId: 'id-globex', actorPlane: 'tenant' })).toBe(1)
     })
 
     it('commits the change and its event together, with the operator, the request and the address', async () => {
@@ -101,7 +115,14 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
         (row) => ({ action: 'tenant.created', tenantId: String(row.id), detail: { schemaVersion: null } })
       )
       const [event] = (await governance.findQuery(db.control, { tenantId: String(created.id) })).records
-      expect(event).toMatchObject({ action: 'tenant.created', outcome: 'success', actorId: 'op-7', requestId: 'req-9', ip: '198.51.100.0' })
+      expect(event).toMatchObject({
+        action: 'tenant.created',
+        outcome: 'success',
+        actorId: 'op-7',
+        actorPlane: 'control',
+        requestId: 'req-9',
+        ip: '198.51.100.0'
+      })
     })
 
     it('rolls the change back when its event cannot be written (F76)', async () => {

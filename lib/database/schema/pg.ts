@@ -453,8 +453,11 @@ export function registryTables(schemaName: string) {
       // writes an 'intent' first and then its 'success' or 'failure', pointing back with `intentId`.
       outcome: text('outcome').notNull(),
       intentId: text('intent_id'),
-      // The operator's `id`, which never changes; the `externalId` is rotated by a revocation.
+      // The actor's `id`, which never changes; the `externalId` is rotated by a revocation.
       actorId: text('actor_id'),
+      // 'control' for an operator, 'tenant' for a user of the tenant's container: the two ids
+      // name rows of different tables. Null with no actor, as for a job.
+      actorPlane: text('actor_plane'),
       tenantId: text('tenant_id'),
       targetId: text('target_id'),
       detail: jsonb('detail'),

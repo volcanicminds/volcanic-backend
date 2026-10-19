@@ -97,7 +97,6 @@ The control catalogue is **new and reserved**:
 | `tenants:read` | read the registry | `GET /tenants`, `GET /tenants/:id` |
 | `tenants` | create, update, suspend, restore | `POST /tenants`, `PUT /tenants/:id`, `POST /tenants/:id/restore` |
 | `tenants:impersonate` | open an impersonation session | `POST /tenants/:id/impersonate` |
-| `tenants:export` | export a container | `POST /tenants/:id/export` |
 | `tenants:destroy` | destroy a container's data | `POST /tenants/:id/destruction-request`, `DELETE /tenants/:id/data` |
 | `migrations` | read schema versions, run the fleet migrator through the API | `GET /tenants/migrations` |
 | `manifest` | read the platform console manifest | `GET /system/manifest` |
@@ -108,6 +107,14 @@ The control catalogue is **new and reserved**:
 `tenants:destroy` is deliberately **not** part of `tenants`: creating a tenant and destroying its
 data are not the same job, and an operator who can do the first must not automatically do the
 second.
+
+Four control routes carry a tenant's whole data in or out, and answer to `system:admin` alone,
+with no capability of the catalogue: `POST /tenants/:id/exports`, `GET /tenants/:id/exports/:package`,
+`POST /tenants/import` and `POST /tenants/:id/move`. A role granted `tenants`, `system:operator`
+included, gets 403 on them. The export and its download are also `freshAuth` (§10). In the tenant scope
+the same data leaves only through `POST /exports` and `GET /exports/:package`, for the role `admin`
+with `freshAuth`, always in the `client` profile and for the tenant of the session (docs/API_V5.md
+§4.1).
 
 ---
 
@@ -363,8 +370,8 @@ reads the signed claim, no query; a stale session gets 403 `STEP_UP_REQUIRED` wi
 credential no step-up can make fresh (an impersonation, an integration token, a token without
 `sid`) gets 403 `STEP_UP_NOT_AVAILABLE`. The boot refuses `freshAuth` on a route that needs no
 authentication: `roles: []` alone is public, `roles: []` with `global.isAuthenticated` is not. The
-framework marks impersonation and the factor management routes; the flow that makes a session fresh
-again is docs/AUTH_FLOW_V5.md §8.5.
+framework marks impersonation, the factor management routes and the export and download routes of
+both planes (§4); the flow that makes a session fresh again is docs/AUTH_FLOW_V5.md §8.5.
 
 ```typescript
 {

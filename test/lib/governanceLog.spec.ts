@@ -58,8 +58,43 @@ describe('governance · the writer (F76, T-15.2)', () => {
 
   it('takes the operator, the address and the request id from the request, never from the route', async () => {
     const governance = fakeGovernanceLog()
-    await governed(request(governance), async () => ({ id: 't-1' }), (row) => ({ action: 'tenant.created', tenantId: row.id, actorId: 'forged' } as any))
-    expect(governance.rows[0]).toMatchObject({ outcome: 'success', tenantId: 't-1', actorId: 'op-1', ip: '203.0.113.77', requestId: '42', intentId: null })
+    const forged = { actorId: 'forged', actorPlane: 'tenant' }
+    await governed(request(governance), async () => ({ id: 't-1' }), (row) => ({ action: 'tenant.created', tenantId: row.id, ...forged } as any))
+    expect(governance.rows[0]).toMatchObject({
+      outcome: 'success',
+      tenantId: 't-1',
+      actorId: 'op-1',
+      actorPlane: 'control',
+      ip: '203.0.113.77',
+      requestId: '42',
+      intentId: null
+    })
+  })
+
+  it("names a tenant's user with the tenant plane, and nobody without either identity (T-17.11)", async () => {
+    const governance = fakeGovernanceLog()
+    const tenantUser = { ...request(governance), systemUser: undefined, user: { id: 'u-9' } }
+    await intend(tenantUser, { action: 'tenant.exported', tenantId: 'id-acme' })
+    await intend({ ...tenantUser, user: undefined }, { action: 'tenant.exported', tenantId: 'id-acme' })
+    expect(governance.rows.map((r) => [r.actorId, r.actorPlane])).toEqual([
+      ['u-9', 'tenant'],
+      [null, null]
+    ])
+  })
+
+  it('writes for a job with no actor, no address and no request, and refuses without a log', async () => {
+    const governance = fakeGovernanceLog()
+    const job = { governance, ctx: { kind: 'control' } as any }
+    const intent = await intend(job, { action: 'tenant.export_expired', tenantId: 'id-acme' })
+    await settle(job, intent, 'success', { action: 'tenant.export_expired', tenantId: 'id-acme' })
+    expect(governance.rows.map((r) => [r.outcome, r.actorId, r.actorPlane, r.ip, r.requestId])).toEqual([
+      ['intent', null, null, null, null],
+      ['success', null, null, null, null]
+    ])
+    expect(await codeOf(intend({ ...job, governance: undefined }, { action: 'tenant.export_expired' }))).toEqual({
+      status: 503,
+      code: 'GOVERNANCE_LOG_NOT_AVAILABLE'
+    })
   })
 
   it('writes nothing when the change says nothing changed, and drops the event of a change that throws', async () => {

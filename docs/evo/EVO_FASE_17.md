@@ -161,7 +161,7 @@ fase 16.
   `countRows` fa cadere 1 prova del provider (`ExportFailedError`, `widget: 1 expected, 0 found`)
   e 4 del banco; `unpack` saltato ne fa cadere 2 in `tenantPackage.spec.ts` e 2 nel banco (il
   valore ripristinato resta in chiaro).
-- [ ] **T-17.11** Chi esporta, scarica e ripristina (F89). Due rotte nel piano del tenant, solo
+- [x] **T-17.11** Chi esporta, scarica e ripristina (F89). Due rotte nel piano del tenant, solo
   per il ruolo `admin` e con `freshAuth`: l'export del proprio tenant, sempre `client`, e il suo
   download, con il tenant preso dal token e mai dai parametri. Nel piano di controllo
   `POST /tenants/:id/exports`, `GET /tenants/:id/exports/:package`, `POST /tenants/import` e
@@ -183,26 +183,78 @@ fase 16.
   tenant. Il rinomino tocca il mock dell'admin, il test del rag-sample, gli e2e e i documenti.
   Export e download stanno in un solo modulo comune, e le rotte dei due piani sono due ingressi
   sottili. Nel tenant un pacchetto di un altro tenant o `operator` risponde 404, come un nome
-  sconosciuto. Il manifest porta l'id del tenant, che decide di chi è un pacchetto: lo slug si
-  sceglie di nuovo all'import. Evento: azione `tenant.downloaded` con pacchetto, hash del
+  sconosciuto. Di chi è un pacchetto lo decide l'id del tenant nella busta, che resta sul server
+  in tutti e due i profili; il manifest non lo porta, perché viaggia nel tar `client` (F82), e lo
+  slug si sceglie di nuovo all'import. Evento: azione `tenant.downloaded` con pacchetto, hash del
   manifest, profilo e byte; l'intenzione si scrive prima del primo byte, e se non si scrive il
   download non parte (503); l'esito a fine flusso. L'autore porta la colonna `actor_plane`
   (`control` o `tenant`), scritta direttamente in `0006_governance_log_control.sql` senza una
   migrazione nuova, perché non c'è produzione; i database locali che l'hanno già applicata si
-  ricreano. Rotazione: un solo pacchetto `client` per tenant, da qualunque piano venga, perché
-  è lo stesso pacchetto; un export nuovo riuscito cancella il precedente dopo aver scritto il
-  suo, e i pacchetti `operator` non ruotano mai. Un export mentre è in corso un altro export o un
-  download dello stesso tenant risponde 409. Quota: `TENANT_EXPORT_MAX` export (default 3) ogni
+  ricreano. Rotazione, rivista dal proprietario lo stesso giorno: un posto per tenant in ciascun
+  piano, quello degli export chiesti nel piano di controllo, in qualunque profilo, e quello
+  dell'amministratore del tenant. La busta dice il posto. Un export nuovo riuscito cancella il
+  precedente del suo posto dopo aver sigillato il suo, e il suo evento nomina il pacchetto
+  sostituito, con l'hash del manifest e l'esito della cancellazione; un export fallito non tocca
+  il precedente, e una cancellazione fallita la ritenta l'export successivo. Con un posto solo
+  l'amministratore del tenant sostituirebbe il pacchetto `operator` di `system:admin`; i due posti
+  possono tenere due copie degli stessi dati, costo accettato. L'export della distruzione non ha
+  posto: non ruota e la pulizia non lo tocca. Il trasloco non scrive un export suo, nomina un
+  pacchetto del posto del controllo, che può ruotare dopo: il tenant è già arrivato e il
+  contenitore resta finché una distruzione non lo esporta di nuovo. Un export mentre è in corso
+  un altro export dello stesso posto risponde 409; un download in corso non lo ferma, e un
+  download interrotto da una rotazione si rifà. Pulizia: un job del framework sullo scheduler
+  cancella ogni ora i pacchetti dei posti più vecchi di `TENANT_EXPORT_RETENTION_DAYS` giorni e
+  scrive per ognuno un evento `tenant.export_expired`. Gira solo con la variabile maggiore di
+  zero e il plugin `scheduler` acceso; se manca uno dei due resta spento e l'avvio, dove ci sono
+  i tenant, scrive un WARN. Spenta di default: un pacchetto resta sul server finché non lo
+  sostituisce il successivo, e non è un backup, che resta dell'infrastruttura (F88). La
+  documentazione suggerisce 7 giorni. Quota: `TENANT_EXPORT_MAX` export (default 3) ogni
   `TENANT_EXPORT_WINDOW` (default un'ora) per tenant, contati sul registro di governance dopo
   aver preso il blocco: solo gli export del piano del tenant, partiti, riusciti o no; oltre, 429
   con `Retry-After`. Anti-flood: il plugin `rateLimit` per IP sulle quattro rotte di export e
   download dei due piani, a dieci volte la quota al minuto, ricavato e senza una variabile sua;
   vale solo dove il progetto tiene acceso il plugin, che resta una sua scelta libera (una
   intranet può spegnerlo), mentre la quota vale sempre.
-  Le due variabili entrano in `docs/CONFIGURATION_V5.md`. Conseguenza nota: chi impersona o usa
+  Le tre variabili entrano in `docs/CONFIGURATION_V5.md`. Conseguenza nota: chi impersona o usa
   un token d'integrazione riceve `STEP_UP_NOT_AVAILABLE` e non esporta. Prove in più: la
-  rotazione (il secondo export cancella il primo `client`, l'`operator` resta), il 409, il 429
-  con `Retry-After`, e la quota non consumata dagli export del controllo.
+  rotazione (il secondo export di un posto cancella il primo, il posto dell'altro piano e l'export
+  della distruzione restano), il 409, il 429 con `Retry-After`, la quota non consumata dagli
+  export del controllo, e la pulizia (cancella solo i pacchetti dei posti oltre la retention,
+  scrive l'evento, resta spenta con il WARN se manca la variabile o lo scheduler).
+  **Chiuso il 19 ottobre 2026.** Export, download, posti, quota e pulizia in un solo modulo,
+  `lib/util/tenantExport.ts`; le rotte del tenant in `lib/api/exports`, quelle del controllo in
+  `lib/api/tenants/routes.ts` con `roles: ['system:admin']`; il job in
+  `lib/schedules/exportRetention.job.ts`, con `active` letto a ogni caricamento e
+  `warnExportCleanupOff()` chiamato da `index.ts` dopo il caricamento degli scheduler;
+  `actor_plane` in `0006_governance_log_control.sql` e nello snapshot (`drizzle-kit generate`:
+  «No schema changes»). Il banco e2e ha trovato tre difetti che le prove con i finti non
+  vedevano. `withLock` teneva il blocco su una connessione del pool, e con `DB_POOL_MAX=1`
+  l'export si fermava per sempre aspettando la connessione per il registro di governance; con
+  dieci export contemporanei il pool si sarebbe esaurito: ora il blocco sta su una connessione
+  sua, fuori dal pool, e lo usa anche il blocco della migrazione della flotta
+  (`withContainerLock`, `test/migrations/fleet.spec.ts` verde su Postgres). La quota filtrava con
+  `occurredAt:gte`, ma l'operatore di Magic Query è `ge` (`QUERY_UNKNOWN_OPERATOR`): il finto del
+  registro ora controlla ogni operatore con `operatorFor`. Il download del tenant riusava lo schema
+  dei parametri del controllo, che chiede `id`: ora ha `exportPackageParamsSchema`. Il compito
+  chiedeva 403 a `system:operator` e a un ruolo di sistema con `tenants`: `system:operator` ha
+  `tenants`, quindi una prova copre i due. `check-all` era rosso già alla chiusura di T-17.10
+  (un `set search_path` di sessione in `tenantLifecycle.e2e.spec.ts`, ora `set local` in una
+  transazione, e sei commenti con `(T-17.10)`): sistemato qui. Prove: in `tenantPackage.spec.ts`
+  rotazione per posto, export fallito che lascia il precedente, 409, 429 con `Retry-After` che
+  conta i falliti del tenant e mai quelli del controllo, tenant del token che vince sul corpo,
+  404 su pacchetti altrui, `operator` e sconosciuti, eventi di download dei due piani, 503 senza
+  intenzione, pulizia (età, posti, `.removing-*`, blocco tenuto, WARN per ognuno dei tre motivi);
+  in `manifestRealRoutes.spec.ts` le quattro rotte del controllo con il solo `system:admin`; nel
+  banco `governanceLog.e2e` export e download dell'amministratore del tenant, 403 al membro non
+  admin e a `system:operator` sulle quattro rotte, `STEP_UP_REQUIRED` sui due piani, 409 con un
+  advisory lock preso da un'altra sessione, 429 e il job vero che cancella e scrive
+  `tenant.export_expired` senza autore. Esito con `DATABASE_URL` su un database di prova
+  dedicato: `npm test` 1121, nessuna saltata; `test:e2e:mt:pg` 69; `check-all` verde; admin 228;
+  rag-sample `test:tenants` 9 su 9 nelle quattro combinazioni. Difetti piantati, ognuno fa cadere
+  la sua prova: tenant preso da `req.data()` invece che dal token, quota senza filtro sul piano,
+  rotazione che non cancella, pulizia che ignora il posto (unitarie); tenant preso dal corpo
+  (export dell'amministratore), `freshAuth` tolto (la prova dello step-up riceve 200), `tenants`
+  di nuovo sull'import (la prova di `system:operator`).
 
 ## 3. Segnalato, non toccato
 

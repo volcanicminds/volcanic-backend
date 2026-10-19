@@ -150,7 +150,14 @@ describe('manifest · the framework own routes, through the loader', () => {
     })
 
     it('asks the export for its profile, which has no default (T-17.10)', () => {
-      expect(action('export').input.fields).toEqual([{ name: 'profile', type: 'enum', required: true }])
+      expect(action('exports').input.fields).toEqual([{ name: 'profile', type: 'enum', required: true }])
+    })
+
+    it("gives the export, the download, the import and the move to system:admin alone, no capability's holder (T-17.11)", () => {
+      const four = ['POST /tenants/:id/exports', 'GET /tenants/:id/exports/:package', 'POST /tenants/import', 'POST /tenants/:id/move']
+      const found = tenants().capabilities.filter((c: any) => four.includes(`${c.method} ${c.path}`))
+      expect(found.map((c: any) => `${c.method} ${c.path}`).sort()).toEqual([...four].sort())
+      for (const c of found) expect(c.roles).toEqual(['system:admin'])
     })
   })
 

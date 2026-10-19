@@ -95,7 +95,7 @@ describe('A database per tenant on real Postgres (T-16.1)', function () {
   })
 
   it("exports the tenant's database whole, and nothing of the other tenant or of the control plane", async () => {
-    const res = await call('POST', `/tenants/${acmeId}/export`, OPERATOR)
+    const res = await call('POST', `/tenants/${acmeId}/exports`, OPERATOR)
     expect(res.statusCode).toBe(200)
     const dump = fs.readFileSync(path.join(exports, body(res).package, 'tenant.sql'), 'utf8')
     expect(dump).toContain(ACME.tag)

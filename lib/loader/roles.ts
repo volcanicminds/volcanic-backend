@@ -18,7 +18,6 @@ export const SYSTEM_CAPABILITIES: readonly SystemCapability[] = [
   'tenants:read',
   'tenants',
   'tenants:impersonate',
-  'tenants:export',
   'tenants:destroy',
   'migrations',
   'manifest',

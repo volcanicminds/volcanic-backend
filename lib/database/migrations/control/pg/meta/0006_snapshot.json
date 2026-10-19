@@ -776,6 +776,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "actor_plane": {
+          "name": "actor_plane",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "tenant_id": {
           "name": "tenant_id",
           "type": "text",
