@@ -217,13 +217,17 @@ compiti su otto: il pacchetto in cartella con manifest e busta, le credenziali s
 contenitore temporaneo, il download in tar, `POST /tenants/import`, `POST /tenants/:id/move`,
 `POST /token/:id/reissue`, gli indici unici che lasciano fuori le righe `destroyed`. 1080 prove
 con `DATABASE_URL`, banco `tenantLifecycle.e2e` 16 sulle due strategie, copertura 90,0% di righe
-(pavimento 82%). In rag `describe` e `restore` del corpus restano in T-7.12 di
-`volcanic-rag/TASKS.md`, ora sbloccato. Il ripristino esegue l'SQL del dump con il ruolo del data
+(pavimento 82%). In rag `describe` e `restore` del corpus sono chiusi il 19 ottobre
+2026 da T-7.12 di `volcanic-rag/TASKS.md`. Il ripristino esegue l'SQL del dump con il ruolo del data
 layer, e la revisione di sicurezza ha mostrato che il lettore dei meta-comandi si aggira (barra a
 metà riga, `\.\r`, `$$`, codifiche client): dal 15 ottobre 2026 (T-17.9, opzione A del
 proprietario) la busta è firmata con `PACKAGE_SIGNING_KEY` e un pacchetto non firmato da questa
-piattaforma non si ripristina (422 `RESTORE_SIGNATURE_INVALID`). Segnalato e non toccato: nessun
-evento per un download, e le tabelle del consumer con dati cifrati non vengono svuotate.
+piattaforma non si ripristina (422 `RESTORE_SIGNATURE_INVALID`). **Fase 17 riaperta dal
+proprietario il 19 ottobre 2026**, due compiti: i dati dell'app, cifrati o no, sono del cliente e
+li tratta un aggancio dell'app con il profilo scelto all'export (F92, F93, T-17.10);
+l'amministratore del tenant esporta e scarica il suo tenant; export, download, import e
+trasloco nel piano di controllo restano al solo `system:admin`, con lo step-up; ogni download
+scrive un evento (F89, T-17.11).
 
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
