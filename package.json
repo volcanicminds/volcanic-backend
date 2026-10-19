@@ -195,7 +195,7 @@
     "type": "git",
     "url": "git+https://github.com/volcanicminds/volcanic-backend.git"
   },
-  "homepage": "https://volcanicminds.com",
+  "homepage": "https://github.com/volcanicminds/volcanic-backend",
   "bugs": {
     "url": "https://github.com/volcanicminds/volcanic-backend/issues"
   },
