@@ -233,6 +233,10 @@ pulizia per età che il progetto accende (F89, T-17.11, chiuso il 19 ottobre 202
 `DATABASE_URL`, nessuna saltata; `test:e2e:mt:pg` 69; admin 228; rag-sample `test:tenants` 9 su 9
 nelle quattro combinazioni). **Fase 17 di nuovo chiusa il 19 ottobre 2026.**
 
+**Fase 18 aperta il 20 ottobre 2026** (`EVO_FASE_18.md`), da T-7.3 di rag: un token di
+integrazione sul piano di controllo, perché il sentinel possa caricare un corpus condiviso, che è
+un dato della piattaforma. Un compito, T-18.1, che aspetta quattro decisioni del proprietario.
+
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
 `ERR_HTTP_HEADERS_SENT` del sample è chiuso (26 settembre 2026, tabella «Fuori piano»). Restano
