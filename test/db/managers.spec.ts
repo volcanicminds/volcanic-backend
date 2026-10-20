@@ -151,6 +151,32 @@ describe('database/managers (T-2.5)', () => {
       expect(after.version).toBe(2) // optimistic lock moves on every update
     })
 
+    it('keeps the attributes as lists, replaces them whole, and refuses any other shape', async () => {
+      const bare: any = await users.createUser(tenant, { email: 'bare@acme.test', password: 'Bare-pw-123456' })
+      expect(bare.attributes).toEqual({})
+
+      const created: any = await users.createUser(tenant, {
+        email: 'attr@acme.test',
+        password: 'Attr-pw-123456',
+        attributes: { department: ['sales'], project: ['north', 'south'] }
+      })
+      expect((await users.retrieveUserById(tenant, created.id)).attributes).toEqual({
+        department: ['sales'],
+        project: ['north', 'south']
+      })
+
+      await users.updateUserById(tenant, created.id, { attributes: { department: ['management'] } })
+      expect((await users.retrieveUserById(tenant, created.id)).attributes).toEqual({ department: ['management'] })
+
+      // A single value that is not a list would make every reader handle two shapes.
+      await expect(users.updateUserById(tenant, created.id, { attributes: { department: 'sales' } })).rejects.toThrow(/list/)
+      await expect(users.createUser(tenant, { email: 'flat@acme.test', password: 'Flat-pw-123456', attributes: ['sales'] })).rejects.toThrow(
+        /object of lists/
+      )
+      await expect(users.updateUserById(tenant, created.id, { attributes: { department: [''] } })).rejects.toThrow(/non-empty/)
+      expect((await users.retrieveUserById(tenant, created.id)).attributes).toEqual({ department: ['management'] })
+    })
+
     it('finds and counts through the Magic Query', async () => {
       const found: any = await users.findQuery(tenant, { 'email:contains': 'acme' } as never)
       expect(found.records.length).toBeGreaterThan(0)

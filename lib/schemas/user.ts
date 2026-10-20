@@ -31,7 +31,21 @@ export const userBodySchema = {
     blockedAt: { type: 'string' },
     confirmed: { type: 'boolean' },
     confirmedAt: { type: 'string' },
-    roles: { type: 'array', items: { type: 'string' } }
+    roles: { type: 'array', items: { type: 'string' } },
+    // Read by authorization policies, so set here under `users` and never by the person: not in
+    // `currentUserBodySchema`. The whole map is replaced on update.
+    attributes: {
+      type: 'object',
+      maxProperties: 32,
+      propertyNames: { pattern: '^[a-z][a-z0-9_]*$', maxLength: 64 },
+      additionalProperties: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        uniqueItems: true,
+        items: { type: 'string', minLength: 1, maxLength: 128 }
+      }
+    }
   }
 }
 
@@ -53,6 +67,7 @@ export const userSchema = {
     approved: { type: 'boolean' },
     approvedAt: { type: 'string' },
     roles: { type: 'array', items: { type: 'string' } },
+    attributes: { type: 'object', additionalProperties: { type: 'array', items: { type: 'string' } } },
     createdAt: { type: 'string' },
     version: { type: 'number' },
     updatedAt: { type: 'string' },

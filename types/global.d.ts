@@ -20,6 +20,8 @@ export interface AuthenticatedUser {
   username: string
   email: string
   roles: Role[]
+  /** Facts about the person a policy reads, always a list per name (`{ department: ['sales'] }`). */
+  attributes: Record<string, string[]>
   externalId: string
   mfaEnabled?: boolean
 }

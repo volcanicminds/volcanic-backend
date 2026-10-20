@@ -1105,6 +1105,13 @@
           "notNull": true,
           "default": "'{}'::text[]"
         },
+        "attributes": {
+          "name": "attributes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
         "is_founder": {
           "name": "is_founder",
           "type": "boolean",

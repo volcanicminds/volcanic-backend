@@ -254,8 +254,8 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | GET | `/users` | capability `users` | Magic Query |
 | GET | `/users/count` | capability `users` | |
 | GET | `/users/:id` | capability `users` | |
-| POST | `/users` | capability `users` | |
-| PUT | `/users/:id` | capability `users` | optimistic lock on `version`: mismatch → 409 |
+| POST | `/users` | capability `users` | the only route, with `PUT /users/:id`, that writes `attributes` (docs/SCHEMA_V5.md §2.1) |
+| PUT | `/users/:id` | capability `users` | optimistic lock on `version`: mismatch → 409. `attributes` replaces the whole map |
 | DELETE | `/users/:id` | capability `users` | soft delete |
 | POST | `/users/:id/block` | capability `users` | |
 | POST | `/users/:id/unblock` | capability `users` | |
@@ -266,7 +266,7 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | POST | `/users/:id/identities` | capability `users` | links one: `{ provider, issuer, subject }`, never an address alone |
 | DELETE | `/users/:id/identities/:linkId` | capability `users` | |
 | GET | `/users/me` | authenticated | |
-| PUT | `/users/me` | authenticated | |
+| PUT | `/users/me` | authenticated | `username` only: roles and attributes are an administrator's to write |
 | GET | `/users/roles` | authenticated | the role catalogue of the **current scope** |
 | GET | `/users/is-admin` | authenticated | answers for the current scope: a tenant admin is not a platform admin |
 

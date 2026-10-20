@@ -325,6 +325,13 @@ describe('auth · account creation, the registration and the wait (F49, T-12.48)
     expect(accesses).toEqual([])
   })
 
+  it('creates the account from the fields of a registration and from nothing else in the body', async () => {
+    const { server, created } = registration('open')
+    const forged = { isFounder: true, attributes: { department: ['management'] }, blocked: false, externalId: 'mine' }
+    await register(fakeRequest({ server, data: { ...body, ...forged } }), fakeReply())
+    expect(Object.keys(created[0]).sort()).toEqual(['approved', 'email', 'password', 'roles', 'username'])
+  })
+
   it('keeps a waiting account out, with the cause for the log only', async () => {
     const users: any = { isValidUser: async (u: any) => !!u?.email && !!u?.password }
     const row = { email: 'a@acme.test', password: 'h', confirmed: true, blocked: false }

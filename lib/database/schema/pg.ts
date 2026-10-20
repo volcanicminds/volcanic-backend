@@ -65,6 +65,10 @@ export function appTables(schemaName: string) {
       resetPasswordTokenAt: timestamp('reset_password_token_at', { withTimezone: true }),
       confirmationToken: text('confirmation_token'),
       roles: text('roles').array().notNull().default(sql`'{}'::text[]`),
+      // Facts about the person a policy reads (department, project), always a list per key. The
+      // framework stores them and decides nothing with them: what an attribute grants is the
+      // reader's business.
+      attributes: jsonb('attributes').$type<Record<string, string[]>>().notNull().default({}),
       // Founder is a property of the row in its container, not of a process environment
       // variable: an environment comparison would make the same address founder inside every
       // tenant.

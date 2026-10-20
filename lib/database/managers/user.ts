@@ -52,6 +52,20 @@ export function isUniqueViolation(err: unknown): boolean {
   return false
 }
 
+// The shape every reader of `attributes` relies on: names to lists of non-empty strings, a
+// single value being a list of one. The route schema checks it with its limits; this is for the
+// callers that write without passing through a route.
+function attributesOf(value: unknown): Record<string, string[]> {
+  if (value == null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('User attributes must be an object of lists')
+  for (const [name, values] of Object.entries(value)) {
+    if (!Array.isArray(values) || !values.every((v) => typeof v === 'string' && v.length > 0)) {
+      throw new Error(`User attribute ${name} must be a list of non-empty strings`)
+    }
+  }
+  return value as Record<string, string[]>
+}
+
 const NAME = 'userManager'
 
 export function createUserManager(): UserManagement {
@@ -138,6 +152,7 @@ export function createUserManager(): UserManagement {
             // Only a self-created account under `approval` waits; every other path passes nothing.
             approved: data.approved ?? true,
             roles: data.roles ?? [],
+            attributes: attributesOf(data.attributes),
             isFounder: data.isFounder ?? false,
             passwordChangedAt: new Date()
           })
@@ -164,6 +179,7 @@ export function createUserManager(): UserManagement {
       // A password never travels through a generic update: it would land unhashed.
       delete values.password
       delete values.id
+      if ('attributes' in values) values.attributes = attributesOf(values.attributes)
 
       const rows = await handle.db
         .update(user)

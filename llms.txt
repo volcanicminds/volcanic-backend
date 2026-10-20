@@ -4276,7 +4276,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Auth | `POST /auth/logout` · `/refresh-token` | public¹ | no | `sessionManager` |
 | Auth (MFA) | `POST /auth/mfa/setup` · `/mfa/enable` · `/mfa/disable` | any authenticated | **yes** | `userManager` + `mfaManager` |
 | Users | `GET /users/me` · `PUT /users/me` · `GET /users/roles` · `GET /users/is-admin` | any authenticated | **yes** | `userManager` |
-| Users | `GET /users` · `GET /users/count` · `GET /users/:id` · `PUT /users/:id` · `POST /users`⁴ ⁵ · `DELETE /users/:id` | `users` cap⁵ | **yes** | `userManager` |
+| Users | `GET /users` · `GET /users/count` · `GET /users/:id` · `PUT /users/:id`⁹ · `POST /users`⁴ ⁵ ⁹ · `DELETE /users/:id` | `users` cap⁵ | **yes** | `userManager` |
 | Users | `POST /users/:id/block` · `/unblock` | `users` cap⁵ | **yes** | `userManager` |
 | Users | `POST /users/:id/mfa/reset` · `/password/reset`⁶ | `users` cap (admin-only)⁶ | **yes** | `userManager` |
 | Token | `GET /token` · `/count` · `/:id` | `tokens` cap | (read)³ | `tokenManager` |
@@ -4329,6 +4329,12 @@ token good for ten minutes, then a delete that types the slug again, presents th
 `sessions.enabled: false` or with `JWT_REFRESH=false`, exactly as the renewal does. A caller sees
 only its own sessions, and one belonging to somebody else answers `404` as well: a `sid` is a
 handle, never an authorisation.
+
+⁹ `attributes` (on `req.user` too) are facts about the person a policy reads, always a list per
+name: `{ "department": ["sales"] }`. Only these two routes write them, and `PUT` replaces the whole
+map; `PUT /users/me` and `POST /auth/register` never do, because a person who writes their own
+attributes writes their own permissions. The framework grants nothing with them: the reader
+decides (the RAG opens a context from them). Shape and limits: `docs/SCHEMA_V5.md` §2.1.
 
 **Three behaviours of `/auth` a client has to know** (see `docs/API_V5.md` §2.1):
 

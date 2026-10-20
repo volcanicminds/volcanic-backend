@@ -95,11 +95,18 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   // both paths touch the database, and both cost the same.
   // Whatever the body says: only the mode decides whether the account waits for an administrator.
   data.approved = creation.mode !== 'approval'
-  delete data.confirmed
 
   let user: any
   try {
-    user = await req.server['userManager'].createUser(dataContext(req), { ...data, password: password })
+    // Named field by field: the body is the visitor's, and a spread would hand them `isFounder`,
+    // `confirmed` or `attributes`, which `createUser` takes from its trusted callers.
+    user = await req.server['userManager'].createUser(dataContext(req), {
+      username: data.username,
+      email: data.email,
+      password,
+      roles: data.roles,
+      approved: data.approved
+    })
   } catch (err: any) {
     if (err?.code !== EMAIL_ALREADY_REGISTERED) throw err
 

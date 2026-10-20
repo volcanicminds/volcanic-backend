@@ -99,6 +99,7 @@ layer on every update. An update whose `version` does not match responds `409`.
 | `reset_password_token_at` | timestamp | yes | | |
 | `confirmation_token` | text | yes | | never selected by default |
 | `roles` | text[] | no | `[]` | role **codes**, resolved against the role catalogue at boot |
+| `attributes` | jsonb | no | `{}` | **new in v5**: facts about the person a policy reads, always a list per name (`{ "department": ["sales"] }`, one value is a list of one). Written by `POST` and `PUT /users/:id` under `users`, never by `PUT /users/me` nor by `POST /auth/register`; names `^[a-z][a-z0-9_]*$` up to 64 characters, at most 32 names, at most 64 distinct values each, values 1 to 128 characters. The framework stores them and grants nothing with them: what a value opens is the reader's rule (the RAG reads them for its clearance) |
 | `is_founder` | boolean | no | `false` | **new in v5**: replaces the process-wide `ADMIN_EMAIL` comparison. Founder is a property of the row in its container, not of the environment |
 | `mfa_enabled` | boolean | no | `false` | |
 | `mfa_secret` | text | yes | | AES-256-GCM, format `v2:salt:iv:authTag:ciphertext`. Never selected by default |
@@ -112,7 +113,7 @@ layer on every update. An update whose `version` does not match responds `409`.
 **Indexes**: unique on `email`, unique on `external_id`, unique on `username` where not null,
 index on `reset_password_token`, index on `confirmation_token`, index on `deleted_at`.
 
-**Removed from v4**: nothing. Every v4 field survives; `is_founder` is added.
+**Removed from v4**: nothing. Every v4 field survives; `is_founder` and `attributes` are added.
 
 ### 2.2 `token`
 

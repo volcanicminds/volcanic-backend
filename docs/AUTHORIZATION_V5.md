@@ -85,6 +85,10 @@ framework route, exactly as in the tenant scope.
 The tenant catalogue is unchanged: `manifest`, `users`, `tokens` (see
 `docs/AUTHORIZATION_MODEL.md` §3.2), plus whatever the consumer coins for its own routes.
 
+`users` also writes a user's `attributes` (docs/SCHEMA_V5.md §2.1). The framework grants nothing
+with them, but a reader may: the RAG opens a context from `department`. Whoever holds `users`
+can therefore widen what a person reads there, as it can already change their roles.
+
 `manifest` is the one name both catalogues reserve, each for its own plane: with the
 tenant catalogue it gates `GET /admin/manifest`, the manifest of a customer's console; with the
 control catalogue it gates `GET /system/manifest`, the platform console's. Every other control

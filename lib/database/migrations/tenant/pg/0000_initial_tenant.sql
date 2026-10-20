@@ -50,6 +50,7 @@ CREATE TABLE "user" (
 	"reset_password_token_at" timestamp with time zone,
 	"confirmation_token" text,
 	"roles" text[] DEFAULT '{}'::text[] NOT NULL,
+	"attributes" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"is_founder" boolean DEFAULT false NOT NULL,
 	"mfa_enabled" boolean DEFAULT false NOT NULL,
 	"mfa_secret" text,
