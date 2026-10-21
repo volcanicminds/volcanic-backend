@@ -20,7 +20,7 @@
 > | `req.db`, `req.runner` | `req.control`, `req.tenant` — two distinct types |
 > | `global.connection`, `global.entity`, `global.repository` | nothing. There is no ambient container |
 > | `executeFindQuery`, `executeCountQuery`, `applyQuery` | `executeFind`, `executeCount`, `parseQuery` |
-> | `switchContext`, `runInTenantContext` | a job declares its plane and is handed a handle |
+> | `switchContext`, `runInTenantContext` | a job declares its plane and is handed a handle; other work borrows one with `withTenant` |
 > | `options.multi_tenant` | the `control` and `tenants` blocks |
 > | `page`, `pageSize`, `sort=f:desc` | `_page`, `_pageSize`, `_sort=-f` |
 > | `:raw`, `:eqs`, `:isEmpty`, `:notNull` | removed. `:eq`, `:empty=true`, `:null=false` |
@@ -1727,7 +1727,8 @@ const { where, orderBy, limit, offset } = parseQuery(product, req.query)
 
 There is nothing to switch. `switchContext` and `runInTenantContext` do not exist, because
 choosing a container is not a session change: application code asks `dataContext(req)`,
-and a background job **declares its plane** and receives the matching handle (Part 7.3). No
+and a background job **declares its plane** and receives the matching handle (Part 7.3). Any
+other work on a tenant borrows its container with `withTenant(server, slug, fn)` (Part 7.3). No
 connection carries a `search_path` that would have to be moved and moved back.
 
 ## 3.11 Local database setup (Docker)
@@ -3302,6 +3303,26 @@ A job is checked when it loads, and a broken one is not scheduled: the reason go
 `cron` or `interval`, a `cron.expression` with cron that croner reads, with its `timezone`, an interval of at least 1 second, a known `scope`, a `tenant`
 slug with scope `tenant`, and a `tenants` block for any scope other than `control`. A schedule without
 `active: true` is not loaded.
+
+### A tenant's container outside a request or a job
+
+Work that is neither (a script started with the server, a test reading what a route wrote, a consumer
+of a queue) borrows a tenant's container with `withTenant`, on the same lease a `tenant` job takes:
+
+```typescript
+import { withTenant } from '@volcanicminds/backend'
+
+const count = await withTenant(server, 'acme', async (ctx, tenant) => {
+  return reportService.on(ctx).countOpen()
+})
+```
+
+`fn` receives the tenant's handle and its registry row, runs inside the tenant (its log lines and
+spans name it), and the container is given back when `fn` settles, whether it resolved or threw. The
+handle is valid until then: one kept past it may be closed by the provider's bound on open
+containers. Refused without a `tenants` block, without a data layer, and for a slug not in the
+registry or a tenant not `active`. A connection opened by hand instead sits outside that bound, and
+an export or a destruction of the tenant does not know about it.
 
 ---
 

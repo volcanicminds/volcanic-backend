@@ -8,7 +8,7 @@ import { globSync } from 'glob'
 import path from 'path'
 import require from '../util/require.js'
 import { isTenancyEnabled } from '../util/tenancy.js'
-import { runInTenant } from '../util/requestContext.js'
+import { activeTenant, lendTenant } from '../util/withTenant.js'
 
 //
 // Scheduled jobs, and where they run.
@@ -166,9 +166,7 @@ export function runnerFor(server: any, jobName: string, schedule: JobSchedule, f
     if (!tm?.isImplemented?.()) throw new Error(`Job ${jobName}: tenancy is declared but no tenant manager can resolve it`)
 
     if (scope === 'tenant') {
-      const tenant = await tm.getTenantBySlug(control as never, String(schedule.tenant))
-      if (!tenant) throw new Error(`Job ${jobName}: tenant '${schedule.tenant}' is not in the registry`)
-      if (tenant.status !== 'active') throw new Error(`Job ${jobName}: tenant '${tenant.slug}' is ${tenant.status}`)
+      const tenant = await activeTenant(tm, control as never, String(schedule.tenant))
       await inTenant(provider, jobName, tenant, fn, signal)
       return
     }
@@ -188,13 +186,7 @@ async function inTenant(
   fn: JobFunction,
   signal: AbortSignal
 ): Promise<void> {
-  const scope = { requestId: `job:${jobName}:${tenant.id}:${Date.now()}` }
-  try {
-    const handle = await provider.tenant(tenant, scope)
-    await runInTenant(tenant.id, () => fn(handle as DataHandle, { jobName, tenant, signal }))
-  } finally {
-    await provider.releaseRequestScope(scope)
-  }
+  await lendTenant(provider, tenant, `job:${jobName}`, (handle) => fn(handle, { jobName, tenant, signal }))
 }
 
 async function everyTenant(

@@ -692,6 +692,9 @@ export { yn, preload, start, TranslatedError }
 // travels with it, because a consumer that catches it is catching a framework bug and not a
 // bad request.
 export { dataContext, NoDataContextError } from './lib/util/tenancy.js'
+// A tenant's container outside a request or a job, on the same lease: the alternative a project
+// would write is a connection of its own, which the provider's bound, exports and destructions miss.
+export { withTenant } from './lib/util/withTenant.js'
 export { generateManifest, buildManifest } from './lib/manifest/generator.js'
 export { invalidateCache, cache } from './lib/util/cache.js'
 export type { RouteCache, NormalizedRouteCache } from './types/global.js'

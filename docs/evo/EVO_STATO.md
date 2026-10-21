@@ -237,6 +237,12 @@ nelle quattro combinazioni). **Fase 17 di nuovo chiusa il 19 ottobre 2026.**
 integrazione sul piano di controllo, perché il sentinel possa caricare un corpus condiviso, che è
 un dato della piattaforma. Un compito, T-18.1, che aspetta quattro decisioni del proprietario.
 
+**Fase 19 aperta il 21 ottobre 2026** (`EVO_FASE_19.md`), dalle prove di rag-sample che devono
+girare anche con i tenant: `withTenant(server, slug, fn)` presta il contenitore di un tenant fuori
+da una richiesta o da un job, sullo stesso prestito dei job (F94). Un compito, T-19.1, fatto: le
+108 prove di rag-sample verdi anche dentro un tenant, nelle quattro combinazioni. **Fase 19 chiusa
+il 21 ottobre 2026.**
+
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
 `ERR_HTTP_HEADERS_SENT` del sample è chiuso (26 settembre 2026, tabella «Fuori piano»). Restano
