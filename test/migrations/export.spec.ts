@@ -9,9 +9,9 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { Readable } from 'stream'
+import { Readable, Writable } from 'stream'
 import { expect } from 'expect'
-import { loadFrom, PACKAGE_SCHEMA, rebase, requireTools } from '../../lib/database/containers/export.js'
+import { dumpInto, loadFrom, PACKAGE_SCHEMA, rebase, requireTools } from '../../lib/database/containers/export.js'
 import { countsDiffer, RESTORED_PASSWORD } from '../../lib/database/containers/scrub.js'
 
 ;(global as any).log = {}
@@ -97,6 +97,35 @@ describe('export · the refusals, without a server (T-17.1)', () => {
     } finally {
       process.env.PATH = saved
       fs.rmSync(empty, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses with EXPORT_TOOL_MISSING and both versions when pg_dump is older than the server, on either way it says so', async () => {
+    // A recent pg_dump puts the versions on a `detail:` line after the error, an older one on the
+    // first line: a client too old is the tool missing for this server, never an export failed.
+    const layouts = [
+      ['pg_dump: error: aborting because of server version mismatch', 'pg_dump: detail: server version: 18.0; pg_dump version: 16.4'],
+      ['pg_dump: server version: 18.0; pg_dump version: 16.4', 'pg_dump: aborting because of server version mismatch']
+    ]
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-export-pgdump-'))
+    const saved = process.env.PATH
+    try {
+      for (const lines of layouts) {
+        const tool = path.join(bin, 'pg_dump')
+        fs.writeFileSync(tool, `#!/bin/sh\n${lines.map((line) => `echo '${line}' >&2`).join('\n')}\nexit 1\n`, { mode: 0o755 })
+        process.env.PATH = bin
+        const sink = new Writable({ write: (_chunk, _encoding, done) => done() })
+        const error: any = await dumpInto('postgres://nobody@127.0.0.1:1/none', null, rebase(null, null), sink).then(
+          () => null,
+          (e) => e
+        )
+        process.env.PATH = saved
+        expect(error?.code).toBe('EXPORT_TOOL_MISSING')
+        expect(error?.message).toContain('server version: 18.0; pg_dump version: 16.4')
+      }
+    } finally {
+      process.env.PATH = saved
+      fs.rmSync(bin, { recursive: true, force: true })
     }
   })
 

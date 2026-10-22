@@ -69,11 +69,11 @@ function finished(tool: string, child: ReturnType<typeof spawn>): Promise<void> 
     child.on('error', (error: any) => reject(error?.code === 'ENOENT' ? new ExportToolMissingError(tool) : new ExportFailedError(error?.message)))
     child.on('close', (code) => {
       if (code === 0) return resolve()
-      const reason = stderr.trim().split('\n')[0] || `${tool} exited with ${code}`
-      if (/server version/i.test(reason) && /pg_dump version/i.test(reason)) {
-        return reject(new ExportToolMissingError(`pg_dump (${reason.replace(/^pg_dump: error: /, '')})`))
-      }
-      reject(new ExportFailedError(reason))
+      const lines = stderr.trim().split('\n')
+      // A recent pg_dump names the versions on a `detail:` line after the error, an older one on the first line.
+      const versions = lines.find((line) => /server version/i.test(line) && /pg_dump version/i.test(line))
+      if (versions) return reject(new ExportToolMissingError(`pg_dump (${versions.replace(/^pg_dump: (error|detail): /, '')})`))
+      reject(new ExportFailedError(lines[0] || `${tool} exited with ${code}`))
     })
   })
 }
