@@ -13,9 +13,9 @@ touches them.
 
 | Table | Lives in | Purpose |
 |---|---|---|
-| `user` | tenant container (and control plane when tenancy is `none`) | end users of the application |
-| `token` | tenant container | machine credentials (API tokens) |
-| `change_log` | tenant container | audit trail of tracked writes |
+| `user` | every container (the control plane's holds the users when tenancy is `none`) | end users of the application |
+| `token` | every container | machine credentials (API tokens) |
+| `change_log` | every container | audit trail of tracked writes |
 | `session` | every container | live login sessions, and the refresh credential that renews them |
 | `migration` | every container | applied migration log (managed by drizzle-kit) |
 | `setting` | every container | settings of the container, one JSON value per key |

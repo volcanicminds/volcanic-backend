@@ -26,7 +26,7 @@ Workforce management, Gantt, ERP.
 | Runtime | Node.js 26, TypeScript | exists | `.nvmrc` v26.10.0, `engines >=26`; 26 becomes LTS on 2026-10-28 |
 | API | Fastify 5 through `@volcanicminds/backend` | exists | JSON Schema for validation and OpenAPI |
 | Profile | single tenant, no `tenants` block | exists | `capabilities.ts` refuses a forbidden combination at boot |
-| Database | PostgreSQL 18, one database | partial | CI still runs on Postgres 16; PGlite for development and tests |
+| Database | PostgreSQL 18, one database | partial | CI on Postgres 18; PGlite for development and tests |
 | Data access | Drizzle, drizzle-kit, framework migration runner | exists | forward-only migrations |
 | Schema | tables in code, manifest for the admin | exists | collections defined by users: open |
 | Login | flow engine: password, email OTP, TOTP, OIDC towards the customer's IdP | exists | |
@@ -87,7 +87,7 @@ S4 (single tenant with encryption in use) and S5 (multi-tenant with encryption a
 | API | as now: Fastify 5, volcanic framework | all | MIT; custom (exists) | JSON Schema for validation and OpenAPI | Hono, NestJS, Express |
 | Registry | as now: tables in code, admin manifest | all | custom (exists) | collections defined by users: open | Directus (license forbids competing use), Supabase, Strapi |
 | Data access | as now: Drizzle, drizzle-kit, framework migration runner | all | Apache-2.0, MIT; custom (exists) | local benchmark against TypeORM 1.1.1 on 2026-10-01 (Node 26.9.0, Postgres 14, 10 concurrent clients): the query builder is 18 to 26% slower on five of six queries; prepared statements are 1.4 to 3.7 times faster than TypeORM, at 0.81 to 1.05 of raw `pg`; heap after load 9.4 MB against 14 MB; 100 tenant schemas on one pool hold one connection, one TypeORM data source per tenant (the v4 pattern) holds 100 | Kysely, Prisma, TypeORM |
-| Control plane | PostgreSQL 18, `pg` driver | all | PostgreSQL, MIT | registry, identities, governance audit; CI still on 16 | CockroachDB, MySQL |
+| Control plane | PostgreSQL 18, `pg` driver | all | PostgreSQL, MIT | registry, identities, governance audit | CockroachDB, MySQL |
 | Postgres TDE | open: none for now, disk or provider encryption | S1-S3 when self-hosted | PostgreSQL (pg_vault_tde) | at rest only: the server and every session with SELECT read plaintext; pg_tde runs only on Percona Server; pg_vault_tde started on 2026-07-17, its encrypted indexes preserve equality | pg_tde, pg_vault_tde |
 | Tenant data | one Postgres 18 database per tenant; open: one schema per tenant | S3 | PostgreSQL | concurrent writers, mature HA; one schema per tenant shares one pool (see data access) | SQLite or libSQL file per tenant (dropped on 2026-10-01) |
 | Vectors | pgvector in the database, or LanceDB in process; both rag engines behind `RetrievalStore` | S2 S3 | PostgreSQL; Apache-2.0 | pgvector: vectors live, die and are backed up with their rows, pgvectorscale only on a self-hosted Postgres; LanceDB: 10.2 ms exact scan of a filtered set on 250,000 chunks (rag measure); rag has both engines | Qdrant, Milvus, Vespa |

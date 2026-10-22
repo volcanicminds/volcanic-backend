@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import { FastifyRequest, FastifyReply } from 'fastify'
-export { FastifyInstance } from 'fastify'
+import { FastifyRequest } from 'fastify'
+// Fastify's own, with `payloadSize` from the module augmentation below.
+export { FastifyInstance, FastifyReply } from 'fastify'
 import { MfaPolicy } from '../lib/config/constants.js'
 import { VQuery, VFindResult, VHeaders } from './orm.js'
 
@@ -1822,10 +1823,6 @@ export interface FastifyRequest extends FastifyRequest {
   isMultipart(): boolean
   file(options?: any): Promise<any>
   files(options?: any): AsyncIterableIterator<any>
-}
-
-export interface FastifyReply extends FastifyReply {
-  payloadSize?: number
 }
 
 export interface global {}

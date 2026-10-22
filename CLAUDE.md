@@ -138,7 +138,7 @@ quella variabile non dice quello che sembra. Il comando Docker per il Postgres d
 
 - CI in `.github/workflows/ci.yml`: `verify` (lint, type-check, depcruise, check di sessione e di
   migrazioni, build, publint, attw `esm-only`), `test` (suite più `npm run coverage`, con
-  `lcov.info` come artefatto), `test-pg` (Postgres 16 di servizio), `release` su tag `v*`.
+  `lcov.info` come artefatto), `test-pg` (Postgres 18 di servizio), `release` su tag `v*`.
 - **La copertura si misura con il backend monocart di `c8`**: sotto `tsx` lo stesso modulo può
   essere compilato due volte, come CommonJS e come ESM, e c8 semplice tiene solo una delle due
   coperture. Il pavimento lo applica `scripts/check-coverage.mjs`, perché `--check-coverage` di c8

@@ -1736,7 +1736,7 @@ connection carries a `search_path` that would have to be moved and moved back.
 ```sh
 docker run -d --name vm-pg \
   -e POSTGRES_USER=volcanic -e POSTGRES_PASSWORD=volcanic -e POSTGRES_DB=volcanic \
-  -p 5432:5432 postgres:16-alpine
+  -p 5432:5432 postgres:18-alpine
 
 npx volcanic migrate --control
 ```
@@ -3570,7 +3570,7 @@ real server with a real pool.
 ```sh
 docker run -d --rm --name volcanic-test-pg \
   -e POSTGRES_PASSWORD=volcanic -e POSTGRES_USER=volcanic -e POSTGRES_DB=volcanic \
-  -p 55432:5432 postgres:16-alpine
+  -p 55432:5432 postgres:18-alpine
 
 DATABASE_URL=postgres://volcanic:volcanic@127.0.0.1:55432/volcanic npm test
 DATABASE_URL=postgres://volcanic:volcanic@127.0.0.1:55432/volcanic npm run test:e2e:mt:pg

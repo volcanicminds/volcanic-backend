@@ -60,7 +60,7 @@ Locally:
 ```bash
 docker run -d --rm --name volcanic-test-pg \
   -e POSTGRES_PASSWORD=volcanic -e POSTGRES_USER=volcanic -e POSTGRES_DB=volcanic \
-  -p 55432:5432 postgres:16-alpine
+  -p 55432:5432 postgres:18-alpine
 ```
 
 In CI, the same image as a `services:` block. **Do not add `testcontainers`**: the suite must run
@@ -174,7 +174,7 @@ measured on physical lines and do not compare with the numbers above.
 
 The pipeline gains one job and one rule.
 
-1. **New job `test-pg`**: `services: postgres:16-alpine`, runs `npm run test:e2e:mt:pg` with
+1. **New job `test-pg`**: `services: postgres:18-alpine`, runs `npm run test:e2e:mt:pg` with
    `DB_POOL_MAX=1`.
 2. **It is blocking**, on pull requests, on the protected branch and on the `v*` tag that
    publishes. If isolation is not proven, nothing is published.

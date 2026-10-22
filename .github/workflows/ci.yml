@@ -61,7 +61,7 @@ jobs:
     needs: verify
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: volcanic
           POSTGRES_PASSWORD: volcanic
@@ -85,7 +85,7 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
           sudo sed -i 's|deb |deb [signed-by=/usr/share/keyrings/pgdg.gpg] |' /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client-16
+          sudo apt-get install -y -qq postgresql-client-18
           pg_dump --version
       - run: npm ci
       # The data layer on a real server: the `test` job runs these suites without DATABASE_URL,

@@ -263,9 +263,9 @@ La rottura da guardare per prima in qualunque consumer: il login risponde **401*
 rispondeva 403, e un livello HTTP che tratta il 401 come «sessione scaduta, torna al login»
 trasforma una password sbagliata in un redirect proprio sulla rotta di login.
 
-**Come si verifica tutto, da una sessione nuova.** Serve un Postgres 16: `docker run -d --name
+**Come si verifica tutto, da una sessione nuova.** Serve un Postgres 18, sempre in Docker: `docker run -d --name
 vm-pg -e POSTGRES_USER=volcanic -e POSTGRES_PASSWORD=volcanic -e POSTGRES_DB=volcanic -p
-55432:5432 postgres:16-alpine`, poi con `DATABASE_URL=postgres://volcanic:volcanic@127.0.0.1:55432/volcanic`
+55432:5432 postgres:18-alpine`, poi con `DATABASE_URL=postgres://volcanic:volcanic@127.0.0.1:55432/volcanic`
 si lanciano `npm run check-all`, `npm test` e `npm run test:e2e:mt:pg`. Senza `DATABASE_URL` le
 suite che vogliono un database reale **saltano** invece di fallire, quindi un verde senza quella
 variabile non dice quello che sembra.
