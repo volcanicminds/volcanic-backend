@@ -35,7 +35,7 @@ function fakeTracking(over: any = {}) {
     },
     addChange: async (ctx: any, change: any) => {
       calls.added.push({ ctx, change })
-      if (over.addThrows) throw new Error('relation "change" does not exist')
+      if (over.addThrows) throw new Error('relation "change_log" does not exist')
       return { id: 'change-1' }
     },
     ...(over.isImplemented === false ? { isImplemented: () => false } : {})

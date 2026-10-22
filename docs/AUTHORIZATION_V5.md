@@ -166,7 +166,7 @@ In v4 impersonation left only a claim in a token, lasted 24 hours, and its
    anything.
 4. It then issues a **tenant-scoped** token for the target user, carrying `imp` = the record id,
    with a TTL of **30 minutes** by default (configurable, hard maximum 4 hours).
-5. Every request made with that token is logged with the `imp` id. Tracked writes (`change`)
+5. Every request made with that token is logged with the `imp` id. Tracked writes (`change_log`)
    record it too.
 6. `POST /tenants/impersonate/end` revokes the record (`revoked_at`); a token whose `imp` record
    is revoked or expired is rejected even if the JWT itself is still valid.

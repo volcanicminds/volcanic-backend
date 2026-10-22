@@ -1101,7 +1101,7 @@ them.**
 
 | Set | Tables |
 |---|---|
-| `control` and `tenant` | `user`, `token`, `session`, `change`, `migration`, `access_log`, `auth_flow`, `external_identity`, `setting` |
+| `control` and `tenant` | `user`, `token`, `session`, `change_log`, `migration`, `access_log`, `auth_flow`, `external_identity`, `setting` |
 | `control` only | `tenant`, `system_user`, `impersonation`, `destruction_request`, `governance_log`, `identity_provider` |
 
 A field the user lacks, `firstName` for example, goes in a table of your own, keyed by `user.id`:
@@ -3329,8 +3329,8 @@ an export or a destruction of the tenant does not know about it.
 ## 7.4 Audit Tracking (Change Tracking)
 
 The framework records who changed what on the routes a project declares, without logging code in the controllers.
-Every tracked write appends a row to the `change` table **inside the container the request worked in**, so a
-tenant's audit trail lives next to the data it describes. There is one `change` table per container and no entity
+Every tracked write appends a row to the `change_log` table **inside the container the request worked in**, so a
+tenant's audit trail lives next to the data it describes. There is one `change_log` table per container and no entity
 to configure for it.
 
 ### Configuration (`src/config/tracking.ts`)
@@ -3371,7 +3371,7 @@ and ignored. Two entries for the same method and path merge, the later one winni
 3.  **`preSerialization`**: on a response under 400, the framework compares the response payload with
     `req.trackingData`, field by field (`includes`, or every key of the payload, minus `excludes` and the primary
     key). The status is `create` for POST, `delete` for DELETE, `update` otherwise.
-4.  **Write**: a `change` row with the entity, the row's id, the status, the user or integration token, the
+4.  **Write**: a `change_log` row with the entity, the row's id, the status, the user or integration token, the
     impersonation session when there is one, and the entries `{ key, old, new }`. Without a baseline every entry
     carries only `new`: no `old` key means "not captured", which is a different statement from `old: null`. A
     response without the primary key records nothing and logs a warning.
@@ -3555,7 +3555,7 @@ target. CI runs it in the `test` job. What is excluded from the measurement, and
 - `check:session-state`: a `SET search_path` outside a transaction anywhere in the sources (`SET LOCAL search_path`
   is allowed).
 - `check:migration-sets`: the control and tenant migration sets sharing an entry, a moved folder, or a control
-  table in the tenant schema. The tables that live in both (`user`, `token`, `change`, `migration`) are declared
+  table in the tenant schema. The tables that live in both (`user`, `token`, `change_log`, `migration`) are declared
   twice, never shared.
 - `check:refusals`: an error code the source can answer with (`httpError(status, message, 'CODE')`,
   `queryError('CODE')`, `code: 'CODE'`) that no test names, and a retired code coming back.
@@ -4185,7 +4185,7 @@ without saying which container it acts on.
 | :--- | :--- | :--- | :--- | :--- |
 | `userManager` | `UserManagement` | `@volcanicminds/backend/db` — or your own | All of `/auth/*` and `/users/*`; user resolution in `onRequest` | `retrieveUserByPassword`, `retrieveUserByExternalId`, `createUser`, `changePassword`, `forgotPassword`, `resetPassword`, `userConfirmation`, `isValidUser`, `isPasswordToBeChanged`, `blockUserById`, `saveMfaSecret`/`retrieveMfaSecret`/`enableMfa`/`disableMfa`, `findQuery`/`countQuery`, `isImplemented` |
 | `tokenManager` | `TokenManagement` | `@volcanicminds/backend/db` | `/token/*` (machine-to-machine API tokens); token-subject resolution in `onRequest` | `createToken`, `retrieveTokenByExternalId`, `isValidToken`, `blockTokenById`/`unblockTokenById`, `removeTokenById`, `findQuery`/`countQuery` |
-| `trackingManager` | `TrackingManagement` | `@volcanicminds/backend/db` | The audit trail: one `change` table **inside each container** | `addChange`, `retrieveBy` |
+| `trackingManager` | `TrackingManagement` | `@volcanicminds/backend/db` | The audit trail: one `change_log` table **inside each container** | `addChange`, `retrieveBy` |
 | `mfaManager` | `MfaManagement` | `@volcanicminds/tools` (mfa) wrapped in an adapter | TOTP setup/verify used by `/auth/mfa/*` | `generateSetup(appName, email)`, `verify(token, secret)` |
 | `transferManager` | `TransferManagement` | `@volcanicminds/tools` (transfer/TUS) | Mounts a TUS upload endpoint at `getPath()` | `getPath`, `getServer`, `handle(req,res)`, `isValid`, `onUploadCreate/Finish/Terminate` |
 | `tenantManager` | `TenantManagement` | `@volcanicminds/backend/db` | Tenant resolution and `/tenants/*` | `getTenant`/`getTenantBySlug`/`listTenants`, `createTenant`, `updateTenant`, `suspendTenant`/`restoreTenant`, `softDeleteTenant`, `markTenantDestroyed`, `isImplemented` |

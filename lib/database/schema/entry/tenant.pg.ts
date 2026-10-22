@@ -11,7 +11,7 @@ const app = appTables('public')
 
 export const user = app.user
 export const token = app.token
-export const change = app.change
+export const changeLog = app.changeLog
 export const migration = app.migration
 export const session = app.session
 export const authFlow = app.authFlow

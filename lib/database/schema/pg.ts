@@ -113,8 +113,8 @@ export function appTables(schemaName: string) {
 
   // Append-only: a change record that can be updated is not an audit trail. No updatedAt,
   // no deletedAt.
-  const change = table(
-    'change',
+  const changeLog = table(
+    'change_log',
     {
       id: text('id').primaryKey().$defaultFn(uuidv7),
       createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -129,7 +129,7 @@ export function appTables(schemaName: string) {
       entityId: text('entity_id').notNull(),
       contents: jsonb('contents').notNull()
     },
-    (t) => [index('change_entity_idx').on(t.entityName, t.entityId), index('change_created_at_idx').on(t.createdAt)]
+    (t) => [index('change_log_entity_idx').on(t.entityName, t.entityId), index('change_log_created_at_idx').on(t.createdAt)]
   )
 
   //
@@ -295,7 +295,7 @@ export function appTables(schemaName: string) {
     ]
   )
 
-  // The access log. Append-only like `change`: no `updatedAt`, no `deletedAt`. Never a
+  // The access log. Append-only like `change_log`: no `updatedAt`, no `deletedAt`. Never a
   // password, a code, a token or a claim, and the address truncated before it gets here.
   const accessLog = table(
     'access_log',
@@ -328,7 +328,7 @@ export function appTables(schemaName: string) {
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
   })
 
-  return { user, token, change, migration, session, authFlow, externalIdentity, accessLog, setting }
+  return { user, token, changeLog, migration, session, authFlow, externalIdentity, accessLog, setting }
 }
 
 /** The registry and the platform's own identities. Control plane only, never in a container. */

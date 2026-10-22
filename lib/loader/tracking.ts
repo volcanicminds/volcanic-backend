@@ -19,7 +19,7 @@ export async function load() {
       const configTracking = module.default || module
 
       const { config, changes } = configTracking || {}
-      // There is no `changeEntity`: the audit rows go to one `change` table, inside each
+      // There is no `changeEntity`: the audit rows go to one `change_log` table, inside each
       // container, and there is no registry of consumer entities to resolve a name against.
       const { enableAll = true, primaryKey = 'id' } = config || {}
 

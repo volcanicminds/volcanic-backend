@@ -375,8 +375,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.change": {
-      "name": "change",
+    "public.change_log": {
+      "name": "change_log",
       "schema": "",
       "columns": {
         "id": {
@@ -436,8 +436,8 @@
         }
       },
       "indexes": {
-        "change_entity_idx": {
-          "name": "change_entity_idx",
+        "change_log_entity_idx": {
+          "name": "change_log_entity_idx",
           "columns": [
             {
               "expression": "entity_name",
@@ -457,8 +457,8 @@
           "method": "btree",
           "with": {}
         },
-        "change_created_at_idx": {
-          "name": "change_created_at_idx",
+        "change_log_created_at_idx": {
+          "name": "change_log_created_at_idx",
           "columns": [
             {
               "expression": "created_at",

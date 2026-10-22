@@ -6,6 +6,7 @@
 // inferred.
 //
 import { expect } from 'expect'
+import { sql } from 'drizzle-orm'
 import { createUserManager } from '../../lib/database/managers/user.js'
 import { createTokenManager } from '../../lib/database/managers/token.js'
 import { createTrackingManager } from '../../lib/database/managers/tracking.js'
@@ -212,6 +213,12 @@ describe('database/managers (T-2.5)', () => {
       })
       expect(written.id).toBeTruthy()
       expect(written.contents).toEqual([{ key: 'email', old: 'a', new: 'b' }])
+
+      // By the table's name, in the tenant's schema and not in the control plane's.
+      const ids = async (schema: string) =>
+        ((await (db.raw.db as any).execute(sql.raw(`SELECT id FROM "${schema}".change_log`))).rows as any[]).map((row) => row.id)
+      expect(await ids(db.schemas.tenant)).toContain(written.id)
+      expect(await ids(db.schemas.control)).not.toContain(written.id)
     })
 
     // `retrieveBy` is the baseline of the diff, not the audit history: the method has one caller,

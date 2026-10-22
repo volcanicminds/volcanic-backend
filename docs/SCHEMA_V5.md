@@ -15,7 +15,7 @@ touches them.
 |---|---|---|
 | `user` | tenant container (and control plane when tenancy is `none`) | end users of the application |
 | `token` | tenant container | machine credentials (API tokens) |
-| `change` | tenant container | audit trail of tracked writes |
+| `change_log` | tenant container | audit trail of tracked writes |
 | `session` | every container | live login sessions, and the refresh credential that renews them |
 | `migration` | every container | applied migration log (managed by drizzle-kit) |
 | `setting` | every container | settings of the container, one JSON value per key |
@@ -135,7 +135,7 @@ index on `reset_password_token`, index on `confirmation_token`, index on `delete
 
 **Indexes**: unique on `external_id`, index on `deleted_at`.
 
-### 2.3 `change`
+### 2.3 `change_log`
 
 The audit trail. **Append-only**: rows are never updated and never soft-deleted.
 
@@ -311,7 +311,7 @@ only, and an address is never a key.
 
 ### 2.9 `access_log`
 
-The access log (docs/AUTH_FLOW_V5.md §9). Append-only like `change`: no `updated_at`, no
+The access log (docs/AUTH_FLOW_V5.md §9). Append-only like `change_log`: no `updated_at`, no
 `deleted_at`; rows leave by retention only.
 
 | Column | Type | Null | Default | Notes |

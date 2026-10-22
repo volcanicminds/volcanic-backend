@@ -5,7 +5,7 @@
 // The control plane and a customer's container have different lives. The control plane is
 // migrated once and holds the registry, the platform identities and the impersonation log; a
 // tenant container is migrated N times and holds none of that. Tables that live in both
-// (`user`, `token`, `change`, `migration`) are declared in both sets and **duplicated**: the
+// (`user`, `token`, `change_log`, `migration`) are declared in both sets and **duplicated**: the
 // same file is never shared.
 //
 // That is true today because the generation entries say so, and this check exists because
@@ -25,7 +25,7 @@ const dirOf = (set) => path.join(ROOT, 'lib/database/migrations', set, 'pg')
 // Tables of the platform. Nothing that describes the fleet belongs inside one of its members:
 // outside the customer's container goes only what you could publish.
 const CONTROL_ONLY = ['tenant', 'system_user', 'impersonation', 'destruction_request', 'identity_provider', 'governance_log']
-const SHARED = ['user', 'token', 'change', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log']
+const SHARED = ['user', 'token', 'change_log', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log']
 
 const sqlOf = (dir) =>
   !existsSync(dir)

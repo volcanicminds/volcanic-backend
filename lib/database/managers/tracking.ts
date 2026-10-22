@@ -16,7 +16,7 @@ const NAME = 'trackingManager'
 export function createTrackingManager(): TrackingManagement {
   const changes = (ctx: unknown, what: string) => {
     const handle = runtime(ctx, `${NAME}.${what}`)
-    return { handle, change: table(handle, 'change') }
+    return { handle, change: table(handle, 'changeLog') }
   }
 
   /**

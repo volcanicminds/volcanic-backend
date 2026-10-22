@@ -140,7 +140,7 @@ stops when the server closes, and reports the tenants that failed without skippi
 |---|---|
 | in multi-tenant the trail was **silently empty** | the change is written inside the tenant's container |
 | a failed write became a log line, the response stayed 200 | the request fails with 500 `TRACKING_FAILED`, unless the route declares `tracking: { strict: false }` |
-| `changeEntity` chose the table to write into | one `change` table per container; the option is gone |
+| `changeEntity` chose the table to write into | one `change_log` table per container; the option is gone |
 | the previous state came from `global.entity` | read automatically for framework tables, otherwise supplied by the consumer through `req.trackingData` |
 
 An entry of `contents` without an `old` key means the previous value was not captured. It is

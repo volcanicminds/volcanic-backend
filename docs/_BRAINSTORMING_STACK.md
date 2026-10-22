@@ -34,7 +34,7 @@ Workforce management, Gantt, ERP.
 | Admin | `@volcanicminds/admin`, manifest-driven | exists | |
 | Scheduled jobs | `@fastify/schedule` and toad-scheduler, in process | exists | no cross-process guard found: one process |
 | Cache | in process (`global.cache`) | exists | invalidation stays inside one instance |
-| Audit | `change` and `access_log`, append-only | exists | no hash chain |
+| Audit | `change_log` and `access_log`, append-only | exists | no hash chain |
 | Mail | nodemailer through `@volcanicminds/tools` | exists | |
 | Observability | pino as logger, OpenTelemetry over OTLP | exists | JSON in production, `pino-pretty` only in development, one instance handed to Fastify as `loggerInstance`, `redact` on secrets; `@fastify/otel` and the OpenTelemetry SDK are optional peers |
 | Encryption at rest | disk or managed Postgres encryption | external | |
@@ -70,7 +70,7 @@ Classic cloud SaaS. Everything in S2, plus or instead:
 | Files | S3-compatible storage, one prefix per tenant | to build | a directory works only on one node |
 | Jobs | pg-boss on the control plane Postgres | to build | with replicas a job must run once |
 | Cache | in process, invalidation across replicas | to build | Postgres LISTEN/NOTIFY before Redis |
-| Audit | `change` and `access_log` in each tenant database; governance events in the control plane | exists | `governance_log` in the control plane, read at `GET /system/governance-log` with the `governance-log` capability |
+| Audit | `change_log` and `access_log` in each tenant database; governance events in the control plane | exists | `governance_log` in the control plane, read at `GET /system/governance-log` with the `governance-log` capability |
 | Observability | tenant id on every span and log line | exists | `tenant_id` on log lines and `tenant.id` on spans, jobs on one tenant included; the id only, never the slug |
 | Cross-tenant reports | none | open | out of scope for now; `postgres_fdw` or an export |
 
@@ -99,7 +99,7 @@ S4 (single tenant with encryption in use) and S5 (multi-tenant with encryption a
 | Federation | as now: `openid-client` as the `oidc` stage, providers per tenant | all | MIT | SAML not implemented; Keycloak as a broker only on request | node-saml, WorkOS |
 | Third-party apps, MCP clients | `oidc-provider` as OAuth 2.1 server | S2 S3, only for third-party delegated access | MIT; custom (to build) | own integrations use the existing machine credentials | Keycloak, Ory Hydra |
 | Authorization | as now: capabilities; row rules later | all | custom (exists) | never a query parameter, never a model in the chain | Cedar, OpenFGA, OPA |
-| Audit, history | two append-only levels: content in the tenant, governance in the control plane | all | custom (exists) | `change` and `access_log` exist per container, without hash chain; `governance_log` in the control plane survives tenant destruction | pgaudit, immudb, Debezium |
+| Audit, history | two append-only levels: content in the tenant, governance in the control plane | all | custom (exists) | `change_log` and `access_log` exist per container, without hash chain; `governance_log` in the control plane survives tenant destruction | pgaudit, immudb, Debezium |
 | Retention | Object Lock (candidate) | out of scope for now | provider feature | | legal hold |
 | Workflows, queues, cron | `@fastify/schedule` in process; pg-boss when a job must survive restarts or run once across replicas | all; pg-boss in S2 S3 | MIT | no cross-process guard found today | DBOS, Temporal, BullMQ |
 | Routing | as now: tenant from the token | S3 | custom (exists) | header or subdomain only without a token | load balancer hashing |

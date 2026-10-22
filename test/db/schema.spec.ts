@@ -66,7 +66,7 @@ describe('database/schema · the tables', () => {
     // belongs to, so it is part of what defines a container.
     // `authFlow`, `externalIdentity`, `accessLog` and `setting` for the same reason.
     expect(Object.keys(pgApp).sort()).toEqual([
-      'accessLog', 'authFlow', 'change', 'externalIdentity', 'migration', 'session', 'setting', 'token', 'user'
+      'accessLog', 'authFlow', 'changeLog', 'externalIdentity', 'migration', 'session', 'setting', 'token', 'user'
     ])
     expect(Object.keys(pgReg).sort()).toEqual([
       'destructionRequest', 'governanceLog', 'identityProvider', 'impersonation', 'systemUser', 'tenant'
@@ -116,10 +116,11 @@ describe('database/schema · postgres', () => {
   })
 
   it('keeps the audit trail append-only', () => {
-    const change = pgConfig(pg.appTables('public').change)
-    expect(columns(change)).not.toContain('updated_at')
-    expect(columns(change)).not.toContain('deleted_at')
-    expect(column(change, 'created_at')).toBeDefined()
+    const changeLog = pgConfig(pg.appTables('public').changeLog)
+    expect(changeLog.name).toBe('change_log')
+    expect(columns(changeLog)).not.toContain('updated_at')
+    expect(columns(changeLog)).not.toContain('deleted_at')
+    expect(column(changeLog, 'created_at')).toBeDefined()
   })
 
   it('makes email and external id unique, and username unique only when present', () => {

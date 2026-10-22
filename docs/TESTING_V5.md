@@ -126,7 +126,7 @@ exists. If any of them passes before the fix, it is checking a configuration and
 | configuration merge | declaring one key inside `tenants` does not erase its siblings |
 | Magic Query | the battery on PGlite: the rows a query returns, and 400 with the right `code` when it is refused |
 | tenant context | no emitted SQL contains `set search_path` outside a transaction |
-| tracking | the `change` row lands **inside the tenant container**; with the write made impossible, strict mode returns 500 and `strict: false` returns 200 |
+| tracking | the `change_log` row lands **inside the tenant container**; with the write made impossible, strict mode returns 500 and `strict: false` returns 200 |
 | scheduled jobs | a job declared "for every tenant" runs once per tenant with the right handle, and one failing tenant does not stop the others |
 | migrations | a fleet of at least 20 containers, one run interrupted mid-way, resumed, and ending idempotent; a partial failure exits non-zero naming the failed containers |
 | destruction | every failure code of `docs/API_V5.md` §6.2, plus: a failed export means nothing is destroyed |

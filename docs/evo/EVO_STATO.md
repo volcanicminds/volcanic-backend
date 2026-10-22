@@ -243,6 +243,11 @@ da una richiesta o da un job, sullo stesso prestito dei job (F94). Un compito, T
 108 prove di rag-sample verdi anche dentro un tenant, nelle quattro combinazioni. **Fase 19 chiusa
 il 21 ottobre 2026.**
 
+**Fase 20 aperta il 22 ottobre 2026** (`EVO_FASE_20.md`), dalla revisione dei registri della
+piattaforma: `change` diventa `change_log` (F95); accessi e governance restano due tabelle, e
+l'impersonificazione resta com'è (F96). Un compito, T-20.1, fatto: 1130 prove con `DATABASE_URL`
+su Postgres 18, nessuna saltata; `test:e2e:mt:pg` 69. **Fase 20 chiusa il 22 ottobre 2026.**
+
 **Cosa resta**, e non è nel piano: la catena di rilascio è preparata e provata in locale il 25
 settembre 2026, senza pubblicare e senza push (dettaglio nella tabella «Fuori piano»). Il difetto
 `ERR_HTTP_HEADERS_SENT` del sample è chiuso (26 settembre 2026, tabella «Fuori piano»). Restano

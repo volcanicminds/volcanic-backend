@@ -1,4 +1,4 @@
-CREATE TABLE "change" (
+CREATE TABLE "change_log" (
 	"id" text PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"user_id" text,
@@ -62,8 +62,8 @@ CREATE TABLE "user" (
 	"deleted_at" timestamp with time zone
 );
 --> statement-breakpoint
-CREATE INDEX "change_entity_idx" ON "change" USING btree ("entity_name","entity_id");--> statement-breakpoint
-CREATE INDEX "change_created_at_idx" ON "change" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "change_log_entity_idx" ON "change_log" USING btree ("entity_name","entity_id");--> statement-breakpoint
+CREATE INDEX "change_log_created_at_idx" ON "change_log" USING btree ("created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "migration_set_name_uq" ON "migration" USING btree ("set","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "token_external_id_uq" ON "token" USING btree ("external_id");--> statement-breakpoint
 CREATE INDEX "token_deleted_at_idx" ON "token" USING btree ("deleted_at");--> statement-breakpoint

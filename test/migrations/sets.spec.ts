@@ -34,7 +34,7 @@ const tablesOf = (sql: string) =>
 describe('migrations · two sets, not one (T-5.2)', () => {
   it('gives a tenant container the application tables and nothing about the platform', () => {
     const tenant = tablesOf(sqlOf('tenant'))
-    expect(tenant).toEqual(['access_log', 'auth_flow', 'change', 'external_identity', 'migration', 'session', 'setting', 'token', 'user'])
+    expect(tenant).toEqual(['access_log', 'auth_flow', 'change_log', 'external_identity', 'migration', 'session', 'setting', 'token', 'user'])
 
     // Invariant 7 as a file list: outside the customer's container goes only what you could
     // publish, and the registry of every other customer is the clearest example of what you
@@ -51,7 +51,7 @@ describe('migrations · two sets, not one (T-5.2)', () => {
     }
     // Not an oversight: with no `tenants` block the application data lives here, so the
     // control plane is also a container.
-    for (const shared of ['user', 'token', 'change', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log']) {
+    for (const shared of ['user', 'token', 'change_log', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log']) {
       expect(control).toContain(shared)
     }
   })
