@@ -79,14 +79,17 @@ jobs:
         with: { node-version-file: .nvmrc, cache: npm }
       # A `pg_dump` older than the server refuses to dump it, and the export tests then skip
       # rather than fail. Installing the matching client is what keeps the export happy path
-      # actually exercised instead of quietly stepped over.
+      # actually exercised instead of quietly stepped over. The runner image ships Postgres 16
+      # with a cluster, and `/usr/bin/pg_dump` picks that cluster's version even with the 18
+      # client installed: the 18 binaries go first on PATH, and the next step fails on any other.
       - run: |
           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
           sudo sed -i 's|deb |deb [signed-by=/usr/share/keyrings/pgdg.gpg] |' /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-18
-          pg_dump --version
+          echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH"
+      - run: pg_dump --version | tee /dev/stderr | grep -qE '\(PostgreSQL\) 18\.'
       - run: npm ci
       # The data layer on a real server: the `test` job runs these suites without DATABASE_URL,
       # and there the Postgres cases (containers, prepared statements, destruction, genesis, auth
