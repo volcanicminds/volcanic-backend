@@ -152,6 +152,11 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   sono del solo superutente e un token non lo è mai, quindi è 403 `FORBIDDEN` prima; con un
   token del tenant lo prova `tokenGovernance.e2e`. Il token piantato in un cookie è provato in
   `authChannels.spec`, perché l'app e2e parte in modalità bearer senza lettore di cookie.
+  Lo stesso giorno, dopo il commit: la modifica di un token passava al manager il corpo intero,
+  quindi i ruoli senza il filtro del catalogo e, con loro, `blocked`, `deletedAt`, `externalId` ed
+  `expiresAt`. Ora scrive solo nome, descrizione e ruoli, questi con la regola della creazione, su
+  entrambi i piani (`planeRoles`, `lib/api/token/controller/token.ts`). Prove: `tokenApex.spec`
+  e un caso di `controlToken.e2e` per piano, tutti rossi sul controller di prima.
 - [x] **T-18.2** Il registro di governo in ogni contenitore (F100). `governance_log` entra
   nell'insieme tenant; il manager scrive e legge sul contenitore della richiesta; gli atti sui
   token (creazione, modifica, rigenerazione, blocco, sblocco, eliminazione) si scrivono nella

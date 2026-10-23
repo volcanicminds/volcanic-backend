@@ -178,6 +178,31 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     expect(calls.length).toBe(0)
   })
 
+  it("changes a token's name, description and roles alone, the roles by the rule of a creation", async () => {
+    // The manager writes every key it is given: a body that reached it whole could unblock, revive,
+    // extend or re-key a token on a route meant for its labels.
+    ;(global as any).config = { options: {} }
+    const { req, calls, reply } = request({
+      data: {
+        name: 'renamed',
+        description: 'nightly',
+        roles: ['editor', 'invented', 'system:auditor'],
+        blocked: false,
+        deletedAt: null,
+        externalId: 'chosen',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        id: 'other'
+      }
+    })
+    await update(req, reply)
+    expect(calls).toEqual([['updateTokenById', EXISTING.id, { name: 'renamed', description: 'nightly', roles: ['editor', 'public'] }]])
+
+    // Without `roles` in the body the roles are not touched, `public` included.
+    const renamed = request({ data: { name: 'renamed' } })
+    await update(renamed.req, renamed.reply)
+    expect(renamed.calls).toEqual([['updateTokenById', EXISTING.id, { name: 'renamed' }]])
+  })
+
   it('writes the row, signs the bearer for it, and returns the bearer without storing it', async () => {
     // The bearer exists in the answer and nowhere else: a write after the signature would put
     // a working credential in a table every `tokens` reader can list.
@@ -345,7 +370,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
       { action: 'token.created', targetId: 't-new', detail: { roles: ['editor', 'public'], expiresAt: at.toISOString() }, ...by }
     ])
     expect(await acts((r) => update(r.req, r.reply), { data: { name: 'renamed', roles: ['editor'] } })).toEqual([
-      { action: 'token.updated', targetId: EXISTING.id, detail: { requested: ['name', 'roles'], roles: ['editor'] }, ...by }
+      { action: 'token.updated', targetId: EXISTING.id, detail: { requested: ['name', 'roles'], roles: ['editor', 'public'] }, ...by }
     ])
     expect(await acts((r) => reissue(r.req, r.reply))).toEqual([{ action: 'token.reissued', targetId: EXISTING.id, detail: undefined, ...by }])
     expect(await acts((r) => block(r.req, r.reply), { data: { reason: 'leaked' } })).toEqual([
@@ -386,6 +411,11 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
       await update(promoted.req, promoted.reply)
       expect([promoted.reply.sent.code, promoted.reply.sent.body.code]).toEqual([403, 'TOKEN_ROLE_FORBIDDEN'])
       expect([...sovereign.calls, ...promoted.calls, ...sovereign.governance.rows, ...promoted.governance.rows]).toEqual([])
+
+      // An update takes the same catalogue: no tenant role, no invented code, no `public`.
+      const changed = request({ ...operator, data: { roles: ['system:auditor', 'editor', 'public', 'invented'] } })
+      await update(changed.req, changed.reply)
+      expect(changed.calls).toEqual([['updateTokenById', EXISTING.id, { roles: ['system:auditor'] }]])
     } finally {
       ;(global as any).systemRoles = savedSystemRoles
     }

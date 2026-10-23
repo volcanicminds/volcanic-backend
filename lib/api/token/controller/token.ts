@@ -39,6 +39,22 @@ function grantsSovereignty(req: FastifyRequest, roleValue: unknown): boolean {
 const sovereignRefused = (reply: FastifyReply, message: string) =>
   reply.status(403).send(httpError(403, message, 'TOKEN_ROLE_FORBIDDEN'))
 
+/**
+ * The roles of the token's own plane, and no other, on a creation and on an update alike: a code
+ * the catalogue does not hold is dropped. A tenant token always keeps `public`; the control plane
+ * has no role to default to.
+ */
+function planeRoles(req: FastifyRequest, codes: unknown): string[] {
+  const platform = isPlatformRoute(req)
+  const catalogue: Record<string, { code: string } | undefined> = platform ? global.systemRoles : global.roles
+  const known = (Array.isArray(codes) ? codes : []).map((r) => catalogue[r]?.code).filter((r?: string): r is string => !!r)
+  const publicRole = global.roles?.public?.code || 'public'
+  return platform || known.includes(publicRole) ? known : [...known, publicRole]
+}
+
+/** The fields an update may change. Block, removal, expiry and the bearer have routes of their own. */
+const UPDATABLE = ['name', 'description', 'roles'] as const
+
 export async function count(req: FastifyRequest, _reply: FastifyReply) {
   return await req.server['tokenManager'].countQuery(dataContext(req), req.data())
 }
@@ -75,18 +91,9 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   }
   data.expiresAt = expiresAt
 
-  // The roles of the token's own plane, and no other: a code the catalogue does not hold is
-  // dropped. A tenant token gets `public` by default; the control plane has no role to default to.
-  const platform = isPlatformRoute(req)
-  const catalogue: Record<string, { code: string } | undefined> = platform ? global.systemRoles : global.roles
-  data.roles = (data.requiredRoles || []).map((r: string) => catalogue[r]?.code).filter((r?: string) => !!r)
-  const publicRole = global.roles?.public?.code || 'public'
-  if (!platform && !data.roles.includes(publicRole)) {
-    data.roles.push(publicRole)
-  }
-
+  data.roles = planeRoles(req, data.requiredRoles)
   if (grantsSovereignty(req, data.roles)) {
-    return sovereignRefused(reply, platform ? 'A token never carries system:admin' : 'Cannot assign the admin role to a token')
+    return sovereignRefused(reply, isPlatformRoute(req) ? 'A token never carries system:admin' : 'Cannot assign the admin role to a token')
   }
 
   const token = await governedToken(
@@ -193,7 +200,12 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(404).send()
   }
 
-  const data = req.data() || {}
+  // A field outside the list is dropped, whatever the body schema lets through: a project may
+  // replace the schema, and the manager writes every key it is given.
+  const body = req.data() || {}
+  const data: Record<string, unknown> = {}
+  for (const field of UPDATABLE) if (body[field] !== undefined) data[field] = body[field]
+  if (data.roles !== undefined) data.roles = planeRoles(req, data.roles)
   if (grantsSovereignty(req, data.roles)) {
     return sovereignRefused(reply, isPlatformRoute(req) ? 'A token never carries system:admin' : 'Cannot assign the admin role to a token')
   }

@@ -69,6 +69,30 @@ for (const strategy of ['schema', 'container'] as const) {
       expect((await sql().query("select count(*)::int as n from token where name = 'root'")).rows[0].n).toBe(0)
     })
 
+    it("changes a token's name and roles alone, the roles from its own plane's catalogue, on either plane", async () => {
+      // The fields that have routes of their own, which a body reaching the row whole would rewrite.
+      const smuggled = { blocked: false, deletedAt: null, externalId: 'chosen', expiresAt: '2099-01-01T00:00:00.000Z' }
+
+      const machine = await issue({ name: 'labels', requiredRoles: ['system:prober'] })
+      expect((await as(system)('POST', `/system/tokens/${machine.id}/block`, { reason: 'paused' })).statusCode).toBe(200)
+      const changed = await as(system)('PUT', `/system/tokens/${machine.id}`, {
+        name: 'renamed',
+        roles: ['system:auditor', 'admin', 'public', 'invented'],
+        ...smuggled
+      })
+      expect(changed.statusCode).toBe(200)
+      const [row] = (await sql().query('select name, roles, blocked, deleted_at, external_id, expires_at from token where id = $1', [machine.id])).rows
+      expect(row).toEqual({ name: 'renamed', roles: ['system:auditor'], blocked: true, deleted_at: null, external_id: machine.externalId, expires_at: null })
+
+      const tenant = (method: string, url: string, payload?: unknown) =>
+        inject({ method, url, headers: bearer(acmeAdmin, ACME.slug), ...(payload === undefined ? {} : { payload }) })
+      const own = body(await tenant('POST', '/token', { name: 'tenant-labels', expiresAt: null }))
+      expect((await tenant('PUT', `/token/${own.id}`, { roles: ['system:prober', 'invented'], ...smuggled })).statusCode).toBe(200)
+      expect(body(await tenant('GET', `/token/${own.id}`))).toMatchObject({ roles: ['public'], externalId: own.externalId, expiresAt: null })
+      // The bearer still resolves to the row: its external id was not rewritten.
+      expect((await inject({ method: 'GET', url: '/probe/subject', headers: bearer(own.token, ACME.slug) })).statusCode).toBe(200)
+    })
+
     it('lets a machine reach the control route its capability opens, and no other', async () => {
       const machine = await issue({ name: 'prober', requiredRoles: ['system:prober'] })
       const opened = await probe(bearer(machine.token))

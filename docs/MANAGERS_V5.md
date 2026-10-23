@@ -173,6 +173,10 @@ the manager: `POST /token` signs `expires_at` into the bearer as `exp`. `isValid
 every request with the row and is the only check on it: it must refuse a blocked token and a
 removed one (`deletedAt`), or blocking and removing change nothing for the bearer.
 
+`updateTokenById` is called with `name`, `description` and `roles` at most, the roles already
+filtered through the catalogue of the token's plane; the core drops every other field of the
+request, so a manager that writes the keys it is given writes only those.
+
 ---
 
 ## 5. `TenantManagement`

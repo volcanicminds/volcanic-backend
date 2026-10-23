@@ -18,7 +18,8 @@ export const tokenUpdateBodySchema = {
   nullable: true,
   properties: {
     name: { type: 'string' },
-    description: { type: 'string' }
+    description: { type: 'string' },
+    roles: { type: 'array', items: { type: 'string' } }
   }
 }
 

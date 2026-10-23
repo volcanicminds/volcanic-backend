@@ -282,7 +282,7 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | GET | `/token/count` | capability `tokens` | |
 | GET | `/token/:id` | capability `tokens` | |
 | POST | `/token` | capability `tokens`, `freshAuth` | `expiresAt` is required in the body: a future date, or an explicit `null` for no expiry; a past or unreadable date is 400 `TOKEN_EXPIRY_INVALID`. The bearer carries the same expiry as `exp`, and a `null` one has none, whatever `JWT_EXPIRES_IN` says. It carries `typ: 'integration'`, the label that has it looked up among the tokens and read from the `Authorization` header only (docs/AUTHORIZATION_V5.md §5). Under tenants it carries `tid`, the tenant it was created in: no header is needed, and one naming another tenant is 403 `TENANT_MISMATCH`. The `admin` role, asked by whoever does not hold it, is 403 `TOKEN_ROLE_FORBIDDEN`. Answers with the row and `token`, the bearer: shown here once and never stored (MIGRATION §33) |
-| PUT | `/token/:id` | capability `tokens`, `freshAuth` | |
+| PUT | `/token/:id` | capability `tokens`, `freshAuth` | changes `name`, `description` and `roles`, and nothing else: any other field is dropped, since block, removal, expiry and the bearer have routes of their own. The roles follow the rule of a creation: a code the tenant catalogue does not hold is dropped and `public` is always kept |
 | DELETE | `/token/:id` | capability `tokens` | a token removed already answers `{ ok: true }` and changes nothing |
 | POST | `/token/:id/block` | capability `tokens` | **path changed**: v4 was `/token/block/:id`. 404 for an unknown token |
 | POST | `/token/:id/unblock` | capability `tokens`, `freshAuth` | **path changed**: v4 was `/token/unblock/:id`. 404 for an unknown token |
@@ -373,7 +373,7 @@ Platform administrators authenticate on their own routes and receive a token car
 | GET | `/system/tokens/count` | `system:admin` | |
 | GET | `/system/tokens/:id` | `system:admin` | |
 | POST | `/system/tokens` | `system:admin`, `freshAuth` | as `POST /token`, with roles from the control catalogue and no `public` default. The bearer is signed with `typ: 'integration'`, `scp: 'control'` and no `tid`. `system:admin` among the roles is 403 `TOKEN_ROLE_FORBIDDEN`, for the superuser too |
-| PUT | `/system/tokens/:id` | `system:admin`, `freshAuth` | `system:admin` among the roles is 403 `TOKEN_ROLE_FORBIDDEN` |
+| PUT | `/system/tokens/:id` | `system:admin`, `freshAuth` | as `PUT /token/:id`, with the roles of the control catalogue and no `public`. `system:admin` among the roles is 403 `TOKEN_ROLE_FORBIDDEN` |
 | DELETE | `/system/tokens/:id` | `system:admin` | |
 | POST | `/system/tokens/:id/block` | `system:admin` | |
 | POST | `/system/tokens/:id/unblock` | `system:admin`, `freshAuth` | |
