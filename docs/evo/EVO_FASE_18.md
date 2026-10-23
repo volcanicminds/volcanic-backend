@@ -165,7 +165,10 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   quindi nessun token li raggiunge, mentre blocco ed eliminazione restano liberi come per i token.
   Prove: `systemUserRefusals.spec` e un caso di `controlToken.e2e` con un ruolo `system:steward`
   della fixture; tolti a turno lo step-up della creazione, il controllo dello sblocco e quello
-  della concessione, le prove diventano rosse.
+  della concessione, le prove diventano rosse. L'ultimo superutente che può entrare (i bloccati
+  non contano) non può togliersi `system:admin`: 409 `LAST_SUPERUSER`. Il conteggio filtra con
+  `arrayContains`; con `roles:in`, piantato apposta, Postgres risponde 500 e `controlToken.e2e`
+  diventa rosso.
 - [x] **T-18.2** Il registro di governo in ogni contenitore (F100). `governance_log` entra
   nell'insieme tenant; il manager scrive e legge sul contenitore della richiesta; gli atti sui
   token (creazione, modifica, rigenerazione, blocco, sblocco, eliminazione) si scrivono nella

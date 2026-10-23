@@ -57,6 +57,18 @@ async function actsOnSuperuser(req: FastifyRequest, id: unknown): Promise<boolea
 }
 
 /**
+ * Whether the subject is the last superuser who can sign in. Only a role change can take the plane
+ * to none: a superuser cannot delete or block itself, and nobody else may act on one. A blocked
+ * superuser does not count, since only a superuser could unblock it. `roles` is an array column,
+ * so the filter is `arrayContains`: `in` compares the whole array and Postgres refuses it.
+ */
+async function isLastSuperuser(req: FastifyRequest, id: unknown): Promise<boolean> {
+  const target = await manager(req).retrieveSystemUserById(control(req), String(id))
+  if (!includesRole(target?.roles, SUPERUSER) || target?.blocked) return false
+  return Number(await manager(req).countQuery(control(req), { 'roles:arrayContains': SUPERUSER, blocked: 'false' })) <= 1
+}
+
+/**
  * The way back for an operator who lost the device.
  *
  * It belongs to whoever holds `system-users`, never to the person concerned: on a plane where
@@ -146,6 +158,9 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   }
   if (!isSuperuser(req) && includesRole(data.roles, SUPERUSER)) return apexRefused(reply, 'Only a superuser grants system:admin')
   if (await actsOnSuperuser(req, id)) return apexRefused(reply, 'Only a superuser changes a superuser')
+  if (Array.isArray(data.roles) && !includesRole(data.roles, SUPERUSER) && (await isLastSuperuser(req, id))) {
+    return reply.status(409).send(httpError(409, 'The last superuser cannot give system:admin away', 'LAST_SUPERUSER'))
+  }
 
   // The roles are kept as they became: a grant is the change an auditor looks for first.
   const updated = await governed(

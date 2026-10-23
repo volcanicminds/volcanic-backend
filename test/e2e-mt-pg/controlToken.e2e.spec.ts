@@ -193,6 +193,10 @@ for (const strategy of ['schema', 'container'] as const) {
       // And a session not confirmed lately confirms first, the superuser's too.
       const stale = await as(staled(system).token)('POST', '/system/users', { email: `late-${strategy}@system.test`, password, roles: [] })
       expect([stale.statusCode, body(stale).code]).toEqual([403, 'STEP_UP_REQUIRED'])
+
+      // The only superuser keeps the role: with none left, nobody could grant it again.
+      const abdicated = await as(system)('PUT', `/system/users/${operator.id}`, { roles: ['system:auditor'] })
+      expect([abdicated.statusCode, body(abdicated).code]).toEqual([409, 'LAST_SUPERUSER'])
     })
 
     it("writes every act in the control plane's governance log, by its operator, and in no tenant's", async () => {

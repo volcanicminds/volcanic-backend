@@ -82,7 +82,9 @@ naming a capability outside the catalogue is dropped at boot with an error.
 it, on a creation or an update, its own account included, and only a superuser updates, removes,
 blocks, unblocks or resets the second factor of a system user who holds it; anyone else gets 403
 `SUPERUSER_ONLY`. A role granted `system-users` therefore manages the other operators and never
-makes itself, or anyone, sovereign. A token never carries `system:admin` (§5).
+makes itself, or anyone, sovereign. A token never carries `system:admin` (§5). The last superuser
+who can sign in, blocked ones not counted, cannot give the role away: 409 `LAST_SUPERUSER`. With
+none left, nobody could grant it again.
 
 ---
 

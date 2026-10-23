@@ -4621,7 +4621,8 @@ error, rather than leaving the route unreachable. Prefer string codes (`roles: [
 
 The control plane has the same apex in `system:admin`: only a superuser grants it to a system user,
 and only a superuser updates, deletes, blocks, unblocks or resets the MFA of one who holds it; a
-`system-users` holder gets 403 `SUPERUSER_ONLY`. A token never carries `system:admin`.
+`system-users` holder gets 403 `SUPERUSER_ONLY`. A token never carries `system:admin`. The last
+superuser who can sign in cannot give the role away (409 `LAST_SUPERUSER`).
 
 **Genesis and the sovereign founder** (at boot, when a data layer is present). `POST /auth/register`
 **never** grants `admin`. Without a `tenants` block, `ADMIN_EMAIL` is reconciled against the users of

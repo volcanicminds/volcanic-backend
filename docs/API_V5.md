@@ -364,7 +364,7 @@ Platform administrators authenticate on their own routes and receive a token car
 | GET | `/system/users` | capability `system-users` | |
 | POST | `/system/users` | capability `system-users`, `freshAuth` | `system:admin` among the roles is 403 `SUPERUSER_ONLY` unless the caller is a superuser (docs/AUTHORIZATION_V5.md §3) |
 | GET | `/system/users/:id` | capability `system-users` | |
-| PUT | `/system/users/:id` | capability `system-users`, `freshAuth` | 403 `SUPERUSER_ONLY` for a caller who is not a superuser, when the roles grant `system:admin` or the subject holds it |
+| PUT | `/system/users/:id` | capability `system-users`, `freshAuth` | 403 `SUPERUSER_ONLY` for a caller who is not a superuser, when the roles grant `system:admin` or the subject holds it; 409 `LAST_SUPERUSER` when the roles take `system:admin` from the last superuser who can sign in |
 | DELETE | `/system/users/:id` | capability `system-users` | 403 `SUPERUSER_ONLY` on a superuser, for a caller who is not one |
 | POST | `/system/users/:id/block` | capability `system-users` | as DELETE |
 | POST | `/system/users/:id/unblock` | capability `system-users`, `freshAuth` | as DELETE |

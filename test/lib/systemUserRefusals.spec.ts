@@ -29,6 +29,8 @@ async function build(over: any = {}) {
   ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }
 
   const caller = over.caller ?? ROOT
+  const rows: any[] = over.users ?? [ROOT, OTHER, MANAGER, PEER]
+  const counted: any[] = []
   const created: any[] = []
   const updated: any[] = []
   const removed: string[] = []
@@ -40,7 +42,12 @@ async function build(over: any = {}) {
   server.decorate('governanceLogManager', fakeGovernanceLog())
   server.decorate('systemUserManager', {
     isImplemented: () => over.systemUsers !== false,
-    retrieveSystemUserById: async (_c: any, id: string) => [ROOT, OTHER, MANAGER, PEER].find((u) => u.id === id) ?? null,
+    retrieveSystemUserById: async (_c: any, id: string) => rows.find((u) => u.id === id) ?? null,
+    // The one query the controller counts with, answered as Postgres would.
+    countQuery: async (_c: any, query: any) => {
+      counted.push(query)
+      return rows.filter((u) => u.roles.includes(query['roles:arrayContains']) && String(!!u.blocked) === query.blocked).length
+    },
     retrieveSystemUserByEmail: async () => null,
     createSystemUser: async (_c: any, data: any) => {
       created.push(data)
@@ -84,7 +91,7 @@ async function build(over: any = {}) {
   server.post('/system/users/:id/mfa/reset', { config: { tenantContext: false } }, resetMfa)
 
   await server.ready()
-  return { server, created, updated, removed, blocked, unblocked, reset }
+  return { server, created, updated, removed, blocked, unblocked, reset, counted }
 }
 
 const code = (res: any) => JSON.parse(res.body).code
@@ -208,6 +215,27 @@ describe('system users · what it refuses (T-9.5)', () => {
     const stopped = await server.inject({ method: 'POST', url: `/system/users/${PEER.id}/block`, payload: { reason: 'left' } })
     expect(stopped.statusCode).toBe(200)
     expect([created.length, updated.length, blocked.length]).toEqual([1, 1, 1])
+    await server.close()
+  })
+
+  it('never lets the last superuser who can sign in give system:admin away (LAST_SUPERUSER)', async () => {
+    // The other superuser is blocked, and only a superuser could unblock it.
+    const { server, updated, counted } = await build({ users: [ROOT, OTHER, { ...PEER, blocked: true }] })
+
+    const demoted = await server.inject({ method: 'PUT', url: `/system/users/${ROOT.id}`, payload: { roles: ['system:auditor'] } })
+    expect([demoted.statusCode, code(demoted)]).toEqual([409, 'LAST_SUPERUSER'])
+    expect(counted).toEqual([{ 'roles:arrayContains': 'system:admin', blocked: 'false' }])
+    expect(updated).toEqual([])
+
+    // Keeping the role, changing anything else, or demoting the blocked one is not giving it away.
+    for (const [id, payload] of [
+      [ROOT.id, { roles: ['system:admin', 'system:auditor'] }],
+      [ROOT.id, { email: 'root2@system.test' }],
+      [PEER.id, { roles: ['system:auditor'] }]
+    ] as const) {
+      expect((await server.inject({ method: 'PUT', url: `/system/users/${id}`, payload })).statusCode).toBe(200)
+    }
+    expect(updated.length).toBe(3)
     await server.close()
   })
 
