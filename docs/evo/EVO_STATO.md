@@ -235,7 +235,12 @@ nelle quattro combinazioni). **Fase 17 di nuovo chiusa il 19 ottobre 2026.**
 
 **Fase 18 aperta il 20 ottobre 2026** (`EVO_FASE_18.md`), da T-7.3 di rag: un token di
 integrazione sul piano di controllo, perché il sentinel possa caricare un corpus condiviso, che è
-un dato della piattaforma. Un compito, T-18.1, che aspetta quattro decisioni del proprietario.
+un dato della piattaforma. Il 23 ottobre 2026 il proprietario ha preso le quattro decisioni
+(F97, F98, F99, F103, quest'ultima una regola unica fra token e sessione su ogni piano) e tre
+nate discutendole: un `governance_log` immutabile in ogni
+database, che il database stesso difende (F100, F102, T-18.2), e lo step-up su creazione,
+modifica, rigenerazione e sblocco dei token di ogni piano (F101). Due compiti, T-18.1 e T-18.2,
+che non aspettano più decisioni (`EVO_FASE_18.md`).
 
 **Fase 19 aperta il 21 ottobre 2026** (`EVO_FASE_19.md`), dalle prove di rag-sample che devono
 girare anche con i tenant: `withTenant(server, slug, fn)` presta il contenitore di un tenant fuori

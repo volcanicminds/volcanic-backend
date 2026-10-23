@@ -40,34 +40,103 @@
   basta: `system:operator` porta anche `tenants` e `tenants:impersonate`
   (`lib/config/systemRoles.ts:31`).
 
-## 2. Decisioni da prendere
+## 2. Decisioni
 
-Sono del proprietario; al 20 ottobre 2026 nessuna è presa. Prendono un numero da F94 in poi
-quando vengono prese.
+Le quattro aperte il 20 ottobre 2026 il proprietario le ha prese il 23 ottobre 2026 (F97, F98,
+F99, F103); discutendole sono nate F100, F101 e F102.
 
-1. **Chi c'è dietro il token**: una riga della tabella `token`, che lo schema del piano di
-   controllo porta già (`lib/database/schema/entry/control.pg.ts:19`, oggi per il caso senza
-   tenant), oppure un utente di sistema di tipo macchina, senza password né login.
-2. **Che cosa apre**: il backend non sa niente di rag, quindi la capability non può nominare un
-   corpus. O il catalogo di sistema diventa estendibile dal progetto, come lo è quello del tenant,
-   e il progetto dichiara la capability che le rotte di rag chiedono; oppure il framework aggiunge
-   una capability generica per le macchine, e le rotte del pacchetto la chiedono.
-3. **Il canale**: in modalità cookie un'eccezione a `CREDENTIAL_CHANNEL` limitata ai token di
-   integrazione di controllo, sul modello di quella che il piano del tenant fa già
-   (`integrationOnly`); una sessione nell'header resta rifiutata.
-4. **Chi lo emette e cosa resta scritto**: emissione, rinnovo e revoca sotto `system:admin`, con
-   o senza step-up, e una riga di `governance_log` per ciascuna.
+- **F97** (proprietario, 23 ottobre 2026): dietro il token di controllo c'è una riga della tabella
+  `token` del piano di controllo, che lo schema porta già (`lib/database/schema/entry/control.pg.ts:19`)
+  e che oggi serve solo ai deployment senza tenant, dove l'unico database è il piano di controllo.
+  Scartato un utente di sistema di tipo macchina: login, MFA, step-up, console ed elenco degli
+  utenti di sistema dovrebbero sapere di un utente che non entra mai. Come nel tenant, dove
+  `admin` non si assegna a un token (`lib/api/token/controller/token.ts:60`), un token di
+  controllo non porta mai `system:admin`.
+- **F98** (proprietario, 23 ottobre 2026): il catalogo di sistema diventa estendibile, come quello
+  del tenant. Oltre ai permessi del framework (`lib/loader/roles.ts:17-26`) valgono quelli
+  dichiarati dal progetto o da un pacchetto; un ruolo che nomina un permesso non dichiarato resta
+  scartato all'avvio, come oggi (`lib/loader/roles.ts:93-97`). Le rotte di piattaforma di rag,
+  oggi del solo superuser (`volcanic-rag/src/backend/routes.ts:42`), chiederanno i loro, per
+  esempio `rag:shared-ingest` per il caricamento e `rag:shared-manage` per le condivisioni: il
+  token del sentinel carica e riceve 403 sul resto, e chi cura il corpus condiviso non deve essere
+  superuser. Scartato un permesso generico per le macchine: al secondo pacchetto con una macchina
+  sul piano di controllo aprirebbe le rotte di entrambi. Riapre il catalogo chiuso di
+  `docs/AUTHORIZATION_V5.md` §4, che si riscrive insieme al codice.
+- **F99** (proprietario, 23 ottobre 2026): il token di controllo lo emette solo una persona
+  `system:admin`, con lo step-up (F101). La scadenza si dichiara sempre, anche quando è «nessuna», come
+  per i token del tenant (`lib/database/schema/pg.ts`, colonna `expires_at`). Emissione, rinnovo
+  e revoca scrivono ciascuna una riga di `governance_log` del piano di controllo.
+- **F100** (proprietario, 23 ottobre 2026): un `governance_log` immutabile in ogni database. Il
+  piano di controllo lo ha già (`lib/database/migrations/control/pg/0006_governance_log_control.sql`),
+  e lo ha già l'unico database di un deployment senza tenant, perché lì l'insieme di controllo
+  porta anche le tabelle dell'applicazione; il contenitore di un tenant non lo ha ancora. Ogni
+  amministratore legge solo il suo: l'admin del tenant quello del suo tenant, `system:admin` e chi
+  ha `governance-log` quello del piano di controllo. Ci vanno gli atti sui token di ogni piano.
+  Scartati `change_log`, che registra le modifiche ai dati fatte da operatori e utenti per
+  tracciarle e ricostruirle, e `access_log`, che si cancella dopo 90 giorni (F96) mentre un token
+  può non scadere mai. Nessuna migrazione nuova: la tabella entra nell'insieme tenant come ogni
+  modifica di schema della v5 prima della produzione. Compito T-18.2.
+- **F101** (proprietario, 23 ottobre 2026): lo step-up vale sulla creazione, sulla modifica dei
+  ruoli, sulla rigenerazione e sullo sblocco di un token, su ogni piano e anche senza tenant: lo
+  sblocco ridà un accesso come la creazione. Non vale sul blocco né sull'eliminazione, perché in un
+  incidente togliere un accesso deve essere immediato. Lo step-up
+  rifiuta sempre un token e un'impersonificazione (`lib/util/stepUp.ts:58`): un token non ne crea
+  un altro, e chi impersona un tenant non vi lascia una credenziale.
+- **F102** (proprietario, 23 ottobre 2026): il database rifiuta `UPDATE`, `DELETE` e `TRUNCATE` su
+  `governance_log`, in ogni database. Oggi l'immutabilità la garantisce solo il codice, perché il
+  manager sa scrivere e leggere (`lib/database/managers/governanceLog.ts`), mentre il database
+  accetta tutte e tre. Restano possibili la distruzione di un tenant, che elimina il contenitore,
+  e il ripristino, che scrive righe nuove.
+
+- **F103** (proprietario, 23 ottobre 2026): una regola unica distingue un token di integrazione
+  da una sessione, su ogni piano, con o senza tenant. Il token porta un'etichetta firmata che lo
+  dice di integrazione, e una sessione non la porta mai. Con l'etichetta il soggetto si cerca solo
+  fra i token; senza, solo fra le persone: gli utenti nel tenant, gli utenti di sistema sul piano
+  di controllo. In modalità cookie l'header accetta solo una credenziale con l'etichetta, ed è
+  questa l'eccezione a `CREDENTIAL_CHANNEL` sul piano di controllo; una sessione nell'header resta
+  rifiutata. Scartata l'assenza del numero di sessione come segnale: una sessione non lo porta
+  quando il registro delle sessioni è spento (`lib/util/credential.ts:270`,
+  `lib/util/session.ts:146`), e quelle persone verrebbero cercate fra i token. Oggi, in modalità
+  bearer, un token si cerca prima fra gli utenti e poi fra i token
+  (`lib/hooks/onRequest.ts:178-197`); con la regola basta una lettura.
 
 ## 3. Compiti
 
 - [ ] **T-18.1** Un token di integrazione sul piano di controllo. Firmato con `sub` e
   `scp: 'control'`, senza `tid`; emesso, rinnovato e revocato da rotte `scope: 'control'`;
   riconosciuto dall'hook sulle rotte di controllo accanto all'utente di sistema; con i ruoli del
-  catalogo di sistema. Dipende dalle decisioni della sezione 2.
+  catalogo di sistema, esteso dai permessi dichiarati (F97, F98, F99, F101); la regola unica fra
+  token e sessione vale su ogni piano (F103).
   **Fatto quando**: una macchina con un token di controllo chiama una rotta `scope: 'control'` che
   la sua capability apre e riceve 200, e una che non apre riceve 403; lo stesso token dentro un
   tenant è 403 `SCOPE_MISMATCH`; un token del tenant sulla stessa rotta di controllo è 403; un
   token revocato è rifiutato dalla richiesta successiva; in modalità cookie il token passa
-  dall'header e una sessione no. Prove via HTTP su Postgres reale, con entrambe le strategie.
-  Difetti da piantare: un token senza `scp` accettato sul piano di controllo; la revoca letta da
-  una cache; l'eccezione del canale estesa alle sessioni.
+  dall'header e una sessione no; su ogni piano una credenziale con l'etichetta si cerca solo fra i
+  token e una senza solo fra le persone, anche con il registro delle sessioni spento, e in
+  modalità bearer un token costa una lettura; un token con `system:admin` non si emette; un permesso
+  dichiarato dal progetto apre la sua rotta, e un ruolo che ne nomina uno non dichiarato è
+  scartato all'avvio; emettere, modificare, rigenerare o sbloccare senza step-up è 403
+  `STEP_UP_REQUIRED`,
+  e con un token è 403 `STEP_UP_NOT_AVAILABLE`, mentre il blocco passa; emissione, rinnovo e
+  revoca scrivono ciascuna una riga di `governance_log`. Prove via HTTP su Postgres reale, con
+  entrambe le strategie. Difetti da piantare: un token senza `scp` accettato sul piano di
+  controllo; la revoca letta da una cache; l'eccezione del canale estesa alle sessioni; una
+  credenziale senza etichetta cercata fra i token.
+- [ ] **T-18.2** Il registro di governo in ogni contenitore (F100). `governance_log` entra
+  nell'insieme tenant; il manager scrive e legge sul contenitore della richiesta; gli atti sui
+  token (creazione, modifica, rigenerazione, blocco, sblocco, eliminazione) si scrivono nella
+  stessa transazione della modifica, su ogni piano; una lettura riservata all'admin del tenant;
+  le rotte dei token del tenant chiedono lo step-up (F101); ogni database rifiuta modifica,
+  cancellazione e svuotamento del registro (F102). Export, ripristino e trasloco del tenant
+  portano il registro con sé; la distruzione lo elimina con il contenitore, mentre la distruzione
+  stessa resta scritta sul piano di controllo (`tenant.destroyed`).
+  **Fatto quando**: ogni atto su un token del tenant scrive una riga nel registro di quel tenant e
+  in nessun altro; l'admin di un tenant legge il suo e non quello di un altro; senza tenant gli
+  atti finiscono nell'unico database; creare, modificare, rigenerare o sbloccare un token del tenant senza
+  step-up è 403 `STEP_UP_REQUIRED`, e con un token o un'impersonificazione è 403
+  `STEP_UP_NOT_AVAILABLE`, mentre bloccare ed eliminare passano; `UPDATE`, `DELETE` e `TRUNCATE`
+  su `governance_log` falliscono da SQL nel piano di controllo, in un tenant e senza tenant; un
+  pacchetto esportato e ripristinato porta le righe, e distruzione e trasloco riescono. Prove via
+  HTTP su Postgres reale, con entrambe le strategie. Difetti da piantare: la riga scritta fuori
+  dalla transazione dell'atto; il registro di un tenant letto da un altro; il blocco del database
+  tolto da uno dei due insiemi.
