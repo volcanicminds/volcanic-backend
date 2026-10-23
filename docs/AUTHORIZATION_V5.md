@@ -223,9 +223,12 @@ In v4 impersonation left only a claim in a token, lasted 24 hours, and its
 the same address was "founder" inside **every** tenant.
 
 In v5 the founder is the `is_founder` column of the `user` row, inside its own container. The
-environment variable survives for exactly one purpose: seeding the **first system user** on an
-empty control plane, at boot, when no `system_user` row exists. After that first write it is
-never read again.
+environment variable survives for one purpose: seeding the apex of the plane at boot, never at
+request time. With tenants it creates a `system_user` with `system:admin` when no row has the
+address, and promotes an existing system user only while no superuser that can sign in exists;
+otherwise it logs a warning and changes nothing. An existing row keeps the password its holder
+chose, so promoting it where an apex exists would let whoever can set that address name the next
+one.
 
 ---
 

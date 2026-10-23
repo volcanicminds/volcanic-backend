@@ -25,6 +25,8 @@ function fakeManager(overrides: any = {}) {
       // Two different questions reach the same method: how many admins exist, and whether
       // this container already has a sovereign.
       if (query && 'isFounder:eq' in query) return overrides.founders ?? 0
+      calls.counted = query
+      if (overrides.countFails) throw new Error('unreachable')
       return overrides.count ?? 0
     },
     retrieveUserByEmail: async (ctx: any) => {
@@ -104,6 +106,19 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
     expect(um.calls.created).toBeNull()
   })
 
+  // A promoted row keeps the password its holder chose, so the address alone must not make an
+  // admin where there is one: a `users` holder or a registration could otherwise pick the next.
+  it('promotes nobody while another admin exists, nor when it cannot tell', async () => {
+    process.env.ADMIN_EMAIL = 'founder@x.com'
+    for (const over of [{ count: 1 }, { countFails: true }]) {
+      const um = fakeManager({ existing: { id: 'u1', roles: ['public'] }, ...over })
+      await ensureGenesisAdmin(serverWith(um))
+      expect(um.calls.counted).toEqual({ 'roles:arrayContains': 'admin' })
+      expect(um.calls.promoted).toBeNull()
+      expect(um.calls.created).toBeNull()
+    }
+  })
+
   // Sovereignty is a column, so genesis reconciles the row instead of trusting that ADMIN_EMAIL
   // will be compared again on every later request.
   it('marks an existing admin as the founder when the container has none', async () => {
@@ -154,5 +169,67 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
     let fatalMsg = ''
     await ensureGenesisAdmin(serverWith(um), { onFatal: (m: string) => (fatalMsg = m) })
     expect(fatalMsg).toContain('ADMIN_EMAIL')
+  })
+})
+
+describe('loader/genesis · the first platform administrator', () => {
+  const savedEmail = process.env.ADMIN_EMAIL
+  const savedPw = process.env.ADMIN_PASSWORD
+  const savedConfig = (global as any).config
+
+  before(() => {
+    ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }
+  })
+
+  after(() => {
+    ;(global as any).config = savedConfig
+    if (savedEmail === undefined) delete process.env.ADMIN_EMAIL
+    else process.env.ADMIN_EMAIL = savedEmail
+    if (savedPw === undefined) delete process.env.ADMIN_PASSWORD
+    else process.env.ADMIN_PASSWORD = savedPw
+  })
+
+  function fakeSystemUsers(over: any = {}) {
+    const calls: any = { created: null, promoted: null, counted: [] as any[] }
+    return {
+      calls,
+      isImplemented: () => true,
+      countQuery: async (_c: any, query: any) => {
+        calls.counted.push(query)
+        if (over.countFails) throw new Error('unreachable')
+        return over.count ?? 0
+      },
+      retrieveSystemUserByEmail: async () => over.existing ?? null,
+      createSystemUser: async (_c: any, data: any) => (calls.created = data),
+      updateSystemUserById: async (_c: any, id: any, data: any) => (calls.promoted = { id, data })
+    }
+  }
+  const platform = (sm: any) => ({ systemUserManager: sm, provider: { control: async () => CONTROL } }) as any
+
+  it('creates it when ADMIN_EMAIL names nobody', async () => {
+    process.env.ADMIN_EMAIL = 'root@system.test'
+    process.env.ADMIN_PASSWORD = 'Given-pw-123'
+    const sm = fakeSystemUsers()
+    await ensureGenesisAdmin(platform(sm))
+    expect(sm.calls.created).toMatchObject({ email: 'root@system.test', roles: ['system:admin'] })
+  })
+
+  it('promotes an existing operator only on a plane with no superuser', async () => {
+    process.env.ADMIN_EMAIL = 'ops@system.test'
+    const sm = fakeSystemUsers({ existing: { id: 's1', roles: ['system:operator'] }, count: 0 })
+    await ensureGenesisAdmin(platform(sm))
+    expect(sm.calls.counted).toEqual([{ 'roles:arrayContains': 'system:admin', blocked: 'false' }])
+    expect(sm.calls.promoted).toEqual({ id: 's1', data: { roles: ['system:operator', 'system:admin'] } })
+  })
+
+  it('promotes nobody while a superuser exists, nor when it cannot tell', async () => {
+    // A `system-users` holder can give an operator any address: the variable must not turn that into the apex.
+    process.env.ADMIN_EMAIL = 'ops@system.test'
+    for (const over of [{ count: 1 }, { countFails: true }]) {
+      const sm = fakeSystemUsers({ existing: { id: 's1', roles: ['system:operator'] }, ...over })
+      await ensureGenesisAdmin(platform(sm))
+      expect(sm.calls.promoted).toBeNull()
+      expect(sm.calls.created).toBeNull()
+    }
   })
 })

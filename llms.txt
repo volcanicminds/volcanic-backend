@@ -681,7 +681,7 @@ it, and either case logs a warning.
 | `RESET_PASSWORD_TOKEN_TTL` | `3600` | Seconds a `/auth/forgot-password` token stays usable. Feeds `reset_password_token_ttl`. |
 | `PASSWORD_EXPIRATION_DAYS` | unset (never) | Days after which a password must be changed; past them a password login fails with `PASSWORD_TO_BE_CHANGED`. A value that is not a positive number makes every password login fail rather than read as "never". |
 | `IMPERSONATION_TTL` | `1800` | Seconds an impersonation token lasts, capped at 14400 whatever is written. Feeds `impersonation_ttl`. |
-| `ADMIN_EMAIL` | none | Read at every boot and never at request time.² Without tenants it creates this user with the admin role, or adds the role to an existing user. With a `tenants` block it creates the first platform administrator (`system:admin`), or promotes an existing system user. **Required** while no such identity exists: without one the boot fails fast. |
+| `ADMIN_EMAIL` | none | Read at every boot and never at request time.² Without tenants it creates this user with the admin role, or adds the role to an existing user only while nobody holds it. With a `tenants` block it creates a platform administrator (`system:admin`), or promotes an existing system user only while no superuser that can sign in exists. Otherwise an existing row is left as it is, with a warning. **Required** while no such identity exists: without one the boot fails fast. |
 | `ADMIN_PASSWORD` | generated | Password of the identity `ADMIN_EMAIL` creates. Unset, a strong one is generated and printed to stdout, never to the structured log. |
 | the name in `clientSecretEnv` | none | Each identity provider of `config/authFlows.ts` names the variable that holds its client secret. Read once at boot, so a secret rotates with a restart. |
 | **MFA** | | |
@@ -4627,18 +4627,22 @@ superuser who can sign in cannot give the role away (409 `LAST_SUPERUSER`).
 **Genesis and the sovereign founder** (at boot, when a data layer is present). `POST /auth/register`
 **never** grants `admin`. Without a `tenants` block, `ADMIN_EMAIL` is reconciled against the users of
 the control plane: created if missing (password from `ADMIN_PASSWORD`, else generated and written to
-**stdout only**, never the logger), given the `admin` role if it exists without it, else no-op. With
-**no** admin and **no** `ADMIN_EMAIL`, startup **fails fast**.
+**stdout only**, never the logger), given the `admin` role if it exists without it and no user holds
+it, else no-op. With **no** admin and **no** `ADMIN_EMAIL`, startup **fails fast**. An existing row
+keeps the password its holder chose, so the address alone never makes it an admin where an admin
+exists: a `users` holder or a registration could otherwise pick the next one. The boot logs a
+warning and promotes nobody; the role is granted through the API.
 
 The founder is a row, not an address: the `isFounder` column, written once. The first identity
 created on an empty container gets it, and an existing admin gets it only while no row carries it.
-`ADMIN_EMAIL` no longer moves it: pointed at another address, it makes that address an admin, logs a
-warning, and leaves the founder where it is. The founder is **undeletable/undemotable/unblockable**,
+`ADMIN_EMAIL` no longer moves it: pointed at another admin, it logs a warning and leaves the founder
+where it is. The founder is **undeletable/undemotable/unblockable**,
 its email cannot be changed through the API, and its credentials are self-service only.
 
 With a `tenants` block the first identity is a platform one: `ADMIN_EMAIL` creates a system user with
-`system:admin` if missing (or adds the role to an existing one), with the same password rule, and
-startup fails fast only when no system user exists and `ADMIN_EMAIL` is unset. A tenant's
+`system:admin` if missing (or adds the role to an existing one while no superuser that can sign in
+exists), with the same password rule, and startup fails fast only when no system user exists and
+`ADMIN_EMAIL` is unset. A tenant's
 administrator is created with the tenant by `POST /tenants`, as the founder of that container.
 Full model: [docs/AUTHORIZATION_MODEL.md](docs/AUTHORIZATION_MODEL.md).
 

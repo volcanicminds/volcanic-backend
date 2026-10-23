@@ -28,6 +28,29 @@ async function founderExists(um: any, ctx: DataHandle): Promise<boolean> {
   }
 }
 
+/**
+ * Whether the plane already has its apex, asked before `ADMIN_EMAIL` promotes an existing row.
+ *
+ * A row the variable creates gets the deployment's password; a row it promotes keeps whatever
+ * password its holder chose. So a promotion happens only on a plane with no apex at all, the
+ * recovery it exists for: otherwise whoever can give an account that address (a `users` or a
+ * `system-users` holder, a public registration) would name the next admin at the next restart.
+ * A count that fails answers yes, the answer that promotes nobody.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function apexExists(manager: any, ctx: DataHandle, code: string, where: Record<string, unknown> = {}): Promise<boolean> {
+  try {
+    return Number(await manager.countQuery(ctx, { 'roles:arrayContains': code, ...where })) > 0
+  } catch (e) {
+    if (log?.e) log.error(`Startup: could not count the holders of ${code}: ${(e as Error)?.message}`)
+    return true
+  }
+}
+
+const promotesNobody = (email: string, code: string) => {
+  if (log?.w) log.warn(`Startup: ${email} does not hold ${code} and others do, so ADMIN_EMAIL promotes nobody. Grant it through the API.`)
+}
+
 export interface GenesisOptions {
   // Called instead of process.exit(1) on the fail-fast path (injected by tests).
   onFatal?: (message: string) => void
@@ -39,7 +62,7 @@ export interface GenesisOptions {
  * Runs against the default connection (public schema) via the injected userManager.
  *
  * - `ADMIN_EMAIL` set → create it (as the sovereign founder) if missing, or promote it
- *   to admin if it exists without the role; no-op if it is already an admin.
+ *   to admin if it exists without the role and nobody holds it; no-op if it is already an admin.
  * - `ADMIN_EMAIL` unset → allowed only when an admin already exists, otherwise fail-fast.
  */
 export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisOptions = {}): Promise<void> {
@@ -81,6 +104,7 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
   if (existing) {
     const patch: Record<string, unknown> = {}
     if (!includesRole(existing.roles, adminCode)) {
+      if (await apexExists(um, ctx, adminCode)) return promotesNobody(email, adminCode)
       patch.roles = [...(existing.roles || []), adminCode]
     }
 
@@ -165,6 +189,8 @@ async function ensureGenesisSystemAdmin(
   const existing = await sm.retrieveSystemUserByEmail(ctx, email)
   if (existing) {
     if (!includesRole(existing.roles, 'system:admin')) {
+      // A blocked superuser does not count: it cannot sign in, and only a superuser unblocks one.
+      if (await apexExists(sm, ctx, 'system:admin', { blocked: 'false' })) return promotesNobody(email, 'system:admin')
       await sm.updateSystemUserById(ctx, existing.id, { roles: [...(existing.roles || []), 'system:admin'] })
       if (log?.i) log.info(`Startup: promoted ${email} to system:admin.`)
     }

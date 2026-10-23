@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// The genesis check without ADMIN_EMAIL, against a migrated container: the question "is there an
-// admin?" is a query on the `roles` array, and only a real database says whether the operator
-// it uses can ask it. The fake manager of test/lib/genesis.spec.ts answers any query.
+// The genesis check against a migrated container: the question "is there an admin?" is a query
+// on the `roles` array, asked without ADMIN_EMAIL and before ADMIN_EMAIL promotes a row, and only
+// a real database says whether the operator it uses can ask it. The fake manager of
+// test/lib/genesis.spec.ts answers any query.
 //
 import { expect } from 'expect'
 import { ensureGenesisAdmin } from '../../lib/loader/genesis.js'
@@ -12,7 +13,7 @@ import { DATABASE_URL, migratedPglite, migratedPostgres, type Migrated } from '.
 ;(global as unknown as { log: object }).log = {}
 
 function behaviours(name: string, open: () => Promise<Migrated>) {
-  describe(`loader/genesis · without ADMIN_EMAIL on ${name}`, function () {
+  describe(`loader/genesis · the admin count on ${name}`, function () {
     this.timeout(30000)
     let db: Migrated
     const users = createUserManager()
@@ -50,6 +51,17 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
         roles: ['public', 'admin']
       })
       expect(await genesis()).toEqual([])
+    })
+
+    it('promotes no other user to admin through ADMIN_EMAIL once an admin exists', async () => {
+      process.env.ADMIN_EMAIL = 'reader@example.com'
+      try {
+        expect(await genesis()).toEqual([])
+      } finally {
+        delete process.env.ADMIN_EMAIL
+      }
+      const reader = await users.retrieveUserByEmail(db.control, 'reader@example.com')
+      expect(reader?.roles).toEqual(['public'])
     })
   })
 }

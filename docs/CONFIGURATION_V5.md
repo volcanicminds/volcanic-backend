@@ -158,7 +158,7 @@ where it is used without passing through the configuration at all.
 | `ACCESS_LOG_CONTROL_RETENTION_DAYS` | `180` | days a platform row of the access log is kept | `accessLog.controlRetentionDays`, same rule |
 | `ACCOUNT_CREATION_ALLOWED` | `invite,approval,open` | the modes a tenant may choose from, when neither the platform nor the tenant's registry row says otherwise | `accountCreation.allowed`; a configured value replaces it |
 | `ACCOUNT_CREATION_DEFAULT` | `invite` | the mode that applies until a tenant's administrator chooses; must be among the allowed ones, or the boot is refused | `accountCreation.default`, same rule |
-| `ADMIN_EMAIL` | — | seeds the **first system user** on an empty control plane, and is read only then | no key |
+| `ADMIN_EMAIL` | none | read at boot, never at request time: creates a system user with `system:admin` when no row has the address, and promotes an existing one only while no superuser that can sign in exists | no key |
 | `DESTRUCTION_TOKEN_TTL` | `600` | seconds a destruction request stays valid | no key |
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |
 | `AUTH_RATELIMIT_MAX` | `10` | requests per window, per address, on the routes that take a secret (the start of a login and of a step-up on both planes, register, unregister, change, forgot and reset password, email confirmation, the platform's renewal) | no key: read by `lib/api/auth/routes.ts` and `lib/api/system/routes.ts` |

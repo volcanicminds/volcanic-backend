@@ -172,6 +172,15 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   Lo stesso difetto c'era nel tenant: `isLastAdmin` contava con `roles:in`, quindi su Postgres
   ogni modifica, blocco o eliminazione di un admin da parte di un altro admin rispondeva 500
   (osservato). Ora conta con `arrayContains`; prova: `adminApex.e2e`, rossa sul codice di prima.
+  Ancora il 23 ottobre 2026: a ogni avvio `ADMIN_EMAIL` promuoveva ad admin (o a `system:admin`)
+  la riga esistente con quell'indirizzo, che tiene la password scelta da chi la usa; chi poteva
+  dare quell'indirizzo a un account sceglieva il prossimo admin al riavvio. Ora la promozione
+  avviene solo su un piano senza admin (sul controllo, senza superutenti non bloccati), altrimenti
+  l'avvio scrive un avviso e non cambia nulla; la creazione della riga mancante resta. Prove: due
+  casi per piano in `test/lib/genesis.spec` e uno in `test/db/genesis.spec` su PGlite e Postgres,
+  rossi a turno togliendo il controllo da ciascun piano. Resta aperta una corsa: due admin che si
+  tolgono il ruolo a vicenda nello stesso istante possono arrivare a zero; non concede privilegi,
+  e l'uscita è proprio questa promozione al riavvio.
 - [x] **T-18.2** Il registro di governo in ogni contenitore (F100). `governance_log` entra
   nell'insieme tenant; il manager scrive e legge sul contenitore della richiesta; gli atti sui
   token (creazione, modifica, rigenerazione, blocco, sblocco, eliminazione) si scrivono nella
