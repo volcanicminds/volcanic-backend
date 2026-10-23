@@ -10,9 +10,10 @@ const forbidden = (reply: FastifyReply, message: string) =>
   reply.status(403).send({ statusCode: 403, error: 'Forbidden', message })
 
 // The admin role is a restricted apex (default single, see allow_multiple_admin). This
-// guards against dropping to zero admins, which would lock the instance out.
+// guards against dropping to zero admins, which would lock the instance out. `roles` is an array
+// column: `in` compares the whole array, and Postgres refuses it.
 async function isLastAdmin(req: FastifyRequest): Promise<boolean> {
-  const total = await req.server['userManager'].countQuery(dataContext(req), { 'roles:in': roles.admin.code })
+  const total = await req.server['userManager'].countQuery(dataContext(req), { 'roles:arrayContains': roles.admin.code })
   return Number(total) <= 1
 }
 

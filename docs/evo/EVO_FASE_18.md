@@ -169,6 +169,9 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   non contano) non può togliersi `system:admin`: 409 `LAST_SUPERUSER`. Il conteggio filtra con
   `arrayContains`; con `roles:in`, piantato apposta, Postgres risponde 500 e `controlToken.e2e`
   diventa rosso.
+  Lo stesso difetto c'era nel tenant: `isLastAdmin` contava con `roles:in`, quindi su Postgres
+  ogni modifica, blocco o eliminazione di un admin da parte di un altro admin rispondeva 500
+  (osservato). Ora conta con `arrayContains`; prova: `adminApex.e2e`, rossa sul codice di prima.
 - [x] **T-18.2** Il registro di governo in ogni contenitore (F100). `governance_log` entra
   nell'insieme tenant; il manager scrive e legge sul contenitore della richiesta; gli atti sui
   token (creazione, modifica, rigenerazione, blocco, sblocco, eliminazione) si scrivono nella
