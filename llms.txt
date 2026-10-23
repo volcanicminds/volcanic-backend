@@ -1101,8 +1101,8 @@ them.**
 
 | Set | Tables |
 |---|---|
-| `control` and `tenant` | `user`, `token`, `session`, `change_log`, `migration`, `access_log`, `auth_flow`, `external_identity`, `setting` |
-| `control` only | `tenant`, `system_user`, `impersonation`, `destruction_request`, `governance_log`, `identity_provider` |
+| `control` and `tenant` | `user`, `token`, `session`, `change_log`, `migration`, `access_log`, `auth_flow`, `external_identity`, `setting`, `governance_log` |
+| `control` only | `tenant`, `system_user`, `impersonation`, `destruction_request`, `identity_provider` |
 
 A field the user lacks, `firstName` for example, goes in a table of your own, keyed by `user.id`:
 
@@ -2868,10 +2868,15 @@ removes a user's factor with `POST /users/:id/mfa/reset`.
 
 Every step writes the **access log** (`access_log` table, one per container): `GET /access-log` for the tenant's
 `admin`, `GET /system/access-log` with the `access-log` capability. What the operators change on the platform
-goes to the **governance log** (`governance_log`, control plane only, never purged), read at
+goes to the **governance log** (`governance_log`, one per container, never purged), read at
 `GET /system/governance-log` with the `governance-log` capability; a change it cannot record is not made. A row's
 `actorPlane` says whether its author is an operator (`control`) or a tenant's user (`tenant`, the exports and
-downloads of `/exports`); a job writes author, plane and address null.
+downloads of `/exports`); a job writes author, plane and address null. The acts on a tenant's integration
+tokens (`token.created`, `token.updated`, `token.reissued`, `token.blocked`, `token.unblocked`, `token.deleted`)
+go to the governance log of the tenant's own container instead, read by its `admin` at `GET /governance-log` (the
+`governance-log` capability of the tenant catalogue); without tenants both sit in the control plane's. The
+database refuses `UPDATE`, `DELETE` and `TRUNCATE` on the table for every role, a dump carries the rule along,
+and lifting it takes a migration.
 
 ### The MFA manager (`src/services/auth.ts`)
 
@@ -4301,7 +4306,8 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Users | `POST /users/:id/block` · `/unblock` | `users` cap⁵ | **yes** | `userManager` |
 | Users | `POST /users/:id/mfa/reset` · `/password/reset`⁶ | `users` cap (admin-only)⁶ | **yes** | `userManager` |
 | Token | `GET /token` · `/count` · `/:id` | `tokens` cap | (read)³ | `tokenManager` |
-| Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/:id/block` · `/:id/unblock` · `/:id/reissue` | `tokens` cap⁵ | **yes** | `tokenManager` |
+| Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/:id/block` · `/:id/unblock` · `/:id/reissue` (fresh: create, update, unblock, reissue) | `tokens` cap⁵ | **yes** | `tokenManager` + `governanceLogManager` |
+| Governance log | `GET /governance-log` · `/count` (tenant plane, the `token.*` acts only) | `governance-log` cap | **yes** | `governanceLogManager` |
 | Tenants | `GET /tenants` · `GET /tenants/:id` | `tenants:read` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants` · `PUT /tenants/:id` · `POST /tenants/:id/suspend` · `/restore` · `DELETE /tenants/:id` | `tenants` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants/:id/exports` · `GET /tenants/:id/exports/:package` (fresh) · `POST /tenants/import` · `POST /tenants/:id/move` | `system:admin` only | **yes** | `provider.exportContainer` + `governanceLogManager` |
@@ -4319,7 +4325,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 and a route that rewrites a production schema on request is not a feature.
 
 `X cap` = `admin` **or** any role that declares the `X` capability (route gated with `requireCapability: 'X'`). The
-framework reserves `users`, `tokens` and `manifest`; a consumer grants them to its own roles in `config/roles.ts`.
+framework reserves `users`, `tokens`, `manifest` and `governance-log`; a consumer grants them to its own roles in `config/roles.ts`.
 
 ¹ `/refresh-token` consumes the refresh credential (body or cookie) and issues a new one; `/logout` revokes the
 session row and, in COOKIE mode, clears the cookies. Both need `sessionManager`.
@@ -4561,7 +4567,7 @@ must require authentication, or the boot refuses it.
 
 **Capabilities.** A role may declare `capabilities: string[]`; a route gates on one with `requireCapability: 'X'`
 (top-level, alongside/instead of `roles`). At **boot** the allowed set is resolved to `admin` ∪ {every role that
-declares `X`}; the request gate is unchanged. The framework reserves three capability names and gates its native
+declares `X`}; the request gate is unchanged. The framework reserves four capability names and gates its native
 surfaces with them:
 
 | Capability | Native routes | Grant it to a role to allow… |
@@ -4569,6 +4575,7 @@ surfaces with them:
 | `users` | `/users/*` (CRUD, block/unblock, reset) | non-admin user management |
 | `tokens` | `/token/*` | non-admin integration-token management |
 | `manifest` | `GET /admin/manifest` | loading the admin console without being admin |
+| `governance-log` | `GET /governance-log` · `/count` | reading what was done to the tenant's integration tokens |
 
 Consumers coin their **own** capability names for their **own** routes. Capabilities live only on consumer roles
 (never on `admin`/`public`): `admin` already satisfies every capability via the append, and a capability on `public`
@@ -4685,6 +4692,9 @@ Under tenants the bearer carries `tid`, the tenant it was created in, as a sessi
 header naming another one is 403 `TENANT_MISMATCH`. The subject is resolved in `onRequest` through `tokenManager.retrieveTokenByExternalId`, so the bearer of an API
 token populates `req.token` (not `req.user`) and is gated by the token's roles. Revoke via `POST /token/:id/block`
 (reversible) or `DELETE /token/:id`: `isValidToken` reads the row at every request, so both take effect at once.
+Creating, changing, reissuing and unblocking a token are `freshAuth` (403 `STEP_UP_REQUIRED` to a stale session);
+blocking and removing are not. Every write is a row of the governance log of the container the token lives in, in
+the transaction of the change: without `governanceLogManager` the writes answer 503 `GOVERNANCE_LOG_NOT_AVAILABLE`.
 
 ### F. Multi-tenant (turns any of A–E/G tenant-aware)
 

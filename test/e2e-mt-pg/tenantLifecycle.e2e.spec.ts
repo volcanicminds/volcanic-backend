@@ -303,6 +303,19 @@ for (const strategy of ['schema', 'container'] as const) {
       expect(back.map((t: any) => t.id)).toEqual(source.map((t: any) => t.id))
       expect(back.map((t: any) => t.external_id)).not.toContain(source[0].external_id)
 
+      // The tenant's governance log comes with it, and the copy's own says who renewed the token: nobody.
+      const acts = (await inContainer(COPY.locator, 'select action, actor_id, actor_plane, target_id, detail from governance_log order by occurred_at, id'))
+      expect(acts.map((r: any) => [r.action, r.target_id, r.actor_plane])).toEqual([
+        ['token.created', body(minted).id, 'tenant'],
+        ['token.reissued', body(minted).id, null]
+      ])
+      expect(acts[1]).toMatchObject({ actor_id: null, detail: { cause: 'tenant.imported' } })
+      // Still refused in the copy: the dump carried the trigger, enabled as it was.
+      await expect(inContainer(COPY.locator, 'delete from governance_log')).rejects.toThrow(/append-only: DELETE refused/)
+      await expect(
+        inContainer(COPY.locator, "select set_config('session_replication_role', 'replica', true); delete from governance_log")
+      ).rejects.toThrow(/append-only: DELETE refused/)
+
       // The identity provider comes back disabled, without its secret.
       const providers = await inject({ method: 'GET', url: `/tenants/${copy.id}/identity-providers`, headers: bearer(system) })
       expect(body(providers).map((p: any) => [p.key, p.status])).toEqual([['entra', 'disabled']])

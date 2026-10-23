@@ -89,10 +89,12 @@ The tenant catalogue is unchanged: `manifest`, `users`, `tokens` (see
 with them, but a reader may: the RAG opens a context from `department`. Whoever holds `users`
 can therefore widen what a person reads there, as it can already change their roles.
 
-`manifest` is the one name both catalogues reserve, each for its own plane: with the
-tenant catalogue it gates `GET /admin/manifest`, the manifest of a customer's console; with the
-control catalogue it gates `GET /system/manifest`, the platform console's. Every other control
-capability is refused on a tenant route at boot (`SHARED_CAPABILITIES`, `lib/loader/roles.ts`).
+`manifest` and `governance-log` are the two names both catalogues reserve, each for its own plane.
+With the tenant catalogue `manifest` gates `GET /admin/manifest`, the manifest of a customer's
+console, and `governance-log` gates `GET /governance-log`, what was done to the tenant's integration
+tokens; with the control catalogue they gate `GET /system/manifest` and `GET /system/governance-log`.
+Each reads its own plane and no other. Every other control capability is refused on a tenant route
+at boot (`SHARED_CAPABILITIES`, `lib/loader/roles.ts`).
 
 The control catalogue is **new and reserved**:
 
@@ -374,8 +376,10 @@ reads the signed claim, no query; a stale session gets 403 `STEP_UP_REQUIRED` wi
 credential no step-up can make fresh (an impersonation, an integration token, a token without
 `sid`) gets 403 `STEP_UP_NOT_AVAILABLE`. The boot refuses `freshAuth` on a route that needs no
 authentication: `roles: []` alone is public, `roles: []` with `global.isAuthenticated` is not. The
-framework marks impersonation, the factor management routes and the export and download routes of
-both planes (§4); the flow that makes a session fresh again is docs/AUTH_FLOW_V5.md §8.5.
+framework marks impersonation, the factor management routes, the export and download routes of
+both planes (§4) and the token routes that give, widen or bring back a credential (create, update,
+reissue, unblock; block and removal stay unmarked, so an access is taken away at once); the flow
+that makes a session fresh again is docs/AUTH_FLOW_V5.md §8.5.
 
 ```typescript
 {

@@ -29,9 +29,11 @@ export const SYSTEM_CAPABILITIES: readonly SystemCapability[] = [
 /**
  * The capability names both catalogues reserve, each for its own plane. `manifest`
  * reads the console manifest: `/admin/manifest` with the tenant catalogue, `/system/manifest`
- * with the control one. Everything else in the control catalogue stays refused on a tenant route.
+ * with the control one. `governance-log` reads the governance log of the plane: `/governance-log`
+ * a tenant's own, `/system/governance-log` the control plane's. Everything else in the
+ * control catalogue stays refused on a tenant route.
  */
-export const SHARED_CAPABILITIES: readonly SystemCapability[] = ['manifest']
+export const SHARED_CAPABILITIES: readonly SystemCapability[] = ['manifest', 'governance-log']
 
 export const isSystemRoleCode = (code: unknown): boolean => typeof code === 'string' && code.startsWith(SYSTEM_PREFIX)
 

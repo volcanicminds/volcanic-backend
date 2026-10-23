@@ -15,6 +15,7 @@
 | `/users/*` | tenant | user management inside a tenant |
 | `/settings/*` | tenant | choices of the tenant's administrator, inside what the platform allows (§2.5) |
 | `/token/*` | tenant | machine credentials inside a tenant |
+| `/governance-log/*` | tenant | what was done to the tenant's integration tokens, read by its administrator (§4) |
 | `/exports/*` | tenant | the tenant administrator's copy of the tenant's data, mounted only with tenants (§4.1) |
 | `/health` | control | liveness |
 | `/admin/manifest` | tenant | description of the manageable API, for a customer's console |
@@ -279,12 +280,33 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | GET | `/token` | capability `tokens` | |
 | GET | `/token/count` | capability `tokens` | |
 | GET | `/token/:id` | capability `tokens` | |
-| POST | `/token` | capability `tokens` | `expiresAt` is required in the body: a future date, or an explicit `null` for no expiry; a past or unreadable date is 400 `TOKEN_EXPIRY_INVALID`. The bearer carries the same expiry as `exp`, and a `null` one has none, whatever `JWT_EXPIRES_IN` says. Under tenants it carries `tid`, the tenant it was created in: no header is needed, and one naming another tenant is 403 `TENANT_MISMATCH`. Answers with the row and `token`, the bearer: shown here once and never stored (MIGRATION §33) |
-| PUT | `/token/:id` | capability `tokens` | |
-| DELETE | `/token/:id` | capability `tokens` | |
-| POST | `/token/:id/block` | capability `tokens` | **path changed**: v4 was `/token/block/:id` |
-| POST | `/token/:id/unblock` | capability `tokens` | **path changed**: v4 was `/token/unblock/:id` |
-| POST | `/token/:id/reissue` | capability `tokens` | a new `externalId`, then a new bearer, shown once: every bearer issued before stops authenticating. Name, roles and expiry stay; an expired token is 409 `TOKEN_EXPIRED`. A token with the admin role is 403 to whoever could not create one |
+| POST | `/token` | capability `tokens`, `freshAuth` | `expiresAt` is required in the body: a future date, or an explicit `null` for no expiry; a past or unreadable date is 400 `TOKEN_EXPIRY_INVALID`. The bearer carries the same expiry as `exp`, and a `null` one has none, whatever `JWT_EXPIRES_IN` says. Under tenants it carries `tid`, the tenant it was created in: no header is needed, and one naming another tenant is 403 `TENANT_MISMATCH`. Answers with the row and `token`, the bearer: shown here once and never stored (MIGRATION §33) |
+| PUT | `/token/:id` | capability `tokens`, `freshAuth` | |
+| DELETE | `/token/:id` | capability `tokens` | a token removed already answers `{ ok: true }` and changes nothing |
+| POST | `/token/:id/block` | capability `tokens` | **path changed**: v4 was `/token/block/:id`. 404 for an unknown token |
+| POST | `/token/:id/unblock` | capability `tokens`, `freshAuth` | **path changed**: v4 was `/token/unblock/:id`. 404 for an unknown token |
+| POST | `/token/:id/reissue` | capability `tokens`, `freshAuth` | a new `externalId`, then a new bearer, shown once: every bearer issued before stops authenticating. Name, roles and expiry stay; an expired token is 409 `TOKEN_EXPIRED`. A token with the admin role is 403 to whoever could not create one |
+
+Every route that changes a token writes one row in the governance log of the container the token
+lives in (§5.1, docs/SCHEMA_V5.md §2.10), in the transaction of the change: `token.created`,
+`token.updated`, `token.reissued`, `token.blocked`, `token.unblocked`, `token.deleted`. A change
+that cannot be written down is not made, and a build without the governance log manager answers
+these routes with 503 `GOVERNANCE_LOG_NOT_AVAILABLE`. The row names the token, its roles on a
+creation, the fields a change carried and the roles it left, the reason of a block; never a bearer.
+Whoever gives a credential, widens it or brings it back confirms first: a session not confirmed in
+the last `STEP_UP_MAX_AGE` seconds gets 403 `STEP_UP_REQUIRED` (§2.6), and an integration token or
+an impersonation gets `STEP_UP_NOT_AVAILABLE`. Block and removal ask for nothing, so an access is
+taken away at once.
+
+### `/governance-log` (tenant scope, new in v5)
+
+The acts on this tenant's integration tokens, by whom and when. Written by the framework and never
+by a client; neither the framework nor the database lets a row be changed or removed.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/governance-log` | capability `governance-log` | Magic Query over `action`, `actorId`, `actorPlane`, `outcome`, `targetId`, `occurredAt`. Only the `token.*` acts, a condition the URL cannot relax: without tenants the operators' rows sit in the same log and are read at `/system/governance-log`. 404 `NOT_FOUND` in a build without the governance log manager |
+| GET | `/governance-log/count` | capability `governance-log` | |
 
 ### `/access-log` (tenant scope, new in v5)
 
@@ -356,14 +378,19 @@ Platform administrators authenticate on their own routes and receive a token car
 
 ### 5.1 The governance log
 
-Every route that changes the platform writes one row of `governance_log` in the control plane
-(docs/SCHEMA_V5.md §3.6): the tenant routes of §6 that create, update, suspend, restore, delete,
+There is one governance log in every container (docs/SCHEMA_V5.md §2.10), and each reads its own:
+the control plane's at `/system/governance-log`, a tenant's at `/governance-log` (§4). Every route
+that changes the platform writes one row of `governance_log` in the control plane: the tenant routes of §6 that create, update, suspend, restore, delete,
 export, ask to destroy or destroy, impersonation start and end, the `/system/users` writes, the
 identity provider writes of §6 and the two writes of `/system/account-creation`. The exports and
 downloads of the tenant plane (§4.1) write there too, and so does the cleanup of old packages
 (§6.3). The author, the address and the request id come from the request, and `actorPlane` says
 whether the author is an operator (`control`) or a tenant's user (`tenant`); a job writes them all
-null. The row names fields and reasons, never a value, a password or a client secret.
+null. The row names fields and reasons, never a value, a password or a client secret. The acts on
+a tenant's integration tokens are written in that tenant's container instead, and in no other log:
+they belong to the tenant, travel with its package and are read by its administrator. Without
+tenants the control plane is the only container, and holds both kinds. An act that belongs to the
+platform written on a tenant's container is refused with `GOVERNANCE_ACTION_MISPLACED`.
 
 The rule is the opposite of the access log's: a change that cannot be written down is not made.
 A change of the registry and its row share one transaction, so a row that cannot be written
@@ -596,7 +623,9 @@ line `psql` would run on the machine (a meta-command outside the data) is refuse
 credentials are emptied again, in case the package was written by hand. The migrations bring the
 container to this build's version; each package whose `pack` wrote values in clear runs its
 `unpack`, which encrypts them again with this machine's key; every integration token gets a new `external_id`, so no bearer
-issued before the restore authenticates (`POST /token/:id/reissue` shows a new one); the founder,
+issued before the restore authenticates (`POST /token/:id/reissue` shows a new one), and each
+renewal is a `token.reissued` row in the copy's governance log, with no author and `detail:
+{ cause: 'tenant.imported' }`: the operator who restored is named on the control plane only; the founder,
 the user with `is_founder`, gets `founderPassword`. A package with no founder answers 422
 `RESTORE_FOUNDER_MISSING`. The packages of `tenantLifecycles` restore their part, or create it
 when the package holds none. Last, a new registry row with a new id, and the identity providers

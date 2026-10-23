@@ -14,6 +14,7 @@ import { expect } from 'expect'
 import fastify from 'fastify'
 import jwt from '@fastify/jwt'
 import { create, update, remove, findOne, block, unblock, reissue } from '../../lib/api/token/controller/token.js'
+import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 ;(global as any).log = {}
 
@@ -57,11 +58,13 @@ function fakeReply() {
 function request(opts: any = {}) {
   const calls: any[] = []
   const callerRoles: string[] = opts.callerRoles ?? ['admin']
+  const governance = fakeGovernanceLog()
 
   const req: any = {
     data: () => opts.data ?? {},
     parameters: () => ({ id: opts.targetId ?? EXISTING.id }),
     control: { kind: 'control' },
+    user: { id: 'u-admin' },
     tenantInfo: opts.tenantInfo,
     routeOptions: { config: { tenantContext: false } },
     hasRole: (r: any) => callerRoles.includes(r?.code),
@@ -70,6 +73,7 @@ function request(opts: any = {}) {
       get jwt() {
         return signer.jwt
       },
+      governanceLogManager: governance,
       tokenManager: {
         isImplemented: () => true,
         retrieveTokenById: async (_c: any, id: string) =>
@@ -100,7 +104,7 @@ function request(opts: any = {}) {
     }
   }
 
-  return { req, calls, reply: fakeReply() }
+  return { req, calls, reply: fakeReply(), governance }
 }
 
 describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', () => {
@@ -312,5 +316,42 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     const admin = request({ callerRoles: ['admin'], existing: { roles: ['admin'] } })
     const adminBearer: any = await reissue(admin.req, admin.reply)
     expect(claimsOf(adminBearer.token)).toMatchObject({ sub: 't-ext-rotated' })
+  })
+
+  it('writes every act in the governance log, by its user, and nothing for one refused (F100)', async () => {
+    ;(global as any).config = { options: { allow_multiple_admin: false } }
+    const acts = async (run: (r: ReturnType<typeof request>) => Promise<unknown>, opts: any = {}) => {
+      const r = request(opts)
+      await run(r)
+      return r.governance.rows.map(({ action, targetId, detail, actorId, actorPlane, tenantId }) => ({
+        action,
+        targetId,
+        detail,
+        actorId,
+        actorPlane,
+        tenantId
+      }))
+    }
+    const by = { actorId: 'u-admin', actorPlane: 'tenant', tenantId: undefined }
+    const at = new Date(Date.now() + 3600_000)
+
+    expect(await acts((r) => create(r.req, r.reply), { data: { name: 'ci', expiresAt: at.toISOString(), requiredRoles: ['editor'] } })).toEqual([
+      { action: 'token.created', targetId: 't-new', detail: { roles: ['editor', 'public'], expiresAt: at.toISOString() }, ...by }
+    ])
+    expect(await acts((r) => update(r.req, r.reply), { data: { name: 'renamed', roles: ['editor'] } })).toEqual([
+      { action: 'token.updated', targetId: EXISTING.id, detail: { requested: ['name', 'roles'], roles: ['editor'] }, ...by }
+    ])
+    expect(await acts((r) => reissue(r.req, r.reply))).toEqual([{ action: 'token.reissued', targetId: EXISTING.id, detail: undefined, ...by }])
+    expect(await acts((r) => block(r.req, r.reply), { data: { reason: 'leaked' } })).toEqual([
+      { action: 'token.blocked', targetId: EXISTING.id, detail: { reason: 'leaked' }, ...by }
+    ])
+    expect(await acts((r) => unblock(r.req, r.reply))).toEqual([{ action: 'token.unblocked', targetId: EXISTING.id, detail: undefined, ...by }])
+    expect(await acts((r) => remove(r.req, r.reply))).toEqual([{ action: 'token.deleted', targetId: EXISTING.id, detail: undefined, ...by }])
+
+    // Refused, missing, removed already: nothing changed, so nothing is written.
+    expect(await acts((r) => update(r.req, r.reply), { data: { roles: ['admin'] } })).toEqual([])
+    expect(await acts((r) => block(r.req, r.reply), { missing: true })).toEqual([])
+    expect(await acts((r) => unblock(r.req, r.reply), { missing: true })).toEqual([])
+    expect(await acts((r) => remove(r.req, r.reply), { existing: { deletedAt: new Date().toISOString() } })).toEqual([])
   })
 })

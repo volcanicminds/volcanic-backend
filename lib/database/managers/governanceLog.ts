@@ -1,53 +1,73 @@
+import { inArray, type SQL } from 'drizzle-orm'
 import type {
-  ControlHandle,
+  DataHandle,
   GovernanceAction,
   GovernanceActorPlane,
   GovernanceLogManagement,
   GovernanceLogRecord,
   GovernanceOutcome,
+  GovernanceScope,
   VQuery
 } from '../../../types/global.js'
 import { executeCount, executeFind } from '../query/index.js'
 import { truncateIp, type AccessLogIpMode } from './accessLog.js'
-import { control, inTransaction, table } from './runtime.js'
+import { column, inTransaction, runtime, table } from './runtime.js'
 
 //
-// The governance log. One table in the control plane, next to the registry it describes, so
-// a row outlives the tenant, the operator and the provider it names; the framework never purges it.
+// The governance log, one in every container. On the control plane, next to the registry
+// it describes, so a row outlives the tenant, the operator and the provider it names; in a
+// tenant's container, the acts on that container's own integration tokens, which its admin reads
+// and nobody else. The framework never purges it, and the database refuses to rewrite it.
 //
 // The manager is the last line for what a row may hold, as the access log's is: an action or an
-// outcome outside the closed vocabulary is refused, and the address is truncated here (/24, /48)
-// or dropped with `ACCESS_LOG_IP=none`, the one address policy of both logs.
+// outcome outside the closed vocabulary is refused, a platform event is refused in a tenant's
+// container, and the address is truncated here (/24, /48) or dropped with `ACCESS_LOG_IP=none`,
+// the one address policy of both logs.
 //
 const NAME = 'governanceLogManager'
 
-// A record and not an array: the compiler refuses a missing or an extra action.
-const ACTIONS: Record<GovernanceAction, true> = {
-  'tenant.created': true,
-  'tenant.updated': true,
-  'tenant.suspended': true,
-  'tenant.restored': true,
-  'tenant.deleted': true,
-  'tenant.exported': true,
-  'tenant.downloaded': true,
-  'tenant.export_expired': true,
-  'tenant.imported': true,
-  'tenant.moved': true,
-  'tenant.destruction_requested': true,
-  'tenant.destroyed': true,
-  'impersonation.started': true,
-  'impersonation.ended': true,
-  'system_user.created': true,
-  'system_user.updated': true,
-  'system_user.deleted': true,
-  'system_user.blocked': true,
-  'system_user.unblocked': true,
-  'system_user.mfa_reset': true,
-  'identity_provider.created': true,
-  'identity_provider.updated': true,
-  'identity_provider.deleted': true,
-  'account_creation.changed': true,
-  'account_creation.reset': true
+// A record and not an array: the compiler refuses a missing or an extra action. `platform` is
+// written on the control plane alone, `container` in the container the act is on; without
+// tenants the control plane is the only container and takes both.
+const ACTIONS: Record<GovernanceAction, GovernanceScope> = {
+  'tenant.created': 'platform',
+  'tenant.updated': 'platform',
+  'tenant.suspended': 'platform',
+  'tenant.restored': 'platform',
+  'tenant.deleted': 'platform',
+  'tenant.exported': 'platform',
+  'tenant.downloaded': 'platform',
+  'tenant.export_expired': 'platform',
+  'tenant.imported': 'platform',
+  'tenant.moved': 'platform',
+  'tenant.destruction_requested': 'platform',
+  'tenant.destroyed': 'platform',
+  'impersonation.started': 'platform',
+  'impersonation.ended': 'platform',
+  'system_user.created': 'platform',
+  'system_user.updated': 'platform',
+  'system_user.deleted': 'platform',
+  'system_user.blocked': 'platform',
+  'system_user.unblocked': 'platform',
+  'system_user.mfa_reset': 'platform',
+  'identity_provider.created': 'platform',
+  'identity_provider.updated': 'platform',
+  'identity_provider.deleted': 'platform',
+  'account_creation.changed': 'platform',
+  'account_creation.reset': 'platform',
+  'token.created': 'container',
+  'token.updated': 'container',
+  'token.reissued': 'container',
+  'token.blocked': 'container',
+  'token.unblocked': 'container',
+  'token.deleted': 'container'
+}
+
+const ofScope = (log: unknown, scope?: GovernanceScope): SQL | undefined => {
+  if (!scope) return undefined
+  if (scope !== 'platform' && scope !== 'container') throw invalid(`no governance scope '${String(scope)}'`)
+  const actions = Object.keys(ACTIONS).filter((action) => ACTIONS[action as GovernanceAction] === scope)
+  return inArray(column(log as never, 'action'), actions as never[]) as SQL
 }
 
 const OUTCOMES: Record<GovernanceOutcome, true> = { success: true, intent: true, failure: true }
@@ -62,7 +82,7 @@ const invalid = (message: string) => Object.assign(new Error(message), { code: '
 
 export function createGovernanceLogManager(options: GovernanceLogOptions = {}): GovernanceLogManagement {
   const entries = (ctx: unknown, what: string) => {
-    const handle = control(ctx, `${NAME}.${what}`)
+    const handle = runtime(ctx, `${NAME}.${what}`)
     return { handle, log: table(handle, 'governanceLog') }
   }
   const ipMode = (): AccessLogIpMode => ((process.env.ACCESS_LOG_IP || options.ip) === 'none' ? 'none' : 'truncate')
@@ -70,11 +90,18 @@ export function createGovernanceLogManager(options: GovernanceLogOptions = {}): 
   return {
     isImplemented: () => true,
 
-    async record(ctx: ControlHandle, entry) {
+    async record(ctx: DataHandle, entry) {
       const { handle, log } = entries(ctx, 'record')
       if (!Object.hasOwn(ACTIONS, String(entry?.action))) {
         throw Object.assign(new Error(`'${String(entry?.action)}' is not a governance action`), {
           code: 'GOVERNANCE_ACTION_UNKNOWN'
+        })
+      }
+      // A tenant's container has no registry. An operator's act written there would leave with the
+      // customer's export, and its admin would read who did what to the platform.
+      if (ACTIONS[entry.action] === 'platform' && !handle.registry) {
+        throw Object.assign(new Error(`'${entry.action}' is written on the control plane, never in a tenant's container`), {
+          code: 'GOVERNANCE_ACTION_MISPLACED'
         })
       }
       if (!Object.hasOwn(OUTCOMES, String(entry.outcome))) {
@@ -108,19 +135,17 @@ export function createGovernanceLogManager(options: GovernanceLogOptions = {}): 
     },
 
     async within(ctx, change) {
-      return await inTransaction(control(ctx, `${NAME}.within`), `${NAME}.within`, (bound) =>
-        change(bound as unknown as ControlHandle)
-      )
+      return await inTransaction(runtime(ctx, `${NAME}.within`), `${NAME}.within`, (bound) => change(bound as unknown as typeof ctx))
     },
 
-    async findQuery(ctx: ControlHandle, query: VQuery) {
+    async findQuery(ctx: DataHandle, query: VQuery, scope?: GovernanceScope) {
       const { handle, log } = entries(ctx, 'findQuery')
-      return (await executeFind(handle, log, query as never)) as never
+      return (await executeFind(handle, log, query as never, { extraWhere: ofScope(log, scope) })) as never
     },
 
-    async countQuery(ctx: ControlHandle, query: VQuery) {
+    async countQuery(ctx: DataHandle, query: VQuery, scope?: GovernanceScope) {
       const { handle, log } = entries(ctx, 'countQuery')
-      return await executeCount(handle, log, query as never)
+      return await executeCount(handle, log, query as never, { extraWhere: ofScope(log, scope) })
     }
   }
 }

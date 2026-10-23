@@ -1,12 +1,14 @@
 import type { FastifyRequest } from 'fastify'
-import type { ControlHandle, GovernanceLogEntry, GovernanceLogManagement } from '../../types/global.js'
+import type { ControlHandle, DataHandle, GovernanceLogEntry, GovernanceLogManagement } from '../../types/global.js'
 
 //
 // The one writer of the governance log, with the opposite rule of the access log's: a change
 // to the platform that cannot be written down is not made.
 //
 // A change of the registry and its event share one control-plane transaction (`governed`): an
-// event that cannot be written rolls the change back. An effect no transaction reaches, an export
+// event that cannot be written rolls the change back. An act on a container's own credentials is
+// written the same way in that container's log, never in another (`governed` with `container`).
+// An effect no transaction reaches, an export
 // or the drop of a container, writes its intent first (`intend`), and does not start when that
 // row cannot be written; its outcome follows (`settle`), or rides the transaction of the registry
 // change that closes it (`governed` with `intentId`). An outcome that cannot be written does not
@@ -23,7 +25,7 @@ export type GovernanceEvent = Omit<GovernanceLogEntry, 'outcome' | 'intentId' | 
 /** A job of the framework writing for itself, with no request behind it. */
 export interface Unattended {
   readonly governance: GovernanceLogManagement | undefined
-  readonly ctx: ControlHandle
+  readonly ctx: DataHandle
 }
 
 type Source = FastifyRequest | Unattended
@@ -40,14 +42,21 @@ const originOf = (source: Source): Origin => {
   return { actorId: null, actorPlane: null, ...at }
 }
 
-const writerOf = (source: Source): { manager: GovernanceLogManagement | undefined; ctx: ControlHandle | undefined } =>
+/** The control plane of a request, or the container it names. */
+const writerOf = <H extends DataHandle = ControlHandle>(
+  source: Source,
+  container?: H
+): { manager: GovernanceLogManagement | undefined; ctx: H | undefined } =>
   isUnattended(source)
-    ? { manager: source.governance, ctx: source.ctx }
-    : { manager: source.server.governanceLogManager, ctx: source.control as ControlHandle | undefined }
+    ? { manager: source.governance, ctx: source.ctx as H }
+    : { manager: source.server.governanceLogManager, ctx: container ?? (source.control as H | undefined) }
 
 /** Throws the 503 every governance write answers with when this build keeps no governance log. */
-export function assertGovernanceLog(source: Source): { manager: GovernanceLogManagement; ctx: ControlHandle } {
-  const { manager, ctx } = writerOf(source)
+export function assertGovernanceLog<H extends DataHandle = ControlHandle>(
+  source: Source,
+  container?: H
+): { manager: GovernanceLogManagement; ctx: H } {
+  const { manager, ctx } = writerOf(source, container)
   if (!manager?.isImplemented?.() || !ctx) {
     throw Object.assign(new Error('This build keeps no governance log, and no change to the platform is made without one'), {
       statusCode: 503,
@@ -58,17 +67,23 @@ export function assertGovernanceLog(source: Source): { manager: GovernanceLogMan
   return { manager, ctx }
 }
 
+// The impersonation an act was made under, when there is one: the actor is the user impersonated,
+// and the row says who was behind it. Only a tenant route is ever impersonated.
 const entryOf = (
   source: Source,
   event: GovernanceEvent,
   outcome: GovernanceLogEntry['outcome'],
   intentId?: string
-): GovernanceLogEntry => ({
-  ...event,
-  outcome,
-  intentId: intentId ?? null,
-  ...originOf(source)
-})
+): GovernanceLogEntry => {
+  const impersonationId = isUnattended(source) ? undefined : source.impersonation?.id
+  return {
+    ...event,
+    ...(impersonationId && { detail: { ...event.detail, impersonationId } }),
+    outcome,
+    intentId: intentId ?? null,
+    ...originOf(source)
+  }
+}
 
 const said = (source: Source, event: GovernanceEvent, outcome: string) => {
   if (!log.i) return
@@ -81,24 +96,26 @@ const said = (source: Source, event: GovernanceEvent, outcome: string) => {
 /**
  * Runs a change of the registry and writes its event in the same transaction. `change` must make
  * every call through `tx`. `event` reads the change's result and answers null when nothing changed,
- * and then nothing is written. With `intentId` the event is the success of that intent.
+ * and then nothing is written. With `intentId` the event is the success of that intent. With
+ * `container` both happen in that container instead, `dataContext(req)` for an act on its tokens;
+ * an `Unattended` source writes in its own `ctx`.
  */
-export async function governed<T>(
-  req: FastifyRequest,
-  change: (tx: ControlHandle) => Promise<T>,
+export async function governed<T, H extends DataHandle = ControlHandle>(
+  source: Source,
+  change: (tx: H) => Promise<T>,
   event: (result: T) => GovernanceEvent | null,
-  options: { intentId?: string } = {}
+  options: { intentId?: string; container?: H } = {}
 ): Promise<T> {
-  const { manager: governance, ctx } = assertGovernanceLog(req)
+  const { manager: governance, ctx } = assertGovernanceLog<H>(source, options.container)
   // Cast and not annotated: an annotated `null` stays narrowed to null past the callback that assigns it.
   let written = null as GovernanceEvent | null
   const result = await governance.within(ctx, async (tx) => {
     const changed = await change(tx)
     written = event(changed)
-    if (written) await governance.record(tx, entryOf(req, written, 'success', options.intentId))
+    if (written) await governance.record(tx, entryOf(source, written, 'success', options.intentId))
     return changed
   })
-  if (written) said(req, written, 'success')
+  if (written) said(source, written, 'success')
   return result
 }
 
@@ -119,7 +136,7 @@ export async function settle(
 ): Promise<void> {
   try {
     const { manager: governance, ctx } = writerOf(source)
-    await governance!.record(ctx as ControlHandle, entryOf(source, event, outcome, intentId))
+    await governance!.record(ctx!, entryOf(source, event, outcome, intentId))
     said(source, event, outcome)
   } catch (error) {
     if (log.e) {

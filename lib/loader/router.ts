@@ -133,7 +133,7 @@ function resolveRequiredRoles(
     if (isControl && !SYSTEM_CAPABILITIES.includes(capability as never)) {
       roleErrors.push(`${where} → '${capability}' is not in the control catalogue: ${SYSTEM_CAPABILITIES.join(', ')}`)
     }
-    // `manifest` is reserved by both catalogues, one per plane: see SHARED_CAPABILITIES.
+    // `manifest` and `governance-log` are reserved by both catalogues, one per plane: see SHARED_CAPABILITIES.
     if (!isControl && SYSTEM_CAPABILITIES.includes(capability as never) && !SHARED_CAPABILITIES.includes(capability as never)) {
       roleErrors.push(`${where} → '${capability}' is a control capability and cannot gate a tenant route`)
     }

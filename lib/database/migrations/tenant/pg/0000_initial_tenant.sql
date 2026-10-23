@@ -10,6 +10,21 @@ CREATE TABLE "change_log" (
 	"contents" jsonb NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "governance_log" (
+	"id" text PRIMARY KEY NOT NULL,
+	"occurred_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"action" text NOT NULL,
+	"outcome" text NOT NULL,
+	"intent_id" text,
+	"actor_id" text,
+	"actor_plane" text,
+	"tenant_id" text,
+	"target_id" text,
+	"detail" jsonb,
+	"request_id" text,
+	"ip" text
+);
+--> statement-breakpoint
 CREATE TABLE "migration" (
 	"id" text PRIMARY KEY NOT NULL,
 	"set" text NOT NULL,
@@ -64,6 +79,10 @@ CREATE TABLE "user" (
 --> statement-breakpoint
 CREATE INDEX "change_log_entity_idx" ON "change_log" USING btree ("entity_name","entity_id");--> statement-breakpoint
 CREATE INDEX "change_log_created_at_idx" ON "change_log" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "governance_log_occurred_idx" ON "governance_log" USING btree ("occurred_at");--> statement-breakpoint
+CREATE INDEX "governance_log_tenant_idx" ON "governance_log" USING btree ("tenant_id","occurred_at");--> statement-breakpoint
+CREATE INDEX "governance_log_actor_idx" ON "governance_log" USING btree ("actor_id","occurred_at");--> statement-breakpoint
+CREATE INDEX "governance_log_action_idx" ON "governance_log" USING btree ("action","occurred_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "migration_set_name_uq" ON "migration" USING btree ("set","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "token_external_id_uq" ON "token" USING btree ("external_id");--> statement-breakpoint
 CREATE INDEX "token_deleted_at_idx" ON "token" USING btree ("deleted_at");--> statement-breakpoint
@@ -72,4 +91,14 @@ CREATE UNIQUE INDEX "user_external_id_uq" ON "user" USING btree ("external_id");
 CREATE UNIQUE INDEX "user_username_uq" ON "user" USING btree ("username") WHERE "user"."username" is not null;--> statement-breakpoint
 CREATE INDEX "user_reset_token_idx" ON "user" USING btree ("reset_password_token");--> statement-breakpoint
 CREATE INDEX "user_confirmation_token_idx" ON "user" USING btree ("confirmation_token");--> statement-breakpoint
-CREATE INDEX "user_deleted_at_idx" ON "user" USING btree ("deleted_at");
+CREATE INDEX "user_deleted_at_idx" ON "user" USING btree ("deleted_at");--> statement-breakpoint
+-- Written by hand, drizzle-kit does not generate it: the database refuses to rewrite the
+-- governance log. The control set has the same block; scripts/check-migration-sets.mjs
+-- refuses a set that creates the table without it.
+CREATE FUNCTION "governance_log_append_only"() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE EXCEPTION 'governance_log is append-only: % refused', TG_OP;
+END
+$$;--> statement-breakpoint
+CREATE TRIGGER "governance_log_append_only" BEFORE UPDATE OR DELETE OR TRUNCATE ON "governance_log" FOR EACH STATEMENT EXECUTE FUNCTION "governance_log_append_only"();--> statement-breakpoint
+ALTER TABLE "governance_log" ENABLE ALWAYS TRIGGER "governance_log_append_only";

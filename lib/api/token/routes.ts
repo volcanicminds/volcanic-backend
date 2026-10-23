@@ -69,6 +69,7 @@ export default {
       requireCapability: 'tokens',
       handler: 'token.create',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Create new token',
         description: 'Create a new token',
@@ -87,6 +88,7 @@ export default {
       requireCapability: 'tokens',
       handler: 'token.reissue',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Reissue a token',
         description: 'A new bearer for the token: every bearer issued before stops working. Name, roles and expiry stay',
@@ -105,6 +107,7 @@ export default {
       requireCapability: 'tokens',
       handler: 'token.update',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Update existing token',
         description: 'Update an existing token',
@@ -155,6 +158,7 @@ export default {
       requireCapability: 'tokens',
       handler: 'token.unblock',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Unblock a token by id',
         description: 'Unblock a token by id',

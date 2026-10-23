@@ -319,6 +319,41 @@ export function appTables(schemaName: string) {
     ]
   )
 
+  // The governance log, in every container: on the control plane what the operators did to the
+  // platform, in a tenant's container the acts on its own credentials. Never purged by the
+  // framework, and the database refuses UPDATE, DELETE and TRUNCATE on it: the trigger is
+  // in the migrations, which drizzle-kit does not generate. No foreign key on purpose: a row must
+  // outlive the tenant, the operator, the provider and the token it names. Never a value of a
+  // secret, a token or a configuration: `detail` names fields and says what happened.
+  const governanceLog = table(
+    'governance_log',
+    {
+      id: text('id').primaryKey().$defaultFn(uuidv7),
+      occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+      action: text('action').notNull(),
+      // 'success' for a change written in the same transaction; an effect no transaction reaches
+      // writes an 'intent' first and then its 'success' or 'failure', pointing back with `intentId`.
+      outcome: text('outcome').notNull(),
+      intentId: text('intent_id'),
+      // The actor's `id`, which never changes; the `externalId` is rotated by a revocation.
+      actorId: text('actor_id'),
+      // 'control' for an operator, 'tenant' for a user of the tenant's container: the two ids
+      // name rows of different tables. Null with no actor, as for a job.
+      actorPlane: text('actor_plane'),
+      tenantId: text('tenant_id'),
+      targetId: text('target_id'),
+      detail: jsonb('detail'),
+      requestId: text('request_id'),
+      ip: text('ip')
+    },
+    (t) => [
+      index('governance_log_occurred_idx').on(t.occurredAt),
+      index('governance_log_tenant_idx').on(t.tenantId, t.occurredAt),
+      index('governance_log_actor_idx').on(t.actorId, t.occurredAt),
+      index('governance_log_action_idx').on(t.action, t.occurredAt)
+    ]
+  )
+
   // Settings of the container, one row per key. Written by an administrator of the plane that
   // owns the container, read on the requests that need them; never a secret.
   const setting = table('setting', {
@@ -328,7 +363,7 @@ export function appTables(schemaName: string) {
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
   })
 
-  return { user, token, changeLog, migration, session, authFlow, externalIdentity, accessLog, setting }
+  return { user, token, changeLog, migration, session, authFlow, externalIdentity, accessLog, governanceLog, setting }
 }
 
 /** The registry and the platform's own identities. Control plane only, never in a container. */
@@ -444,39 +479,7 @@ export function registryTables(schemaName: string) {
     (t) => [uniqueIndex('identity_provider_tenant_key_uq').on(t.tenantId, t.key)]
   )
 
-  // The governance log. Append-only and never purged by the framework. No foreign key on
-  // purpose: a row must outlive the tenant, the operator and the provider it names. Never a value
-  // of a secret, a token or a configuration: `detail` names fields and says what happened.
-  const governanceLog = table(
-    'governance_log',
-    {
-      id: text('id').primaryKey().$defaultFn(uuidv7),
-      occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
-      action: text('action').notNull(),
-      // 'success' for a change written in the same transaction; an effect no transaction reaches
-      // writes an 'intent' first and then its 'success' or 'failure', pointing back with `intentId`.
-      outcome: text('outcome').notNull(),
-      intentId: text('intent_id'),
-      // The actor's `id`, which never changes; the `externalId` is rotated by a revocation.
-      actorId: text('actor_id'),
-      // 'control' for an operator, 'tenant' for a user of the tenant's container: the two ids
-      // name rows of different tables. Null with no actor, as for a job.
-      actorPlane: text('actor_plane'),
-      tenantId: text('tenant_id'),
-      targetId: text('target_id'),
-      detail: jsonb('detail'),
-      requestId: text('request_id'),
-      ip: text('ip')
-    },
-    (t) => [
-      index('governance_log_occurred_idx').on(t.occurredAt),
-      index('governance_log_tenant_idx').on(t.tenantId, t.occurredAt),
-      index('governance_log_actor_idx').on(t.actorId, t.occurredAt),
-      index('governance_log_action_idx').on(t.action, t.occurredAt)
-    ]
-  )
-
-  return { tenant, systemUser, impersonation, destructionRequest, identityProvider, governanceLog }
+  return { tenant, systemUser, impersonation, destructionRequest, identityProvider }
 }
 
 export type AppTables = ReturnType<typeof appTables>

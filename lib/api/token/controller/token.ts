@@ -1,7 +1,18 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
+import type { DataHandle } from '../../../../types/global.js'
 import { includesRole } from '../../../util/authz.js'
 import { dataContext } from '../../../util/tenancy.js'
+import { fieldNames, governed, type GovernanceEvent } from '../../../util/governance.js'
 import { httpError } from '../../../util/httpError.js'
+
+//
+// Every act on a token is written in the governance log of the container the token lives in, in
+// the transaction of the change, and in no other log: a change that cannot be written down
+// is not made. Create, update, reissue and unblock ask for a step-up on their routes; block and
+// delete do not, so an access is taken away at once.
+//
+const governedToken = <T>(req: FastifyRequest, change: (tx: DataHandle) => Promise<T>, event: (result: T) => GovernanceEvent | null) =>
+  governed(req, change, event, { container: dataContext(req) })
 
 // Rule A: only an admin may grant a token the admin role, and only with
 // allow_multiple_admin — otherwise a `tokens` capability holder could mint an admin
@@ -60,7 +71,14 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot assign the admin role to a token' })
   }
 
-  const token = await req.server['tokenManager'].createToken(dataContext(req), data)
+  const token = await governedToken(
+    req,
+    (tx) => req.server['tokenManager'].createToken(tx, data),
+    (row) =>
+      row?.id
+        ? { action: 'token.created', targetId: row.id, detail: { roles: row.roles ?? [], expiresAt: expiresAt?.toISOString() ?? null } }
+        : null
+  )
   if (!token || !token.id || !token.externalId) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Token not registered' })
   }
@@ -113,7 +131,11 @@ export async function reissue(req: FastifyRequest, reply: FastifyReply) {
       .send(httpError(409, 'This token has expired, and a reissued bearer would be refused too: create a new token', 'TOKEN_EXPIRED'))
   }
 
-  const externalId = await tokens.resetExternalId(dataContext(req), token.id)
+  const externalId = await governedToken(
+    req,
+    (tx) => tokens.resetExternalId(tx, token.id),
+    () => ({ action: 'token.reissued', targetId: token.id })
+  )
   const bearerToken = signBearer(req, externalId, expiresAt)
   return { ...token, externalId, token: bearerToken }
 }
@@ -124,12 +146,18 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
     return reply.status(404).send()
   }
 
-  let token = await req.server['tokenManager'].retrieveTokenById(dataContext(req), id)
+  const token = await req.server['tokenManager'].retrieveTokenById(dataContext(req), id)
   if (!token) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Token not found' })
   }
+  // Removed already: nothing changes, and the log keeps the one removal there was.
+  if (token.deletedAt) return { ok: true }
 
-  token = await req.server['tokenManager'].removeTokenById(dataContext(req), id)
+  await governedToken(
+    req,
+    (tx) => req.server['tokenManager'].removeTokenById(tx, id),
+    (removed) => (removed ? { action: 'token.deleted', targetId: id } : null)
+  )
   return { ok: true }
 }
 
@@ -148,21 +176,40 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   if (assignsAdmin(req, data.roles)) {
     return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot assign the admin role to a token' })
   }
-  return req.server['tokenManager'].updateTokenById(dataContext(req), token.id, data)
+  // The roles are kept as they became: a grant is the change an auditor looks for first.
+  return await governedToken(
+    req,
+    (tx) => req.server['tokenManager'].updateTokenById(tx, token.id, data),
+    (row) =>
+      row && {
+        action: 'token.updated',
+        targetId: token.id,
+        detail: { requested: fieldNames(data), ...(data.roles !== undefined ? { roles: row.roles } : {}) }
+      }
+  )
 }
 
-export async function block(req: FastifyRequest, _reply: FastifyReply) {
-  const { id: userId } = req.parameters()
+export async function block(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.parameters()
   const { reason } = req.data()
 
-  await req.server['tokenManager'].blockTokenById(dataContext(req), userId, reason)
-  const token = await req.server['tokenManager'].retrieveTokenById(dataContext(req), userId)
-  return { ok: !!token.id }
+  if (!(await req.server['tokenManager'].retrieveTokenById(dataContext(req), id))?.id) return reply.status(404).send()
+  await governedToken(
+    req,
+    (tx) => req.server['tokenManager'].blockTokenById(tx, id, reason),
+    () => ({ action: 'token.blocked', targetId: id, detail: reason ? { reason: String(reason) } : null })
+  )
+  return { ok: true }
 }
 
-export async function unblock(req: FastifyRequest, _reply: FastifyReply) {
-  const { id: userId } = req.parameters()
-  await req.server['tokenManager'].unblockTokenById(dataContext(req), userId)
-  const token = await req.server['tokenManager'].retrieveTokenById(dataContext(req), userId)
-  return { ok: !!token.id }
+export async function unblock(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.parameters()
+
+  if (!(await req.server['tokenManager'].retrieveTokenById(dataContext(req), id))?.id) return reply.status(404).send()
+  await governedToken(
+    req,
+    (tx) => req.server['tokenManager'].unblockTokenById(tx, id),
+    () => ({ action: 'token.unblocked', targetId: id })
+  )
+  return { ok: true }
 }

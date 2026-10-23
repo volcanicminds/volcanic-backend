@@ -65,11 +65,12 @@ describe('database/schema · the tables', () => {
     // `session` too: the registry of live sessions lives in the container of the subject it
     // belongs to, so it is part of what defines a container.
     // `authFlow`, `externalIdentity`, `accessLog` and `setting` for the same reason.
+    // `governanceLog` too: each container keeps the acts on its own credentials.
     expect(Object.keys(pgApp).sort()).toEqual([
-      'accessLog', 'authFlow', 'changeLog', 'externalIdentity', 'migration', 'session', 'setting', 'token', 'user'
+      'accessLog', 'authFlow', 'changeLog', 'externalIdentity', 'governanceLog', 'migration', 'session', 'setting', 'token', 'user'
     ])
     expect(Object.keys(pgReg).sort()).toEqual([
-      'destructionRequest', 'governanceLog', 'identityProvider', 'impersonation', 'systemUser', 'tenant'
+      'destructionRequest', 'identityProvider', 'impersonation', 'systemUser', 'tenant'
     ])
   })
 
@@ -87,8 +88,6 @@ describe('database/schema · the tables', () => {
     expect(Object.keys(pgApp)).not.toContain('systemUser')
     // A tenant's IdP secret sits in the control plane, never inside the container it serves.
     expect(Object.keys(pgApp)).not.toContain('identityProvider')
-    // The governance log outlives the container it would otherwise be destroyed with.
-    expect(Object.keys(pgApp)).not.toContain('governanceLog')
   })
 
   it('keeps the access log append-only (F44)', () => {

@@ -718,26 +718,40 @@ accesses reach the process log only, and `/access-log` answers 404.
 
 ## 18. `GovernanceLogManagement` (new in v5)
 
-What the operators did to the platform (docs/SCHEMA_V5.md §3.6, docs/API_V5.md §5.1). Control
-plane only, and read only where the routes it governs exist, which is with tenants.
+What the operators did to the platform, and what was done to a container's integration tokens
+(docs/SCHEMA_V5.md §2.10, docs/API_V5.md §5.1). One log in every container: the handle says which.
 
 ```typescript
+type GovernanceScope = 'platform' | 'container'
+
 interface GovernanceLogManagement {
   isImplemented(): boolean
   /** Refuses an action or an outcome outside the vocabulary; truncates the IP like the access log. */
-  record(ctx: ControlHandle, entry: GovernanceLogEntry): Promise<GovernanceLogRecord>
-  /** Runs `change` in one control-plane transaction; the events written through `tx` commit with it. */
-  within<T>(ctx: ControlHandle, change: (tx: ControlHandle) => Promise<T>): Promise<T>
-  findQuery(ctx: ControlHandle, query: VQuery): Promise<VFindResult<GovernanceLogRecord>>
-  countQuery(ctx: ControlHandle, query: VQuery): Promise<number>
+  record(ctx: DataHandle, entry: GovernanceLogEntry): Promise<GovernanceLogRecord>
+  /** Runs `change` in one transaction of the container; the events written through `tx` commit with it. */
+  within<H extends DataHandle, T>(ctx: H, change: (tx: H) => Promise<T>): Promise<T>
+  /** With `scope`, only the actions of that kind, a condition the query cannot relax. */
+  findQuery(ctx: DataHandle, query: VQuery, scope?: GovernanceScope): Promise<VFindResult<GovernanceLogRecord>>
+  countQuery(ctx: DataHandle, query: VQuery, scope?: GovernanceScope): Promise<number>
 }
 ```
 
 The opposite of the access log: a write that fails is not logged and forgotten, it fails the change.
-The core runs every change of the registry through `within` and records the event with the same
-`tx`; every call inside goes through `tx`, because on PGlite a call on the outer handle waits for the
-transaction that waits for it. An export or a destruction records its intent with `record` before it
-starts and its outcome after. `record` refuses an unknown action with
-`GOVERNANCE_ACTION_UNKNOWN` and a malformed entry with `GOVERNANCE_LOG_ENTRY_INVALID`. **Without
-this manager** a build with tenants refuses every governed route with 503
-`GOVERNANCE_LOG_NOT_AVAILABLE`, and `/system/governance-log` answers 404.
+The core runs every change of the registry and every act on a token through `within`, and records
+the event with the same `tx`; every call inside goes through `tx`, because on PGlite a call on the
+outer handle waits for the transaction that waits for it. An export or a destruction records its
+intent with `record` before it starts and its outcome after.
+
+Each action has a scope. A `platform` one (`tenant.*`, `impersonation.*`, `system_user.*`,
+`identity_provider.*`, `account_creation.*`) is written on a handle of the control plane only, and
+on a tenant's handle `record` refuses it with `GOVERNANCE_ACTION_MISPLACED`. A `container` one
+(`token.*`) is written in the container the token lives in. Without tenants both sit in one log,
+which is why the tenant route reads with `scope: 'container'`. `record` refuses an unknown action
+with `GOVERNANCE_ACTION_UNKNOWN`, and a malformed entry or an unknown scope with
+`GOVERNANCE_LOG_ENTRY_INVALID`.
+
+The table refuses `UPDATE`, `DELETE` and `TRUNCATE` by itself, for every role (docs/SCHEMA_V5.md
+§2.10): a custom manager on Postgres inherits the rule from the migrations and cannot write around
+it. **Without this manager** a build with tenants refuses every governed route with 503
+`GOVERNANCE_LOG_NOT_AVAILABLE`, every build refuses the token writes the same way, and
+`/system/governance-log` and `/governance-log` answer 404.

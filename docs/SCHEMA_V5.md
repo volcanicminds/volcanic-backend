@@ -22,12 +22,12 @@ touches them.
 | `auth_flow` | every container | logins in progress (docs/AUTH_FLOW_V5.md) |
 | `external_identity` | every container | identities at a provider linked to a subject |
 | `access_log` | every container | the access log: logins, factors, logouts, revocations |
+| `governance_log` | every container | on the control plane what the operators did to the platform, kept after the tenant is gone; in a tenant's container the acts on its integration tokens. The database refuses to rewrite it |
 | `tenant` | control plane only | the tenant registry |
 | `system_user` | control plane only | people who administer the platform |
 | `impersonation` | control plane only | audit of impersonation sessions |
 | `destruction_request` | control plane only | two-phase tenant data destruction |
 | `identity_provider` | control plane only | a tenant's own identity providers, with the client secret encrypted |
-| `governance_log` | control plane only | what the operators did to the platform, kept after the tenant is gone |
 
 **Rule that decides where a table goes**: outside the customer's container sits
 only what you could publish. The control plane holds identifiers, counters, status and
@@ -334,6 +334,45 @@ The access log (docs/AUTH_FLOW_V5.md §9). Append-only like `change_log`: no `up
 Never a password, a code, a secret, a token or a claim, and no user agent: the `session` row keeps
 that for the sessions that are alive.
 
+### 2.10 `governance_log`
+
+The governance log, one in every container (docs/API_V5.md §5.1). On the control plane, what the
+operators did to the platform and what a tenant's administrator took out of it; inside a tenant's
+container, the acts on that container's own integration tokens, which its administrator reads and
+nobody else. Without tenants the control plane is the only container and holds both kinds.
+
+Append-only, and the database enforces it: a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`
+for every role, the owner included, and stays on under `session_replication_role = replica`
+(`ENABLE ALWAYS`). The trigger and its function are written by hand in the migrations, since
+drizzle-kit does not generate them, and `scripts/check-migration-sets.mjs` refuses a set that
+creates the table without them. A dump carries them with the table, so an exported, restored or
+moved container keeps the rule. Dropping a schema or a database fires no row trigger, so the
+destruction of a tenant is unaffected. Lifting the rule takes a migration that drops the trigger:
+a decision written down, never a statement typed in a console. Unlike `access_log` it is never
+purged by the framework: a row has to outlive the tenant, the operator, the provider and the token
+it names, which is also why no column carries a foreign key.
+
+| Column | Type | Null | Default | Notes |
+|---|---|:---:|---|---|
+| `id` | uuid | no | generated | UUID v7, so time-ordered |
+| `occurred_at` | timestamp | no | now | |
+| `action` | text | no | | one of a closed list, enforced by the manager: `tenant.*`, `impersonation.*`, `system_user.*`, `identity_provider.*`, `account_creation.*` on the control plane only; `token.*` in any container |
+| `outcome` | text | no | | `success`, `intent` or `failure` |
+| `intent_id` | text | yes | | on the outcome of an export, a download, a package's expiry or a destruction, the `id` of its intent |
+| `actor_id` | text | yes | | the author's `id`: a `system_user.id` or a tenant's `user.id`, as `actor_plane` says |
+| `actor_plane` | text | yes | | `control` for an operator, `tenant` for a user of the tenant's container. Null with no author, as for a job or the renewal of a token by a restore |
+| `tenant_id` | text | yes | | on the control plane, the tenant concerned, if any. Null inside a tenant's container, which is the tenant |
+| `target_id` | text | yes | | the operator, provider key, impersonated user or token acted upon |
+| `detail` | jsonb | yes | | names and reasons: the fields a patch carried, the roles a token was given, a suspension or block reason, an export path, a failure code, the impersonation an act was made under |
+| `request_id` | text | yes | | the request that wrote it, to join the process log |
+| `ip` | text | yes | | truncated to /24 or /48, or absent with `ACCESS_LOG_IP=none`, as in `access_log` |
+
+**Indexes**: `occurred_at`, `(tenant_id, occurred_at)`, `(actor_id, occurred_at)`,
+`(action, occurred_at)`.
+
+Never a value written to the registry, a password, a client secret, a bearer or an error message,
+which may quote a connection string: a failure keeps its code.
+
 ---
 
 ## 3. Tables in the control plane
@@ -438,34 +477,6 @@ tenant.
 **Indexes**: unique on `(tenant_id, key)`. Deleted for real, not soft-deleted: a key must be reusable
 after a removal. Destroying the tenant's data removes all its rows, before the container is dropped
 (docs/API_V5.md §6.2): they live in the control plane, where dropping a container does not reach.
-
-### 3.6 `governance_log`
-
-What the operators did to the platform, and what a tenant's administrator took out of it
-(docs/API_V5.md §5.1). Append-only like `access_log`, and
-unlike it never purged by the framework: a row has to outlive the tenant, the operator and the
-provider it names, which is also why no column carries a foreign key.
-
-| Column | Type | Null | Default | Notes |
-|---|---|:---:|---|---|
-| `id` | uuid | no | generated | UUID v7, so time-ordered |
-| `occurred_at` | timestamp | no | now | |
-| `action` | text | no | | one of a closed list, enforced by the manager: `tenant.*`, `impersonation.*`, `system_user.*`, `identity_provider.*`, `account_creation.*` |
-| `outcome` | text | no | | `success`, `intent` or `failure` |
-| `intent_id` | text | yes | | on the outcome of an export, a download, a package's expiry or a destruction, the `id` of its intent |
-| `actor_id` | text | yes | | the author's `id`: a `system_user.id` or a tenant's `user.id`, as `actor_plane` says |
-| `actor_plane` | text | yes | | `control` for an operator, `tenant` for a user of the tenant's container. Null with no author, as for a job |
-| `tenant_id` | text | yes | | the tenant concerned, if any |
-| `target_id` | text | yes | | the operator, provider key or impersonated user acted upon |
-| `detail` | jsonb | yes | | names and reasons: the fields a patch carried, a suspension reason, an export path, a failure code |
-| `request_id` | text | yes | | the request that wrote it, to join the process log |
-| `ip` | text | yes | | truncated to /24 or /48, or absent with `ACCESS_LOG_IP=none`, as in `access_log` |
-
-**Indexes**: `occurred_at`, `(tenant_id, occurred_at)`, `(actor_id, occurred_at)`,
-`(action, occurred_at)`.
-
-Never a value written to the registry, a password, a client secret or an error message, which may
-quote a connection string: a failure keeps its code.
 
 ---
 

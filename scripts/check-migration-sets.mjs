@@ -24,8 +24,15 @@ const dirOf = (set) => path.join(ROOT, 'lib/database/migrations', set, 'pg')
 
 // Tables of the platform. Nothing that describes the fleet belongs inside one of its members:
 // outside the customer's container goes only what you could publish.
-const CONTROL_ONLY = ['tenant', 'system_user', 'impersonation', 'destruction_request', 'identity_provider', 'governance_log']
-const SHARED = ['user', 'token', 'change_log', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log']
+const CONTROL_ONLY = ['tenant', 'system_user', 'impersonation', 'destruction_request', 'identity_provider']
+const SHARED = ['user', 'token', 'change_log', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log', 'governance_log']
+
+// The trigger that makes the governance log append-only. Written by hand, since
+// drizzle-kit does not generate triggers: a regenerated file would lose it without a word.
+const APPEND_ONLY = [
+  /create\s+trigger\s+"?governance_log_append_only"?\s+before\s+update\s+or\s+delete\s+or\s+truncate\s+on\s+"?governance_log"?\s+for\s+each\s+statement\b/i,
+  /alter\s+table\s+"?governance_log"?\s+enable\s+always\s+trigger\s+"?governance_log_append_only"?/i
+]
 
 const sqlOf = (dir) =>
   !existsSync(dir)
@@ -64,9 +71,14 @@ for (const set of SETS) {
   for (const table of SHARED) {
     if (!tables.has(table)) problems.push(`${set} does not create '${table}'`)
   }
+  // 4. Every database refuses UPDATE, DELETE and TRUNCATE on its governance log.
+  const all = found.map(({ sql }) => sql).join('\n')
+  if (tables.has('governance_log') && !APPEND_ONLY.every((pattern) => pattern.test(all))) {
+    problems.push(`${set} creates 'governance_log' without the trigger that refuses UPDATE, DELETE and TRUNCATE (F102)`)
+  }
 }
 
-// 4. No file name is reused across the two sets: it would make the order ambiguous.
+// 5. No file name is reused across the two sets: it would make the order ambiguous.
 const control = (files.control ?? []).map((f) => f.name)
 const shared = control.filter((n) => (files.tenant ?? []).some((f) => f.name === n))
 if (shared.length) problems.push(`${shared.join(', ')} is used by both sets, which makes the order ambiguous`)

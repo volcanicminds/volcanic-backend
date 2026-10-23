@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import type {
   ChallengeDeliveryManagement,
   ControlHandle,
+  DataHandle,
   DataProvider,
   DestructionManagement,
   IdentityProviderManagement,
@@ -24,7 +25,7 @@ import { envInt } from '../../../util/env.js'
 import { ENROLMENT_METHOD, floorEnrollable, isImplemented } from '../../../auth/validate.js'
 import { maskEmail, newCode } from '../../../auth/authenticators/emailOtp.js'
 import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
-import { assertGovernanceLog, failureOf, fieldNames, governed, intend, settle } from '../../../util/governance.js'
+import { assertGovernanceLog, failureOf, fieldNames, governed, intend, settle, type Unattended } from '../../../util/governance.js'
 import {
   createInPackages,
   destroyInPackages,
@@ -529,7 +530,17 @@ export async function importTenant(req: FastifyRequest, reply: FastifyReply) {
         code: 'RESTORE_NOT_AVAILABLE'
       })
     }
-    for (const id of restored.tokenIds) await tokens!.resetExternalId!(container, id)
+    // Each renewal is an act on a token of the tenant, written in the tenant's own log. By nobody:
+    // the operator who restores is named on the control plane (`tenant.imported`), never inside the
+    // customer's container.
+    const renewer: Unattended = { governance: req.server.governanceLogManager, ctx: container }
+    for (const id of restored.tokenIds) {
+      await governed<string, DataHandle>(
+        renewer,
+        (tx) => tokens!.resetExternalId!(tx, id),
+        () => ({ action: 'token.reissued', targetId: id, detail: { cause: 'tenant.imported' } })
+      )
+    }
     const users = req.server['userManager'] as UserManagement
     await users.resetPassword(container as never, { id: restored.founderId }, String(data.founderPassword))
 

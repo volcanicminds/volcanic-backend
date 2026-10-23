@@ -122,7 +122,7 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   entrambe le strategie. Difetti da piantare: un token senza `scp` accettato sul piano di
   controllo; la revoca letta da una cache; l'eccezione del canale estesa alle sessioni; una
   credenziale senza etichetta cercata fra i token.
-- [ ] **T-18.2** Il registro di governo in ogni contenitore (F100). `governance_log` entra
+- [x] **T-18.2** Il registro di governo in ogni contenitore (F100). `governance_log` entra
   nell'insieme tenant; il manager scrive e legge sul contenitore della richiesta; gli atti sui
   token (creazione, modifica, rigenerazione, blocco, sblocco, eliminazione) si scrivono nella
   stessa transazione della modifica, su ogni piano; una lettura riservata all'admin del tenant;
@@ -140,3 +140,18 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   HTTP su Postgres reale, con entrambe le strategie. Difetti da piantare: la riga scritta fuori
   dalla transazione dell'atto; il registro di un tenant letto da un altro; il blocco del database
   tolto da uno dei due insiemi.
+  **Chiuso il 23 ottobre 2026.** La tabella è nella prima migrazione dell'insieme tenant, con la
+  funzione e il trigger scritti a mano in coda a entrambi gli insiemi; `check-migration-sets`
+  rifiuta un insieme che crea la tabella senza. Ogni azione ha un ambito (`platform` o
+  `container`): una della piattaforma scritta nel contenitore di un tenant è rifiutata con
+  `GOVERNANCE_ACTION_MISPLACED`, e `GET /governance-log` legge solo gli atti sui token. Il
+  ripristino scrive nella copia un `token.reissued` senza autore per ogni token, con
+  `cause: 'tenant.imported'`. Prove: `tokenGovernance.e2e` (5 per strategia, compresi token e
+  impersonificazione, e il registro reso illeggibile che annulla l'atto), il registro della copia
+  in `tenantLifecycle.e2e`, `governanceLog.spec` su PGlite e su Postgres; `npm test` 1004 passate,
+  `test:e2e:mt:pg` 79. I tre difetti piantati sono presi: la riga fuori dalla transazione (il
+  token nasce lo stesso), il registro letto dal piano di controllo (lettura vuota), il blocco tolto
+  dall'insieme di controllo (`check-migration-sets` e le due prove del piano). Il caso senza
+  tenant è provato sul manager, con le due specie di righe nello stesso database, e sul
+  controller con un registro finto, non via HTTP: il banco su Postgres reale gira solo con i
+  tenant.

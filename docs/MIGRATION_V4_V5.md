@@ -768,8 +768,17 @@ as `exp`, or `null` for a token that never expires.
   answer is 400; a past date is 400 `TOKEN_EXPIRY_INVALID`.
 - Block and unblock at `POST /token/:id/block` and `/token/:id/unblock`, as for users; v4 had
   `/token/block/:id` and `/token/unblock/:id`.
+- Handle 403 `STEP_UP_REQUIRED` on `POST /token`, `PUT /token/:id`, `POST /token/:id/reissue` and
+  `POST /token/:id/unblock`: the person confirms with `POST /auth/flow/step-up` and the call is
+  sent again (docs/API_V5.md §2.6). Block and removal ask for nothing.
 
-**What a custom `tokenManager` has to do.** `isValidToken` is asked at every request and is the
+Every act on a token is written in the governance log of the tenant it lives in, by its author,
+and read at `GET /governance-log` with the `governance-log` capability (§36).
+
+**What a custom `tokenManager` has to do.** The writes are called with the transaction handle of
+the governance log (`createToken`, `updateTokenById`, `resetExternalId`, `blockTokenById`,
+`unblockTokenById`, `removeTokenById`) and go through it, or the change and its row no longer
+commit together. `isValidToken` is asked at every request and is the
 only check on the row: it refuses a blocked token and a removed one (`deletedAt`), or blocking and
 removing a token change nothing for its bearer. The expiry is the bearer's `exp`, checked by the core.
 
@@ -809,15 +818,22 @@ the adapter v4 needed around it goes, and an anonymous upload is opted into with
 
 v4 kept no record of what a platform operator changed: the registry row showed the last state, not
 who brought it there. v5 writes every change of the platform into `governance_log`, in the control
-plane (docs/SCHEMA_V5.md §3.6, docs/API_V5.md §5.1), and refuses a change it cannot write down.
+plane (docs/SCHEMA_V5.md §2.10, docs/API_V5.md §5.1), and refuses a change it cannot write down.
+The acts on a tenant's integration tokens go into the `governance_log` of the tenant's own
+container, read by its administrator; without tenants the control plane holds both.
 
 **What a deployment has to do.**
 
-- **Apply the new migration**, `0006_governance_log_control`. A build with tenants and no
-  `governanceLogManager` answers every governed route with 503 `GOVERNANCE_LOG_NOT_AVAILABLE`.
+- **Apply the migrations**: `0006_governance_log_control` on the control plane, and the tenant set,
+  whose first migration creates the table in every container. A build with tenants and no
+  `governanceLogManager` answers every governed route with 503 `GOVERNANCE_LOG_NOT_AVAILABLE`, and
+  every build answers so the token writes.
 - **Grant `governance-log`** to whoever reads it: `system:auditor` has it, `system:operator` does
-  not. `GET /system/governance-log` and `/count` take the usual Magic Query.
-- **Keep the rows**: the framework never purges them, and they outlive the tenant they name.
+  not; in a tenant, `admin` has it and a role of the consumer may be given it. `GET
+  /system/governance-log`, `GET /governance-log` and their `/count` take the usual Magic Query.
+- **Keep the rows**: the framework never purges them, and they outlive the tenant they name. The
+  database refuses to change or remove one, for every role (docs/SCHEMA_V5.md §2.10); a cleanup
+  script that touched the table stops working, and lifting the rule takes a migration.
 
 **What a custom manager has to do.** `within` runs the change in one transaction and hands it a
 handle bound to it (docs/MANAGERS_V5.md §18). A custom `tenantManager`, `systemUserManager`,

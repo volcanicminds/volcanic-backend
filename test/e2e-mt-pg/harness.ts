@@ -22,6 +22,7 @@ import * as loaderConfig from '../../lib/loader/general.js'
 import * as loaderRoles from '../../lib/loader/roles.js'
 import * as loaderTranslation from '../../lib/loader/translation.js'
 import { start as startServer } from '../../index.js'
+import type { Role } from '../../types/global.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURE_DIR = path.resolve(__dirname, './fixtures/app')
@@ -109,8 +110,12 @@ async function seedWidget(locator: string, tag: string) {
 /**
  * `extra`: what a consumer wires next to the data layer, a `challengeDeliveryManager` for one.
  * `options.strategy`: how tenants are kept, a schema each (the default) or a database each.
+ * `options.roles`: the roles a consumer declares in its `config/roles.ts`, merged as the loader merges them.
  */
-export async function setup(extra: Record<string, unknown> = {}, options: { strategy?: 'schema' | 'container' } = {}) {
+export async function setup(
+  extra: Record<string, unknown> = {},
+  options: { strategy?: 'schema' | 'container'; roles?: Role[] } = {}
+) {
   if (server) return server
 
   strategy = options.strategy ?? 'schema'
@@ -134,7 +139,7 @@ export async function setup(extra: Record<string, unknown> = {}, options: { stra
     headerKey: HEADER
   }
   ;(global as any).config = cfg
-  ;(global as any).roles = await loaderRoles.load()
+  ;(global as any).roles = loaderRoles.mergeRoles(await loaderRoles.load(), options.roles ?? [])
   // The control catalogue, exactly as index.ts loads it: a control route resolves its roles
   // against this map and never against the tenant one.
   ;(global as any).systemRoles = await loaderRoles.loadSystem()

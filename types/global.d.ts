@@ -1518,7 +1518,10 @@ export interface AccessLogManagement {
   purgeExpired(ctx: DataHandle, now?: Date): Promise<number>
 }
 
-/** The closed vocabulary of the governance log: what an operator did to the platform. */
+/**
+ * The closed vocabulary of the governance log: what an operator did to the platform, and the acts
+ * on the integration tokens of a container, written in that container's own log.
+ */
 export type GovernanceAction =
   | 'tenant.created'
   | 'tenant.updated'
@@ -1545,6 +1548,12 @@ export type GovernanceAction =
   | 'identity_provider.deleted'
   | 'account_creation.changed'
   | 'account_creation.reset'
+  | 'token.created'
+  | 'token.updated'
+  | 'token.reissued'
+  | 'token.blocked'
+  | 'token.unblocked'
+  | 'token.deleted'
 
 /**
  * `success` for a change written in the same transaction as its event. An effect no transaction
@@ -1566,9 +1575,10 @@ export interface GovernanceLogEntry {
   actorId?: string | null
   /**
    * Where `actorId` lives: `control` for an operator, `tenant` for a user of `tenantId`'s
-   * container. Null with no actor, as for a job.
+   * container, or of the container the row is in. Null with no actor, as for a job.
    */
   actorPlane?: GovernanceActorPlane | null
+  /** The tenant a control-plane row is about. Null inside a tenant's container, which is the tenant. */
   tenantId?: string | null
   /** What the action was done to, when it is not the tenant: an operator, a provider key, a user. */
   targetId?: string | null
@@ -1584,20 +1594,34 @@ export interface GovernanceLogRecord extends GovernanceLogEntry {
   occurredAt: Date | string
 }
 
+/**
+ * The governance log of the container `ctx` opens: the control plane's, or a tenant's own. A
+ * container never reads or writes another's.
+ */
 export interface GovernanceLogManagement {
   isImplemented(): boolean
-  /** Refuses an action or an outcome outside the vocabulary. */
-  record(ctx: ControlHandle, entry: GovernanceLogEntry): Promise<GovernanceLogRecord>
   /**
-   * Runs `change` in one control-plane transaction and hands it a handle bound to it: what is
+   * Refuses an action or an outcome outside the vocabulary, and in a tenant's container every
+   * action but the acts on its tokens: the platform's events stay on the control plane.
+   */
+  record(ctx: DataHandle, entry: GovernanceLogEntry): Promise<GovernanceLogRecord>
+  /**
+   * Runs `change` in one transaction of the container and hands it a handle bound to it: what is
    * written through that handle, the events included, commits together or not at all. Every
    * call inside goes through `tx`; on PGlite a call on the outer handle waits for the transaction
    * that waits for it.
    */
-  within<T>(ctx: ControlHandle, change: (tx: ControlHandle) => Promise<T>): Promise<T>
-  findQuery(ctx: ControlHandle, query: VQuery): Promise<VFindResult<GovernanceLogRecord>>
-  countQuery(ctx: ControlHandle, query: VQuery): Promise<number>
+  within<H extends DataHandle, T>(ctx: H, change: (tx: H) => Promise<T>): Promise<T>
+  /**
+   * With `scope`, only the actions of that kind, a condition added after everything the query
+   * asks: without tenants the operators' acts and the tenant's sit in the same container.
+   */
+  findQuery(ctx: DataHandle, query: VQuery, scope?: GovernanceScope): Promise<VFindResult<GovernanceLogRecord>>
+  countQuery(ctx: DataHandle, query: VQuery, scope?: GovernanceScope): Promise<number>
 }
+
+/** `platform`: an act on the platform, kept on the control plane. `container`: an act on a container's own credentials. */
+export type GovernanceScope = 'platform' | 'container'
 
 // Callback type signature: (uploadOrId, req, res) => void
 export type TransferCallback = (data: any, req: any, res: any) => void
