@@ -56,17 +56,19 @@ export interface Roles {
 // schema resolved the `user` table, every administrative operation would be one defect away
 // from a privilege escalation.
 //
-// What the compiler can enforce, it does: a system role's code must start with `system:`,
-// and its capabilities must come from the closed control catalogue, so a system role cannot
-// name `users` and a control route cannot ask for a capability the framework does not
-// honour. What it cannot enforce is the other direction, because TypeScript has no way to
-// subtract a literal union from `string`: nothing stops a tenant role from writing
+// What the compiler can enforce, it does: a system role's code must start with `system:`.
+// Its capabilities come from the control catalogue, the framework's plus those a project or a
+// package declares in its `config/systemRoles.ts`, so the compiler suggests the framework's and
+// the boot refuses the rest: a role naming a capability nobody declared is dropped, and a
+// control route asking for one does not start (docs/AUTHORIZATION_V5.md §4). Nor can the
+// compiler enforce the other direction, because TypeScript has no way to subtract a literal
+// union from `string`: nothing stops a tenant role from writing
 // `capabilities: ['tenants:destroy']`. That gap is closed at boot instead, by the router's
 // integrity check (docs/AUTHORIZATION_V5.md §2.1), which refuses to start rather than warn.
 // ---------------------------------------------------------------------------------------
 
-/** The control catalogue. Closed and reserved: a consumer cannot coin one. */
-export type SystemCapability =
+/** The control capabilities of the framework, reserved: a project declares its own beside them. */
+export type FrameworkSystemCapability =
   | 'tenants:read'
   | 'tenants'
   | 'tenants:impersonate'
@@ -76,6 +78,9 @@ export type SystemCapability =
   | 'system-users'
   | 'access-log'
   | 'governance-log'
+
+/** A control capability: the framework's, or one declared in a `config/systemRoles.ts`. */
+export type SystemCapability = FrameworkSystemCapability | (string & {})
 
 export interface SystemRole {
   /** Always namespaced: the prefix is what keeps the two catalogues from ever merging. */
@@ -1562,8 +1567,8 @@ export type GovernanceAction =
  */
 export type GovernanceOutcome = 'success' | 'intent' | 'failure'
 
-/** The plane of the identity that acted: the two hold ids of different tables. */
-export type GovernanceActorPlane = 'control' | 'tenant'
+/** The table the identity that acted is a row of. */
+export type GovernanceActorKind = 'user' | 'system_user' | 'token'
 
 /** One governance event, as written. Never the value of a secret, a token or a configuration. */
 export interface GovernanceLogEntry {
@@ -1574,10 +1579,11 @@ export interface GovernanceLogEntry {
   /** The actor's `id`: the `externalId` is rotated by a revocation, the `id` never changes. */
   actorId?: string | null
   /**
-   * Where `actorId` lives: `control` for an operator, `tenant` for a user of `tenantId`'s
-   * container, or of the container the row is in. Null with no actor, as for a job.
+   * Which row `actorId` is: `system_user` for an operator, `user` for a user of `tenantId`'s
+   * container or of the container the row is in, `token` for an integration token of the
+   * container the row is in. Null with no actor, as for a job.
    */
-  actorPlane?: GovernanceActorPlane | null
+  actorKind?: GovernanceActorKind | null
   /** The tenant a control-plane row is about. Null inside a tenant's container, which is the tenant. */
   tenantId?: string | null
   /** What the action was done to, when it is not the tenant: an operator, a provider key, a user. */
@@ -1860,6 +1866,8 @@ declare global {
   var roles: Roles
   /** The control-scope catalogue. Separate map, separate namespace. */
   var systemRoles: SystemRoles
+  /** The control capabilities a route may ask for: the framework's and the declared ones. */
+  var systemCapabilities: readonly SystemCapability[]
   /** The flows of both planes (`config/authFlows.ts`), frozen, read by the manifest and the engine. */
   var authFlows: ResolvedAuthFlows
   /**

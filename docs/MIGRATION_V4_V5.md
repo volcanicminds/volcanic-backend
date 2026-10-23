@@ -771,6 +771,11 @@ as `exp`, or `null` for a token that never expires.
 - Handle 403 `STEP_UP_REQUIRED` on `POST /token`, `PUT /token/:id`, `POST /token/:id/reissue` and
   `POST /token/:id/unblock`: the person confirms with `POST /auth/flow/step-up` and the call is
   sent again (docs/API_V5.md §2.6). Block and removal ask for nothing.
+- Reissue every bearer signed by v4 (`POST /token/:id/reissue`). v5 signs `typ: 'integration'`
+  into a token's bearer and looks a credential up among the tokens only when it carries that
+  label; v4 tried the users first and the tokens after, so its bearers now answer 404
+  `SUBJECT_NOT_FOUND` (docs/AUTHORIZATION_V5.md §5). The bearer travels in the `Authorization`
+  header only: in a cookie it is 401 `CREDENTIAL_CHANNEL`.
 
 Every act on a token is written in the governance log of the tenant it lives in, by its author,
 and read at `GET /governance-log` with the `governance-log` capability (§36).

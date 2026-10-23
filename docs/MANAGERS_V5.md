@@ -750,6 +750,11 @@ which is why the tenant route reads with `scope: 'container'`. `record` refuses 
 with `GOVERNANCE_ACTION_UNKNOWN`, and a malformed entry or an unknown scope with
 `GOVERNANCE_LOG_ENTRY_INVALID`.
 
+The author comes from the request: `actorKind` is `system_user`, `user` or `token`, and `actorId`
+the id in that table. A token's id names its row in the container the hook found it in, so the
+core writes a token's act in that container's log alone, and refuses any other handle with
+`GOVERNANCE_ACTOR_MISPLACED` before the manager is called.
+
 The table refuses `UPDATE`, `DELETE` and `TRUNCATE` by itself, for every role (docs/SCHEMA_V5.md
 §2.10): a custom manager on Postgres inherits the rule from the migrations and cannot write around
 it. **Without this manager** a build with tenants refuses every governed route with 503

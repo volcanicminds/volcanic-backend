@@ -167,8 +167,8 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
     const res = await call('POST', `/tenants/${acmeId}/exports`, OPERATOR)
     expect(res.statusCode).toBe(200)
     const [intent, success] = await rows(`where action = 'tenant.exported'`)
-    expect(intent).toMatchObject({ outcome: 'intent', tenant_id: acmeId, intent_id: null, actor_plane: 'control', detail: { profile: 'operator', slot: 'control' } })
-    expect(success).toMatchObject({ outcome: 'success', tenant_id: acmeId, intent_id: intent.id, actor_plane: 'control' })
+    expect(intent).toMatchObject({ outcome: 'intent', tenant_id: acmeId, intent_id: null, actor_kind: 'system_user', detail: { profile: 'operator', slot: 'control' } })
+    expect(success).toMatchObject({ outcome: 'success', tenant_id: acmeId, intent_id: intent.id, actor_kind: 'system_user' })
     // The path stays in the log, for whoever looks the package up on the machine; the response names only the package.
     const { package: name, manifestSha256, bytes } = body(res)
     expect(success.detail).toMatchObject({ path: path.join(exports, name), package: name, manifestSha256, bytes, slot: 'control', replaced: [] })
@@ -212,20 +212,20 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
 
     const adminId = String((await sql().query(`select id from "${ACME.locator}"."user" where email = $1`, [ACME.adminEmail])).rows[0].id)
     const founder = (await sql().query(`select id from public.system_user where email = 'super@system.test'`)).rows[0].id
-    const [exported] = await rows(`where action = 'tenant.exported' and actor_plane = 'tenant'`)
+    const [exported] = await rows(`where action = 'tenant.exported' and actor_kind = 'user'`)
     expect(exported).toMatchObject({ outcome: 'intent', tenant_id: acmeId, actor_id: adminId, detail: { profile: 'client', slot: 'tenant' } })
 
     const downloads = await settled(`where action = 'tenant.downloaded'`, 4)
-    const of = (plane: string) => downloads.filter((r: any) => r.actor_plane === plane)
-    expect(of('tenant')).toMatchObject([
+    const of = (kind: string) => downloads.filter((r: any) => r.actor_kind === kind)
+    expect(of('user')).toMatchObject([
       { outcome: 'intent', tenant_id: acmeId, actor_id: adminId, detail: { package: ownPackage, manifestSha256: body(own).manifestSha256, profile: 'client' } },
       { outcome: 'success', tenant_id: acmeId, actor_id: adminId, detail: { package: ownPackage, bytes: fetched.rawPayload.length } }
     ])
-    expect(of('control')).toMatchObject([
+    expect(of('system_user')).toMatchObject([
       { outcome: 'intent', actor_id: founder, detail: { package: operatorPackage, profile: 'operator' } },
       { outcome: 'success', actor_id: founder, detail: { bytes: whole.rawPayload.length } }
     ])
-    expect(of('tenant')[1].intent_id).toBe(of('tenant')[0].id)
+    expect(of('user')[1].intent_id).toBe(of('user')[0].id)
   })
 
   it('refuses a tenant role other than admin, and a session not confirmed lately, on both planes (T-17.11)', async () => {
@@ -287,7 +287,7 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
   })
 
   it('stops the tenant plane at its quota with Retry-After, and never the operator (T-17.11)', async () => {
-    const used = (await rows(`where action = 'tenant.exported' and outcome = 'intent' and actor_plane = 'tenant'`)).length
+    const used = (await rows(`where action = 'tenant.exported' and outcome = 'intent' and actor_kind = 'user'`)).length
     process.env.TENANT_EXPORT_MAX = String(used + 1)
     try {
       const headers = await asAdmin()
@@ -322,7 +322,7 @@ describe('The governance log on real Postgres (F76, T-15.2)', function () {
       outcome: 'intent',
       tenant_id: acmeId,
       actor_id: null,
-      actor_plane: null,
+      actor_kind: null,
       ip: null,
       detail: { package: ownPackage, slot: 'tenant' }
     })

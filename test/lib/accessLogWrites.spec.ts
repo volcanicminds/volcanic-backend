@@ -414,7 +414,7 @@ describe('access log · the read routes of both planes (T-12.32)', () => {
     saved = { config: bag.config, roles: bag.roles, systemRoles: bag.systemRoles, mode: process.env.AUTH_MODE }
     bag.config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }
     bag.roles = { public: { code: 'public' }, admin: { code: 'admin' }, viewer: { code: 'viewer' } }
-    bag.systemRoles = await loadSystem()
+    bag.systemRoles = (await loadSystem()).roles
     process.env.AUTH_MODE = 'BEARER'
   })
   after(() => {

@@ -204,7 +204,9 @@ const preload = async () => {
   // The control catalogue is a separate map, not extra entries in `roles`: a role
   // that can suspend a customer and a role that can read a customer's orders are not two
   // rows of one list.
-  global.systemRoles = await loaderRoles.loadSystem()
+  const system = await loaderRoles.loadSystem()
+  global.systemRoles = system.roles
+  global.systemCapabilities = system.capabilities
   // Before the data layer, like the rest: the flows are configuration, and the methods that run
   // them arrive later, through start().
   global.authFlows = await loaderAuthFlows.load()
@@ -648,7 +650,7 @@ export type {
   AccessLogManagement,
   GovernanceAction,
   GovernanceOutcome,
-  GovernanceActorPlane,
+  GovernanceActorKind,
   GovernanceLogEntry,
   GovernanceLogRecord,
   GovernanceLogManagement,

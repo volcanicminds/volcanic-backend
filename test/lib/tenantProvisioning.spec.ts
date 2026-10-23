@@ -192,7 +192,7 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
       intentId: intent.id,
       tenantId: ACME.id,
       actorId: 'sys-1',
-      actorPlane: 'control',
+      actorKind: 'system_user',
       detail: {
         path: path.join(exports, answer.package),
         slot: 'control',

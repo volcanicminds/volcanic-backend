@@ -19,6 +19,15 @@ export function isTenancyEnabled(): boolean {
   return !!tenantsConfig()?.strategy
 }
 
+/**
+ * A route that answers to the platform's own identities: a control route where tenants are
+ * declared. Without tenants there is one identity space, and a control route serves the
+ * application's users and tokens like any other.
+ */
+export function isPlatformRoute(req: FastifyRequest): boolean {
+  return (req.routeOptions?.config as { tenantContext?: boolean } | undefined)?.tenantContext === false && isTenancyEnabled()
+}
+
 /** Raised instead of reading a container nobody asked for. Never caught inside the framework. */
 export class NoDataContextError extends Error {
   readonly code = 'NO_DATA_CONTEXT'

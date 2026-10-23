@@ -22,6 +22,7 @@
 | `/system/manifest` | control | description of the manageable API, for the platform console |
 | `/system/auth/*` | control | authentication of platform administrators |
 | `/system/users/*` | control | management of platform administrators |
+| `/system/tokens/*` | control | machine credentials of the platform, managed by the superuser (§5) |
 | `/tenants/*` | control | the tenant registry and container life cycle |
 
 **`/tool/*` does not exist in v5.** Its only route, `POST /tool/synchronize-schemas`, rebuilt a
@@ -280,7 +281,7 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | GET | `/token` | capability `tokens` | |
 | GET | `/token/count` | capability `tokens` | |
 | GET | `/token/:id` | capability `tokens` | |
-| POST | `/token` | capability `tokens`, `freshAuth` | `expiresAt` is required in the body: a future date, or an explicit `null` for no expiry; a past or unreadable date is 400 `TOKEN_EXPIRY_INVALID`. The bearer carries the same expiry as `exp`, and a `null` one has none, whatever `JWT_EXPIRES_IN` says. Under tenants it carries `tid`, the tenant it was created in: no header is needed, and one naming another tenant is 403 `TENANT_MISMATCH`. Answers with the row and `token`, the bearer: shown here once and never stored (MIGRATION §33) |
+| POST | `/token` | capability `tokens`, `freshAuth` | `expiresAt` is required in the body: a future date, or an explicit `null` for no expiry; a past or unreadable date is 400 `TOKEN_EXPIRY_INVALID`. The bearer carries the same expiry as `exp`, and a `null` one has none, whatever `JWT_EXPIRES_IN` says. It carries `typ: 'integration'`, the label that has it looked up among the tokens and read from the `Authorization` header only (docs/AUTHORIZATION_V5.md §5). Under tenants it carries `tid`, the tenant it was created in: no header is needed, and one naming another tenant is 403 `TENANT_MISMATCH`. The `admin` role, asked by whoever does not hold it, is 403 `TOKEN_ROLE_FORBIDDEN`. Answers with the row and `token`, the bearer: shown here once and never stored (MIGRATION §33) |
 | PUT | `/token/:id` | capability `tokens`, `freshAuth` | |
 | DELETE | `/token/:id` | capability `tokens` | a token removed already answers `{ ok: true }` and changes nothing |
 | POST | `/token/:id/block` | capability `tokens` | **path changed**: v4 was `/token/block/:id`. 404 for an unknown token |
@@ -305,7 +306,7 @@ by a client; neither the framework nor the database lets a row be changed or rem
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| GET | `/governance-log` | capability `governance-log` | Magic Query over `action`, `actorId`, `actorPlane`, `outcome`, `targetId`, `occurredAt`. Only the `token.*` acts, a condition the URL cannot relax: without tenants the operators' rows sit in the same log and are read at `/system/governance-log`. 404 `NOT_FOUND` in a build without the governance log manager |
+| GET | `/governance-log` | capability `governance-log` | Magic Query over `action`, `actorId`, `actorKind`, `outcome`, `targetId`, `occurredAt`. Only the `token.*` acts, a condition the URL cannot relax: without tenants the operators' rows sit in the same log and are read at `/system/governance-log`. 404 `NOT_FOUND` in a build without the governance log manager |
 | GET | `/governance-log/count` | capability `governance-log` | |
 
 ### `/access-log` (tenant scope, new in v5)
@@ -338,7 +339,7 @@ integration token get `STEP_UP_NOT_AVAILABLE`, so they do not export.
 
 ---
 
-## 5. `/system/auth` and `/system/users` (control scope, new in v5)
+## 5. `/system/auth`, `/system/users` and `/system/tokens` (control scope, new in v5)
 
 Platform administrators authenticate on their own routes and receive a token carrying
 `scp: 'control'` and no `tid`. There is **no public registration**: system users are provisioned.
@@ -368,9 +369,18 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/users/:id/block` | capability `system-users` | |
 | POST | `/system/users/:id/unblock` | capability `system-users` | |
 | POST | `/system/users/:id/mfa/reset` | capability `system-users` | |
+| GET | `/system/tokens` | `system:admin` | the platform's integration tokens, the twin of §4 on the control plane's `token` table |
+| GET | `/system/tokens/count` | `system:admin` | |
+| GET | `/system/tokens/:id` | `system:admin` | |
+| POST | `/system/tokens` | `system:admin`, `freshAuth` | as `POST /token`, with roles from the control catalogue and no `public` default. The bearer is signed with `typ: 'integration'`, `scp: 'control'` and no `tid`. `system:admin` among the roles is 403 `TOKEN_ROLE_FORBIDDEN`, for the superuser too |
+| PUT | `/system/tokens/:id` | `system:admin`, `freshAuth` | `system:admin` among the roles is 403 `TOKEN_ROLE_FORBIDDEN` |
+| DELETE | `/system/tokens/:id` | `system:admin` | |
+| POST | `/system/tokens/:id/block` | `system:admin` | |
+| POST | `/system/tokens/:id/unblock` | `system:admin`, `freshAuth` | |
+| POST | `/system/tokens/:id/reissue` | `system:admin`, `freshAuth` | as `POST /token/:id/reissue` |
 | GET | `/system/access-log` | capability `access-log`, granted to `system:auditor` | Magic Query over the access log of the platform (`scope: 'control'` only, a condition the URL cannot relax) |
 | GET | `/system/access-log/count` | capability `access-log` | |
-| GET | `/system/governance-log` | capability `governance-log`, granted to `system:auditor` | Magic Query over what the operators did to the platform (§5.1): `tenantId`, `action`, `actorId`, `actorPlane`, `outcome`, `occurredAt`. A build without the governance log manager answers 404 `NOT_FOUND` |
+| GET | `/system/governance-log` | capability `governance-log`, granted to `system:auditor` | Magic Query over what the operators did to the platform (§5.1): `tenantId`, `action`, `actorId`, `actorKind`, `outcome`, `occurredAt`. A build without the governance log manager answers 404 `NOT_FOUND` |
 | GET | `/system/governance-log/count` | capability `governance-log` | |
 | GET | `/system/account-creation` | capability `tenants:read` | the rule for every tenant (§2.5): `allowed`, `default`, `from` (`control` or `deployment`) and the deployment's own rule |
 | PUT | `/system/account-creation` | capability `tenants` | body `{ allowed, default }`, the default inside the set; otherwise 400 `ACCOUNT_CREATION_INVALID` |
@@ -384,9 +394,11 @@ that changes the platform writes one row of `governance_log` in the control plan
 export, ask to destroy or destroy, impersonation start and end, the `/system/users` writes, the
 identity provider writes of §6 and the two writes of `/system/account-creation`. The exports and
 downloads of the tenant plane (§4.1) write there too, and so does the cleanup of old packages
-(§6.3). The author, the address and the request id come from the request, and `actorPlane` says
-whether the author is an operator (`control`) or a tenant's user (`tenant`); a job writes them all
-null. The row names fields and reasons, never a value, a password or a client secret. The acts on
+(§6.3). The author, the address and the request id come from the request, and `actorKind` names
+the table the author comes from: an operator (`system_user`), a tenant's user (`user`) or an
+integration token of either plane (`token`, its row in the same container as the log); a job
+writes them all null. The acts on the platform's own tokens (`/system/tokens`, §5) are written
+here, as `token.*` rows of the control plane. The row names fields and reasons, never a value, a password or a client secret. The acts on
 a tenant's integration tokens are written in that tenant's container instead, and in no other log:
 they belong to the tenant, travel with its package and are read by its administrator. Without
 tenants the control plane is the only container, and holds both kinds. An act that belongs to the

@@ -359,8 +359,8 @@ it names, which is also why no column carries a foreign key.
 | `action` | text | no | | one of a closed list, enforced by the manager: `tenant.*`, `impersonation.*`, `system_user.*`, `identity_provider.*`, `account_creation.*` on the control plane only; `token.*` in any container |
 | `outcome` | text | no | | `success`, `intent` or `failure` |
 | `intent_id` | text | yes | | on the outcome of an export, a download, a package's expiry or a destruction, the `id` of its intent |
-| `actor_id` | text | yes | | the author's `id`: a `system_user.id` or a tenant's `user.id`, as `actor_plane` says |
-| `actor_plane` | text | yes | | `control` for an operator, `tenant` for a user of the tenant's container. Null with no author, as for a job or the renewal of a token by a restore |
+| `actor_id` | text | yes | | the author's `id` in the table `actor_kind` names: a `system_user.id`, a tenant's `user.id`, or the `id` of a token's row in the same container as the log |
+| `actor_kind` | text | yes | | `system_user` for an operator, `user` for a user of the tenant's container, `token` for an integration token of either plane. Null with no author, as for a job or the renewal of a token by a restore |
 | `tenant_id` | text | yes | | on the control plane, the tenant concerned, if any. Null inside a tenant's container, which is the tenant |
 | `target_id` | text | yes | | the operator, provider key, impersonated user or token acted upon |
 | `detail` | jsonb | yes | | names and reasons: the fields a patch carried, the roles a token was given, a suspension or block reason, an export path, a failure code, the impersonation an act was made under |

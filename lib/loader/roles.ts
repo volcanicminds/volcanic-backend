@@ -1,4 +1,4 @@
-import type { Role, Roles, SystemCapability, SystemRole, SystemRoles } from '../../types/global.js'
+import type { FrameworkSystemCapability, Role, Roles, SystemCapability, SystemRole, SystemRoles } from '../../types/global.js'
 import { normalizePatterns } from '../util/path.js'
 import { globSync } from 'glob'
 import builtinSystemRoles from '../config/systemRoles.js'
@@ -13,8 +13,11 @@ export const PROTECTED_ROLE_CODES = ['admin', 'public']
 /** The namespace that separates the two catalogues. A code is in one or the other, never both. */
 export const SYSTEM_PREFIX = 'system:'
 
-/** The control catalogue, closed (docs/AUTHORIZATION_V5.md §4). A consumer cannot coin one. */
-export const SYSTEM_CAPABILITIES: readonly SystemCapability[] = [
+/**
+ * The framework's part of the control catalogue (docs/AUTHORIZATION_V5.md §4). A project or a
+ * package adds its own in its `config/systemRoles.ts`; these stay the framework's.
+ */
+export const SYSTEM_CAPABILITIES: readonly FrameworkSystemCapability[] = [
   'tenants:read',
   'tenants',
   'tenants:impersonate',
@@ -33,7 +36,7 @@ export const SYSTEM_CAPABILITIES: readonly SystemCapability[] = [
  * a tenant's own, `/system/governance-log` the control plane's. Everything else in the
  * control catalogue stays refused on a tenant route.
  */
-export const SHARED_CAPABILITIES: readonly SystemCapability[] = ['manifest', 'governance-log']
+export const SHARED_CAPABILITIES: readonly FrameworkSystemCapability[] = ['manifest', 'governance-log']
 
 export const isSystemRoleCode = (code: unknown): boolean => typeof code === 'string' && code.startsWith(SYSTEM_PREFIX)
 
@@ -77,11 +80,11 @@ export function mergeRoles(roles: Roles, configRoles: Role[]): Roles {
 
 /**
  * The control catalogue, merged with the same protected rule and one more: a role that does
- * not carry the `system:` prefix is not a control role, and a capability outside the closed
- * catalogue is refused rather than stored. A capability nobody honours is a permission that
- * looks granted, which is worse than one that is missing.
+ * not carry the `system:` prefix is not a control role, and a capability outside `capabilities`
+ * is refused rather than stored. A capability nobody honours is a permission that looks granted,
+ * which is worse than one that is missing.
  */
-export function mergeSystemRoles(roles: SystemRoles, configRoles: SystemRole[]): SystemRoles {
+export function mergeSystemRoles(roles: SystemRoles, configRoles: SystemRole[], capabilities: readonly SystemCapability[]): SystemRoles {
   const protectedCodes = new Set<string>(PROTECTED_SYSTEM_ROLE_CODES)
 
   for (const role of configRoles || []) {
@@ -92,7 +95,7 @@ export function mergeSystemRoles(roles: SystemRoles, configRoles: SystemRole[]):
       continue
     }
 
-    const unknown = (role.capabilities || []).filter((c) => !SYSTEM_CAPABILITIES.includes(c))
+    const unknown = (role.capabilities || []).filter((c) => !capabilities.includes(c))
     if (unknown.length) {
       if (log?.e) log.error(`Roles: control role '${role.code}' names capabilities outside the catalogue: ${unknown.join(', ')}`)
       continue
@@ -132,26 +135,57 @@ export async function load() {
   return roles
 }
 
-/** The control catalogue: the framework's three, plus whatever a consumer adds in its own file. */
-export async function loadSystem(): Promise<SystemRoles> {
-  const roles: SystemRoles = {}
-  mergeSystemRoles(roles, builtinSystemRoles)
+/**
+ * The capabilities a `config/systemRoles.ts` declares beside its roles, as the named export
+ * `capabilities`. A name the framework reserves, or one that is not a plain word, is refused:
+ * declaring `tenants:destroy` again would not make it a project's.
+ */
+export function declaredCapabilities(value: unknown, file: string): string[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) {
+    if (log?.e) log.error(`Roles: ${file} exports \`capabilities\` that is not a list of names`)
+    return []
+  }
+  return value.filter((c) => {
+    const valid = typeof c === 'string' && /^[a-z][a-z0-9:-]*$/.test(c) && !SYSTEM_CAPABILITIES.includes(c as never)
+    if (!valid && log?.e) log.error(`Roles: ${file} declares the control capability '${String(c)}', reserved or not a name`)
+    return valid
+  })
+}
 
+/**
+ * The control catalogue: the framework's roles and capabilities, plus whatever a project or a
+ * package declares in its own file. Every capability is collected before any role is merged, so
+ * a role may name one declared in another file, and a role naming one declared nowhere is dropped.
+ */
+export async function loadSystem(): Promise<{ roles: SystemRoles; capabilities: readonly SystemCapability[] }> {
   const patterns = normalizePatterns(
     ['..', 'config', 'systemRoles.{ts,js}'],
     ['src', 'config', 'systemRoles.{ts,js}']
   )
 
+  const modules: { file: string; roles: SystemRole[] }[] = []
+  const capabilities = new Set<SystemCapability>(SYSTEM_CAPABILITIES)
   for (const pattern of patterns) {
     const files = globSync(pattern, { windowsPathsNoEscape: true })
     for (const f of files) {
       const module = await import(f)
-      const declared = (module.default || module) as SystemRole[]
-      // The framework's own file is one of the matches: merging it twice is a no-op.
-      mergeSystemRoles(roles, declared)
+      // A file may declare capabilities alone, with no roles.
+      const declared = module.default || module
+      modules.push({ file: f, roles: Array.isArray(declared) ? (declared as SystemRole[]) : [] })
+      for (const c of declaredCapabilities(module.capabilities, f)) capabilities.add(c)
     }
   }
 
+  const catalogue = [...capabilities]
+  const roles: SystemRoles = {}
+  mergeSystemRoles(roles, builtinSystemRoles, catalogue)
+  // The framework's own file is one of the matches: merging it twice is a no-op.
+  for (const { roles: declared } of modules) mergeSystemRoles(roles, declared, catalogue)
+
   if (log.i) log.info('System roles loaded: ' + Object.keys(roles).join(', '))
-  return roles
+  if (catalogue.length > SYSTEM_CAPABILITIES.length && log.i) {
+    log.info('Control capabilities declared: ' + catalogue.slice(SYSTEM_CAPABILITIES.length).join(', '))
+  }
+  return { roles, capabilities: catalogue }
 }

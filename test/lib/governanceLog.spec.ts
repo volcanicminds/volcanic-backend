@@ -58,28 +58,56 @@ describe('governance · the writer (F76, T-15.2)', () => {
 
   it('takes the operator, the address and the request id from the request, never from the route', async () => {
     const governance = fakeGovernanceLog()
-    const forged = { actorId: 'forged', actorPlane: 'tenant' }
+    const forged = { actorId: 'forged', actorKind: 'user' }
     await governed(request(governance), async () => ({ id: 't-1' }), (row) => ({ action: 'tenant.created', tenantId: row.id, ...forged } as any))
     expect(governance.rows[0]).toMatchObject({
       outcome: 'success',
       tenantId: 't-1',
       actorId: 'op-1',
-      actorPlane: 'control',
+      actorKind: 'system_user',
       ip: '203.0.113.77',
       requestId: '42',
       intentId: null
     })
   })
 
-  it("names a tenant's user with the tenant plane, and nobody without either identity (T-17.11)", async () => {
+  it("names a tenant's user as a user, and nobody without an identity (T-17.11)", async () => {
     const governance = fakeGovernanceLog()
     const tenantUser = { ...request(governance), systemUser: undefined, user: { id: 'u-9' } }
     await intend(tenantUser, { action: 'tenant.exported', tenantId: 'id-acme' })
     await intend({ ...tenantUser, user: undefined }, { action: 'tenant.exported', tenantId: 'id-acme' })
-    expect(governance.rows.map((r) => [r.actorId, r.actorPlane])).toEqual([
-      ['u-9', 'tenant'],
+    expect(governance.rows.map((r) => [r.actorId, r.actorKind])).toEqual([
+      ['u-9', 'user'],
       [null, null]
     ])
+  })
+
+  it("names an integration token as a token, in its own container's log and in no other (F104)", async () => {
+    const governance = fakeGovernanceLog()
+    const own = { kind: 'control' }
+    const machine = { ...request(governance), control: own, systemUser: undefined, token: { id: 'tok-7' } }
+    await governed(machine, async () => true, () => ({ action: 'token.blocked', targetId: 'tok-8' }), { container: own as any })
+    expect(governance.rows.map((r) => [r.action, r.actorId, r.actorKind])).toEqual([['token.blocked', 'tok-7', 'token']])
+
+    // Another container's log, or the control plane's from a tenant's token: its id would name nothing there.
+    let ran = false
+    const elsewhere = governed(machine, async () => (ran = true), () => ({ action: 'token.blocked', targetId: 'tok-8' }), {
+      container: { kind: 'tenant' } as any
+    })
+    expect(await codeOf(elsewhere)).toEqual({ status: undefined, code: 'GOVERNANCE_ACTOR_MISPLACED' })
+    const config = (global as any).config
+    ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }
+    try {
+      const tenantToken = { ...machine, routeOptions: { config: { tenantContext: true } }, tenant: { kind: 'tenant' } }
+      expect(await codeOf(intend(tenantToken, { action: 'tenant.exported', tenantId: 'id-acme' }))).toEqual({
+        status: undefined,
+        code: 'GOVERNANCE_ACTOR_MISPLACED'
+      })
+    } finally {
+      ;(global as any).config = config
+    }
+    expect(ran).toBe(false)
+    expect(governance.rows).toHaveLength(1)
   })
 
   it('writes for a job with no actor, no address and no request, and refuses without a log', async () => {
@@ -87,7 +115,7 @@ describe('governance · the writer (F76, T-15.2)', () => {
     const job = { governance, ctx: { kind: 'control' } as any }
     const intent = await intend(job, { action: 'tenant.export_expired', tenantId: 'id-acme' })
     await settle(job, intent, 'success', { action: 'tenant.export_expired', tenantId: 'id-acme' })
-    expect(governance.rows.map((r) => [r.outcome, r.actorId, r.actorPlane, r.ip, r.requestId])).toEqual([
+    expect(governance.rows.map((r) => [r.outcome, r.actorId, r.actorKind, r.ip, r.requestId])).toEqual([
       ['intent', null, null, null, null],
       ['success', null, null, null, null]
     ])

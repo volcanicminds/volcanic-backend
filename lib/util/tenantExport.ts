@@ -258,7 +258,8 @@ function slotPackages(tenantId: string, slot: PackageSlot): { name: string; mani
 
 /**
  * Seconds until the tenant may export again from its own plane, or 0. The exports counted are the
- * intents of the tenant plane in the window, failed ones included: the work was done either way.
+ * intents of the tenant's users in the window, failed ones included: the work was done either way.
+ * Only a user exports from the tenant plane, since the route asks for a step-up a token cannot give.
  */
 async function quotaWait(req: FastifyRequest, tenantId: string): Promise<number> {
   const { max, windowSeconds } = exportQuota()
@@ -267,7 +268,7 @@ async function quotaWait(req: FastifyRequest, tenantId: string): Promise<number>
   const { records } = await manager.findQuery(ctx, {
     action: 'tenant.exported',
     outcome: 'intent',
-    actorPlane: 'tenant',
+    actorKind: 'user',
     tenantId,
     'occurredAt:ge': since,
     _sort: '-occurredAt',

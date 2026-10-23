@@ -51,6 +51,14 @@ export interface Credential {
  */
 export const REFRESH_TYP = 'refresh'
 
+/**
+ * The label of an integration token, signed into it as `typ`, on every plane. A session never
+ * carries it, so the label alone says where the subject is looked up: a labelled credential
+ * among the tokens only, any other among the persons only. Not the absence of `sid`: a session
+ * opened without the registry has none, and would be looked up among the tokens.
+ */
+export const INTEGRATION_TYP = 'integration'
+
 export const SESSION_COOKIES: Record<Plane, { access: string; refresh: string; refreshRoute: string }> = {
   tenant: { access: 'auth_token', refresh: 'refresh_token', refreshRoute: '/auth/refresh-token' },
   control: { access: 'control_token', refresh: 'control_refresh_token', refreshRoute: '/system/auth/refresh-token' }

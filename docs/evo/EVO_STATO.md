@@ -242,7 +242,11 @@ database, che il database stesso difende (F100, F102, T-18.2), e lo step-up su c
 modifica, rigenerazione e sblocco dei token di ogni piano (F101). Due compiti, T-18.1 e T-18.2,
 che non aspettano più decisioni (`EVO_FASE_18.md`). T-18.2 chiuso il 23 ottobre 2026: il
 registro in ogni contenitore, difeso dal database, gli atti sui token del tenant nel suo registro
-e lo step-up sulle loro rotte (`npm test` 1004 passate, `test:e2e:mt:pg` 79).
+e lo step-up sulle loro rotte (`npm test` 1004 passate, `test:e2e:mt:pg` 79). T-18.1 chiuso lo
+stesso giorno: i token della piattaforma a `/system/tokens`, l'etichetta `typ: 'integration'`
+che decide fra token e persone su ogni piano, il catalogo di sistema esteso dai permessi
+dichiarati e l'autore di ogni riga del registro per tabella, un token compreso (F104;
+`npm test` 1009 passate, `test:e2e:mt:pg` 103). **Fase 18 chiusa il 23 ottobre 2026.**
 
 **Fase 19 aperta il 21 ottobre 2026** (`EVO_FASE_19.md`), dalle prove di rag-sample che devono
 girare anche con i tenant: `withTenant(server, slug, fn)` presta il contenitore di un tenant fuori

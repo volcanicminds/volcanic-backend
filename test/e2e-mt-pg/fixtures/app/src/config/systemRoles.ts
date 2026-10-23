@@ -1,0 +1,9 @@
+// The project's own part of the control catalogue, as a project or a package declares it: one
+// capability, a role that holds it, and a role that names a capability nobody declared, which
+// the boot drops. `/probe/platform` asks for the declared one.
+export const capabilities = ['probe:platform']
+
+export default [
+  { code: 'system:prober', name: 'Prober', description: 'Reads the platform probe', capabilities: ['probe:platform'] },
+  { code: 'system:misnamed', name: 'Misnamed', description: 'Names a capability nobody declared', capabilities: ['probe:undeclared'] }
+]

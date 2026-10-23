@@ -776,8 +776,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "actor_plane": {
-          "name": "actor_plane",
+        "actor_kind": {
+          "name": "actor_kind",
           "type": "text",
           "primaryKey": false,
           "notNull": false

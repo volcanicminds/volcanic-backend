@@ -73,7 +73,7 @@ for (const strategy of ['schema', 'container'] as const) {
       const rows = await logOf(ACME.locator)
       expect(rows.map((r: any) => r.action)).toEqual(ACTS)
       for (const row of rows) {
-        expect(row).toMatchObject({ outcome: 'success', actor_id: admin.id, actor_plane: 'tenant', tenant_id: null, target_id: minted.id })
+        expect(row).toMatchObject({ outcome: 'success', actor_id: admin.id, actor_kind: 'user', tenant_id: null, target_id: minted.id })
       }
       expect(rows.map((r: any) => r.detail)).toEqual([
         { roles: ['public'], expiresAt: null },
@@ -93,7 +93,7 @@ for (const strategy of ['schema', 'container'] as const) {
       const own = await as(acmeAdmin, ACME.slug)('GET', '/governance-log')
       expect(own.statusCode).toBe(200)
       expect(body(own).map((r: any) => r.action).sort()).toEqual([...ACTS].sort())
-      expect(body(own)[0]).toMatchObject({ outcome: 'success', actorPlane: 'tenant', targetId: expect.any(String) })
+      expect(body(own)[0]).toMatchObject({ outcome: 'success', actorKind: 'user', targetId: expect.any(String) })
       expect(body(await as(acmeAdmin, ACME.slug)('GET', '/governance-log/count?action=token.blocked'))).toBe(1)
       expect(body(await as(globexAdmin, GLOBEX.slug)('GET', '/governance-log'))).toEqual([])
 
@@ -168,9 +168,11 @@ for (const strategy of ['schema', 'container'] as const) {
       expect((await as(body(started).token, ACME.slug)('DELETE', `/token/${target.id}`)).statusCode).toBe(200)
       const acts = (await logOf(ACME.locator)).slice(before)
       expect(acts.map((r: any) => r.action)).toEqual(['token.blocked', 'token.deleted'])
+      // A token's act is that token's, a row of the same container.
+      expect(acts[0]).toMatchObject({ actor_id: machine.id, actor_kind: 'token', detail: { reason: 'by a machine' } })
       // Under an impersonation the act is the impersonated admin's, and the row says who was behind it.
       const [admin] = await inContainer(ACME.locator, 'select id from "user" where email = $1', [ACME.adminEmail])
-      expect(acts[1]).toMatchObject({ actor_id: admin.id, actor_plane: 'tenant', detail: { impersonationId: expect.any(String) } })
+      expect(acts[1]).toMatchObject({ actor_id: admin.id, actor_kind: 'user', detail: { impersonationId: expect.any(String) } })
     })
 
     it('does not make a change it cannot write down', async () => {

@@ -99,14 +99,24 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   `lib/util/session.ts:146`), e quelle persone verrebbero cercate fra i token. Oggi, in modalità
   bearer, un token si cerca prima fra gli utenti e poi fra i token
   (`lib/hooks/onRequest.ts:178-197`); con la regola basta una lettura.
+- **F104** (proprietario, 23 ottobre 2026): l'autore di una riga di `governance_log` si dice con
+  `actor_kind`, che prende il posto di `actor_plane` e nomina la tabella da cui viene: `user`,
+  `system_user` o `token`. Con un token, `actor_id` è l'id della sua riga, nel contenitore del
+  registro. Nata chiudendo T-18.2: un token con il permesso `tokens` che blocca o elimina un
+  token lasciava l'autore vuoto, come un job, e chi legge il registro non sapeva quale macchina
+  fosse stata. Scartato l'id del token nel dettaglio con l'autore vuoto, come per
+  l'impersonificazione: la riga continuerebbe a sembrare di nessuno. Vale anche per i token di
+  controllo, quindi entra in T-18.1. Nessuna migrazione nuova: la colonna si riscrive nelle due
+  migrazioni che creano la tabella.
 
 ## 3. Compiti
 
-- [ ] **T-18.1** Un token di integrazione sul piano di controllo. Firmato con `sub` e
+- [x] **T-18.1** Un token di integrazione sul piano di controllo. Firmato con `sub` e
   `scp: 'control'`, senza `tid`; emesso, rinnovato e revocato da rotte `scope: 'control'`;
   riconosciuto dall'hook sulle rotte di controllo accanto all'utente di sistema; con i ruoli del
   catalogo di sistema, esteso dai permessi dichiarati (F97, F98, F99, F101); la regola unica fra
-  token e sessione vale su ogni piano (F103).
+  token e sessione vale su ogni piano (F103); l'autore di ogni riga del registro dice da quale
+  tabella viene, un token compreso (F104).
   **Fatto quando**: una macchina con un token di controllo chiama una rotta `scope: 'control'` che
   la sua capability apre e riceve 200, e una che non apre riceve 403; lo stesso token dentro un
   tenant è 403 `SCOPE_MISMATCH`; un token del tenant sulla stessa rotta di controllo è 403; un
@@ -118,10 +128,30 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   scartato all'avvio; emettere, modificare, rigenerare o sbloccare senza step-up è 403
   `STEP_UP_REQUIRED`,
   e con un token è 403 `STEP_UP_NOT_AVAILABLE`, mentre il blocco passa; emissione, rinnovo e
-  revoca scrivono ciascuna una riga di `governance_log`. Prove via HTTP su Postgres reale, con
+  revoca scrivono ciascuna una riga di `governance_log`; un atto fatto da un token, di controllo o
+  del tenant, ha per autore quel token (`actor_kind: 'token'`). Prove via HTTP su Postgres reale, con
   entrambe le strategie. Difetti da piantare: un token senza `scp` accettato sul piano di
   controllo; la revoca letta da una cache; l'eccezione del canale estesa alle sessioni; una
   credenziale senza etichetta cercata fra i token.
+  **Chiuso il 23 ottobre 2026.** Un solo controller dei token serve entrambi i piani: le rotte
+  `/system/tokens` (solo con i tenant, solo `system:admin`) riusano quello di `/token`, che sul
+  piano di controllo prende i ruoli da `global.systemRoles`, non aggiunge `public` e rifiuta
+  `system:admin` con `TOKEN_ROLE_FORBIDDEN`, lo stesso codice che ora riceve chi chiede `admin`
+  in un tenant senza averlo. L'etichetta è `typ: 'integration'` (`INTEGRATION_TYP`,
+  `lib/util/credential.ts`); l'hook sceglie la tabella dall'etichetta e legge solo quella. Il
+  catalogo di sistema cresce con l'export `capabilities` di un `config/systemRoles.ts`
+  (`declaredCapabilities`, `lib/loader/roles.ts`), e `global.systemCapabilities` lo porta al
+  router. La guardia `GOVERNANCE_ACTOR_MISPLACED` impedisce che l'atto di un token finisca nel
+  registro di un altro contenitore. Prove: `controlToken.e2e` (12 per strategia, con un ruolo e
+  un permesso dichiarati dalla fixture e un ruolo che ne nomina uno non dichiarato), i rifiuti
+  di `tokenApex.spec`, `authChannels.spec`, `roles.spec` e `router.spec`; `npm test` 1009
+  passate, `test:e2e:mt:pg` 103, `check-all` pulito. I quattro difetti piantati sono presi
+  ciascuno da una prova dello spec, per strategia: il token senza `scp`, la revoca da una cache,
+  l'eccezione del canale estesa alle sessioni, la credenziale senza etichetta cercata fra i
+  token. Sul piano di controllo `STEP_UP_NOT_AVAILABLE` non si raggiunge con un token: le rotte
+  sono del solo superutente e un token non lo è mai, quindi è 403 `FORBIDDEN` prima; con un
+  token del tenant lo prova `tokenGovernance.e2e`. Il token piantato in un cookie è provato in
+  `authChannels.spec`, perché l'app e2e parte in modalità bearer senza lettore di cookie.
 - [x] **T-18.2** Il registro di governo in ogni contenitore (F100). `governance_log` entra
   nell'insieme tenant; il manager scrive e legge sul contenitore della richiesta; gli atti sui
   token (creazione, modifica, rigenerazione, blocco, sblocco, eliminazione) si scrivono nella

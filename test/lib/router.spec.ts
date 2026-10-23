@@ -78,6 +78,30 @@ describe('loader/router — processRoute', () => {
     expect(borrowed[0]).toContain('cannot gate a tenant route')
   })
 
+  it('opens a control route to a capability a project declared, and keeps it off a tenant route (F98)', () => {
+    const saved = (global as any).systemCapabilities
+    ;(global as any).systemCapabilities = ['tenants:read', 'tenants', 'rag:shared-ingest']
+    ;(global as any).systemRoles['system:sentinel'] = { code: 'system:sentinel', name: 'Sentinel', capabilities: ['rag:shared-ingest'] }
+    try {
+      const errors: string[] = []
+      const r: any = run({ method: 'POST', path: '/', handler: 'x.y', requireCapability: 'rag:shared-ingest', config: { scope: 'control' } }, [], errors)
+      expect(errors).toEqual([])
+      // Without tenants the gate widens to the application's admin as well, as for any control route.
+      expect(codes(r).slice(0, 2)).toEqual(['system:sentinel', 'system:admin'])
+
+      const borrowed: string[] = []
+      run({ method: 'POST', path: '/', handler: 'x.y', requireCapability: 'rag:shared-ingest' }, [], borrowed)
+      expect(borrowed[0]).toContain('cannot gate a tenant route')
+
+      const undeclared: string[] = []
+      run({ method: 'POST', path: '/', handler: 'x.y', requireCapability: 'rag:shared-manage', config: { scope: 'control' } }, [], undeclared)
+      expect(undeclared[0]).toContain('not in the control catalogue')
+    } finally {
+      ;(global as any).systemCapabilities = saved
+      delete (global as any).systemRoles['system:sentinel']
+    }
+  })
+
   it('lets `manifest` gate a tenant route: both catalogues reserve it, one per plane (T-10.14)', () => {
     // `/admin/manifest` became a tenant route and `/system/manifest` the control one. Refusing the
     // shared name would stop every multi-tenant deployment with the manifest enabled from booting.

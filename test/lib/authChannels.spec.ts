@@ -21,7 +21,7 @@ import authHook from '../../lib/hooks/onRequest.js'
 import { logout, refreshToken } from '../../lib/api/auth/controller/auth.js'
 import { renew as systemRenew } from '../../lib/api/system/controller/systemAuth.js'
 import { impersonate, endImpersonation } from '../../lib/api/tenants/controller/tenants.js'
-import { authMode, refreshCookiePath } from '../../lib/util/credential.js'
+import { authMode, INTEGRATION_TYP, refreshCookiePath } from '../../lib/util/credential.js'
 import { parseRefreshCredential } from '../../lib/util/session.js'
 import { fakeSessionStore } from './fixtures/sessionStore.js'
 import { fakeFlowStore } from './fixtures/flowStore.js'
@@ -223,7 +223,7 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
 
     it('still accepts an integration token from the header, which v4 cookie mode did not read at all', async () => {
       const server = await build()
-      const integration = server.jwt.sign({ sub: INTEGRATION.externalId })
+      const integration = server.jwt.sign({ sub: INTEGRATION.externalId, typ: INTEGRATION_TYP })
       const res = await server.inject({ method: 'GET', url: '/orders', headers: { authorization: `Bearer ${integration}` } })
       expect(res.statusCode).toBe(200)
       expect(JSON.parse(res.body).who).toBe(INTEGRATION.id)
@@ -250,9 +250,14 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
 
     it('never resolves an integration token out of a cookie', async () => {
       const server = await build()
-      const planted = server.signCookie(server.jwt.sign({ sub: INTEGRATION.externalId }))
+      const planted = server.signCookie(server.jwt.sign({ sub: INTEGRATION.externalId, typ: INTEGRATION_TYP }))
       const res = await server.inject({ method: 'GET', url: '/orders', cookies: { auth_token: planted } })
-      expect(res.statusCode).toBe(404)
+      expect(res.statusCode).toBe(401)
+      expect(codeOf(res)).toBe('CREDENTIAL_CHANNEL')
+      // Without the label it is a person's credential, looked up among the persons alone.
+      const unlabelled = server.signCookie(server.jwt.sign({ sub: INTEGRATION.externalId }))
+      const asPerson = await server.inject({ method: 'GET', url: '/orders', cookies: { auth_token: unlabelled } })
+      expect(asPerson.statusCode).toBe(404)
       await server.close()
     })
 

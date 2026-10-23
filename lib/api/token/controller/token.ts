@@ -1,10 +1,15 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import type { DataHandle } from '../../../../types/global.js'
 import { includesRole } from '../../../util/authz.js'
-import { dataContext } from '../../../util/tenancy.js'
+import { INTEGRATION_TYP } from '../../../util/credential.js'
+import { dataContext, isPlatformRoute } from '../../../util/tenancy.js'
 import { fieldNames, governed, type GovernanceEvent } from '../../../util/governance.js'
 import { httpError } from '../../../util/httpError.js'
 
+//
+// One controller for the tokens of every plane: the tenant's on `/tokens`, the control plane's on
+// `/system/tokens`. The route says which: its container, its catalogue of roles, and the claims
+// of the bearer follow from it.
 //
 // Every act on a token is written in the governance log of the container the token lives in, in
 // the transaction of the change, and in no other log: a change that cannot be written down
@@ -14,15 +19,25 @@ import { httpError } from '../../../util/httpError.js'
 const governedToken = <T>(req: FastifyRequest, change: (tx: DataHandle) => Promise<T>, event: (result: T) => GovernanceEvent | null) =>
   governed(req, change, event, { container: dataContext(req) })
 
-// Rule A: only an admin may grant a token the admin role, and only with
-// allow_multiple_admin — otherwise a `tokens` capability holder could mint an admin
-// token and escalate. Tokens carry roles used for authorization (see onRequest).
-function assignsAdmin(req: FastifyRequest, roleValue: unknown): boolean {
+const SUPERUSER = 'system:admin'
+
+/**
+ * Whether the roles would make the token sovereign of its plane. On the control plane always:
+ * no token carries `system:admin`, whoever issues it. In a tenant, Rule A: only an admin may grant
+ * a token the admin role, and only with allow_multiple_admin, otherwise a `tokens` capability
+ * holder could mint an admin token and escalate. Tokens carry roles used for authorization (see
+ * onRequest).
+ */
+function grantsSovereignty(req: FastifyRequest, roleValue: unknown): boolean {
+  if (isPlatformRoute(req)) return includesRole(roleValue, SUPERUSER)
   return (
     includesRole(roleValue, roles.admin.code) &&
     (!req.hasRole(roles.admin) || config.options?.allow_multiple_admin !== true)
   )
 }
+
+const sovereignRefused = (reply: FastifyReply, message: string) =>
+  reply.status(403).send(httpError(403, message, 'TOKEN_ROLE_FORBIDDEN'))
 
 export async function count(req: FastifyRequest, _reply: FastifyReply) {
   return await req.server['tokenManager'].countQuery(dataContext(req), req.data())
@@ -60,15 +75,18 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   }
   data.expiresAt = expiresAt
 
-  // public is the default
+  // The roles of the token's own plane, and no other: a code the catalogue does not hold is
+  // dropped. A tenant token gets `public` by default; the control plane has no role to default to.
+  const platform = isPlatformRoute(req)
+  const catalogue: Record<string, { code: string } | undefined> = platform ? global.systemRoles : global.roles
+  data.roles = (data.requiredRoles || []).map((r: string) => catalogue[r]?.code).filter((r?: string) => !!r)
   const publicRole = global.roles?.public?.code || 'public'
-  data.roles = (data.requiredRoles || []).map((r: string) => global.roles[r]?.code).filter((r?: string) => !!r)
-  if (!data.roles.includes(publicRole)) {
+  if (!platform && !data.roles.includes(publicRole)) {
     data.roles.push(publicRole)
   }
 
-  if (assignsAdmin(req, data.roles)) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot assign the admin role to a token' })
+  if (grantsSovereignty(req, data.roles)) {
+    return sovereignRefused(reply, platform ? 'A token never carries system:admin' : 'Cannot assign the admin role to a token')
   }
 
   const token = await governedToken(
@@ -95,15 +113,18 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
- * The bearer of a row. The tenant the row lives in is signed into it, as into a session's: with a
- * token the tenant of a request comes from `tid`, and a header may only agree with it
- * (docs/AUTHORIZATION_V5.md §5). Without tenants there is none, and no claim. It expires when the
+ * The bearer of a row, labelled as an integration token (lib/util/credential.ts). The plane the
+ * row lives in is signed into it, as into a session's: `scp: 'control'` for the control plane's,
+ * which the tenant resolution refuses inside a container; the tenant's id for a tenant's, since
+ * with a token the tenant of a request comes from `tid` and a header may only agree with it
+ * (docs/AUTHORIZATION_V5.md §5). Without tenants there is neither. It expires when the
  * row says, and only then. `reply.jwtSign` would add the session lifetime (JWT_EXPIRES_IN) over the
  * row's `exp`, and drops an `expiresIn: undefined` meant to clear it; `jwt.sign` given options signs
  * with those alone, so the registered lifetime never applies.
  */
 function signBearer(req: FastifyRequest, externalId: string, expiresAt: Date | null): string {
-  const claims = { sub: externalId, ...(req.tenantInfo && { tid: req.tenantInfo.id }) }
+  const plane = isPlatformRoute(req) ? { scp: 'control' } : req.tenantInfo ? { tid: req.tenantInfo.id } : {}
+  const claims = { sub: externalId, typ: INTEGRATION_TYP, ...plane }
   return req.server.jwt.sign(expiresAt ? { ...claims, exp: Math.floor(expiresAt.getTime() / 1000) } : claims, {})
 }
 
@@ -120,8 +141,8 @@ export async function reissue(req: FastifyRequest, reply: FastifyReply) {
 
   const token = await tokens.retrieveTokenById(dataContext(req), id)
   if (!token?.id || token.deletedAt) return reply.status(404).send()
-  if (assignsAdmin(req, token.roles)) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot reissue a token with the admin role' })
+  if (grantsSovereignty(req, token.roles)) {
+    return sovereignRefused(reply, 'Cannot reissue a token with the admin role')
   }
 
   const expiresAt = token.expiresAt ? new Date(token.expiresAt) : null
@@ -173,8 +194,8 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const data = req.data() || {}
-  if (assignsAdmin(req, data.roles)) {
-    return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Cannot assign the admin role to a token' })
+  if (grantsSovereignty(req, data.roles)) {
+    return sovereignRefused(reply, isPlatformRoute(req) ? 'A token never carries system:admin' : 'Cannot assign the admin role to a token')
   }
   // The roles are kept as they became: a grant is the change an auditor looks for first.
   return await governedToken(

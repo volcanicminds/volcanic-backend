@@ -1905,6 +1905,27 @@ declares the capability) is admitted too. A control route may list only `system:
 framework's own routes gate on capabilities such as `users`, `tokens` and `manifest`, so a project role that
 declares one of them gains those routes too. The full model is in Part 6.3 and Part 11.
 
+A control route gates on the control catalogue: the framework's capabilities plus those a
+`config/systemRoles.ts` declares beside its roles, as the named export `capabilities` (of the
+application or of a package that ships the file):
+
+```typescript
+// src/config/systemRoles.ts
+export const capabilities = ['rag:ingest']
+export default [{ code: 'system:ingestor', name: 'Ingestor', description: 'feeds the shared corpus', capabilities: ['rag:ingest'] }]
+```
+
+A declared name is a plain word (`[a-z][a-z0-9:-]*`) the framework does not reserve, or it is dropped at
+boot with an error; a control role naming a capability outside the catalogue is dropped too. A tenant
+route that requires a control capability is refused at boot. `global.systemCapabilities` holds the whole
+catalogue.
+
+With tenants the platform has integration tokens of its own, at `/system/tokens`, for `system:admin` alone:
+rows of the control plane's `token` table, signed with `typ: 'integration'`, `scp: 'control'` and no `tid`.
+Their roles come from the control catalogue with no `public` default, and never include `system:admin`
+(403 `TOKEN_ROLE_FORBIDDEN`). A platform token on a tenant route, or a tenant's token on a platform route,
+is 403 `SCOPE_MISMATCH`.
+
 A route acts **inside the tenant** by default. A route that acts on the platform itself (the registry, the
 platform identities) declares `scope: 'control'`:
 
@@ -2870,8 +2891,10 @@ Every step writes the **access log** (`access_log` table, one per container): `G
 `admin`, `GET /system/access-log` with the `access-log` capability. What the operators change on the platform
 goes to the **governance log** (`governance_log`, one per container, never purged), read at
 `GET /system/governance-log` with the `governance-log` capability; a change it cannot record is not made. A row's
-`actorPlane` says whether its author is an operator (`control`) or a tenant's user (`tenant`, the exports and
-downloads of `/exports`); a job writes author, plane and address null. The acts on a tenant's integration
+`actorKind` names the table its author comes from: an operator (`system_user`), a tenant's user (`user`, the
+exports and downloads of `/exports`) or an integration token of either plane (`token`, its row in the same
+container as the log); a job writes author, kind and address null. The acts on the platform's own tokens
+(`/system/tokens`) are `token.*` rows of the control plane's log. The acts on a tenant's integration
 tokens (`token.created`, `token.updated`, `token.reissued`, `token.blocked`, `token.unblocked`, `token.deleted`)
 go to the governance log of the tenant's own container instead, read by its `admin` at `GET /governance-log` (the
 `governance-log` capability of the tenant catalogue); without tenants both sit in the control plane's. The
@@ -4318,6 +4341,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | System | `GET /system/auth/me` | any control token | **yes** | — (the resolved `req.systemUser`) |
 | System | `GET /system/auth/sessions` · `DELETE /system/auth/sessions/:id` | any control token | **yes** | `sessionManager`⁸ |
 | System | `GET /system/users` · `POST /system/users` · `PUT/DELETE /system/users/:id` · `/block` · `/unblock` | `system-users` cap | **yes** | `systemUserManager` |
+| System | `GET /system/tokens` · `/count` · `/:id` · `POST /system/tokens` · `PUT/DELETE /system/tokens/:id` · `/block` · `/unblock` · `/reissue` (only with tenants; fresh: create, update, unblock, reissue) | `system:admin` only | **yes** | `tokenManager` + `governanceLogManager` |
 | System | `GET /system/manifest` (control plane, only with tenants) | `manifest` cap (control) | **yes** | — (schema only) |
 | Admin | `GET /admin/manifest` (tenant plane) | `manifest` cap | **yes** | — (schema only) |
 
@@ -4433,7 +4457,9 @@ Without a refresh cookie it answers `401 REFRESH_REQUIRED`, the client's cue to 
 
 The `Authorization` header is still read, and accepts **integration tokens only**: a session token
 presented there is refused with `CREDENTIAL_CHANNEL`. When a request carries both, the header is the
-credential.
+credential. An integration token is the one signed with `typ: 'integration'`, on either plane: that
+label alone has it looked up among the tokens (any other credential among the persons), and a
+labelled token planted in a cookie is refused with `CREDENTIAL_CHANNEL` too.
 
 `SameSite=Strict` is a deployment constraint: the admin and the API must be on the same site, that
 is the same registrable domain (`admin.example.com` and `api.example.com` are; `admin.example.com`

@@ -71,7 +71,7 @@ async function build(over: any = {}) {
 describe('system users · what it refuses (T-9.5)', () => {
   before(async () => {
     savedSystemRoles = (global as any).systemRoles
-    ;(global as any).systemRoles = await loadSystem()
+    ;(global as any).systemRoles = (await loadSystem()).roles
   })
 
   after(() => {

@@ -41,6 +41,17 @@ const platformAccessLog = {
   resource: { prefix: 'system/access-log', name: 'systemAccessLog', titleField: 'event', subtitleField: 'occurredAt' }
 }
 
+// The machines that act on the platform, a resource of their own.
+const platformTokens = {
+  group: 'system',
+  resource: { prefix: 'system/tokens', name: 'systemToken', titleField: 'name' }
+}
+
+// Only the superuser issues and manages a token of the control plane, and the token never
+// carries `system:admin` itself. Issuing, changing, reissuing and unblocking ask for a step-up;
+// blocking and deleting do not, so an access is taken away at once.
+const SUPERUSER = ['system:admin']
+
 // What the operators did to the platform, a resource of its own like the access log.
 const governanceLog = {
   group: 'system',
@@ -246,7 +257,7 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Find governance log entries',
-        description: 'Magic Query over the fields of the governance log: tenantId, action, actorId, actorPlane, occurredAt',
+        description: 'Magic Query over the fields of the governance log: tenantId, action, actorId, actorKind, occurredAt',
         manifest: governanceLog,
         query: { $ref: 'getQueryParamsSchema' },
         response: { 200: { type: 'array', items: { $ref: 'governanceLogSchema#' } } }
@@ -462,6 +473,138 @@ export default {
         title: 'Reset the second factor of a platform administrator',
         description: 'The way back for an operator who lost the device. Never self-service (T-10.19)',
         manifest: operators,
+        response: { 200: { $ref: 'defaultResponse#' } }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/tokens',
+      roles: SUPERUSER,
+      handler: 'systemToken.find',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Find platform tokens',
+        description: 'Magic Query over the integration tokens of the control plane',
+        manifest: platformTokens,
+        query: { $ref: 'getQueryParamsSchema' },
+        response: { 200: { type: 'array', items: { $ref: 'tokenSchema#' } } }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/tokens/count',
+      roles: SUPERUSER,
+      handler: 'systemToken.count',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Count platform tokens',
+        description: 'Count',
+        manifest: platformTokens,
+        query: { $ref: 'getQueryParamsSchema' },
+        response: { 200: { type: 'number' } }
+      }
+    },
+    {
+      method: 'GET',
+      path: '/tokens/:id',
+      roles: SUPERUSER,
+      handler: 'systemToken.findOne',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Read one platform token',
+        description: 'By id',
+        manifest: platformTokens,
+        params: { $ref: 'onlyIdSchema#' },
+        response: { 200: { $ref: 'tokenSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/tokens',
+      roles: SUPERUSER,
+      handler: 'systemToken.create',
+      middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
+      config: {
+        title: 'Issue a platform token',
+        description: 'Roles from config/systemRoles.ts, never system:admin. The bearer is shown once',
+        manifest: platformTokens,
+        body: { $ref: 'tokenCreateBodySchema' },
+        response: { 200: { description: 'The token, with its bearer: shown here once, never stored', $ref: 'tokenCreatedSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/tokens/:id/reissue',
+      roles: SUPERUSER,
+      handler: 'systemToken.reissue',
+      middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
+      config: {
+        title: 'Reissue a platform token',
+        description: 'A new bearer for the token: every bearer issued before stops working. Name, roles and expiry stay',
+        manifest: platformTokens,
+        params: { $ref: 'onlyIdSchema#' },
+        response: { 200: { description: 'The token, with its new bearer: shown here once, never stored', $ref: 'tokenCreatedSchema#' } }
+      }
+    },
+    {
+      method: 'PUT',
+      path: '/tokens/:id',
+      roles: SUPERUSER,
+      handler: 'systemToken.update',
+      middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
+      config: {
+        title: 'Update a platform token',
+        description: 'Name, roles and expiry; never system:admin',
+        manifest: platformTokens,
+        params: { $ref: 'onlyIdSchema#' },
+        body: { $ref: 'tokenUpdateBodySchema' },
+        response: { 200: { $ref: 'tokenSchema#' } }
+      }
+    },
+    {
+      method: 'DELETE',
+      path: '/tokens/:id',
+      roles: SUPERUSER,
+      handler: 'systemToken.remove',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Revoke a platform token',
+        description: 'Soft delete: the next request with its bearer is refused',
+        manifest: platformTokens,
+        params: { $ref: 'onlyIdSchema#' },
+        response: { 200: { $ref: 'defaultResponse#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/tokens/:id/block',
+      roles: SUPERUSER,
+      handler: 'systemToken.block',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Block a platform token',
+        description: 'With a stated reason',
+        manifest: { ...platformTokens, input: { fields: { reason: { widget: 'textarea' } } } },
+        params: { $ref: 'onlyIdSchema#' },
+        body: { $ref: 'blockBodySchema#' },
+        response: { 200: { $ref: 'defaultResponse#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/tokens/:id/unblock',
+      roles: SUPERUSER,
+      handler: 'systemToken.unblock',
+      middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
+      config: {
+        title: 'Unblock a platform token',
+        description: 'Gives the access back, as an issue does',
+        manifest: platformTokens,
+        params: { $ref: 'onlyIdSchema#' },
         response: { 200: { $ref: 'defaultResponse#' } }
       }
     }

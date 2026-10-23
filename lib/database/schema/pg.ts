@@ -337,9 +337,8 @@ export function appTables(schemaName: string) {
       intentId: text('intent_id'),
       // The actor's `id`, which never changes; the `externalId` is rotated by a revocation.
       actorId: text('actor_id'),
-      // 'control' for an operator, 'tenant' for a user of the tenant's container: the two ids
-      // name rows of different tables. Null with no actor, as for a job.
-      actorPlane: text('actor_plane'),
+      // The table `actor_id` names: 'user', 'system_user' or 'token'. Null with no actor, as for a job.
+      actorKind: text('actor_kind'),
       tenantId: text('tenant_id'),
       targetId: text('target_id'),
       detail: jsonb('detail'),

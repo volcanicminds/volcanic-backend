@@ -2,7 +2,7 @@ import { inArray, type SQL } from 'drizzle-orm'
 import type {
   DataHandle,
   GovernanceAction,
-  GovernanceActorPlane,
+  GovernanceActorKind,
   GovernanceLogManagement,
   GovernanceLogRecord,
   GovernanceOutcome,
@@ -71,7 +71,7 @@ const ofScope = (log: unknown, scope?: GovernanceScope): SQL | undefined => {
 }
 
 const OUTCOMES: Record<GovernanceOutcome, true> = { success: true, intent: true, failure: true }
-const PLANES: Record<GovernanceActorPlane, true> = { control: true, tenant: true }
+const KINDS: Record<GovernanceActorKind, true> = { user: true, system_user: true, token: true }
 
 export interface GovernanceLogOptions {
   /** The `ip` of the `accessLog` block: the environment's `ACCESS_LOG_IP` wins over it. */
@@ -108,10 +108,10 @@ export function createGovernanceLogManager(options: GovernanceLogOptions = {}): 
         throw invalid('a governance entry needs an outcome: success, intent or failure')
       }
       if (entry.outcome === 'intent' && entry.intentId) throw invalid('an intent does not close another intent')
-      // Without its plane an actor id names no table: one is written with the other or not at all.
-      const plane = entry.actorPlane ?? null
-      if (plane !== null && !Object.hasOwn(PLANES, String(plane))) throw invalid('the plane of an actor is control or tenant')
-      if ((plane === null) !== (entry.actorId == null)) throw invalid('an actor is written with its plane')
+      // Without its kind an actor id names no table: one is written with the other or not at all.
+      const kind = entry.actorKind ?? null
+      if (kind !== null && !Object.hasOwn(KINDS, String(kind))) throw invalid('the kind of an actor is user, system_user or token')
+      if ((kind === null) !== (entry.actorId == null)) throw invalid('an actor is written with its kind')
       const detail = entry.detail ?? null
       if (detail !== null && (typeof detail !== 'object' || Array.isArray(detail))) {
         throw invalid('the detail of a governance entry is an object')
@@ -123,7 +123,7 @@ export function createGovernanceLogManager(options: GovernanceLogOptions = {}): 
           outcome: entry.outcome,
           intentId: entry.intentId ?? null,
           actorId: entry.actorId ?? null,
-          actorPlane: plane,
+          actorKind: kind,
           tenantId: entry.tenantId ?? null,
           targetId: entry.targetId ?? null,
           detail,

@@ -2,7 +2,7 @@
 import { getParams, getData, getQueryData, getBodyData } from '../util/common.js'
 import { httpError } from '../util/httpError.js'
 import type { FastifyContextConfig, FastifyReply, FastifyRequest } from 'fastify'
-import type { AuthenticatedUser, AuthenticatedToken, ControlHandle, Role } from '../../types/global.js'
+import type { AuthenticatedUser, ControlHandle, Role } from '../../types/global.js'
 
 /** The claims this framework signs, as opposed to whatever else may verify with the same secret. */
 type SessionClaims = {
@@ -15,8 +15,8 @@ type SessionClaims = {
   sid?: string
   auth_time?: number
 }
-import { dataContext, isTenancyEnabled } from '../util/tenancy.js'
-import { credentialOf, isCookieMode, REFRESH_TYP } from '../util/credential.js'
+import { dataContext, isPlatformRoute } from '../util/tenancy.js'
+import { credentialOf, INTEGRATION_TYP, isCookieMode, REFRESH_TYP } from '../util/credential.js'
 import { finishFreshness } from '../util/stepUp.js'
 import { withoutQuery } from '../util/logger.js'
 import { systemUserMayLogIn } from '../auth/subjects.js'
@@ -63,8 +63,8 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
     // `/admin/manifest`) authenticate the application's own users.
     // Demanding a platform identity there would demand a system user the deployment never
     // creates. With tenants declared the split is real, and a control route answers to a
-    // system user or to nobody.
-    const controlIdentity = cfg.tenantContext === false && isTenancyEnabled()
+    // system user, to a token of the control plane, or to nobody.
+    const controlIdentity = isPlatformRoute(req)
 
     // Same reader as the tenant resolution that already ran (lib/util/credential.ts): this
     // hook identifies the subject, that one decided the container, and both must be looking
@@ -93,13 +93,17 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           throw refusal('A refresh token does not authenticate a request', 'UNAUTHORIZED')
         }
 
-        // One kind of credential per channel. In cookie mode the header belongs to the
-        // integration tokens: a session token there is either a leftover of a bearer client or
-        // a token taken out of its cookie, and neither is a reason to accept it. The claims
-        // below are the ones an integration token never carries; one without them is still
-        // looked up in the token registry only, further down.
-        const integrationOnly = credential.channel === 'header' && isCookieMode()
-        if (integrationOnly && (controlIdentity || tokenData.scp || tokenData.imp)) {
+        // One kind of credential per channel, and the signed label says which kind this is
+        // (lib/util/credential.ts). An integration token travels in the header and nowhere else:
+        // the session cookie is written by the login, which never writes one. In cookie mode the
+        // header belongs to the integration tokens, on either plane: a session there is either a
+        // leftover of a bearer client or a token taken out of its cookie, and neither is a reason
+        // to accept it.
+        const integration = tokenData.typ === INTEGRATION_TYP
+        if (integration && credential.channel !== 'header') {
+          throw refusal('An integration token travels in the Authorization header only', 'CREDENTIAL_CHANNEL')
+        }
+        if (!integration && credential.channel === 'header' && isCookieMode()) {
           throw refusal('Sessions travel in the cookie: the Authorization header accepts integration tokens only', 'CREDENTIAL_CHANNEL')
         }
 
@@ -120,6 +124,24 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
 
         if (!subjectId) {
           throw new Error('Invalid token subject')
+        }
+
+        // A labelled credential is a row of the tokens of the container this route works on, the
+        // control plane's on a platform route, and is looked up there alone: one read, and never
+        // a person. The row decides at every request, so a block or a removal takes effect at once.
+        if (integration) {
+          const tokens = req.server['tokenManager']
+          const token = tokens?.isImplemented() ? await tokens.retrieveTokenByExternalId(dataContext(req), subjectId) : null
+          if (!token) {
+            return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
+          }
+          if (!(await tokens.isValidToken(token))) {
+            return reply.status(403).send(httpError(403, 'Token is not valid or blocked', 'TOKEN_NOT_VALID'))
+          }
+          req.token = token
+          const tokenRoles = normalizeRoles(token.roles)
+          req.roles = () => tokenRoles
+          return finishGates(req, reply, cfg, claims)
         }
 
         // An impersonated session is checked against the RECORD, not against the signature
@@ -172,41 +194,18 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           return finishGates(req, reply, cfg, claims)
         }
 
-        let user: null | AuthenticatedUser = null
-        let token: null | AuthenticatedToken = null
-
-        if (!integrationOnly && req.server['userManager']?.isImplemented()) {
-          user = await req.server['userManager'].retrieveUserByExternalId(dataContext(req), subjectId)
-          if (user) {
-            const isValid = await req.server['userManager'].isValidUser(user)
-            if (!isValid) {
-              return reply.status(403).send(httpError(403, 'User is not valid or blocked', 'USER_NOT_VALID'))
-            }
-            req.user = user
-          }
-        }
-
-        // Integration tokens come from the header and from nowhere else: the session cookie is
-        // written by the login, which never writes one.
-        if (!user && credential.channel === 'header' && req.server['tokenManager']?.isImplemented()) {
-          token = await req.server['tokenManager'].retrieveTokenByExternalId(dataContext(req), subjectId)
-          if (token) {
-            const isValid = await req.server['tokenManager'].isValidToken(token)
-            if (!isValid) {
-              return reply.status(403).send(httpError(403, 'Token is not valid or blocked', 'TOKEN_NOT_VALID'))
-            }
-            req.token = token
-          }
-        }
-
-        if (!req.user && !req.token) {
-          if (integrationOnly) {
-            throw refusal('Sessions travel in the cookie: the Authorization header accepts integration tokens only', 'CREDENTIAL_CHANNEL')
-          }
+        const user: AuthenticatedUser | null = req.server['userManager']?.isImplemented()
+          ? await req.server['userManager'].retrieveUserByExternalId(dataContext(req), subjectId)
+          : null
+        if (!user) {
           return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
         }
+        if (!(await req.server['userManager'].isValidUser(user))) {
+          return reply.status(403).send(httpError(403, 'User is not valid or blocked', 'USER_NOT_VALID'))
+        }
+        req.user = user
 
-        const freshNormalizedRoles = normalizeRoles(req.user?.roles || req.token?.roles)
+        const freshNormalizedRoles = normalizeRoles(user.roles)
         req.roles = () => freshNormalizedRoles
       } catch (error) {
         // A credential that did not authenticate proves nothing, fresh or not.

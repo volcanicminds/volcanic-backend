@@ -64,7 +64,7 @@ function request(opts: any = {}) {
     data: () => opts.data ?? {},
     parameters: () => ({ id: opts.targetId ?? EXISTING.id }),
     control: { kind: 'control' },
-    user: { id: 'u-admin' },
+    ...(opts.systemUser ? { systemUser: opts.systemUser } : { user: { id: 'u-admin' } }),
     tenantInfo: opts.tenantInfo,
     routeOptions: { config: { tenantContext: false } },
     hasRole: (r: any) => callerRoles.includes(r?.code),
@@ -156,6 +156,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
     await create(req, reply)
     expect(reply.sent.code).toBe(403)
+    expect(reply.sent.body.code).toBe('TOKEN_ROLE_FORBIDDEN')
     expect(calls.length).toBe(0)
   })
 
@@ -185,7 +186,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
     const created: any = await create(req, reply)
     expect(calls.map((c) => c[0])).toEqual(['createToken'])
-    expect(claimsOf(created.token)).toEqual({ sub: 't-ext-new' })
+    expect(claimsOf(created.token)).toEqual({ sub: 't-ext-new', typ: 'integration' })
     expect(created.externalId).toBe('t-ext-new')
   })
 
@@ -224,7 +225,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     ;(global as any).config = { options: {} }
     const inTenant = request({ data: { name: 'ci', expiresAt: null }, tenantInfo: { id: 'tenant-acme', slug: 'acme' } })
     const tenantBearer: any = await create(inTenant.req, inTenant.reply)
-    expect(claimsOf(tenantBearer.token)).toEqual({ sub: 't-ext-new', tid: 'tenant-acme' })
+    expect(claimsOf(tenantBearer.token)).toEqual({ sub: 't-ext-new', typ: 'integration', tid: 'tenant-acme' })
 
     const single = request({ data: { name: 'ci', expiresAt: new Date(Date.now() + 3600_000).toISOString() } })
     const singleBearer: any = await create(single.req, single.reply)
@@ -277,7 +278,12 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     const reissued: any = await reissue(req, reply)
     expect(calls).toEqual([['resetExternalId', EXISTING.id]])
     expect(reply.sent.code).toBe(200)
-    expect(claimsOf(reissued.token)).toEqual({ sub: 't-ext-rotated', tid: 'tenant-acme', exp: Math.floor(at.getTime() / 1000) })
+    expect(claimsOf(reissued.token)).toEqual({
+      sub: 't-ext-rotated',
+      typ: 'integration',
+      tid: 'tenant-acme',
+      exp: Math.floor(at.getTime() / 1000)
+    })
     expect(reissued).toMatchObject({ id: EXISTING.id, name: 'ci', externalId: 't-ext-rotated' })
   })
 
@@ -323,16 +329,16 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     const acts = async (run: (r: ReturnType<typeof request>) => Promise<unknown>, opts: any = {}) => {
       const r = request(opts)
       await run(r)
-      return r.governance.rows.map(({ action, targetId, detail, actorId, actorPlane, tenantId }) => ({
+      return r.governance.rows.map(({ action, targetId, detail, actorId, actorKind, tenantId }) => ({
         action,
         targetId,
         detail,
         actorId,
-        actorPlane,
+        actorKind,
         tenantId
       }))
     }
-    const by = { actorId: 'u-admin', actorPlane: 'tenant', tenantId: undefined }
+    const by = { actorId: 'u-admin', actorKind: 'user', tenantId: undefined }
     const at = new Date(Date.now() + 3600_000)
 
     expect(await acts((r) => create(r.req, r.reply), { data: { name: 'ci', expiresAt: at.toISOString(), requiredRoles: ['editor'] } })).toEqual([
@@ -353,5 +359,35 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     expect(await acts((r) => block(r.req, r.reply), { missing: true })).toEqual([])
     expect(await acts((r) => unblock(r.req, r.reply), { missing: true })).toEqual([])
     expect(await acts((r) => remove(r.req, r.reply), { existing: { deletedAt: new Date().toISOString() } })).toEqual([])
+  })
+
+  it('issues a token of the control plane with system roles only, signed for that plane, never with system:admin (F97)', async () => {
+    // A platform route where tenants are declared: the request fixture's route is `scope: 'control'`.
+    const savedSystemRoles = (global as any).systemRoles
+    ;(global as any).config = { options: { tenants: { strategy: 'schema' } } }
+    ;(global as any).systemRoles = {
+      'system:admin': { code: 'system:admin' },
+      'system:auditor': { code: 'system:auditor' }
+    }
+    try {
+      const operator = { systemUser: { id: 's-admin' } }
+      const issued = request({ ...operator, data: { name: 'sentinel', expiresAt: null, requiredRoles: ['system:auditor', 'editor', 'invented'] } })
+      const created: any = await create(issued.req, issued.reply)
+      // The tenant catalogue's `editor` names nothing here, and the control plane has no `public`.
+      expect(issued.calls[0][1].roles).toEqual(['system:auditor'])
+      expect(claimsOf(created.token)).toEqual({ sub: 't-ext-new', typ: 'integration', scp: 'control' })
+      expect(issued.governance.rows.map((r: any) => [r.action, r.actorKind, r.actorId])).toEqual([['token.created', 'system_user', 's-admin']])
+
+      const sovereign = request({ ...operator, data: { name: 'root', expiresAt: null, requiredRoles: ['system:admin'] } })
+      await create(sovereign.req, sovereign.reply)
+      expect([sovereign.reply.sent.code, sovereign.reply.sent.body.code]).toEqual([403, 'TOKEN_ROLE_FORBIDDEN'])
+
+      const promoted = request({ ...operator, data: { roles: ['system:auditor', 'system:admin'] } })
+      await update(promoted.req, promoted.reply)
+      expect([promoted.reply.sent.code, promoted.reply.sent.body.code]).toEqual([403, 'TOKEN_ROLE_FORBIDDEN'])
+      expect([...sovereign.calls, ...promoted.calls, ...sovereign.governance.rows, ...promoted.governance.rows]).toEqual([])
+    } finally {
+      ;(global as any).systemRoles = savedSystemRoles
+    }
   })
 })

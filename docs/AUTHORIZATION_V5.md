@@ -74,9 +74,9 @@ their code or capabilities):
 | `system:operator` | day-to-day operations: read the registry, create and suspend tenants, impersonate, open the platform console | `tenants`, `tenants:read`, `tenants:impersonate`, `manifest` |
 | `system:auditor` | read-only oversight | `tenants:read`, `manifest`, `access-log`, `governance-log` |
 
-A consumer may define further control roles in its own configuration and grant them capabilities
-from the control catalogue. It cannot invent a capability the framework does not honour on a
-framework route, exactly as in the tenant scope.
+A consumer may define further control roles in its own `config/systemRoles.ts` and grant them
+capabilities from the control catalogue, the framework's and those it declares there (§4). A role
+naming a capability outside the catalogue is dropped at boot with an error.
 
 ---
 
@@ -114,6 +114,23 @@ The control catalogue is **new and reserved**:
 data are not the same job, and an operator who can do the first must not automatically do the
 second.
 
+The catalogue grows with the project. A `config/systemRoles.ts`, of the application or of a
+package that ships one, may export beside its roles a list named `capabilities`, the platform
+capabilities of its own control routes:
+
+```typescript
+// src/config/systemRoles.ts
+export const capabilities = ['rag:ingest']
+export default [{ code: 'system:ingestor', name: 'Ingestor', description: 'feeds the shared corpus', capabilities: ['rag:ingest'] }]
+```
+
+A declared name is a plain word (`[a-z][a-z0-9:-]*`) that the framework does not already reserve;
+anything else is dropped at boot with an error, so declaring `tenants:destroy` again does not make
+it the project's. A declared capability is a control capability like the framework's: a control
+route may require it, a tenant route that requires it is refused at boot, and the boot log lists
+the ones declared. A file may declare capabilities alone, with no roles. `global.systemCapabilities`
+holds the whole catalogue once the boot has read it.
+
 Four control routes carry a tenant's whole data in or out, and answer to `system:admin` alone,
 with no capability of the catalogue: `POST /tenants/:id/exports`, `GET /tenants/:id/exports/:package`,
 `POST /tenants/import` and `POST /tenants/:id/move`. A role granted `tenants`, `system:operator`
@@ -144,6 +161,23 @@ carries `tid` too, the tenant it was created in: a machine names its tenant the 
 session does, with the token alone. Under tenants, a tenant-plane token without `tid` is refused
 with 401 `TOKEN_TENANT_MISSING`: it was signed where there were no tenants, and the
 header next to it would be the only thing naming one.
+
+**An integration token says what it is.** Every integration token, on either plane, is signed with
+`typ: 'integration'`, and that label alone decides where its subject is looked up: a labelled
+credential among the tokens of the request's container, any other among the persons (the system
+users on a platform route, the tenant's users otherwise), one read either way. A labelled
+credential travels in the `Authorization` header only, and in a cookie is 401 `CREDENTIAL_CHANNEL`;
+in cookie mode the header takes nothing else. The label is not the absence of `sid`: a session
+carries none when the deployment keeps no registry (§9.6), and would then be taken for a machine.
+A bearer signed without the label is looked up among the persons and answers 404
+`SUBJECT_NOT_FOUND`.
+
+**The platform has integration tokens of its own**, at `/system/tokens` (docs/API_V5.md §5): rows
+of the control plane's `token` table, signed with `scp: 'control'` and no `tid`, issued and managed
+by the superuser alone. Their roles come from the control catalogue (§3, §4) with no `public`
+default, and never include `system:admin`: a token asking for it is 403 `TOKEN_ROLE_FORBIDDEN`, as
+a tenant's token asking for `admin` is from whoever does not hold it. A platform token on a tenant
+route, or a tenant's token on a platform route, is 403 `SCOPE_MISMATCH`.
 
 **No token carries a `role` claim, and one that does is refused** on every route with 401. v4 signed
 a five-minute token carrying a `role` claim between the password and the second factor, and kept
@@ -377,8 +411,9 @@ credential no step-up can make fresh (an impersonation, an integration token, a 
 `sid`) gets 403 `STEP_UP_NOT_AVAILABLE`. The boot refuses `freshAuth` on a route that needs no
 authentication: `roles: []` alone is public, `roles: []` with `global.isAuthenticated` is not. The
 framework marks impersonation, the factor management routes, the export and download routes of
-both planes (§4) and the token routes that give, widen or bring back a credential (create, update,
-reissue, unblock; block and removal stay unmarked, so an access is taken away at once); the flow
+both planes (§4) and the token routes of both planes that give, widen or bring back a credential
+(create, update, reissue, unblock, at `/token` and at `/system/tokens`; block and removal stay
+unmarked, so an access is taken away at once); the flow
 that makes a session fresh again is docs/AUTH_FLOW_V5.md §8.5.
 
 ```typescript

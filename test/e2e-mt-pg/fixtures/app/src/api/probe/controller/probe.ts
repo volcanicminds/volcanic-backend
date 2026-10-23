@@ -25,3 +25,7 @@ export async function controlRead(req: any, _reply: any) {
 export async function subject(req: any, _reply: any) {
   return { tenant: req.tenantInfo?.slug ?? null, user: req.user?.id ?? null, token: req.token?.id ?? null }
 }
+
+export async function platformSubject(req: any, _reply: any) {
+  return { systemUser: req.systemUser?.id ?? null, token: req.token?.id ?? null }
+}

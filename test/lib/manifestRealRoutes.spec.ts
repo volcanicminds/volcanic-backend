@@ -66,7 +66,7 @@ describe('manifest · the framework own routes, through the loader', () => {
       public: { code: 'public', name: 'Public' },
       admin: { code: 'admin', name: 'Admin' }
     }
-    ;(global as any).systemRoles = await loadSystem()
+    ;(global as any).systemRoles = (await loadSystem()).roles
     manifest = control([...(await routesOf('system')), ...(await routesOf('tenants'))])
   })
 

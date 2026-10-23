@@ -489,14 +489,14 @@ describe('tenants · who exports and downloads, a slot per plane (T-17.11)', () 
     expect(governance.rows.at(-1)).toMatchObject({
       action: 'tenant.exported',
       outcome: 'success',
-      actorPlane: 'control',
+      actorKind: 'system_user',
       detail: { slot: 'control', replaced: [{ package: first.package, manifestSha256: first.manifestSha256, removed: true }] }
     })
 
     const ownSecond = await tenantExport(server)
     expect(fs.readdirSync(exports).sort()).toEqual([destruction.name, ownSecond.package, second.package].sort())
     expect(governance.rows.at(-1)).toMatchObject({
-      actorPlane: 'tenant',
+      actorKind: 'user',
       actorId: 'u-admin',
       detail: { slot: 'tenant', profile: 'client', replaced: [{ package: ownFirst.package, removed: true }] }
     })
@@ -560,7 +560,7 @@ describe('tenants · who exports and downloads, a slot per plane (T-17.11)', () 
     expect(wait).toBeGreaterThan(3500)
     expect(wait).toBeLessThanOrEqual(3600)
     // Refused before the intent: the refusal neither counts nor touches the slot.
-    expect(governance.rows.filter((r: any) => r.actorPlane === 'tenant' && r.outcome === 'intent')).toHaveLength(2)
+    expect(governance.rows.filter((r: any) => r.actorKind === 'user' && r.outcome === 'intent')).toHaveLength(2)
     expect(fs.readdirSync(exports)).toContain(own.package)
     // The operator's plane has no quota.
     await controlExport(server)
@@ -612,10 +612,10 @@ describe('tenants · who exports and downloads, a slot per plane (T-17.11)', () 
     await tick()
     const downloads = governance.rows.filter((r: any) => r.action === 'tenant.downloaded')
     expect(downloads).toMatchObject([
-      { outcome: 'intent', tenantId: ACME.id, actorPlane: 'tenant', actorId: 'u-admin', detail: { package: own.package, profile: 'client' } },
-      { outcome: 'success', actorPlane: 'tenant', detail: { manifestSha256: own.manifestSha256, bytes: fromTenant.rawPayload.length } },
-      { outcome: 'intent', actorPlane: 'control', actorId: 'sys-1', detail: { package: operator.package, profile: 'operator' } },
-      { outcome: 'success', actorPlane: 'control', detail: { manifestSha256: operator.manifestSha256, bytes: fromControl.rawPayload.length } }
+      { outcome: 'intent', tenantId: ACME.id, actorKind: 'user', actorId: 'u-admin', detail: { package: own.package, profile: 'client' } },
+      { outcome: 'success', actorKind: 'user', detail: { manifestSha256: own.manifestSha256, bytes: fromTenant.rawPayload.length } },
+      { outcome: 'intent', actorKind: 'system_user', actorId: 'sys-1', detail: { package: operator.package, profile: 'operator' } },
+      { outcome: 'success', actorKind: 'system_user', detail: { manifestSha256: operator.manifestSha256, bytes: fromControl.rawPayload.length } }
     ])
     expect(downloads[1].intentId).toBe(downloads[0].id)
     await server.close()
@@ -662,7 +662,7 @@ describe('tenants · the cleanup of old packages (T-17.11)', () => {
     expect(fs.readdirSync(exports).sort()).toEqual([destruction.name, fresh].sort())
     const events = governance.rows.slice(before)
     expect(events).toMatchObject([
-      { action: 'tenant.export_expired', outcome: 'intent', tenantId: ACME.id, actorId: null, actorPlane: null, ip: null },
+      { action: 'tenant.export_expired', outcome: 'intent', tenantId: ACME.id, actorId: null, actorKind: null, ip: null },
       { action: 'tenant.export_expired', outcome: 'success', detail: { package: old, slot: 'control' } }
     ])
     expect(events[1].intentId).toBe(events[0].id)

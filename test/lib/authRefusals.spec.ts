@@ -15,6 +15,7 @@ import { expect } from 'expect'
 import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import authHook from '../../lib/hooks/onRequest.js'
+import { INTEGRATION_TYP } from '../../lib/util/credential.js'
 
 const SECRET = 'auth-refusals-test-secret-32-chars!'
 
@@ -144,7 +145,7 @@ describe('hooks/onRequest · the refusals, each one provoked (T-9.5)', () => {
 
   it('answers 403 TOKEN_NOT_VALID for a machine token the manager rejects', async () => {
     const server = await build({ users: false, tokens: true, tokenValid: false })
-    const token = server.jwt.sign({ sub: TOKEN_SUBJECT.externalId })
+    const token = server.jwt.sign({ sub: TOKEN_SUBJECT.externalId, typ: INTEGRATION_TYP })
     const res = await call(server, '/orders', token)
     expect(res.statusCode).toBe(403)
     expect(codeOf(res)).toBe('TOKEN_NOT_VALID')

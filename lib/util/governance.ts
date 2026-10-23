@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify'
 import type { ControlHandle, DataHandle, GovernanceLogEntry, GovernanceLogManagement } from '../../types/global.js'
+import { dataContext } from './tenancy.js'
 
 //
 // The one writer of the governance log, with the opposite rule of the access log's: a change
@@ -15,12 +16,12 @@ import type { ControlHandle, DataHandle, GovernanceLogEntry, GovernanceLogManage
 // undo an effect that already happened: the intent stays without one, which is what an auditor
 // reads as "may have happened", and the process log has the line.
 //
-// The actor, its plane, the address and the request id come from the request, never from the route.
+// The actor, its kind, the address and the request id come from the request, never from the route.
 // A job of the framework writes as `Unattended`: nobody, from nowhere.
 //
 
 /** What a route says about its event. */
-export type GovernanceEvent = Omit<GovernanceLogEntry, 'outcome' | 'intentId' | 'actorId' | 'actorPlane' | 'ip' | 'requestId'>
+export type GovernanceEvent = Omit<GovernanceLogEntry, 'outcome' | 'intentId' | 'actorId' | 'actorKind' | 'ip' | 'requestId'>
 
 /** A job of the framework writing for itself, with no request behind it. */
 export interface Unattended {
@@ -29,17 +30,18 @@ export interface Unattended {
 }
 
 type Source = FastifyRequest | Unattended
-type Origin = Pick<GovernanceLogEntry, 'actorId' | 'actorPlane' | 'ip' | 'requestId'>
+type Origin = Pick<GovernanceLogEntry, 'actorId' | 'actorKind' | 'ip' | 'requestId'>
 
 const isUnattended = (source: Source): source is Unattended => 'governance' in source
 
-/** An operator on a control route, a tenant's user on a tenant route, nobody otherwise. */
+/** An operator, a user or an integration token, whichever the request authenticated; nobody for a job. */
 const originOf = (source: Source): Origin => {
-  if (isUnattended(source)) return { actorId: null, actorPlane: null, ip: null, requestId: null }
+  if (isUnattended(source)) return { actorId: null, actorKind: null, ip: null, requestId: null }
   const at = { ip: source.ip ?? null, requestId: source.id ? String(source.id) : null }
-  if (source.systemUser?.id) return { actorId: source.systemUser.id, actorPlane: 'control', ...at }
-  if (source.user?.id) return { actorId: String(source.user.id), actorPlane: 'tenant', ...at }
-  return { actorId: null, actorPlane: null, ...at }
+  if (source.systemUser?.id) return { actorId: source.systemUser.id, actorKind: 'system_user', ...at }
+  if (source.user?.id) return { actorId: String(source.user.id), actorKind: 'user', ...at }
+  if (source.token?.id) return { actorId: String(source.token.id), actorKind: 'token', ...at }
+  return { actorId: null, actorKind: null, ...at }
 }
 
 /** The control plane of a request, or the container it names. */
@@ -62,6 +64,13 @@ export function assertGovernanceLog<H extends DataHandle = ControlHandle>(
       statusCode: 503,
       error: 'Service Unavailable',
       code: 'GOVERNANCE_LOG_NOT_AVAILABLE'
+    })
+  }
+  // A token's id names a row of the container the hook found it in: in another container's log it
+  // would name a row that is not there, or another token.
+  if (!isUnattended(source) && source.token && ctx !== dataContext(source)) {
+    throw Object.assign(new Error("An integration token is written in its own container's governance log only"), {
+      code: 'GOVERNANCE_ACTOR_MISPLACED'
     })
   }
   return { manager, ctx }
@@ -89,8 +98,8 @@ const said = (source: Source, event: GovernanceEvent, outcome: string) => {
   if (!log.i) return
   const on = event.tenantId ? ` tenant ${event.tenantId}` : ''
   const target = event.targetId ? ` target ${event.targetId}` : ''
-  const { actorId, actorPlane } = originOf(source)
-  log.info(`Governance ${event.action} ${outcome}${on}${target} by ${actorId ? `${actorPlane} ${actorId}` : 'nobody'}`)
+  const { actorId, actorKind } = originOf(source)
+  log.info(`Governance ${event.action} ${outcome}${on}${target} by ${actorId ? `${actorKind} ${actorId}` : 'nobody'}`)
 }
 
 /**

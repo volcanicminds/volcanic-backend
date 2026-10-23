@@ -304,9 +304,9 @@ for (const strategy of ['schema', 'container'] as const) {
       expect(back.map((t: any) => t.external_id)).not.toContain(source[0].external_id)
 
       // The tenant's governance log comes with it, and the copy's own says who renewed the token: nobody.
-      const acts = (await inContainer(COPY.locator, 'select action, actor_id, actor_plane, target_id, detail from governance_log order by occurred_at, id'))
-      expect(acts.map((r: any) => [r.action, r.target_id, r.actor_plane])).toEqual([
-        ['token.created', body(minted).id, 'tenant'],
+      const acts = (await inContainer(COPY.locator, 'select action, actor_id, actor_kind, target_id, detail from governance_log order by occurred_at, id'))
+      expect(acts.map((r: any) => [r.action, r.target_id, r.actor_kind])).toEqual([
+        ['token.created', body(minted).id, 'user'],
         ['token.reissued', body(minted).id, null]
       ])
       expect(acts[1]).toMatchObject({ actor_id: null, detail: { cause: 'tenant.imported' } })

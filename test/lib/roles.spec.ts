@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { expect } from 'expect'
-import { mergeRoles, PROTECTED_ROLE_CODES } from '../../lib/loader/roles.js'
+import { declaredCapabilities, mergeRoles, mergeSystemRoles, PROTECTED_ROLE_CODES, SYSTEM_CAPABILITIES } from '../../lib/loader/roles.js'
 
 // mergeRoles reads global `log` (optional-chained). Keep it silent.
 ;(global as any).log = {}
@@ -61,5 +61,29 @@ describe('loader/roles — mergeRoles (protected-merge)', () => {
     const roles = builtins()
     mergeRoles(roles as any, [{ name: 'no code' } as any])
     expect(Object.keys(roles).sort()).toEqual(['admin', 'public'])
+  })
+})
+
+describe('loader/roles: the control catalogue, extended by what a project declares (F98)', () => {
+  const catalogue = [...SYSTEM_CAPABILITIES, 'rag:shared-ingest']
+
+  it('keeps a control role that names a declared capability, and drops one that names an undeclared one', () => {
+    const roles: any = {}
+    mergeSystemRoles(
+      roles,
+      [
+        { code: 'system:sentinel', name: 'Sentinel', description: '', capabilities: ['rag:shared-ingest', 'tenants:read'] },
+        { code: 'system:typo', name: 'Typo', description: '', capabilities: ['rag:shared-ingst'] }
+      ],
+      catalogue
+    )
+    expect(Object.keys(roles)).toEqual(['system:sentinel'])
+  })
+
+  it('takes a declared name beside the framework ones, never one the framework reserves or one that is not a name', () => {
+    expect(declaredCapabilities(['rag:shared-ingest', 'rag:shared-manage'], 'a.ts')).toEqual(['rag:shared-ingest', 'rag:shared-manage'])
+    expect(declaredCapabilities(['tenants:destroy', '', 'Has Space', 42, 'ok'], 'a.ts')).toEqual(['ok'])
+    expect(declaredCapabilities(undefined, 'a.ts')).toEqual([])
+    expect(declaredCapabilities('rag:shared-ingest', 'a.ts')).toEqual([])
   })
 })

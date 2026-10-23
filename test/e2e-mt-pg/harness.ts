@@ -142,7 +142,9 @@ export async function setup(
   ;(global as any).roles = loaderRoles.mergeRoles(await loaderRoles.load(), options.roles ?? [])
   // The control catalogue, exactly as index.ts loads it: a control route resolves its roles
   // against this map and never against the tenant one.
-  ;(global as any).systemRoles = await loaderRoles.loadSystem()
+  const system = await loaderRoles.loadSystem()
+  ;(global as any).systemRoles = system.roles
+  ;(global as any).systemCapabilities = system.capabilities
   ;(global as any).t = loaderTranslation.load()
 
   // The data layer is loaded through a variable specifier so this file keeps

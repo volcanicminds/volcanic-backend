@@ -130,11 +130,15 @@ function resolveRequiredRoles(
   }
 
   if (capability) {
-    if (isControl && !SYSTEM_CAPABILITIES.includes(capability as never)) {
-      roleErrors.push(`${where} → '${capability}' is not in the control catalogue: ${SYSTEM_CAPABILITIES.join(', ')}`)
+    // The framework's capabilities and the declared ones (lib/loader/roles.ts `loadSystem`). The
+    // framework's alone where no catalogue was loaded, as for `systemRoles` above.
+    const controlCapabilities: readonly string[] =
+      (globalThis as { systemCapabilities?: readonly string[] }).systemCapabilities ?? SYSTEM_CAPABILITIES
+    if (isControl && !controlCapabilities.includes(capability)) {
+      roleErrors.push(`${where} → '${capability}' is not in the control catalogue: ${controlCapabilities.join(', ')}`)
     }
     // `manifest` and `governance-log` are reserved by both catalogues, one per plane: see SHARED_CAPABILITIES.
-    if (!isControl && SYSTEM_CAPABILITIES.includes(capability as never) && !SHARED_CAPABILITIES.includes(capability as never)) {
+    if (!isControl && controlCapabilities.includes(capability) && !SHARED_CAPABILITIES.includes(capability as never)) {
       roleErrors.push(`${where} → '${capability}' is a control capability and cannot gate a tenant route`)
     }
   }

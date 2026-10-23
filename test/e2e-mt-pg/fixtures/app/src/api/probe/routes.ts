@@ -39,6 +39,17 @@ export default {
       handler: 'probe.subject',
       middlewares: ['global.isAuthenticated'],
       config: { title: 'The authenticated subject' }
+    },
+    {
+      // A platform route gated by a capability the project declared (src/config/systemRoles.ts),
+      // naming the platform identity the credential resolved to.
+      method: 'GET',
+      path: '/platform',
+      scope: 'control',
+      requireCapability: 'probe:platform',
+      handler: 'probe.platformSubject',
+      middlewares: ['global.isAuthenticated'],
+      config: { title: 'The authenticated platform subject' }
     }
   ]
 }

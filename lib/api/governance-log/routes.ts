@@ -27,7 +27,7 @@ export default {
       middlewares: ['global.isAuthenticated'],
       config: {
         title: 'Find governance log entries',
-        description: 'Magic Query over the fields of the governance log: action, actorId, actorPlane, targetId, occurredAt',
+        description: 'Magic Query over the fields of the governance log: action, actorId, actorKind, targetId, occurredAt',
         query: { $ref: 'getQueryParamsSchema' },
         response: {
           200: { description: 'Default response', type: 'array', items: { $ref: 'governanceLogSchema#' } }
