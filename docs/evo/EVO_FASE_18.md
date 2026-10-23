@@ -157,6 +157,15 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   `expiresAt`. Ora scrive solo nome, descrizione e ruoli, questi con la regola della creazione, su
   entrambi i piani (`planeRoles`, `lib/api/token/controller/token.ts`). Prove: `tokenApex.spec`
   e un caso di `controlToken.e2e` per piano, tutti rossi sul controller di prima.
+  Sempre il 23 ottobre 2026: chi aveva `system-users` poteva creare un utente di sistema con
+  `system:admin` o modificarne uno, e da T-18.1 anche un token di piattaforma con un ruolo che
+  porta quella capacità. Ora il piano di controllo ha l'apice del tenant: solo un superutente
+  concede `system:admin` o agisce su chi lo ha, altrimenti 403 `SUPERUSER_ONLY`; creazione,
+  modifica, sblocco e azzeramento del secondo fattore di un utente di sistema chiedono lo step-up,
+  quindi nessun token li raggiunge, mentre blocco ed eliminazione restano liberi come per i token.
+  Prove: `systemUserRefusals.spec` e un caso di `controlToken.e2e` con un ruolo `system:steward`
+  della fixture; tolti a turno lo step-up della creazione, il controllo dello sblocco e quello
+  della concessione, le prove diventano rosse.
 - [x] **T-18.2** Il registro di governo in ogni contenitore (F100). `governance_log` entra
   nell'insieme tenant; il manager scrive e legge sul contenitore della richiesta; gli atti sui
   token (creazione, modifica, rigenerazione, blocco, sblocco, eliminazione) si scrivono nella

@@ -156,6 +156,45 @@ for (const strategy of ['schema', 'container'] as const) {
       expect((await stale('DELETE', `/system/tokens/${target.id}`)).statusCode).toBe(200)
     })
 
+    it('keeps system:admin to the superusers on /system/users, and lets no token reach its writes but the ones that take access away', async () => {
+      const email = `steward-${strategy}@system.test`
+      const password = 'Steward-pw-123456'
+      const created = await as(system)('POST', '/system/users', { email, password, roles: ['system:steward'] })
+      expect(created.statusCode).toBe(201)
+      const steward = as(await systemToken(email, password))
+
+      // The capability manages the other operators and stops at the apex, its own account included.
+      const minted = await steward('POST', '/system/users', { email: `apex-${strategy}@system.test`, password, roles: ['system:admin'] })
+      expect([minted.statusCode, body(minted).code]).toEqual([403, 'SUPERUSER_ONLY'])
+      const promoted = await steward('PUT', `/system/users/${body(created).id}`, { roles: ['system:admin'] })
+      expect([promoted.statusCode, body(promoted).code]).toEqual([403, 'SUPERUSER_ONLY'])
+      const ousted = await steward('POST', `/system/users/${operator.id}/block`, { reason: 'takeover' })
+      expect([ousted.statusCode, body(ousted).code]).toEqual([403, 'SUPERUSER_ONLY'])
+      const peer = await steward('POST', '/system/users', { email: `auditor-${strategy}@system.test`, password, roles: ['system:auditor'] })
+      expect(peer.statusCode).toBe(201)
+      const [apex] = (await sql().query(`select count(*)::int as n from "system_user" where 'system:admin' = any(roles)`)).rows
+      expect(apex.n).toBe(1)
+
+      // A token with the same capability lists and takes access away, and confirms nobody for the rest.
+      const machine = as((await issue({ name: 'steward', requiredRoles: ['system:steward'] })).token)
+      expect((await machine('GET', '/system/users')).statusCode).toBe(200)
+      for (const [method, url, payload] of [
+        ['POST', '/system/users', { email: `machine-${strategy}@system.test`, password, roles: ['system:auditor'] }],
+        ['PUT', `/system/users/${body(peer).id}`, { roles: ['system:operator'] }],
+        ['POST', `/system/users/${body(peer).id}/unblock`, undefined],
+        ['POST', `/system/users/${body(peer).id}/mfa/reset`, undefined]
+      ] as const) {
+        const res = await machine(method, url, payload)
+        expect([method, url, res.statusCode, body(res).code]).toEqual([method, url, 403, 'STEP_UP_NOT_AVAILABLE'])
+      }
+      expect((await machine('POST', `/system/users/${body(peer).id}/block`, { reason: 'incident' })).statusCode).toBe(200)
+      expect((await machine('DELETE', `/system/users/${body(peer).id}`)).statusCode).toBe(200)
+
+      // And a session not confirmed lately confirms first, the superuser's too.
+      const stale = await as(staled(system).token)('POST', '/system/users', { email: `late-${strategy}@system.test`, password, roles: [] })
+      expect([stale.statusCode, body(stale).code]).toEqual([403, 'STEP_UP_REQUIRED'])
+    })
+
     it("writes every act in the control plane's governance log, by its operator, and in no tenant's", async () => {
       const machine = await issue({ name: 'audited', requiredRoles: ['system:prober'] })
       const by = as(system)

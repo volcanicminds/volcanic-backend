@@ -401,6 +401,7 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.create',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Provision a platform administrator',
         description: 'There is no self-registration',
@@ -415,6 +416,7 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.update',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Update a platform administrator',
         description: 'Roles and labels; never the password',
@@ -456,6 +458,7 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.unblock',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Unblock a platform administrator',
         description: 'Restores access',
@@ -469,6 +472,7 @@ export default {
       requireCapability: 'system-users',
       handler: 'systemUser.resetMfa',
       middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
       config: {
         title: 'Reset the second factor of a platform administrator',
         description: 'The way back for an operator who lost the device. Never self-service (T-10.19)',

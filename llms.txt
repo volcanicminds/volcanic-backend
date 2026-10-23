@@ -4340,7 +4340,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | System | `/system/auth/flow/*` (the six flow routes) · `POST /system/auth/refresh-token` · `/logout` · `/mfa/setup` · `/mfa/enable` | public / control token | varies | `systemUserManager` |
 | System | `GET /system/auth/me` | any control token | **yes** | — (the resolved `req.systemUser`) |
 | System | `GET /system/auth/sessions` · `DELETE /system/auth/sessions/:id` | any control token | **yes** | `sessionManager`⁸ |
-| System | `GET /system/users` · `POST /system/users` · `PUT/DELETE /system/users/:id` · `/block` · `/unblock` | `system-users` cap | **yes** | `systemUserManager` |
+| System | `GET /system/users` · `POST /system/users` · `PUT/DELETE /system/users/:id` · `/block` · `/unblock` · `/mfa/reset` (fresh: create, update, unblock, reset; a superuser alone grants `system:admin` or acts on one, else 403 `SUPERUSER_ONLY`) | `system-users` cap | **yes** | `systemUserManager` |
 | System | `GET /system/tokens` · `/count` · `/:id` · `POST /system/tokens` · `PUT/DELETE /system/tokens/:id` · `/block` · `/unblock` · `/reissue` (only with tenants; fresh: create, update, unblock, reissue) | `system:admin` only | **yes** | `tokenManager` + `governanceLogManager` |
 | System | `GET /system/manifest` (control plane, only with tenants) | `manifest` cap (control) | **yes** | — (schema only) |
 | Admin | `GET /admin/manifest` (tenant plane) | `manifest` cap | **yes** | — (schema only) |
@@ -4617,7 +4617,11 @@ error, rather than leaving the route unreachable. Prefer string codes (`roles: [
   never mints an admin (closes the admin-token backdoor).
 - **Rule B** — no capability holder may `update`/`delete`/`block`/`unblock` an existing **admin** subject; only an
   admin acts on an admin. MFA/password reset stay admin-only.
-- **Never-zero-admin** — the last admin cannot be deleted, demoted or blocked.
+- **Never-zero-admin**: the last admin cannot be deleted, demoted or blocked.
+
+The control plane has the same apex in `system:admin`: only a superuser grants it to a system user,
+and only a superuser updates, deletes, blocks, unblocks or resets the MFA of one who holds it; a
+`system-users` holder gets 403 `SUPERUSER_ONLY`. A token never carries `system:admin`.
 
 **Genesis and the sovereign founder** (at boot, when a data layer is present). `POST /auth/register`
 **never** grants `admin`. Without a `tenants` block, `ADMIN_EMAIL` is reconciled against the users of

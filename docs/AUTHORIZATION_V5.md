@@ -78,6 +78,12 @@ A consumer may define further control roles in its own `config/systemRoles.ts` a
 capabilities from the control catalogue, the framework's and those it declares there (§4). A role
 naming a capability outside the catalogue is dropped at boot with an error.
 
+`system:admin` is the apex of the control plane, as `admin` is a tenant's. Only a superuser grants
+it, on a creation or an update, its own account included, and only a superuser updates, removes,
+blocks, unblocks or resets the second factor of a system user who holds it; anyone else gets 403
+`SUPERUSER_ONLY`. A role granted `system-users` therefore manages the other operators and never
+makes itself, or anyone, sovereign. A token never carries `system:admin` (§5).
+
 ---
 
 ## 4. Capability catalogue
@@ -106,7 +112,7 @@ The control catalogue is **new and reserved**:
 | `tenants:destroy` | destroy a container's data | `POST /tenants/:id/destruction-request`, `DELETE /tenants/:id/data` |
 | `migrations` | read schema versions, run the fleet migrator through the API | `GET /tenants/migrations` |
 | `manifest` | read the platform console manifest | `GET /system/manifest` |
-| `system-users` | manage platform identities | `/system/users/*` |
+| `system-users` | manage platform identities, never a superuser (§3) | `/system/users/*` |
 | `access-log` | read the operators' access log, never a tenant's | `GET /system/access-log`, `GET /system/access-log/count` |
 | `governance-log` | read what the operators did to the platform | `GET /system/governance-log`, `GET /system/governance-log/count` |
 
@@ -413,7 +419,9 @@ authentication: `roles: []` alone is public, `roles: []` with `global.isAuthenti
 framework marks impersonation, the factor management routes, the export and download routes of
 both planes (§4) and the token routes of both planes that give, widen or bring back a credential
 (create, update, reissue, unblock, at `/token` and at `/system/tokens`; block and removal stay
-unmarked, so an access is taken away at once); the flow
+unmarked, so an access is taken away at once), and by the same rule the routes that create a
+system user, change one, unblock one or reset its second factor (`/system/users`), so no token
+reaches them; the flow
 that makes a session fresh again is docs/AUTH_FLOW_V5.md §8.5.
 
 ```typescript

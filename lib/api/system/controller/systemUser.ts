@@ -3,6 +3,7 @@ import type { ControlHandle, SystemUserManagement } from '../../../../types/glob
 import { httpError } from '../../../util/httpError.js'
 import * as regExp from '../../../util/regexp.js'
 import { isSystemRoleCode } from '../../../loader/roles.js'
+import { includesRole } from '../../../util/authz.js'
 import { present } from './systemAuth.js'
 import { controlPolicy } from '../../../util/mfaPolicy.js'
 import { recordControlAccess } from '../../../util/accessLog.js'
@@ -37,6 +38,24 @@ function invalidRoles(roles: unknown): string[] {
   return roles.filter((r) => !isSystemRoleCode(r) || !(global.systemRoles || {})[String(r)]).map(String)
 }
 
+const SUPERUSER = 'system:admin'
+
+/**
+ * The apex of the control plane, as `admin` is a tenant's: only a superuser grants `system:admin`,
+ * and only a superuser changes, removes, blocks, unblocks or resets one. Whoever else holds
+ * `system-users` manages the other operators, and could otherwise make itself sovereign through an
+ * account of its own. A token never carries `system:admin`, so it is never the superuser here.
+ */
+const isSuperuser = (req: FastifyRequest) => includesRole(req.roles?.() ?? [], SUPERUSER)
+
+const apexRefused = (reply: FastifyReply, message: string) => reply.status(403).send(httpError(403, message, 'SUPERUSER_ONLY'))
+
+async function actsOnSuperuser(req: FastifyRequest, id: unknown): Promise<boolean> {
+  if (isSuperuser(req)) return false
+  const target = await manager(req).retrieveSystemUserById(control(req), String(id))
+  return includesRole(target?.roles, SUPERUSER)
+}
+
 /**
  * The way back for an operator who lost the device.
  *
@@ -52,6 +71,7 @@ export async function resetMfa(req: FastifyRequest, reply: FastifyReply) {
 
   const target = await manager(req).retrieveSystemUserById(control(req), String(id))
   if (!target) return reply.status(404).send()
+  if (!isSuperuser(req) && includesRole(target.roles, SUPERUSER)) return apexRefused(reply, "Only a superuser resets a superuser's second factor")
 
   await governed(
     req,
@@ -97,6 +117,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   if (unknown.length) {
     return reply.status(400).send(httpError(400, `Not control roles: ${unknown.join(', ')}`, 'ROLE_NOT_IN_SCOPE'))
   }
+  if (!isSuperuser(req) && includesRole(data.roles, SUPERUSER)) return apexRefused(reply, 'Only a superuser grants system:admin')
 
   const existing = await manager(req).retrieveSystemUserByEmail(control(req), String(data.email))
   if (existing) {
@@ -123,6 +144,8 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   if (unknown.length) {
     return reply.status(400).send(httpError(400, `Not control roles: ${unknown.join(', ')}`, 'ROLE_NOT_IN_SCOPE'))
   }
+  if (!isSuperuser(req) && includesRole(data.roles, SUPERUSER)) return apexRefused(reply, 'Only a superuser grants system:admin')
+  if (await actsOnSuperuser(req, id)) return apexRefused(reply, 'Only a superuser changes a superuser')
 
   // The roles are kept as they became: a grant is the change an auditor looks for first.
   const updated = await governed(
@@ -148,6 +171,7 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
   if (req.systemUser?.id === id) {
     return reply.status(409).send(httpError(409, 'A platform administrator cannot delete itself', 'SELF_DELETE'))
   }
+  if (await actsOnSuperuser(req, id)) return apexRefused(reply, 'Only a superuser removes a superuser')
 
   const done = await governed(
     req,
@@ -166,6 +190,7 @@ export async function block(req: FastifyRequest, reply: FastifyReply) {
   if (req.systemUser?.id === id) {
     return reply.status(409).send(httpError(409, 'A platform administrator cannot block itself', 'SELF_BLOCK'))
   }
+  if (await actsOnSuperuser(req, id)) return apexRefused(reply, 'Only a superuser blocks a superuser')
 
   // The manager answers true whether or not the row exists: the event is written only for one that does.
   await governed(
@@ -181,6 +206,7 @@ export async function unblock(req: FastifyRequest, reply: FastifyReply) {
   if (unavailable(req, reply)) return
 
   const { id } = req.parameters()
+  if (await actsOnSuperuser(req, id)) return apexRefused(reply, 'Only a superuser unblocks a superuser')
   await governed(
     req,
     async (tx) => (await manager(req).retrieveSystemUserById(tx, id)) && (await manager(req).unblockSystemUserById(tx, id)),

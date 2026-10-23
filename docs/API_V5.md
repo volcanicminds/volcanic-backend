@@ -362,13 +362,13 @@ Platform administrators authenticate on their own routes and receive a token car
 | DELETE | `/system/auth/sessions/:id` | any platform identity | closes one of them; a session of another operator answers 404, as on the tenant side |
 | GET | `/system/manifest` | capability `manifest` (control catalogue) | the platform console's manifest, §7. Mounted with tenants and `options.manifest.enabled` |
 | GET | `/system/users` | capability `system-users` | |
-| POST | `/system/users` | capability `system-users` | |
+| POST | `/system/users` | capability `system-users`, `freshAuth` | `system:admin` among the roles is 403 `SUPERUSER_ONLY` unless the caller is a superuser (docs/AUTHORIZATION_V5.md §3) |
 | GET | `/system/users/:id` | capability `system-users` | |
-| PUT | `/system/users/:id` | capability `system-users` | |
-| DELETE | `/system/users/:id` | capability `system-users` | |
-| POST | `/system/users/:id/block` | capability `system-users` | |
-| POST | `/system/users/:id/unblock` | capability `system-users` | |
-| POST | `/system/users/:id/mfa/reset` | capability `system-users` | |
+| PUT | `/system/users/:id` | capability `system-users`, `freshAuth` | 403 `SUPERUSER_ONLY` for a caller who is not a superuser, when the roles grant `system:admin` or the subject holds it |
+| DELETE | `/system/users/:id` | capability `system-users` | 403 `SUPERUSER_ONLY` on a superuser, for a caller who is not one |
+| POST | `/system/users/:id/block` | capability `system-users` | as DELETE |
+| POST | `/system/users/:id/unblock` | capability `system-users`, `freshAuth` | as DELETE |
+| POST | `/system/users/:id/mfa/reset` | capability `system-users`, `freshAuth` | as DELETE |
 | GET | `/system/tokens` | `system:admin` | the platform's integration tokens, the twin of §4 on the control plane's `token` table |
 | GET | `/system/tokens/count` | `system:admin` | |
 | GET | `/system/tokens/:id` | `system:admin` | |

@@ -199,11 +199,11 @@ export async function inject(opts: any) {
 }
 
 /** Logs the platform administrator in, on the control scope (docs/API_V5.md §5). */
-export async function systemToken(): Promise<string> {
+export async function systemToken(email = SYSTEM.email, password = SYSTEM.password): Promise<string> {
   const res = await server.inject({
     method: 'POST',
     url: '/system/auth/flow/start',
-    payload: { method: 'password', email: SYSTEM.email, password: SYSTEM.password }
+    payload: { method: 'password', email, password }
   })
   if (res.statusCode !== 200) throw new Error(`system login failed (${res.statusCode}): ${res.body}`)
   return JSON.parse(res.body).token

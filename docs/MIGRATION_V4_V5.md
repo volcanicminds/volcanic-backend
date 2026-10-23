@@ -707,6 +707,9 @@ has the mechanism.
   repeat the request with the new access token. The session and the refresh credential stay the same.
 - On 403 `STEP_UP_NOT_AVAILABLE` (an impersonation, an integration token), no confirmation helps:
   say so, or send the person to a new login.
+- A platform console meets both on `/system/users` too: creating an operator, changing one,
+  unblocking one and resetting its second factor are marked routes. Only a superuser grants
+  `system:admin` or acts on an operator who holds it; anyone else gets 403 `SUPERUSER_ONLY`.
 - An HTTP layer that reads 401 as "session expired" is unaffected: both answers are 403.
 
 ---
