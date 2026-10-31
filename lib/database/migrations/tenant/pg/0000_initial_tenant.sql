@@ -43,6 +43,8 @@ CREATE TABLE "token" (
 	"blocked_at" timestamp with time zone,
 	"roles" text[] DEFAULT '{}'::text[] NOT NULL,
 	"expires_at" timestamp with time zone,
+	"pairing_code_hash" text,
+	"pairing_code_expires_at" timestamp with time zone,
 	"version" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,

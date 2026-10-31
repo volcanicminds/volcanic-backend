@@ -286,11 +286,14 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | DELETE | `/token/:id` | capability `tokens` | a token removed already answers `{ ok: true }` and changes nothing |
 | POST | `/token/:id/block` | capability `tokens` | **path changed**: v4 was `/token/block/:id`. 404 for an unknown token |
 | POST | `/token/:id/unblock` | capability `tokens`, `freshAuth` | **path changed**: v4 was `/token/unblock/:id`. 404 for an unknown token |
+| POST | `/token/:id/pairing-code` | capability `tokens`, `freshAuth` | **opt-in** (`options.tokenPairing.enabled`; off, the route does not exist). A code that a machine exchanges at `/token/pair` for a reissue of the token, so the bearer is never pasted into its configuration: `{ code, expiresAt }`, the code shown once as `XXXX-XXXX-XXXX` (twelve Crockford base32 symbols, 60 bits), valid ten minutes, single use, kept only as its SHA-256. A new code voids the previous one. Refused as a reissue is: 404 for an unknown or removed token, 403 `TOKEN_ROLE_FORBIDDEN` for a token with the admin role, 409 `TOKEN_EXPIRED`. A blocked token gets a code, and its bearer is refused until the token is unblocked |
+| POST | `/token/pair` | public, 10 a minute per address | **opt-in**, as above. Body `{ code }`: case, dashes and spaces do not count, and O, I, L read as 0, 1, 1. Spends the code, then does what a reissue does: a new `externalId`, so every bearer issued before stops authenticating, and **200** `{ token }` with the new bearer and nothing else. Without a token the tenant comes from the resolver, header or subdomain, as for `/auth` (§2.2). An unknown, used, voided, expired or malformed code, or one whose token has since expired, been removed or gained the admin role, is always 401 `PAIRING_CODE_INVALID` with the same body; the code is spent either way |
 | POST | `/token/:id/reissue` | capability `tokens`, `freshAuth` | a new `externalId`, then a new bearer, shown once: every bearer issued before stops authenticating. Name, roles and expiry stay; an expired token is 409 `TOKEN_EXPIRED`. A token with the admin role is 403 to whoever could not create one |
 
 Every route that changes a token writes one row in the governance log of the container the token
 lives in (§5.1, docs/SCHEMA_V5.md §2.10), in the transaction of the change: `token.created`,
-`token.updated`, `token.reissued`, `token.blocked`, `token.unblocked`, `token.deleted`. A change
+`token.updated`, `token.reissued`, `token.pairing_code_issued`, `token.paired`, `token.blocked`,
+`token.unblocked`, `token.deleted`. A change
 that cannot be written down is not made, and a build without the governance log manager answers
 these routes with 503 `GOVERNANCE_LOG_NOT_AVAILABLE`. The row names the token, its roles on a
 creation, the fields a change carried and the roles it left, the reason of a block; never a bearer.
@@ -378,6 +381,8 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/tokens/:id/block` | `system:admin` | |
 | POST | `/system/tokens/:id/unblock` | `system:admin`, `freshAuth` | |
 | POST | `/system/tokens/:id/reissue` | `system:admin`, `freshAuth` | as `POST /token/:id/reissue` |
+| POST | `/system/tokens/:id/pairing-code` | `system:admin`, `freshAuth` | as `POST /token/:id/pairing-code`, opt-in the same way |
+| POST | `/system/tokens/pair` | public, 10 a minute per address | as `POST /token/pair`; the bearer carries `scp: 'control'` |
 | GET | `/system/access-log` | capability `access-log`, granted to `system:auditor` | Magic Query over the access log of the platform (`scope: 'control'` only, a condition the URL cannot relax) |
 | GET | `/system/access-log/count` | capability `access-log` | |
 | GET | `/system/governance-log` | capability `governance-log`, granted to `system:auditor` | Magic Query over what the operators did to the platform (§5.1): `tenantId`, `action`, `actorId`, `actorKind`, `outcome`, `occurredAt`. A build without the governance log manager answers 404 `NOT_FOUND` |

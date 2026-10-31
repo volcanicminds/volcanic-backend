@@ -114,7 +114,7 @@ async function seedWidget(locator: string, tag: string) {
  */
 export async function setup(
   extra: Record<string, unknown> = {},
-  options: { strategy?: 'schema' | 'container'; roles?: Role[] } = {}
+  options: { strategy?: 'schema' | 'container'; roles?: Role[]; config?: Record<string, unknown> } = {}
 ) {
   if (server) return server
 
@@ -138,6 +138,7 @@ export async function setup(
     resolver: 'header',
     headerKey: HEADER
   }
+  Object.assign(cfg.options as any, options.config ?? {})
   ;(global as any).config = cfg
   ;(global as any).roles = loaderRoles.mergeRoles(await loaderRoles.load(), options.roles ?? [])
   // The control catalogue, exactly as index.ts loads it: a control route resolves its roles

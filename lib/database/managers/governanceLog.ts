@@ -58,6 +58,8 @@ const ACTIONS: Record<GovernanceAction, GovernanceScope> = {
   'token.created': 'container',
   'token.updated': 'container',
   'token.reissued': 'container',
+  'token.pairing_code_issued': 'container',
+  'token.paired': 'container',
   'token.blocked': 'container',
   'token.unblocked': 'container',
   'token.deleted': 'container'

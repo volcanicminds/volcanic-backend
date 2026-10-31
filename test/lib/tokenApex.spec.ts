@@ -13,7 +13,7 @@
 import { expect } from 'expect'
 import fastify from 'fastify'
 import jwt from '@fastify/jwt'
-import { create, update, remove, findOne, block, unblock, reissue } from '../../lib/api/token/controller/token.js'
+import { create, update, remove, findOne, block, unblock, reissue, issuePairingCode, pair } from '../../lib/api/token/controller/token.js'
 import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
 ;(global as any).log = {}
@@ -82,6 +82,13 @@ function request(opts: any = {}) {
           calls.push(['resetExternalId', id])
           return 't-ext-rotated'
         },
+        setPairingCode: async (_c: any, id: string, code: string, expiresAt: Date) => {
+          calls.push(['setPairingCode', id, code, expiresAt])
+        },
+        claimPairingCode: async (_c: any, code: string) => {
+          calls.push(['claimPairingCode', code])
+          return opts.claimed ?? null
+        },
         createToken: async (_c: any, data: any) => {
           calls.push(['createToken', data])
           return opts.createFails ? null : { id: 't-new', externalId: 't-ext-new', ...data }
@@ -106,6 +113,56 @@ function request(opts: any = {}) {
 
   return { req, calls, reply: fakeReply(), governance }
 }
+
+describe('tokens · the pairing code, a reissue handed over later', () => {
+  let savedRoles: any
+  before(() => {
+    savedRoles = (global as any).roles
+    ;(global as any).roles = { public: { code: 'public' }, admin: { code: 'admin' }, editor: { code: 'editor' } }
+  })
+  after(() => {
+    ;(global as any).roles = savedRoles
+  })
+
+  it('refuses a code for an admin token and for an expired one, as a reissue does, and keeps none', async () => {
+    const sovereign = request({ callerRoles: ['editor'], existing: { roles: ['admin', 'public'] } })
+    await issuePairingCode(sovereign.req, sovereign.reply)
+    expect([sovereign.reply.sent.code, sovereign.reply.sent.body.code]).toEqual([403, 'TOKEN_ROLE_FORBIDDEN'])
+
+    const old = request({ existing: { expiresAt: new Date(Date.now() - 1000).toISOString() } })
+    await issuePairingCode(old.req, old.reply)
+    expect([old.reply.sent.code, old.reply.sent.body.code]).toEqual([409, 'TOKEN_EXPIRED'])
+    expect([...sovereign.calls, ...old.calls]).toEqual([])
+  })
+
+  it('hands twelve typeable symbols once, and gives the manager the same symbols with a ten-minute end', async () => {
+    const { req, reply, calls, governance } = request()
+    const answer: any = await issuePairingCode(req, reply)
+    expect(answer.code).toMatch(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/)
+    expect(calls).toEqual([['setPairingCode', 't1', answer.code.replace(/-/g, ''), new Date(answer.expiresAt)]])
+    const left = new Date(answer.expiresAt).getTime() - Date.now()
+    expect(left > 9.9 * 60 * 1000 && left <= 10 * 60 * 1000).toBe(true)
+    expect(JSON.stringify(governance)).not.toContain(answer.code)
+  })
+
+  it('answers every code that does not work alike, and signs the rotated subject for one that does', async () => {
+    const answers = []
+    for (const opts of [{ data: { code: 'nope' } }, { data: { code: '0000-0000-0000' } }, { data: { code: 'abcd-efgh-jkmn' }, claimed: { ...EXISTING, roles: ['admin'] } }]) {
+      const { req, reply } = request(opts)
+      await pair(req, reply)
+      answers.push(reply.sent)
+    }
+    expect(answers[0]).toMatchObject({ code: 401, body: { code: 'PAIRING_CODE_INVALID' } })
+    expect(answers).toEqual([answers[0], answers[0], answers[0]])
+
+    // Typed in lower case, with the letters Crockford reads as digits.
+    const ok = request({ data: { code: 'abcd-efgh-jklo' }, claimed: EXISTING })
+    const answer: any = await pair(ok.req, ok.reply)
+    expect(Object.keys(answer)).toEqual(['token'])
+    expect(claimsOf(answer.token)).toEqual({ sub: 't-ext-rotated', typ: 'integration' })
+    expect(ok.calls).toEqual([['claimPairingCode', 'ABCDEFGHJK10'], ['resetExternalId', 't1']])
+  })
+})
 
 describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', () => {
   let savedRoles: any

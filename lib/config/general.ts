@@ -49,6 +49,11 @@ export default {
       // opt-in: exposes GET /admin/manifest (gated by the `manifest` capability) for the admin console
       enabled: false
     },
+    tokenPairing: {
+      // opt-in: an integration token's bearer handed over as a ten-minute, single-use code
+      // (POST /token/:id/pairing-code, then POST /token/pair; the same under /system/tokens)
+      enabled: false
+    },
     cache: {
       // opt-in: in-memory LRU+TTL cache for routes that declare `cache:`.
       // When enabled, ttl (default 3600s) and maxEntries (default 1000) can be set here.

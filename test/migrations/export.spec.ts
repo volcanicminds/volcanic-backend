@@ -166,13 +166,17 @@ suite('export · a Postgres container, out and back (T-17.1, T-17.4)', function 
       mfa_enabled boolean not null default false, mfa_secret text, reset_password_token text,
       is_founder boolean not null default false, deleted_at timestamptz, created_at timestamptz not null default now())`)
     await handle.execute('create table session (id text primary key, user_id text)')
-    await handle.execute('create table token (id text primary key, external_id text not null)')
+    await handle.execute(
+      'create table token (id text primary key, external_id text not null, pairing_code_hash text, pairing_code_expires_at timestamptz)'
+    )
     await handle.execute('create table widget (id text primary key, tag text)')
     await handle.execute(`insert into "user" (id, email, password, external_id, mfa_enabled, mfa_secret, reset_password_token, is_founder) values
       ('u-founder', 'founder@acme.test', '${HASH}', 'ext-founder', true, 'ENCRYPTED-TOTP-SECRET', 'RESET-ME', true),
       ('u-member', 'member@acme.test', '${HASH}', 'ext-member', false, null, null, false)`)
     await handle.execute("insert into session (id, user_id) values ('s1', 'u-founder')")
-    await handle.execute("insert into token (id, external_id) values ('tok-1', 'ext-token')")
+    await handle.execute(
+      "insert into token (id, external_id, pairing_code_hash, pairing_code_expires_at) values ('tok-1', 'ext-token', 'PAIRING-CODE-HASH', now())"
+    )
     await handle.execute("insert into widget (id, tag) values ('w1', 'ACME PRIVATE ROW')")
 
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-export-pg-'))
@@ -193,7 +197,9 @@ suite('export · a Postgres container, out and back (T-17.1, T-17.4)', function 
     const text = fs.readFileSync(dump.path, 'utf8')
     expect(text).toContain('ACME PRIVATE ROW')
     expect(text).toContain(RESTORED_PASSWORD)
-    for (const secret of [HASH, 'ENCRYPTED-TOTP-SECRET', 'RESET-ME', SOURCE, 'vm_scratch_']) expect(text).not.toContain(secret)
+    for (const secret of [HASH, 'ENCRYPTED-TOTP-SECRET', 'RESET-ME', 'PAIRING-CODE-HASH', SOURCE, 'vm_scratch_']) {
+      expect(text).not.toContain(secret)
+    }
     // The external identities and the access log point at a user's external_id: it travels.
     expect(text).toContain('ext-founder')
     // No scratch container outlives the export.

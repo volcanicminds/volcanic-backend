@@ -2895,7 +2895,7 @@ goes to the **governance log** (`governance_log`, one per container, never purge
 exports and downloads of `/exports`) or an integration token of either plane (`token`, its row in the same
 container as the log); a job writes author, kind and address null. The acts on the platform's own tokens
 (`/system/tokens`) are `token.*` rows of the control plane's log. The acts on a tenant's integration
-tokens (`token.created`, `token.updated`, `token.reissued`, `token.blocked`, `token.unblocked`, `token.deleted`)
+tokens (`token.created`, `token.updated`, `token.reissued`, `token.pairing_code_issued`, `token.paired`, `token.blocked`, `token.unblocked`, `token.deleted`)
 go to the governance log of the tenant's own container instead, read by its `admin` at `GET /governance-log` (the
 `governance-log` capability of the tenant catalogue); without tenants both sit in the control plane's. The
 database refuses `UPDATE`, `DELETE` and `TRUNCATE` on the table for every role, a dump carries the rule along,
@@ -4329,7 +4329,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Users | `POST /users/:id/block` · `/unblock` | `users` cap⁵ | **yes** | `userManager` |
 | Users | `POST /users/:id/mfa/reset` · `/password/reset`⁶ | `users` cap (admin-only)⁶ | **yes** | `userManager` |
 | Token | `GET /token` · `/count` · `/:id` | `tokens` cap | (read)³ | `tokenManager` |
-| Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/:id/block` · `/:id/unblock` · `/:id/reissue` (fresh: create, update, unblock, reissue) | `tokens` cap⁵ | **yes** | `tokenManager` + `governanceLogManager` |
+| Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/:id/block` · `/:id/unblock` · `/:id/reissue` · `/:id/pairing-code` (fresh: create, update, unblock, reissue, pairing-code) · `POST /token/pair` (public, 10/min per IP; both opt-in with `options.tokenPairing.enabled`) | `tokens` cap⁵ | **yes** | `tokenManager` + `governanceLogManager` |
 | Governance log | `GET /governance-log` · `/count` (tenant plane, the `token.*` acts only) | `governance-log` cap | **yes** | `governanceLogManager` |
 | Tenants | `GET /tenants` · `GET /tenants/:id` | `tenants:read` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants` · `PUT /tenants/:id` · `POST /tenants/:id/suspend` · `/restore` · `DELETE /tenants/:id` | `tenants` cap | **yes** | `tenantManager` |

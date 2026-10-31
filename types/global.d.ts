@@ -496,6 +496,10 @@ export interface GeneralConfig {
       ttl?: number // default TTL in seconds for routes without an explicit ttl
       maxEntries?: number // LRU cap (slots) before least-recently-used eviction
     }
+    // An integration token's bearer handed over as a pairing code (lib/util/tokenPairing.ts).
+    tokenPairing?: {
+      enabled?: boolean // opt-in: off unless exactly `true`, and then neither route is mounted
+    }
   }
 }
 
@@ -673,6 +677,10 @@ export interface TokenManagement {
   updateTokenById(ctx: DataHandle, id: string, token: any): Promise<any | null>
   removeTokenById(ctx: DataHandle, id: string): Promise<boolean>
   resetExternalId(ctx: DataHandle, id: string): Promise<string>
+  /** Keeps the code's hash and end on the row, replacing any previous code. */
+  setPairingCode(ctx: DataHandle, id: string, code: string, expiresAt: Date): Promise<void>
+  /** Spends a live code of a live token and returns that token's row, or null. */
+  claimPairingCode(ctx: DataHandle, code: string): Promise<any | null>
 
   retrieveTokenById(ctx: DataHandle, id: string): Promise<any | null>
   retrieveTokenByExternalId(ctx: DataHandle, externalId: string): Promise<any | null>
@@ -1556,6 +1564,8 @@ export type GovernanceAction =
   | 'token.created'
   | 'token.updated'
   | 'token.reissued'
+  | 'token.pairing_code_issued'
+  | 'token.paired'
   | 'token.blocked'
   | 'token.unblocked'
   | 'token.deleted'

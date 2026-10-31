@@ -128,6 +128,8 @@ index on `reset_password_token`, index on `confirmation_token`, index on `delete
 | `blocked_at` | timestamp | yes | | |
 | `roles` | text[] | no | `[]` | |
 | `expires_at` | timestamp | yes | | **new in v5**: a machine credential without an expiry is a permanent secret. `null` means no expiry and must be an explicit choice |
+| `pairing_code_hash` | text | yes | | **new in v5**: the SHA-256 of the token's live pairing code (docs/API_V5.md §4), never the code. Cleared when the code is spent, and by the scrub of a package |
+| `pairing_code_expires_at` | timestamp | yes | | **new in v5**: when that code stops working, ten minutes after it was issued |
 | `version` | integer | no | `1` | |
 | `created_at` | timestamp | no | now | |
 | `updated_at` | timestamp | no | now | |

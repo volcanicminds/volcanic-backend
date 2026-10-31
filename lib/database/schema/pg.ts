@@ -105,6 +105,10 @@ export function appTables(schemaName: string) {
       // Nullable, but the API requires the caller to say so: a machine credential without an
       // expiry must be a decision, not an omission.
       expiresAt: timestamp('expires_at', { withTimezone: true }),
+      // The pairing code (docs/API_V5.md §4.2): its SHA-256 and its end, never the code. One per
+      // token, so issuing another overwrites the previous one.
+      pairingCodeHash: text('pairing_code_hash'),
+      pairingCodeExpiresAt: timestamp('pairing_code_expires_at', { withTimezone: true }),
       version: integer('version').notNull().default(1),
       ...stamps()
     },

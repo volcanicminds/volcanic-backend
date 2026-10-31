@@ -1,3 +1,5 @@
+import { isTokenPairingEnabled, pairingRateLimit } from '../../util/tokenPairing.js'
+
 export default {
   config: {
     title: 'Integration token functions',
@@ -99,6 +101,42 @@ export default {
             $ref: 'tokenCreatedSchema#'
           }
         }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/:id/pairing-code',
+      requireCapability: 'tokens',
+      handler: 'token.issuePairingCode',
+      middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
+      config: {
+        // A getter, so the switch is read when the router reads the route, at each boot: this
+        // module is imported once per process.
+        get enable() {
+          return isTokenPairingEnabled()
+        },
+        title: 'Issue a pairing code',
+        description: 'A ten-minute, single-use code a machine exchanges at /token/pair for a new bearer. A new code voids the previous one',
+        params: { $ref: 'onlyIdSchema#' },
+        response: { 200: { description: 'The code, shown here once, and when it ends', $ref: 'tokenPairingCodeSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/pair',
+      roles: [],
+      handler: 'token.pair',
+      middlewares: [],
+      rateLimit: pairingRateLimit,
+      config: {
+        get enable() {
+          return isTokenPairingEnabled()
+        },
+        title: 'Exchange a pairing code',
+        description: 'Spends the code and answers with a new bearer for its token: every bearer issued before stops working',
+        body: { $ref: 'tokenPairBodySchema#' },
+        response: { 200: { description: 'The new bearer, shown here once, never stored', $ref: 'tokenPairedSchema#' } }
       }
     },
     {

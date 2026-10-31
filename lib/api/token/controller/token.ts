@@ -5,6 +5,7 @@ import { INTEGRATION_TYP } from '../../../util/credential.js'
 import { dataContext, isPlatformRoute } from '../../../util/tenancy.js'
 import { fieldNames, governed, type GovernanceEvent } from '../../../util/governance.js'
 import { httpError } from '../../../util/httpError.js'
+import { newPairingCode, normalizePairingCode, PAIRING_CODE_TTL_MS } from '../../../util/tokenPairing.js'
 
 //
 // One controller for the tokens of every plane: the tenant's on `/tokens`, the control plane's on
@@ -143,29 +144,90 @@ function signBearer(req: FastifyRequest, externalId: string, expiresAt: Date | n
  * token cannot take the bearer of one either.
  */
 export async function reissue(req: FastifyRequest, reply: FastifyReply) {
-  const { id } = req.parameters()
-  const tokens = req.server['tokenManager']
-
-  const token = await tokens.retrieveTokenById(dataContext(req), id)
-  if (!token?.id || token.deletedAt) return reply.status(404).send()
-  if (grantsSovereignty(req, token.roles)) {
-    return sovereignRefused(reply, 'Cannot reissue a token with the admin role')
-  }
-
-  const expiresAt = token.expiresAt ? new Date(token.expiresAt) : null
-  if (expiresAt && !(expiresAt.getTime() > Date.now())) {
-    return reply
-      .status(409)
-      .send(httpError(409, 'This token has expired, and a reissued bearer would be refused too: create a new token', 'TOKEN_EXPIRED'))
-  }
+  const target = await reissuable(req, reply, 'Cannot reissue a token with the admin role')
+  if (!target) return reply
+  const { token, expiresAt } = target
 
   const externalId = await governedToken(
     req,
-    (tx) => tokens.resetExternalId(tx, token.id),
+    (tx) => req.server['tokenManager'].resetExternalId(tx, token.id),
     () => ({ action: 'token.reissued', targetId: token.id })
   )
   const bearerToken = signBearer(req, externalId, expiresAt)
   return { ...token, externalId, token: bearerToken }
+}
+
+const hasExpired = (expiresAt: Date | null) => !!expiresAt && !(expiresAt.getTime() > Date.now())
+
+/** The token a reissue, now or through a pairing code, may act on; null once the refusal is sent. */
+async function reissuable(req: FastifyRequest, reply: FastifyReply, sovereign: string) {
+  const { id } = req.parameters()
+  const token = await req.server['tokenManager'].retrieveTokenById(dataContext(req), id)
+  if (!token?.id || token.deletedAt) {
+    reply.status(404).send()
+    return null
+  }
+  if (grantsSovereignty(req, token.roles)) {
+    sovereignRefused(reply, sovereign)
+    return null
+  }
+  const expiresAt: Date | null = token.expiresAt ? new Date(token.expiresAt) : null
+  if (hasExpired(expiresAt)) {
+    reply
+      .status(409)
+      .send(httpError(409, 'This token has expired, and a reissued bearer would be refused too: create a new token', 'TOKEN_EXPIRED'))
+    return null
+  }
+  return { token, expiresAt }
+}
+
+/**
+ * A code that a machine exchanges once, within ten minutes, for a reissue of the token
+ * (docs/API_V5.md §4.2): what an administrator hands over instead of the bearer. The rules of a
+ * reissue apply now, and the bearer the code delivers is signed at the exchange. Shown once,
+ * kept as a hash; a new code voids the previous one.
+ */
+export async function issuePairingCode(req: FastifyRequest, reply: FastifyReply) {
+  const target = await reissuable(req, reply, 'Cannot pair a token with the admin role')
+  if (!target) return reply
+  const { token } = target
+
+  const { code, normalized } = newPairingCode()
+  const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_MS)
+  await governedToken(
+    req,
+    (tx) => req.server['tokenManager'].setPairingCode(tx, token.id, normalized, expiresAt),
+    () => ({ action: 'token.pairing_code_issued', targetId: token.id, detail: { expiresAt: expiresAt.toISOString() } })
+  )
+  return { code, expiresAt: expiresAt.toISOString() }
+}
+
+/**
+ * The exchange, unauthenticated: the code is the credential. The code is spent before anything is
+ * checked, so a code that names an expired token or one that has gained the plane's sovereign role
+ * is gone as well as refused. Unknown, expired, used, and ineligible all get one answer.
+ */
+export async function pair(req: FastifyRequest, reply: FastifyReply) {
+  const code = normalizePairingCode(req.data()?.code)
+  const tokens = req.server['tokenManager']
+  const sovereign = isPlatformRoute(req) ? SUPERUSER : roles.admin.code
+
+  const paired =
+    code &&
+    (await governedToken(
+      req,
+      async (tx) => {
+        const token = await tokens.claimPairingCode(tx, code)
+        const expiresAt: Date | null = token?.expiresAt ? new Date(token.expiresAt) : null
+        if (!token?.id || hasExpired(expiresAt) || includesRole(token.roles, sovereign)) return null
+        return { id: token.id as string, expiresAt, externalId: await tokens.resetExternalId(tx, token.id) }
+      },
+      (done) => done && { action: 'token.paired', targetId: done.id }
+    ))
+  if (!paired) {
+    return reply.status(401).send(httpError(401, 'This code is unknown, expired or used already', 'PAIRING_CODE_INVALID'))
+  }
+  return { token: signBearer(req, paired.externalId, paired.expiresAt) }
 }
 
 export async function remove(req: FastifyRequest, reply: FastifyReply) {

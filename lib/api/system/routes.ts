@@ -1,4 +1,5 @@
 import { isTenancyEnabled } from '../../util/tenancy.js'
+import { isTokenPairingEnabled, pairingRateLimit } from '../../util/tokenPairing.js'
 
 //
 // The control scope's own surface (docs/API_V5.md §5).
@@ -550,6 +551,41 @@ export default {
         manifest: platformTokens,
         params: { $ref: 'onlyIdSchema#' },
         response: { 200: { description: 'The token, with its new bearer: shown here once, never stored', $ref: 'tokenCreatedSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/tokens/:id/pairing-code',
+      roles: SUPERUSER,
+      handler: 'systemToken.issuePairingCode',
+      middlewares: ['global.isAuthenticated'],
+      freshAuth: true,
+      config: {
+        // Read at each boot, as on /token: this module is imported once per process.
+        get enable() {
+          return isTokenPairingEnabled()
+        },
+        title: 'Issue a pairing code for a platform token',
+        description: 'A ten-minute, single-use code a machine exchanges at /system/tokens/pair for a new bearer',
+        manifest: platformTokens,
+        params: { $ref: 'onlyIdSchema#' },
+        response: { 200: { description: 'The code, shown here once, and when it ends', $ref: 'tokenPairingCodeSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/tokens/pair',
+      roles: ['public'],
+      handler: 'systemToken.pair',
+      rateLimit: pairingRateLimit,
+      config: {
+        get enable() {
+          return isTokenPairingEnabled()
+        },
+        title: 'Exchange a pairing code for a platform token',
+        description: 'Spends the code and answers with a new bearer for its token: every bearer issued before stops working',
+        body: { $ref: 'tokenPairBodySchema#' },
+        response: { 200: { description: 'The new bearer, shown here once, never stored', $ref: 'tokenPairedSchema#' } }
       }
     },
     {

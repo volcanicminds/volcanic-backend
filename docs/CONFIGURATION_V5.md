@@ -52,6 +52,9 @@ export default {
     // choose from, and the one that applies until its administrator chooses. The platform can
     // replace both at runtime (`PUT /system/account-creation`) and the set of one tenant
     // (`config.account_creation`). A rule that is not one refuses the boot.
+    // opt-in: an integration token's bearer handed over as a ten-minute, single-use pairing code
+    // (docs/API_V5.md §4); off, neither route exists
+    tokenPairing: { enabled: false },
     accountCreation: {
       allowed: ['invite', 'approval', 'open'], // or a comma-separated string
       default: 'invite'                   // closed: accounts are made by an administrator

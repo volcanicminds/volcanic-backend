@@ -1,8 +1,9 @@
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import type { TokenManagement, DataHandle, VQuery } from '../../../types/global.js'
 import { executeFind, executeCount } from '../query/index.js'
 import { runtime, table, column } from './runtime.js'
 import { firstBy } from '../prepared.js'
+import { hashToken } from './destruction.js'
 
 //
 // Machine credentials. Same shape as the user manager, one difference that matters:
@@ -79,6 +80,33 @@ export function createTokenManager(): TokenManagement {
       const externalId = crypto.randomUUID()
       await handle.db.update(token).set({ externalId }).where(eq(column(token, 'id'), id as never))
       return externalId
+    },
+
+    // A token has one code: a new one overwrites the previous, which stops matching.
+    async setPairingCode(ctx: DataHandle, id: string, code: string, expiresAt: Date) {
+      const { handle, token } = tokens(ctx, 'setPairingCode')
+      await handle.db
+        .update(token)
+        .set({ pairingCodeHash: hashToken(code), pairingCodeExpiresAt: expiresAt })
+        .where(eq(column(token, 'id'), id as never))
+    },
+
+    // One statement spends the code and returns the row it named: of two requests carrying the
+    // same code, one gets the row and the other nothing.
+    async claimPairingCode(ctx: DataHandle, code: string) {
+      const { handle, token } = tokens(ctx, 'claimPairingCode')
+      const rows = await handle.db
+        .update(token)
+        .set({ pairingCodeHash: null, pairingCodeExpiresAt: null })
+        .where(
+          and(
+            eq(column(token, 'pairingCodeHash'), hashToken(code) as never),
+            gt(column(token, 'pairingCodeExpiresAt'), new Date() as never),
+            isNull(column(token, 'deletedAt'))
+          )
+        )
+        .returning()
+      return rows[0] ?? null
     },
 
     retrieveTokenById: async (ctx, id) => await one(ctx, 'retrieveTokenById', 'id', id),

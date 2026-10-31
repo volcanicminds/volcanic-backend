@@ -48,3 +48,26 @@ export const tokenCreatedSchema = {
     token: { type: 'string' }
   }
 }
+
+export const tokenPairingCodeSchema = {
+  $id: 'tokenPairingCodeSchema',
+  type: 'object',
+  properties: {
+    code: { type: 'string' },
+    expiresAt: { type: 'string', format: 'date-time' }
+  }
+}
+
+export const tokenPairBodySchema = {
+  $id: 'tokenPairBodySchema',
+  type: 'object',
+  required: ['code'],
+  properties: { code: { type: 'string', maxLength: 64 } }
+}
+
+// The bearer alone: whoever holds a code learns nothing else about the token.
+export const tokenPairedSchema = {
+  $id: 'tokenPairedSchema',
+  type: 'object',
+  properties: { token: { type: 'string' } }
+}

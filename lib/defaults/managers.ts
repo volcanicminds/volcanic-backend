@@ -64,7 +64,7 @@ const USER_METHODS = [
 
 const TOKEN_METHODS = [
   'isValidToken', 'createToken', 'updateTokenById', 'removeTokenById', 'resetExternalId',
-  'retrieveTokenById', 'retrieveTokenByExternalId', 'blockTokenById', 'unblockTokenById',
+  'setPairingCode', 'claimPairingCode', 'retrieveTokenById', 'retrieveTokenByExternalId', 'blockTokenById', 'unblockTokenById',
   'countQuery', 'findQuery'
 ] as const
 

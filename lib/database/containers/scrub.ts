@@ -29,6 +29,10 @@ const CREDENTIALS: Record<string, Record<string, string>> = {
     reset_password_token: 'null',
     reset_password_token_at: 'null',
     confirmation_token: 'null'
+  },
+  token: {
+    pairing_code_hash: 'null',
+    pairing_code_expires_at: 'null'
   }
 }
 
@@ -41,7 +45,7 @@ const EMPTIED = ['session', 'auth_flow']
  */
 export async function scrubCredentials(handle: PostgresHandle, schema: string): Promise<void> {
   const present = await handle.execute<{ table_name: string; column_name: string }>(
-    sql`select table_name, column_name from information_schema.columns where table_schema = ${schema} and table_name in ('user', 'session', 'auth_flow')`
+    sql`select table_name, column_name from information_schema.columns where table_schema = ${schema} and table_name in ('user', 'token', 'session', 'auth_flow')`
   )
   const rows = present.rows ?? []
 
