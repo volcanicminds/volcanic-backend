@@ -329,6 +329,12 @@ unless `isValid(req)` answers exactly `true`, which is how a signed upload link 
 `isValid` that throws serves nothing. Which authenticated subjects may upload what is the
 application's to decide, in the tus hooks.
 
+With tenants the endpoint is a tenant route, like every route without `scope: 'control'`: the
+tenant comes from the token, and the subject is looked up in that tenant's container. An anonymous
+request names its tenant as on any other route, or is refused with 400 `TENANT_REQUIRED` before
+`isValid` is asked. The uploads themselves are the manager's storage, one for the process, not
+one per tenant.
+
 ---
 
 > **`SessionManagement` belongs here and is written in §11.** The code quotes the numbering of

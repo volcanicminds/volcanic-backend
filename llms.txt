@@ -4776,7 +4776,9 @@ What changes at runtime (see Part 1.7 for the security rules):
 - **File upload (TUS):** inject `TransferManager` from `@volcanicminds/tools/transfer` as `transferManager`;
   the core mounts a streaming TUS endpoint at `getPath()`. It serves authenticated requests; an anonymous
   one gets 401 `UNAUTHORIZED` unless `isValid(req)` answers `true` (set with `setAnonymousAccess`, for a
-  signed link). See Part 1.6 (raw-body/multipart) for related plugins.
+  signed link). With tenants it is a tenant route: the token's tenant is resolved and the subject found in
+  its container; an anonymous request names its tenant or gets 400 `TENANT_REQUIRED`. The upload storage is
+  the manager's, one per process. See Part 1.6 (raw-body/multipart) for related plugins.
 - **Mailer / Logger / Storage:** used directly inside your services (no manager needed) — e.g. send the
   forgot-password mail from your `userManager.forgotPassword` implementation. See Part 7.2.
 

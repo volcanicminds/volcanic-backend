@@ -10,6 +10,12 @@ import { isAnonymous } from '../hooks/onRequest.js'
  * and lets the rest through as anonymous; the handler then refuses an anonymous request unless
  * `isValid(req)` vouches for it (a signed link, say). Without that refusal the route would carry
  * no `requiredRoles`, and the role gate lets such a route through for anyone, credential or not.
+ *
+ * With tenants it is a tenant route, as the router makes every route that does not declare
+ * `scope: 'control'`: the resolution opens the container the token names, where `onRequest`
+ * finds the subject, and an anonymous request names its tenant as on any other route. The
+ * resolution acts only on a route carrying the flag: without it the subject is looked up in no
+ * container, and every upload is anonymous.
  */
 export async function mountTransfer(server: FastifyInstance): Promise<void> {
   global.transferPath = null
@@ -38,7 +44,9 @@ export async function mountTransfer(server: FastifyInstance): Promise<void> {
         done(null)
       })
 
-      instance.all('*', { config: { requiredRoles: [roles.public] } }, async (req, reply) => {
+      // `tenantContext` is the flag the router stores for the scope (lib/util/tenancy.ts, `dataContext`).
+      const config = { requiredRoles: [roles.public], tenantContext: true }
+      instance.all('*', { config }, async (req, reply) => {
         if (isAnonymous(req) && (await tm.isValid(req)) !== true) {
           return reply.status(401).send(httpError(401, 'Authentication required', 'UNAUTHORIZED'))
         }
