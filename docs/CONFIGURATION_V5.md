@@ -65,7 +65,12 @@ export default {
       ip: 'truncate',                     // 'truncate' (/24, /48) or 'none'
       retentionDays: 90,                  // tenant-plane rows
       controlRetentionDays: 180           // platform rows
-    }
+    },
+
+    // Who may upload to the transfer endpoint (docs/MANAGERS_V5.md §8). Required when a
+    // transferManager is injected: a missing list, or a role the project does not have, refuses
+    // the boot. 'public' lets every authenticated subject in; [] only what isValid vouches for.
+    transfer: { roles: ['uploader'] }
   }
 }
 ```

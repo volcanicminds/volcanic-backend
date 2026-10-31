@@ -314,7 +314,8 @@ export interface TransferManagement {
   onUploadCreate(callback: TransferCallback): void
   onUploadFinish(callback: TransferCallback): void
   onUploadTerminate(callback: TransferCallback): void
-  handle(req: any, res: any): Promise<void>
+  /** Serves a tus request as `owner`; an upload bound to another owner answers 404. */
+  handle(req: any, res: any, owner?: string): Promise<void>
   /** Asked only for a request that authenticated no subject: `true` serves it anyway. */
   isValid(req: FastifyRequest): Promise<boolean>
 }
@@ -323,11 +324,21 @@ export interface TransferManagement {
 `TransferManager` from `@volcanicminds/tools/transfer` implements it and is injected as it is.
 
 **Who reaches the upload endpoint.** The route is mounted outside the router, so it declares no
-roles of its own; the framework authenticates whoever carries a credential and serves them. A
-request with no credential, or with one that does not verify, is refused with 401 `UNAUTHORIZED`
-unless `isValid(req)` answers exactly `true`, which is how a signed upload link gets through. An
-`isValid` that throws serves nothing. Which authenticated subjects may upload what is the
-application's to decide, in the tus hooks.
+roles of its own; the framework authenticates whoever carries a credential, and serves them when
+they hold a role `options.transfer.roles` lists, refusing the others with 403 `FORBIDDEN`. The
+list is required once a manager is mounted: without it, or naming a role the project does not
+have, the boot is refused. `public` in the list lets every authenticated subject in. A request with
+no credential, or with one that does not verify, is refused with 401 `UNAUTHORIZED` unless
+`isValid(req)` answers exactly `true`, which is how a signed upload link gets through, whatever
+the list says. An `isValid` that throws serves nothing.
+
+**Whose an upload is.** The framework hands `handle` the request's subject as the owner, within
+its tenant: `<tenant id>/token:<id>`, `user:<id>` or `system:<id>`, without the tenant prefix on a
+single-tenant deployment, `undefined` when anonymous. `TransferManager` keeps it in the upload's
+metadata as `owner` and answers 404 to every other subject, as for an upload that does not exist.
+A route that reads an upload from the manager's store (rag's claim of an original) compares that
+`owner` with `req.transferOwner()`, which the framework decorates every request with once the
+endpoint is mounted.
 
 With tenants the endpoint is a tenant route, like every route without `scope: 'control'`: the
 tenant comes from the token, and the subject is looked up in that tenant's container. An anonymous

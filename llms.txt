@@ -4774,11 +4774,16 @@ What changes at runtime (see Part 1.7 for the security rules):
   carries the destruction code of an operator without MFA: compose by `purpose` (`identify`, `verify`,
   `destruction`), and never word a destruction code as a sign-in.
 - **File upload (TUS):** inject `TransferManager` from `@volcanicminds/tools/transfer` as `transferManager`;
-  the core mounts a streaming TUS endpoint at `getPath()`. It serves authenticated requests; an anonymous
-  one gets 401 `UNAUTHORIZED` unless `isValid(req)` answers `true` (set with `setAnonymousAccess`, for a
-  signed link). With tenants it is a tenant route: the token's tenant is resolved and the subject found in
-  its container; an anonymous request names its tenant or gets 400 `TENANT_REQUIRED`. The upload storage is
-  the manager's, one per process. See Part 1.6 (raw-body/multipart) for related plugins.
+  the core mounts a streaming TUS endpoint at `getPath()`. It serves authenticated subjects holding a role
+  `options.transfer.roles` lists (required with a manager: missing, or naming an unknown role, refuses the
+  boot; `public` admits every authenticated subject), others get 403 `FORBIDDEN`; an anonymous one gets 401
+  `UNAUTHORIZED` unless `isValid(req)` answers `true` (set with `setAnonymousAccess`, for a signed link).
+  `handle` receives the subject as the upload's owner (`<tenant id>/token:<id>`, `user:<id>`, `system:<id>`;
+  no tenant prefix without tenants), kept in the upload's metadata `owner`; any other subject gets 404 on that
+  upload. `req.transferOwner()` gives a route the same owner, to check an upload it reads from the store.
+  With tenants it is a tenant route: the token's tenant is resolved and the subject found in its container;
+  an anonymous request names its tenant or gets 400 `TENANT_REQUIRED`. The upload storage is the manager's,
+  one per process. See Part 1.6 (raw-body/multipart) for related plugins.
 - **Mailer / Logger / Storage:** used directly inside your services (no manager needed) — e.g. send the
   forgot-password mail from your `userManager.forgotPassword` implementation. See Part 7.2.
 

@@ -500,6 +500,12 @@ export interface GeneralConfig {
     tokenPairing?: {
       enabled?: boolean // opt-in: off unless exactly `true`, and then neither route is mounted
     }
+    /**
+     * Who may upload to the transfer endpoint. Required when a transfer manager is mounted, refused
+     * at boot when missing or naming a role the project does not have. `public` lets every
+     * authenticated subject in; `[]` leaves only the anonymous requests `isValid` vouches for.
+     */
+    transfer?: { roles: string[] }
   }
 }
 
@@ -1649,7 +1655,12 @@ export interface TransferManagement {
   onUploadCreate(callback: TransferCallback): void
   onUploadFinish(callback: TransferCallback): void
   onUploadTerminate(callback: TransferCallback): void
-  handle(req: any, res: any): Promise<void>
+  /**
+   * Serves a tus request as `owner` (the request's subject, `undefined` when anonymous): an upload
+   * it creates is bound to the owner, kept in the upload's metadata as `owner`, and an upload bound
+   * to another answers 404.
+   */
+  handle(req: any, res: any, owner?: string): Promise<void>
   /**
    * Asked only for a request on the transfer path that authenticated no subject: `true` serves
    * it anyway (a signed link, say), anything else answers 401. A request with a valid credential
@@ -1768,6 +1779,11 @@ declare module 'fastify' {
     confirmationToken?: string
     /** Raw request body, populated by `fastify-raw-body` when enabled on the route. */
     rawBody?: string | Buffer
+    /**
+     * Whose the uploads of this request are on the transfer endpoint, as the endpoint binds them;
+     * `undefined` when anonymous. Present only when a transfer manager is mounted.
+     */
+    transferOwner?(): string | undefined
     /** Multipart helpers, populated by `@fastify/multipart`. */
     isMultipart(): boolean
     file(options?: any): Promise<any>
@@ -1859,6 +1875,8 @@ export interface FastifyRequest extends FastifyRequest {
   confirmationToken?: string
   /** Raw request body, populated by `fastify-raw-body` when enabled on the route. */
   rawBody?: string | Buffer
+  /** The owner the transfer endpoint binds this request's uploads to: see the `fastify` module augmentation above. */
+  transferOwner?(): string | undefined
   /** Multipart helpers, populated by `@fastify/multipart`. */
   isMultipart(): boolean
   file(options?: any): Promise<any>

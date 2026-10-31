@@ -5,8 +5,9 @@
 // The route is mounted outside the router, so it carries no `requiredRoles` of a declared route,
 // and the role gate lets a route without them through for anyone. These tests go through
 // `server.inject` with the real hook and the real mounting: an anonymous request must be refused
-// unless the manager's `isValid` vouches for it, and an authenticated one must be served without
-// asking.
+// unless the manager's `isValid` vouches for it, an authenticated one must hold a role
+// `options.transfer.roles` lists and is then served without asking, and the manager is told whose
+// the upload is.
 //
 import { expect } from 'expect'
 import fastify from 'fastify'
@@ -23,7 +24,7 @@ const bag = globalThis as any
 bag.log = {}
 
 function fakeTransfer(over: { implemented?: boolean; path?: () => string; valid?: (req: any) => any } = {}) {
-  const calls = { handle: 0, isValid: 0 }
+  const calls = { handle: 0, isValid: 0, owners: [] as (string | undefined)[] }
   const manager = {
     isImplemented: () => over.implemented !== false,
     getPath: over.path ?? (() => '/files'),
@@ -35,8 +36,9 @@ function fakeTransfer(over: { implemented?: boolean; path?: () => string; valid?
       calls.isValid++
       return over.valid ? over.valid(req) : false
     },
-    handle: async (_req: any, res: any) => {
+    handle: async (_req: any, res: any, owner?: string) => {
       calls.handle++
+      calls.owners.push(owner)
       res.writeHead(201, { 'content-type': 'text/plain' })
       res.end('stored')
     }
@@ -64,6 +66,8 @@ async function build(transfer: any) {
   })
   server.addHook('onRequest', authHook)
   await mountTransfer(server)
+  // Another route, as rag's claim of an upload is: it reads the owner the endpoint binds.
+  server.get('/owner', async (req: any) => ({ owner: req.transferOwner?.() ?? null }))
   await server.ready()
   return server
 }
@@ -88,9 +92,17 @@ describe('loader/transfer · who reaches the upload endpoint', () => {
 
   before(() => {
     saved = { roles: bag.roles, config: bag.config, transferPath: bag.transferPath, mode: process.env.AUTH_MODE }
-    bag.roles = { public: { code: 'public', name: 'Public' }, admin: { code: 'admin', name: 'Admin' } }
-    bag.config = { options: { tenants: null } }
+    bag.roles = {
+      public: { code: 'public', name: 'Public' },
+      admin: { code: 'admin', name: 'Admin' },
+      sentinel: { code: 'sentinel', name: 'Sentinel' }
+    }
     process.env.AUTH_MODE = 'BEARER'
+  })
+
+  // The roles are read when the endpoint is mounted, so each test builds after setting them.
+  beforeEach(() => {
+    bag.config = { options: { tenants: null, transfer: { roles: ['admin'] } } }
   })
 
   after(() => {
@@ -159,6 +171,55 @@ describe('loader/transfer · who reaches the upload endpoint', () => {
     await server.close()
   })
 
+  it('refuses with 403 an authenticated subject holding none of the roles options.transfer.roles lists', async () => {
+    bag.config.options.transfer.roles = ['sentinel']
+    const { manager, calls } = fakeTransfer()
+    const server = await build(manager)
+    const res = await upload(server, '/files', server.jwt.sign({ sub: USER.externalId }))
+    expect([res.statusCode, codeOf(res), calls.handle]).toEqual([403, 'FORBIDDEN', 0])
+    await server.close()
+  })
+
+  it('lets every authenticated subject in when the list names public, and still asks isValid of an anonymous one', async () => {
+    bag.config.options.transfer.roles = ['public']
+    const { manager, calls } = fakeTransfer()
+    const server = await build(manager)
+    expect((await upload(server, '/files', server.jwt.sign({ sub: USER.externalId }))).statusCode).toBe(201)
+    expect((await upload(server)).statusCode).toBe(401)
+    expect([calls.handle, calls.isValid]).toEqual([1, 1])
+    await server.close()
+  })
+
+  it('serves an empty list only to what isValid vouches for', async () => {
+    bag.config.options.transfer.roles = []
+    const { manager, calls } = fakeTransfer({ valid: () => true })
+    const server = await build(manager)
+    expect((await upload(server, '/files', server.jwt.sign({ sub: USER.externalId }))).statusCode).toBe(403)
+    expect((await upload(server)).statusCode).toBe(201)
+    expect(calls.owners).toEqual([undefined])
+    await server.close()
+  })
+
+  it('hands the manager the subject as the owner of its uploads, and gives other routes the same owner', async () => {
+    const { manager, calls } = fakeTransfer()
+    const server = await build(manager)
+    const bearer = { authorization: `Bearer ${server.jwt.sign({ sub: USER.externalId })}` }
+    expect((await upload(server, '/files', server.jwt.sign({ sub: USER.externalId }))).statusCode).toBe(201)
+    expect(calls.owners).toEqual(['user:u1'])
+    expect((await server.inject({ method: 'GET', url: '/owner', headers: bearer })).json()).toEqual({ owner: 'user:u1' })
+    expect((await server.inject({ method: 'GET', url: '/owner' })).json()).toEqual({ owner: null })
+    await server.close()
+  })
+
+  it('refuses to start without the list of roles, or with a role the project does not have', async () => {
+    for (const transfer of [undefined, { roles: 'admin' }, { roles: [1] }]) {
+      bag.config = { options: { tenants: null, transfer } }
+      await expect(build(fakeTransfer().manager)).rejects.toThrow(/options.transfer.roles must list the roles that may upload/)
+    }
+    bag.config = { options: { tenants: null, transfer: { roles: ['admin', 'ghost'] } } }
+    await expect(build(fakeTransfer().manager)).rejects.toThrow(/roles the project does not have: ghost/)
+  })
+
   it('treats a credential that does not verify as no credential, and refuses', async () => {
     const { manager, calls } = fakeTransfer()
     const server = await build(manager)
@@ -199,7 +260,7 @@ describe('loader/transfer · with tenants, the upload is a tenant route', () => 
   before(() => {
     saved = { roles: bag.roles, config: bag.config, transferPath: bag.transferPath, mode: process.env.AUTH_MODE }
     bag.roles = { public: { code: 'public', name: 'Public' }, sentinel: { code: 'sentinel', name: 'Sentinel' } }
-    bag.config = { options: { tenants: TENANTS } }
+    bag.config = { options: { tenants: TENANTS, transfer: { roles: ['sentinel'] } } }
     process.env.AUTH_MODE = 'BEARER'
   })
 
@@ -252,6 +313,8 @@ describe('loader/transfer · with tenants, the upload is a tenant route', () => 
     const res = await upload(server, '/files', server.jwt.sign({ sub: 'machine-1', tid: ACME.id, typ: INTEGRATION_TYP }))
     expect([res.statusCode, calls.handle, calls.isValid]).toEqual([201, 1, 0])
     expect(lookedUpIn).toEqual([ACME.id])
+    // The owner names the tenant: a token of another container with the same id is another owner.
+    expect(calls.owners).toEqual([`${ACME.id}/token:t1`])
     await server.close()
   })
 
