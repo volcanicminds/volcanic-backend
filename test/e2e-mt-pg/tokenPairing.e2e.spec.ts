@@ -101,6 +101,21 @@ describe('Token pairing, switched on', function () {
     expect(new Set(answers.map((a) => JSON.stringify(a))).size).toBe(1)
   })
 
+  it('a reissue or a block voids the pending code, so it cannot pair once the token is back', async () => {
+    const reissued = await mint('reissued')
+    const beforeReissue = await codeOf(reissued.id)
+    const fresh = body(await asAdmin(`/token/${reissued.id}/reissue`))
+    expect(await exchange(beforeReissue.code)).toMatchObject({ statusCode: REFUSED.statusCode })
+    expect((await probe(fresh.token)).statusCode).toBe(200)
+
+    const blocked = await mint('blocked')
+    const beforeBlock = await codeOf(blocked.id)
+    expect((await asAdmin(`/token/${blocked.id}/block`, { reason: 'lost laptop' })).statusCode).toBe(200)
+    expect((await asAdmin(`/token/${blocked.id}/unblock`)).statusCode).toBe(200)
+    expect(await exchange(beforeBlock.code)).toMatchObject({ statusCode: REFUSED.statusCode })
+    expect((await probe(blocked.token)).statusCode).toBe(200)
+  })
+
   it('refuses, like a reissue, a token with the admin role and an expired one', async () => {
     const sovereign = await mint('sovereign')
     await sql().query(`update "${ACME.locator}".token set roles = '{admin,public}' where id = $1`, [sovereign.id])

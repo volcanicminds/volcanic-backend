@@ -75,10 +75,15 @@ export function createTokenManager(): TokenManagement {
       return rows.length > 0
     },
 
+    // A reissue revokes every way in that came before it, a pending pairing code included: else
+    // the code's holder could still exchange it and void the bearer just reissued.
     async resetExternalId(ctx: DataHandle, id: string) {
       const { handle, token } = tokens(ctx, 'resetExternalId')
       const externalId = crypto.randomUUID()
-      await handle.db.update(token).set({ externalId }).where(eq(column(token, 'id'), id as never))
+      await handle.db
+        .update(token)
+        .set({ externalId, pairingCodeHash: null, pairingCodeExpiresAt: null })
+        .where(eq(column(token, 'id'), id as never))
       return externalId
     },
 
@@ -120,7 +125,8 @@ export function createTokenManager(): TokenManagement {
       const { handle, token } = tokens(ctx, 'blockTokenById')
       await handle.db
         .update(token)
-        .set({ blocked: true, blockedReason: reason, blockedAt: new Date(), updatedAt: new Date() })
+        // A code issued before the block would outlive it and pair once the token is unblocked.
+        .set({ blocked: true, blockedReason: reason, blockedAt: new Date(), updatedAt: new Date(), pairingCodeHash: null, pairingCodeExpiresAt: null })
         .where(eq(column(token, 'id'), id as never))
       return true
     },
