@@ -800,8 +800,8 @@ next renewal closes the session with the reason `subject is no longer valid`. `D
 every door, the emailed code and the identity provider included.
 
 `POST /users/:id/block` and `POST /auth/unregister` block the account and rotate its `externalId`:
-the access token the user already holds stops at the next request (404 `SUBJECT_NOT_FOUND`)
-instead of at its expiry. The block and the unblock answer `{ ok: true }`.
+the access token the user already holds stops at the next request (404 `SUBJECT_NOT_FOUND`,
+which in cookie mode also clears the session cookies) instead of at its expiry. The block and the unblock answer `{ ok: true }`.
 
 **What a custom `userManager` has to do.** `isValidUser` is asked with the row at every request and
 at every renewal: it refuses a removed user (`deletedAt`), or removing a user only stops the next

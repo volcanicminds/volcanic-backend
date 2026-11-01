@@ -16,13 +16,24 @@ type SessionClaims = {
   auth_time?: number
 }
 import { dataContext, isPlatformRoute } from '../util/tenancy.js'
-import { credentialOf, INTEGRATION_TYP, isCookieMode, REFRESH_TYP } from '../util/credential.js'
+import { clearSessionCookies, credentialOf, INTEGRATION_TYP, isCookieMode, REFRESH_TYP } from '../util/credential.js'
+import type { Credential, Plane } from '../util/credential.js'
 import { finishFreshness } from '../util/stepUp.js'
 import { withoutQuery } from '../util/logger.js'
 import { systemUserMayLogIn } from '../auth/subjects.js'
 
 /** A refusal the catch below answers as 401, or tolerates on a public route. */
 const refusal = (message: string, authCode: string) => Object.assign(new Error(message), { authCode })
+
+/**
+ * A good signature naming nobody. A session cookie carrying it would get this answer to every
+ * request the browser sends, the login included, and only the server can remove an httpOnly
+ * cookie: the answer clears the plane's session cookies. A header token is the client's to drop.
+ */
+const subjectNotFound = (reply: FastifyReply, credential: Credential, plane: Plane) => {
+  if (credential.channel === 'cookie') clearSessionCookies(reply, plane)
+  return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
+}
 
 const normalizeRoles = (rolesArray: any[] | undefined): string[] => {
   if (!rolesArray || rolesArray.length === 0) {
@@ -70,7 +81,8 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
     // hook identifies the subject, that one decided the container, and both must be looking
     // at the same credential. The plane picks the cookie: an operator's browser may hold a
     // control session and an impersonated tenant session at once.
-    const credential = credentialOf(req, controlIdentity ? 'control' : 'tenant')
+    const plane: Plane = controlIdentity ? 'control' : 'tenant'
+    const credential = credentialOf(req, plane)
     // The claims of the credential that authenticated this request, for the freshness gate.
     let claims: SessionClaims | null = null
 
@@ -133,7 +145,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           const tokens = req.server['tokenManager']
           const token = tokens?.isImplemented() ? await tokens.retrieveTokenByExternalId(dataContext(req), subjectId) : null
           if (!token) {
-            return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
+            return subjectNotFound(reply, credential, plane)
           }
           if (!(await tokens.isValidToken(token))) {
             return reply.status(403).send(httpError(403, 'Token is not valid or blocked', 'TOKEN_NOT_VALID'))
@@ -182,7 +194,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
 
           const systemUser = await sm.retrieveSystemUserByExternalId(req.control as ControlHandle, subjectId)
           if (!systemUser) {
-            return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
+            return subjectNotFound(reply, credential, plane)
           }
           if (!systemUserMayLogIn(systemUser)) {
             return reply.status(403).send(httpError(403, 'User is not valid or blocked', 'USER_NOT_VALID'))
@@ -198,7 +210,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
           ? await req.server['userManager'].retrieveUserByExternalId(dataContext(req), subjectId)
           : null
         if (!user) {
-          return reply.status(404).send(httpError(404, 'Subject not found', 'SUBJECT_NOT_FOUND'))
+          return subjectNotFound(reply, credential, plane)
         }
         if (!(await req.server['userManager'].isValidUser(user))) {
           return reply.status(403).send(httpError(403, 'User is not valid or blocked', 'USER_NOT_VALID'))

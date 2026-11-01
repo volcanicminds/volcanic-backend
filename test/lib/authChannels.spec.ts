@@ -295,6 +295,26 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
       await server.close()
     })
 
+    it('clears both cookies of the plane when the session names a subject that no longer exists', async () => {
+      // A user deleted while their browser still held a session: the signature stays good, so
+      // every request the browser sends would answer 404, the login included, and only the
+      // server can remove an httpOnly cookie.
+      const server = await build()
+      const vanished = server.signCookie(server.jwt.sign({ sub: 'u-ext-vanished' }))
+      const res = await server.inject({ method: 'GET', url: '/orders', cookies: { auth_token: vanished } })
+      expect([res.statusCode, codeOf(res)]).toEqual([404, 'SUBJECT_NOT_FOUND'])
+      expect(cookieOf(res, 'auth_token')).toMatchObject({ value: '', path: '/' })
+      expect(cookieOf(res, 'refresh_token')).toMatchObject({ value: '', path: '/auth/refresh-token' })
+
+      const operator = server.signCookie(server.jwt.sign({ sub: 'op-ext-vanished', scp: 'control' }))
+      const platform = await server.inject({ method: 'GET', url: '/platform', cookies: { control_token: operator } })
+      expect([platform.statusCode, codeOf(platform)]).toEqual([404, 'SUBJECT_NOT_FOUND'])
+      expect(cookieOf(platform, 'control_token')).toMatchObject({ value: '' })
+      expect(cookieOf(platform, 'control_refresh_token')).toMatchObject({ value: '' })
+      expect(cookieOf(platform, 'auth_token')).toBeUndefined()
+      await server.close()
+    })
+
     it('limits the refresh cookie to the path the browser sees behind a prefix-stripping proxy', () => {
       process.env.COOKIE_PATH_PREFIX = '/api/'
       try {

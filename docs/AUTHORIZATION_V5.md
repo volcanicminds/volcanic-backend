@@ -178,7 +178,9 @@ credential travels in the `Authorization` header only, and in a cookie is 401 `C
 in cookie mode the header takes nothing else. The label is not the absence of `sid`: a session
 carries none when the deployment keeps no registry (§9.6), and would then be taken for a machine.
 A bearer signed without the label is looked up among the persons and answers 404
-`SUBJECT_NOT_FOUND`.
+`SUBJECT_NOT_FOUND`. The same answer to a session held in a cookie clears both cookies of its
+plane: the subject is gone for good, the browser would send that cookie with every request, the
+login included, and an httpOnly cookie is the server's to remove.
 
 **The platform has integration tokens of its own**, at `/system/tokens` (docs/API_V5.md §5): rows
 of the control plane's `token` table, signed with `scp: 'control'` and no `tid`, issued and managed
