@@ -490,3 +490,25 @@ describe('manifest · a resource declared under a longer prefix (T-10.20)', () =
     expect(resourceOf(m).capabilities.map((c: any) => c.name)).toContain('audit')
   })
 })
+
+//
+// A console offers to sort by every field the manifest does not call unsortable, and sends
+// `_sort` for it. A list that is not a Magic Query collection ignores or refuses that parameter,
+// so its route says which fields it sorts by, and the rest go out unsortable.
+//
+describe('manifest · the fields a list sorts by', () => {
+  const sorted = (sort: string[]) => build([{ ...CRUD[0], resource: { sort } }, ...CRUD.slice(1)])
+  const sortable = (m: any) => resourceOf(m).fields.filter((f: any) => f.sortable !== false).map((f: any) => f.name)
+
+  it('says nothing where the route declares nothing, as a Magic Query collection sorts by any column', () => {
+    expect(resourceOf(build()).fields.some((f: any) => 'sortable' in f)).toBe(false)
+  })
+
+  it('leaves sortable only the fields the route names', () => {
+    expect(sortable(sorted(['name', 'createdAt']))).toEqual(['name', 'createdAt'])
+  })
+
+  it('makes every field unsortable for a list that sorts by none', () => {
+    expect(sortable(sorted([]))).toEqual([])
+  })
+})

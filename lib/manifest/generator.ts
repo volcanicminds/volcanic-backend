@@ -59,6 +59,8 @@ export interface FieldSpec {
    * field belongs.
    */
   writeOnly?: boolean
+  /** `false` on a field the list does not sort by, from the route's `resource.sort`; absent otherwise. */
+  sortable?: boolean
   enum?: { value: string; label: string }[]
   validation?: Record<string, any>
 }
@@ -354,6 +356,8 @@ export function buildManifest(input: {
 
     // fields — collapse body (writable) + response (readable) onto (resource, field)
     const fields = collectFields(segRoutes, schemas, sensitiveAlways, sensitiveWriteOnly, depth)
+    const sorts = hint?.sort
+    if (sorts) for (const field of fields) if (!sorts.includes(field.name)) field.sortable = false
 
     const resource: ResourceSpec = {
       name,

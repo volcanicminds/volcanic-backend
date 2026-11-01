@@ -115,6 +115,12 @@ export interface ResourceHints {
   titleField?: string | string[]
   subtitleField?: string | string[]
   globalSearch?: string[] // omni-search fields (OR)
+  /**
+   * The fields the list sorts by, for a list that is not a Magic Query collection: every other
+   * field goes out `sortable: false`, and `[]` says it sorts by none. A console offers to sort by
+   * any field not marked so and sends `_sort` for it, which such a list ignores or refuses.
+   */
+  sort?: string[]
 }
 
 // Structural hints (manifest L1) authored in routes.ts, grouped under `config.manifest`

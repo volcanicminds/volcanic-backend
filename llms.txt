@@ -4564,7 +4564,9 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
   (enforced by `depcruise`). Consequence: relations are emitted "thin" (target only, no kind/foreign-key) and enums
   only when declared in the schema; the rest is filled by admin-side overrides.
 - **Structural hints** (optional, domain-only) live under `config.manifest` of a `routes.ts` (file-level, overridable
-  per-route): `manifest: { group, resource: { name, titleField, subtitleField, globalSearch } }`. Grouping them under
+  per-route): `manifest: { group, resource: { name, titleField, subtitleField, globalSearch, sort } }`. `sort` names
+  the fields a list sorts by when it is not a Magic Query collection (`[]` for none): every other field goes out
+  `sortable: false`, so a console never offers a `_sort` the list ignores. Grouping them under
   `config.manifest` keeps the manifest hints separate from the operational route config. `resource.name` maps the
   schemas to a canonical resource (e.g. path `users` → name `user`); without it the URL segment is used. The native
   `users` / `tenants` APIs ship such hints (resource `user` / `tenant`, group `system`).
