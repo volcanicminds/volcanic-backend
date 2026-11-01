@@ -58,7 +58,8 @@ describe('util/secret · what counts as a signing key (T-9.5)', () => {
 
     const verdict = validateSecretStrength(padded)
     expect(verdict.ok).toBe(false)
-    expect(verdict.reason).toContain('well-known')
+    // The startup message reads `<NAME> is <reason>`.
+    expect(verdict.reason).toMatch(/^a well-known\/default value /)
     expect(verdict.reason).toContain('changeme')
   })
 

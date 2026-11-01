@@ -70,7 +70,7 @@ export function validateSecretStrength(value: string | undefined): SecretCheck {
   const lower = v.toLowerCase()
   const weak = [...COMMON_WEAK_SECRETS].find((w) => lower.includes(w))
   if (weak) {
-    return { ok: false, missing: false, reason: `contains a well-known/default value ("${weak}")` }
+    return { ok: false, missing: false, reason: `a well-known/default value ("${weak}")` }
   }
 
   if (v.length < MIN_SECRET_LENGTH) {
