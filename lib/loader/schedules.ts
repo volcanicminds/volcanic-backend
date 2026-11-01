@@ -28,6 +28,8 @@ import { activeTenant, lendTenant } from '../util/withTenant.js'
 //
 const MAX_CONCURRENCY = 16
 const TENANT_PAGE = 100
+/** The name of one job in a file's `jobs`, which follows the file's own in `<file>:<name>`. */
+const JOB_KEY = /^[A-Za-z0-9_-]+$/
 
 // The scheduler parses an expression only when the job is added, after listen(), and a refusal
 // there stops the start. Read here by the same parser with the same timezone, a wrong expression
@@ -68,76 +70,92 @@ export function load(): any[] {
     }
   }
 
+  // A file carries one job, `job` with `schedule`, or several, `jobs` keyed by a name of their
+  // own: work that needs more than one plane ships in one file, and a project mounting that file
+  // cannot leave a part out. A file exporting both is refused, since which one runs would be a guess.
   patterns.forEach((pattern) => {
     if (log.t) log.trace('Looking for ' + pattern)
     globSync(pattern, { windowsPathsNoEscape: true }).forEach((f: string) => {
       if (log.t) log.trace(`* Add job schedule from ${f}`)
 
-      const jobName = path.basename(f, path.extname(f))
-      const { job, schedule: s } = require(f)
+      const fileName = path.basename(f, path.extname(f))
+      const { job, schedule, jobs: several } = require(f)
+      if (several === undefined) return admit(fileName, job, schedule)
 
-      let isLoadedAndEnabled = false
-      if (s && s.active) {
-        isLoadedAndEnabled = true
+      const refuse = (why: string) => {
+        if (log.e) log.error(`* Job ${fileName}: ${why}`)
+      }
+      if (job !== undefined || schedule !== undefined) return refuse('exports `jobs` next to `job` or `schedule`')
+      if (!_.isPlainObject(several)) return refuse('`jobs` must be an object of `{ job, schedule }` by name')
+      for (const [key, entry] of Object.entries(several as Record<string, any>)) {
+        if (!JOB_KEY.test(key)) refuse(`'${key}' in \`jobs\` is not a name: letters, digits, '-' and '_'`)
+        else admit(`${fileName}:${key}`, entry?.job, entry?.schedule)
+      }
+    })
+  })
 
-        let schedule = _.cloneDeep(jobScheduleDefaults)
-        schedule = _.merge(schedule, s)
+  function admit(jobName: string, job: any, s: any) {
+    let isLoadedAndEnabled = false
+    if (s && s.active) {
+      isLoadedAndEnabled = true
 
-        // Reported at error level, not trace: a job that silently does not exist is the
-        // same operational surprise as a job that runs in the wrong place.
-        const reject = (why: string) => {
-          if (log.e) log.error(`* Job ${jobName}: ${why}`)
-          isLoadedAndEnabled = false
-        }
+      let schedule = _.cloneDeep(jobScheduleDefaults)
+      schedule = _.merge(schedule, s)
 
-        // Without the option the scheduler plugin is never registered, and the first job added
-        // to it would stop the start after listen().
-        if (!global.config?.options?.scheduler) reject('the scheduler is off: set `scheduler: true` in config/general.ts')
+      // Reported at error level, not trace: a job that silently does not exist is the
+      // same operational surprise as a job that runs in the wrong place.
+      const reject = (why: string) => {
+        if (log.e) log.error(`* Job ${jobName}: ${why}`)
+        isLoadedAndEnabled = false
+      }
 
-        if (!job || typeof job !== 'function') reject('no exported `job` function')
+      // Without the option the scheduler plugin is never registered, and the first job added
+      // to it would stop the start after listen().
+      if (!global.config?.options?.scheduler) reject('the scheduler is off: set `scheduler: true` in config/general.ts')
 
-        if (!schedule.type || !['cron', 'interval'].includes(schedule.type)) {
-          reject('schedule.type must be cron or interval')
-        }
+      if (!job || typeof job !== 'function') reject('no exported `job` function')
 
-        if (schedule.type === 'cron') {
-          const { expression, timezone } = schedule.cron || {}
-          const unreadable = expression ? cronRefusal(expression, timezone) : null
-          if (!expression) reject('schedule.cron.expression not defined')
-          else if (unreadable) reject(`schedule.cron is not readable: ${unreadable}`)
-        }
+      if (!schedule.type || !['cron', 'interval'].includes(schedule.type)) {
+        reject('schedule.type must be cron or interval')
+      }
 
-        if (schedule.type === 'interval') {
-          const { days = 0, hours = 0, minutes = 0, seconds = 0, milliseconds = 0 } = schedule.interval || {}
-          const totalIntervalMs = milliseconds + 1000 * (seconds + 60 * (minutes + 60 * (hours + 24 * days)))
+      if (schedule.type === 'cron') {
+        const { expression, timezone } = schedule.cron || {}
+        const unreadable = expression ? cronRefusal(expression, timezone) : null
+        if (!expression) reject('schedule.cron.expression not defined')
+        else if (unreadable) reject(`schedule.cron is not readable: ${unreadable}`)
+      }
 
-          if (totalIntervalMs < 1000) {
-            reject('schedule.interval must have a total greater or equal to 1s')
-          }
-        }
+      if (schedule.type === 'interval') {
+        const { days = 0, hours = 0, minutes = 0, seconds = 0, milliseconds = 0 } = schedule.interval || {}
+        const totalIntervalMs = milliseconds + 1000 * (seconds + 60 * (minutes + 60 * (hours + 24 * days)))
 
-        // Where it runs is checked here, at load, and not at the first tick: a job that
-        // names a plane the deployment does not have is a configuration mistake, and the
-        // moment to say so is before it has run once.
-        const scope = schedule.scope || 'control'
-        if (!['control', 'tenant', 'every-tenant'].includes(scope)) {
-          reject(`unknown scope '${scope}'. Use 'control', 'tenant' or 'every-tenant'`)
-        }
-        if (scope === 'tenant' && !schedule.tenant) {
-          reject("scope 'tenant' needs `tenant: '<slug>'`: it says which container, and there is no default")
-        }
-        if (scope !== 'control' && !isTenancyEnabled()) {
-          reject(`scope '${scope}' needs a \`tenants\` block: this deployment has none`)
-        }
-
-        if (isLoadedAndEnabled) {
-          jobs.push({ jobName, schedule, job })
+        if (totalIntervalMs < 1000) {
+          reject('schedule.interval must have a total greater or equal to 1s')
         }
       }
 
-      if (log.d) log.debug(`* Job schedule ${jobName} ${isLoadedAndEnabled ? 'enabled' : 'disabled'}`)
-    })
-  })
+      // Where it runs is checked here, at load, and not at the first tick: a job that
+      // names a plane the deployment does not have is a configuration mistake, and the
+      // moment to say so is before it has run once.
+      const scope = schedule.scope || 'control'
+      if (!['control', 'tenant', 'every-tenant'].includes(scope)) {
+        reject(`unknown scope '${scope}'. Use 'control', 'tenant' or 'every-tenant'`)
+      }
+      if (scope === 'tenant' && !schedule.tenant) {
+        reject("scope 'tenant' needs `tenant: '<slug>'`: it says which container, and there is no default")
+      }
+      if (scope !== 'control' && !isTenancyEnabled()) {
+        reject(`scope '${scope}' needs a \`tenants\` block: this deployment has none`)
+      }
+
+      if (isLoadedAndEnabled) {
+        jobs.push({ jobName, schedule, job })
+      }
+    }
+
+    if (log.d) log.debug(`* Job schedule ${jobName} ${isLoadedAndEnabled ? 'enabled' : 'disabled'}`)
+  }
 
   if (log.i) log.info(`Scheduled Jobs loaded: ${jobs?.length || 0}`)
   return jobs
@@ -163,7 +181,8 @@ export function runnerFor(server: any, jobName: string, schedule: JobSchedule, f
     }
 
     const tm = server['tenantManager'] as TenantManagement
-    if (!tm?.isImplemented?.()) throw new Error(`Job ${jobName}: tenancy is declared but no tenant manager can resolve it`)
+    if (!tm?.isImplemented?.())
+      throw new Error(`Job ${jobName}: tenancy is declared but no tenant manager can resolve it`)
 
     if (scope === 'tenant') {
       const tenant = await activeTenant(tm, control as never, String(schedule.tenant))
@@ -242,7 +261,9 @@ async function everyTenant(
   if (log.i) log.info(`Job ${jobName}: ${ran}/${tenants.length} tenants ok${stopped ? ', interrupted' : ''}`)
 
   if (failures.length) {
-    throw new Error(`Job ${jobName} failed on ${failures.length} of ${tenants.length} tenants:\n  - ${failures.join('\n  - ')}`)
+    throw new Error(
+      `Job ${jobName} failed on ${failures.length} of ${tenants.length} tenants:\n  - ${failures.join('\n  - ')}`
+    )
   }
 }
 
@@ -250,11 +271,14 @@ async function everyTenant(
 async function activeTenants(tm: TenantManagement, control: DataHandle): Promise<Tenant[]> {
   const all: Tenant[] = []
   for (let page = 1; ; page++) {
-    const result: any = await tm.listTenants(control as never, {
-      'status:eq': 'active',
-      _page: page,
-      _pageSize: TENANT_PAGE
-    } as never)
+    const result: any = await tm.listTenants(
+      control as never,
+      {
+        'status:eq': 'active',
+        _page: page,
+        _pageSize: TENANT_PAGE
+      } as never
+    )
     const records: Tenant[] = result?.records ?? []
     all.push(...records)
     if (records.length < TENANT_PAGE) return all

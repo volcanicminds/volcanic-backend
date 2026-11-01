@@ -3228,7 +3228,7 @@ The framework runs recurring tasks (reporting, cleanup) on `toad-scheduler`.
     }
     ```
 2.  Create jobs in `src/schedules/*.job.ts` (or `.job.js`). The file name without its extension is the job's
-    name in the logs and in `run.jobName`.
+    name in the logs and in `run.jobName`; a file carrying several jobs names each `<file>:<key>`.
 
 ### Job structure
 
@@ -3253,6 +3253,21 @@ export async function job(ctx: DataHandle, run: JobRun) {
   log.info(`${run.jobName}: monthly report`)
   // await reportService.on(ctx).generateMonthly()
 }
+```
+
+A file can carry several jobs instead, `jobs` keyed by a name (letters, digits, `-`, `_`): a package whose work
+needs more than one plane ships it as one file, and a project mounting that file cannot leave a part out. Each
+job is named `<file>:<key>` and checked as a file of its own would be, so an inactive one is skipped and a refused
+one does not stop the others. A file exporting `jobs` next to `job` or `schedule` loads nothing.
+
+```typescript
+// src/schedules/cleanup.job.ts
+import type { ScheduledJob } from '@volcanicminds/backend'
+
+export const jobs = {
+  tenants: { job: sweepTenant, schedule: { active: true, scope: 'every-tenant', interval: { hours: 1 } } },
+  platform: { job: sweepPlatform, schedule: { active: true, interval: { hours: 1 } } }
+} satisfies Record<string, ScheduledJob>
 ```
 
 ### Where a job runs

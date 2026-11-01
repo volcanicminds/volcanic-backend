@@ -563,6 +563,16 @@ export interface JobSchedule {
   }
 }
 
+/**
+ * One job of a file that carries several: `export const jobs = { <name>: { job, schedule } }`,
+ * each named `<file>:<name>` and checked as a file of its own would be. A file exports either
+ * `jobs` or `job` with `schedule`, never both.
+ */
+export interface ScheduledJob {
+  job: JobFunction
+  schedule: JobSchedule
+}
+
 export interface ConfiguredRoute {
   enable: boolean
   /**

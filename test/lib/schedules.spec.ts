@@ -200,7 +200,7 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
     const names = jobs.map((j: any) => j.jobName).sort()
 
     // `plain` declares nothing and is kept: its plane is the control plane, by default.
-    expect(names).toEqual(['cron.job', 'good.job', 'plain.job'])
+    expect(names).toEqual(['cron.job', 'good.job', 'pair.job:corpus', 'pair.job:shared', 'plain.job'])
     expect(jobs.find((j: any) => j.jobName === 'good.job').schedule.concurrency).toBe(2)
     expect(jobs.find((j: any) => j.jobName === 'plain.job').schedule.scope).toBe('control')
   })
@@ -219,6 +219,29 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
     expect(errors.find((m) => m.startsWith('* Job stepped.job: schedule.cron is not readable'))).toMatch(/0\/10/)
     expect(errors.find((m) => m.startsWith('* Job zoned.job: schedule.cron is not readable'))).toMatch(/Mars\/Olympus/)
     expect(errors.some((m) => m.startsWith('* Job cron.job'))).toBe(false)
+  })
+
+  it("loads each job of a file's `jobs` under its own name, checks each alone, and refuses a file exporting both forms", () => {
+    const previousLog = (global as any).log
+    const errors: string[] = []
+    ;(global as any).log = { e: true, error: (m: string) => errors.push(m) }
+    let jobs: any[] = []
+    try {
+      jobs = load()
+    } finally {
+      ;(global as any).log = previousLog
+    }
+
+    const pair = jobs.filter((j: any) => j.jobName.startsWith('pair.job'))
+    expect(pair.map((j: any) => [j.jobName, j.schedule.scope])).toEqual([
+      ['pair.job:corpus', 'every-tenant'],
+      ['pair.job:shared', 'control']
+    ])
+    expect(errors).toContain("* Job pair.job:lost: unknown scope 'somewhere-else'. Use 'control', 'tenant' or 'every-tenant'")
+    expect(errors).toContain("* Job pair.job: 'not a name' in `jobs` is not a name: letters, digits, '-' and '_'")
+    expect(errors.some((m) => m.startsWith('* Job pair.job:idle'))).toBe(false)
+    expect(errors).toContain('* Job both.job: exports `jobs` next to `job` or `schedule`')
+    expect(jobs.some((j: any) => j.jobName.startsWith('both.job'))).toBe(false)
   })
 
   it('loads no job while the scheduler is off, and says how to turn it on', () => {
