@@ -188,6 +188,20 @@ async function build(over: any = {}) {
   }
   server.decorate('migrations', { version: async () => '0001_init' })
   if (over.lifecycles) server.decorate('tenantLifecycles', over.lifecycles(f.steps))
+  // The owners of the uploads in the transfer manager's store, which `removeOwned` thins out.
+  if (over.uploads) {
+    const owners: string[] = over.uploads
+    server.decorate('transferManager', {
+      isImplemented: () => true,
+      removeOwned: async (owns: (owner: string) => boolean) => {
+        f.steps.push('removeOwned')
+        if (over.uploadsFail) throw new Error('the bucket is unreachable')
+        const before = owners.length
+        owners.splice(0, owners.length, ...owners.filter((owner) => !owns(owner)))
+        return before - owners.length
+      }
+    })
+  }
 
   server.addHook('onRequest', async (req: any) => {
     req.data = () => getData(req)
@@ -328,6 +342,27 @@ describe('destruction · phase 2, every way it says no (T-6.3)', () => {
     // the container does not reach.
     expect(idps).toEqual([{ tenantId: 'id-other', key: 'entra' }])
     expect(steps).toEqual(['removeAll', 'dropContainer', 'markTenantDestroyed'])
+    await server.close()
+  })
+
+  it("removes the tenant's uploads, its own only, before the container, and counts them in the record", async () => {
+    // A tenant whose id starts like ACME's, and an upload of a deployment without tenants.
+    const uploads = [`${ACME.id}/token:1`, `${ACME.id}/user:2`, `${ACME.id}-copy/token:1`, 'token:9']
+    const { server, token, steps, governanceLogManager } = await open({ uploads })
+    expect((await destroy(server, { token, slug: 'acme', otp: '123456' })).statusCode).toBe(200)
+
+    // They sit in the one folder or bucket every tenant shares, which dropping the container does not reach.
+    expect(uploads).toEqual([`${ACME.id}-copy/token:1`, 'token:9'])
+    expect(steps).toEqual(['removeAll', 'removeOwned', 'dropContainer', 'markTenantDestroyed'])
+    expect(governanceLogManager.rows.at(-1)).toMatchObject({ outcome: 'success', detail: { uploads: 2 } })
+    await server.close()
+  })
+
+  it('keeps the container when the uploads cannot be removed, so it can be destroyed again', async () => {
+    const { server, token, dropped, governanceLogManager } = await open({ uploads: [`${ACME.id}/token:1`], uploadsFail: true })
+    expect((await destroy(server, { token, slug: 'acme', otp: '123456' })).statusCode).toBe(500)
+    expect(dropped).toEqual([])
+    expect(governanceLogManager.rows.at(-1)).toMatchObject({ outcome: 'failure', detail: { containerDropped: false } })
     await server.close()
   })
 

@@ -316,6 +316,8 @@ export interface TransferManagement {
   onUploadTerminate(callback: TransferCallback): void
   /** Serves a tus request as `owner`; an upload bound to another owner answers 404. */
   handle(req: any, res: any, owner?: string): Promise<void>
+  /** Deletes every upload whose `owner` `owns` answers true for, finished or not; answers how many went. */
+  removeOwned(owns: (owner: string) => boolean): Promise<number>
   /** Asked only for a request that authenticated no subject: `true` serves it anyway. */
   isValid(req: FastifyRequest): Promise<boolean>
 }
@@ -344,7 +346,8 @@ With tenants the endpoint is a tenant route, like every route without `scope: 'c
 tenant comes from the token, and the subject is looked up in that tenant's container. An anonymous
 request names its tenant as on any other route, or is refused with 400 `TENANT_REQUIRED` before
 `isValid` is asked. The uploads themselves are the manager's storage, one for the process, not
-one per tenant.
+one per tenant: the destruction of a tenant removes its uploads with `removeOwned`, by the tenant
+prefix of their owner, before the container goes (docs/API_V5.md §6.2).
 
 ---
 

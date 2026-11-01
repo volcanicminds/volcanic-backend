@@ -512,6 +512,9 @@ the path lands in proxy access logs, browser history and tracing systems.
 - The tenant's own identity providers (`identity_provider`, with their client secrets) are removed
   before the container is dropped; the registry row, the impersonation log and the destruction
   record stay, because they are the platform's audit.
+- The tenant's uploads, finished or not, are removed from the transfer manager's store, which every
+  tenant shares, before the container is dropped; the record counts them (`uploads`). A store that
+  cannot remove them stops the destruction with the container still there, as a package does.
 - The registry row is marked `status: 'destroyed'` once the container is gone, and stays.
 - Idempotent: calling it again on a destroyed tenant, or on one whose row is gone, answers 200 with
   `alreadyDestroyed: true`.

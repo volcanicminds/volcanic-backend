@@ -12,6 +12,7 @@ import type {
   TenantLifecycle,
   TenantManagement,
   TenantPlace,
+  TransferManagement,
   UserManagement
 } from '../../../../types/global.js'
 import crypto from 'crypto'
@@ -46,6 +47,7 @@ import {
   sendPackage,
   type ExportedPackage
 } from '../../../util/tenantExport.js'
+import { ownedInTenant } from '../../../loader/transfer.js'
 
 //
 // The tenant registry. Control scope: these routes act on the platform, never inside a
@@ -842,12 +844,21 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
   // new request, while a failure after the drop would leave the secrets behind a spent token.
   const exportRef = exported.package
   let removedProviders = 0
+  let removedUploads = 0
   let dropped = false
   try {
     const idps: IdentityProviderManagement | undefined = req.server['identityProviderManager']
     if (isImplemented(idps)) {
       removedProviders = await idps!.removeAll(control(req), tenant.id)
       if (removedProviders && log.w) log.warn(`Destroying ${tenant.slug}: removed ${removedProviders} identity provider(s)`)
+    }
+
+    // The uploads of every tenant share the transfer manager's one folder or bucket, which
+    // dropping the container does not reach either: the tenant's go too, by their owner.
+    const transfers: TransferManagement | undefined = req.server['transferManager']
+    if (isImplemented(transfers)) {
+      removedUploads = await transfers!.removeOwned(ownedInTenant(tenant.id))
+      if (removedUploads && log.w) log.warn(`Destroying ${tenant.slug}: removed ${removedUploads} upload(s)`)
     }
 
     // What the packages keep outside the container goes before it, for the same reason.
@@ -869,7 +880,8 @@ export async function destroyData(req: FastifyRequest, reply: FastifyReply) {
           manifestSha256: exported.manifestSha256,
           artifacts,
           packages,
-          identityProviders: removedProviders
+          identityProviders: removedProviders,
+          uploads: removedUploads
         }
       }),
       { intentId: intent }

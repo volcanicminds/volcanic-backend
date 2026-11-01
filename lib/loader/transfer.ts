@@ -16,8 +16,16 @@ export function transferOwner(req: FastifyRequest): string | undefined {
         ? `system:${req.systemUser.id}`
         : undefined
   if (subject === undefined) return undefined
-  return req.tenant ? `${req.tenant.tenantId}/${subject}` : subject
+  return req.tenant ? `${tenantPrefix(req.tenant.tenantId)}${subject}` : subject
 }
+
+/** Whether an owner `transferOwner` wrote is a subject of the tenant `tenantId`. */
+export const ownedInTenant =
+  (tenantId: string) =>
+  (owner: string): boolean =>
+    owner.startsWith(tenantPrefix(tenantId))
+
+const tenantPrefix = (tenantId: string) => `${tenantId}/`
 
 /**
  * The roles `options.transfer.roles` names. Refused at boot when the list is missing or names a

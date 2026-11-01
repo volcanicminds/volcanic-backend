@@ -1662,6 +1662,11 @@ export interface TransferManagement {
    */
   handle(req: any, res: any, owner?: string): Promise<void>
   /**
+   * Deletes every upload, finished or not, whose `owner` `owns` answers true for, and answers how
+   * many went; an upload with no owner stays. The destruction of a tenant calls it for the tenant's.
+   */
+  removeOwned(owns: (owner: string) => boolean): Promise<number>
+  /**
    * Asked only for a request on the transfer path that authenticated no subject: `true` serves
    * it anyway (a signed link, say), anything else answers 401. A request with a valid credential
    * is served without asking.

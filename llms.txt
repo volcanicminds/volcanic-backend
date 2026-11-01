@@ -1506,7 +1506,8 @@ lands in proxy access logs, browser history and tracing systems:
 Then, in this order: the second factor is verified, and a TOTP step is spent so the same code cannot
 destroy a second container; the intent is recorded; **the container is exported** (2.12) and the
 file must exist and not be empty; the token is spent with the package's name; the tenant's identity
-providers and what the packages keep outside the container (2.8) are removed; the container is
+providers, its uploads in the transfer manager's store (`removeOwned`, counted as `uploads` in the
+record) and what the packages keep outside the container (2.8) are removed; the container is
 dropped; the registry row is marked `destroyed`. The response is `{ id, slug, destroyed: true,
 exportRef, manifestSha256, artifacts, warning }`, where `exportRef` names the package and
 `artifacts` the packages of 2.8 that wrote a part. After the destruction the package's envelope is
@@ -4215,7 +4216,7 @@ without saying which container it acts on.
 | `tokenManager` | `TokenManagement` | `@volcanicminds/backend/db` | `/token/*` (machine-to-machine API tokens); token-subject resolution in `onRequest` | `createToken`, `retrieveTokenByExternalId`, `isValidToken`, `blockTokenById`/`unblockTokenById`, `removeTokenById`, `findQuery`/`countQuery` |
 | `trackingManager` | `TrackingManagement` | `@volcanicminds/backend/db` | The audit trail: one `change_log` table **inside each container** | `addChange`, `retrieveBy` |
 | `mfaManager` | `MfaManagement` | `@volcanicminds/tools` (mfa) wrapped in an adapter | TOTP setup/verify used by `/auth/mfa/*` | `generateSetup(appName, email)`, `verify(token, secret)` |
-| `transferManager` | `TransferManagement` | `@volcanicminds/tools` (transfer/TUS) | Mounts a TUS upload endpoint at `getPath()` | `getPath`, `getServer`, `handle(req,res)`, `isValid`, `onUploadCreate/Finish/Terminate` |
+| `transferManager` | `TransferManagement` | `@volcanicminds/tools` (transfer/TUS) | Mounts a TUS upload endpoint at `getPath()` | `getPath`, `getServer`, `handle(req,res,owner)`, `isValid`, `removeOwned(owns)`, `onUploadCreate/Finish/Terminate` |
 | `tenantManager` | `TenantManagement` | `@volcanicminds/backend/db` | Tenant resolution and `/tenants/*` | `getTenant`/`getTenantBySlug`/`listTenants`, `createTenant`, `updateTenant`, `suspendTenant`/`restoreTenant`, `softDeleteTenant`, `markTenantDestroyed`, `isImplemented` |
 | `systemUserManager` | `SystemUserManagement` | `@volcanicminds/backend/db` | `/system/auth/*` and `/system/users/*`: the platform's own identities | `retrieveSystemUserByEmail`/`ByExternalId`/`ById`, `createSystemUser`, `blockSystemUser`, `retrieveMfaSecret`, `recordMfaCounter`, `findQuery`/`countQuery` |
 | `impersonationManager` | `ImpersonationManagement` | `@volcanicminds/backend/db` | `/tenants/:id/impersonate`: a **persisted, revocable** session | `open`, `retrieveImpersonation`, `end` |

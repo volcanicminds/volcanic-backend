@@ -113,7 +113,7 @@ const ACCESS_LOG_METHODS = ['record', 'findQuery', 'countQuery', 'purgeBefore', 
 const GOVERNANCE_LOG_METHODS = ['record', 'within', 'findQuery', 'countQuery'] as const
 
 const TRANSFER_METHODS = [
-  'getPath', 'getServer', 'onUploadCreate', 'onUploadFinish', 'onUploadTerminate', 'handle', 'isValid'
+  'getPath', 'getServer', 'onUploadCreate', 'onUploadFinish', 'onUploadTerminate', 'handle', 'removeOwned', 'isValid'
 ] as const
 
 export const defaultUserManager = notImplemented<UserManagement>('userManager', USER_METHODS)
