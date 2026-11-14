@@ -14,11 +14,14 @@ type SessionClaims = {
   typ?: string
   sid?: string
   auth_time?: number
+  /** The thumbprint of the key a paired token is bound to (RFC 9449, lib/util/dpop.ts). */
+  cnf?: { jkt?: string }
 }
 import { dataContext, isPlatformRoute } from '../util/tenancy.js'
 import { clearSessionCookies, credentialOf, INTEGRATION_TYP, isCookieMode, REFRESH_TYP } from '../util/credential.js'
 import type { Credential, Plane } from '../util/credential.js'
 import { finishFreshness } from '../util/stepUp.js'
+import { DpopError, verifyProof } from '../util/dpop.js'
 import { withoutQuery } from '../util/logger.js'
 import { systemUserMayLogIn } from '../auth/subjects.js'
 
@@ -117,6 +120,17 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         }
         if (!integration && credential.channel === 'header' && isCookieMode()) {
           throw refusal('Sessions travel in the cookie: the Authorization header accepts integration tokens only', 'CREDENTIAL_CHANNEL')
+        }
+
+        // A token bound to a key authenticates only beside a proof that key signed for this request,
+        // and the `DPoP` scheme carries nothing else: neither the token alone nor the scheme alone.
+        const jkt = tokenData.cnf?.jkt
+        if (jkt && !credential.dpop) {
+          throw refusal('This token is bound to a key: send it under the DPoP scheme, with a proof', 'DPOP_REQUIRED')
+        }
+        if (credential.dpop) {
+          if (typeof jkt !== 'string') throw new DpopError('Only a token bound to a key travels under the DPoP scheme')
+          verifyProof(req.headers.dpop, { method: req.method, path: withoutQuery(req.url), token: credential.token, jkt })
         }
 
         // No tenant check here. The comparison happens before anything is opened, in

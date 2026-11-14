@@ -55,6 +55,8 @@ const SECRET_KEYS = [
   'clientSecret',
   'otp',
   'authorization',
+  // A DPoP proof: spent by its request here, but another instance would take it within its window.
+  'dpop',
   'cookie'
 ]
 
@@ -62,6 +64,7 @@ const SECRET_KEYS = [
 export const REDACTED_PATHS = [
   ...SECRET_KEYS.flatMap((key) => [key, `*.${key}`]),
   'req.headers.authorization',
+  'req.headers.dpop',
   'req.headers.cookie',
   '*["set-cookie"]',
   'res.headers["set-cookie"]'

@@ -287,7 +287,7 @@ The refusals of a flow, with `remaining` and `retryAt` in the body where they ap
 | POST | `/token/:id/block` | capability `tokens` | **path changed**: v4 was `/token/block/:id`. 404 for an unknown token |
 | POST | `/token/:id/unblock` | capability `tokens`, `freshAuth` | **path changed**: v4 was `/token/unblock/:id`. 404 for an unknown token |
 | POST | `/token/:id/pairing-code` | capability `tokens`, `freshAuth` | **opt-in** (`options.tokenPairing.enabled`; off, the route does not exist). A code that a machine exchanges at `/token/pair` for a reissue of the token, so the bearer is never pasted into its configuration: `{ code, expiresAt }`, the code shown once as `XXXX-XXXX-XXXX` (twelve Crockford base32 symbols, 60 bits), valid ten minutes, single use, kept only as its SHA-256. A new code voids the previous one; so do a reissue and a block, so a code issued before them cannot pair once the token is back. Refused as a reissue is: 404 for an unknown or removed token, 403 `TOKEN_ROLE_FORBIDDEN` for a token with the admin role, 409 `TOKEN_EXPIRED`. A blocked token gets a code, and its bearer is refused until the token is unblocked |
-| POST | `/token/pair` | public, 10 a minute per address | **opt-in**, as above. Body `{ code }`: case, dashes and spaces do not count, and O, I, L read as 0, 1, 1. Spends the code, then does what a reissue does: a new `externalId`, so every bearer issued before stops authenticating, and **200** `{ token }` with the new bearer and nothing else. Without a token the tenant comes from the resolver, header or subdomain, as for `/auth` (§2.2). An unknown, used, voided, expired or malformed code, or one whose token has since expired, been removed or gained the admin role, is always 401 `PAIRING_CODE_INVALID` with the same body; the code is spent either way |
+| POST | `/token/pair` | public, 10 a minute per address | **opt-in**, as above. Body `{ code, jwk }`: in the code case, dashes and spaces do not count, and O, I, L read as 0, 1, 1; `jwk` is the public half of a key pair the machine generated, Ed25519 (`{ kty: 'OKP', crv: 'Ed25519', x }`) or P-256 (`{ kty: 'EC', crv: 'P-256', x, y }`). A key missing, with a private member, or of another kind is 400 (`FST_ERR_VALIDATION`, or `PAIRING_KEY_INVALID`) and leaves the code unspent. Spends the code, then does what a reissue does: a new `externalId`, so every bearer issued before stops authenticating, and **200** `{ token }` with the new bearer and nothing else. The bearer is **bound to the key** (below, "Tokens bound to a key"): it carries the key's thumbprint as `cnf.jkt` and authenticates only beside a proof that key signed. Without a token the tenant comes from the resolver, header or subdomain, as for `/auth` (§2.2). An unknown, used, voided, expired or malformed code, or one whose token has since expired, been removed or gained the admin role, is always 401 `PAIRING_CODE_INVALID` with the same body; the code is spent either way |
 | POST | `/token/:id/reissue` | capability `tokens`, `freshAuth` | a new `externalId`, then a new bearer, shown once: every bearer issued before stops authenticating. Name, roles and expiry stay; an expired token is 409 `TOKEN_EXPIRED`. A token with the admin role is 403 to whoever could not create one |
 
 Every route that changes a token writes one row in the governance log of the container the token
@@ -301,6 +301,31 @@ Whoever gives a credential, widens it or brings it back confirms first: a sessio
 the last `STEP_UP_MAX_AGE` seconds gets 403 `STEP_UP_REQUIRED` (§2.6), and an integration token or
 an impersonation gets `STEP_UP_NOT_AVAILABLE`. Block and removal ask for nothing, so an access is
 taken away at once.
+
+### Tokens bound to a key
+
+A bearer delivered by `/token/pair` or `/system/tokens/pair` is bound to the machine's key, as RFC
+9449 (DPoP) describes: the private key never leaves the machine, the server keeps nothing of it but
+the thumbprint signed into the bearer, and a bearer copied out of a log, a proxy or a backup
+authenticates nothing by itself. Each request sends `Authorization: DPoP <token>` and a `DPoP`
+header, a proof the key signs for that request alone: a JWT typed `dpop+jwt`, signed `EdDSA` or
+`ES256` with the public key in its header, whose claims are `htm` (the method), `htu` (the URL
+without query), `iat`, a unique `jti` and `ath` (the base64url SHA-256 of the bearer).
+
+The server compares `htu` on its path alone, and accepts a path that ends with its own, since
+behind a proxy it does not see the origin the client used and a proxy may strip a prefix. `iat`
+may sit up to 60 seconds from the server's clock either way, and a `jti` is spent by its first
+request until that window closes; the record of spent proofs is per process, so behind several
+instances a proof can be replayed once on each of the others within the window.
+
+| Code | Status | When |
+|---|---|---|
+| `DPOP_REQUIRED` | 401 | a bound bearer under `Bearer` |
+| `DPOP_PROOF_INVALID` | 401 | a bound bearer with no proof, or one that is malformed, signed by another key, for another method, URL or bearer, out of the window or used already; and an unbound bearer under `DPoP` |
+| `PAIRING_KEY_INVALID` | 400 | `/token/pair` with a key that is not a public Ed25519 or P-256 key |
+
+On a route open to `public` a refused credential counts as none, as any other refused credential
+does. A token created with `POST /token` or reissued stays a plain bearer under `Bearer`.
 
 ### `/governance-log` (tenant scope, new in v5)
 
@@ -382,7 +407,7 @@ Platform administrators authenticate on their own routes and receive a token car
 | POST | `/system/tokens/:id/unblock` | `system:admin`, `freshAuth` | |
 | POST | `/system/tokens/:id/reissue` | `system:admin`, `freshAuth` | as `POST /token/:id/reissue` |
 | POST | `/system/tokens/:id/pairing-code` | `system:admin`, `freshAuth` | as `POST /token/:id/pairing-code`, opt-in the same way |
-| POST | `/system/tokens/pair` | public, 10 a minute per address | as `POST /token/pair`; the bearer carries `scp: 'control'` |
+| POST | `/system/tokens/pair` | public, 10 a minute per address | as `POST /token/pair`, `jwk` and the binding included; the bearer carries `scp: 'control'` |
 | GET | `/system/access-log` | capability `access-log`, granted to `system:auditor` | Magic Query over the access log of the platform (`scope: 'control'` only, a condition the URL cannot relax) |
 | GET | `/system/access-log/count` | capability `access-log` | |
 | GET | `/system/governance-log` | capability `governance-log`, granted to `system:auditor` | Magic Query over what the operators did to the platform (§5.1): `tenantId`, `action`, `actorId`, `actorKind`, `outcome`, `occurredAt`. A build without the governance log manager answers 404 `NOT_FOUND` |

@@ -175,7 +175,9 @@ header next to it would be the only thing naming one.
 credential among the tokens of the request's container, any other among the persons (the system
 users on a platform route, the tenant's users otherwise), one read either way. A labelled
 credential travels in the `Authorization` header only, and in a cookie is 401 `CREDENTIAL_CHANNEL`;
-in cookie mode the header takes nothing else. The label is not the absence of `sid`: a session
+in cookie mode the header takes nothing else. A token delivered by pairing is bound to the
+machine's key (`cnf.jkt`, RFC 9449): it travels under the `DPoP` scheme with a proof that key
+signed for the request, and alone it is 401 (docs/API_V5.md, "Tokens bound to a key"). The label is not the absence of `sid`: a session
 carries none when the deployment keeps no registry (§9.6), and would then be taken for a machine.
 A bearer signed without the label is looked up among the persons and answers 404
 `SUBJECT_NOT_FOUND`. The same answer to a session held in a cookie clears both cookies of its

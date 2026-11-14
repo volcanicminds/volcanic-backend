@@ -4477,6 +4477,15 @@ credential. An integration token is the one signed with `typ: 'integration'`, on
 label alone has it looked up among the tokens (any other credential among the persons), and a
 labelled token planted in a cookie is refused with `CREDENTIAL_CHANNEL` too.
 
+A token a machine received from `/token/pair` (body `{ code, jwk }`, the public half of a key pair
+it generated) is **bound to that key** (RFC 9449, DPoP): the bearer carries the key's thumbprint as
+`cnf.jkt`, and every request sends `Authorization: DPoP <token>` plus a `DPoP` header, a JWT typed
+`dpop+jwt` the private key signs (`EdDSA` or `ES256`, public key in the header) over `htm`, `htu`,
+`iat`, a unique `jti` and `ath`, the SHA-256 of the bearer. The bearer alone is 401
+`DPOP_REQUIRED`; a proof missing, wrong, older than 60 s or replayed is 401 `DPOP_PROOF_INVALID`.
+The server compares `htu` on its path, and accepts a path ending with its own (a proxy may strip a
+prefix). `lib/util/dpop.ts`; docs/API_V5.md, "Tokens bound to a key".
+
 `SameSite=Strict` is a deployment constraint: the admin and the API must be on the same site, that
 is the same registrable domain (`admin.example.com` and `api.example.com` are; `admin.example.com`
 and `example-api.net` are not), with `CORS_ORIGINS` granting credentials to the admin's origin.

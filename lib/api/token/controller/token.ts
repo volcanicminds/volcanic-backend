@@ -6,6 +6,7 @@ import { dataContext, isPlatformRoute } from '../../../util/tenancy.js'
 import { fieldNames, governed, type GovernanceEvent } from '../../../util/governance.js'
 import { httpError } from '../../../util/httpError.js'
 import { newPairingCode, normalizePairingCode, PAIRING_CODE_TTL_MS } from '../../../util/tokenPairing.js'
+import { jwkThumbprint, publicJwkOf } from '../../../util/dpop.js'
 
 //
 // One controller for the tokens of every plane: the tenant's on `/tokens`, the control plane's on
@@ -130,9 +131,9 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
  * row's `exp`, and drops an `expiresIn: undefined` meant to clear it; `jwt.sign` given options signs
  * with those alone, so the registered lifetime never applies.
  */
-function signBearer(req: FastifyRequest, externalId: string, expiresAt: Date | null): string {
+function signBearer(req: FastifyRequest, externalId: string, expiresAt: Date | null, jkt?: string): string {
   const plane = isPlatformRoute(req) ? { scp: 'control' } : req.tenantInfo ? { tid: req.tenantInfo.id } : {}
-  const claims = { sub: externalId, typ: INTEGRATION_TYP, ...plane }
+  const claims = { sub: externalId, typ: INTEGRATION_TYP, ...plane, ...(jkt ? { cnf: { jkt } } : {}) }
   return req.server.jwt.sign(expiresAt ? { ...claims, exp: Math.floor(expiresAt.getTime() / 1000) } : claims, {})
 }
 
@@ -203,11 +204,21 @@ export async function issuePairingCode(req: FastifyRequest, reply: FastifyReply)
 }
 
 /**
- * The exchange, unauthenticated: the code is the credential. The code is spent before anything is
- * checked, so a code that names an expired token or one that has gained the plane's sovereign role
- * is gone as well as refused. Unknown, expired, used, and ineligible all get one answer.
+ * The exchange, unauthenticated: the code is the credential. The machine sends with it the public
+ * half of a key pair it generated, and the bearer it gets is bound to that key (lib/util/dpop.ts):
+ * the private key never leaves the machine, and the bearer alone authenticates nothing. A key
+ * this server does not accept is refused before the code is touched, since it says nothing about
+ * the code. The code is then spent before anything else is checked, so a code that names an expired
+ * token or one that has gained the plane's sovereign role is gone as well as refused. Unknown,
+ * expired, used, and ineligible all get one answer.
  */
 export async function pair(req: FastifyRequest, reply: FastifyReply) {
+  const jwk = publicJwkOf(req.data()?.jwk)
+  if (!jwk) {
+    return reply
+      .status(400)
+      .send(httpError(400, 'jwk must be the public key of the pair this machine signs its requests with: Ed25519, or P-256', 'PAIRING_KEY_INVALID'))
+  }
   const code = normalizePairingCode(req.data()?.code)
   const tokens = req.server['tokenManager']
   const sovereign = isPlatformRoute(req) ? SUPERUSER : roles.admin.code
@@ -227,7 +238,7 @@ export async function pair(req: FastifyRequest, reply: FastifyReply) {
   if (!paired) {
     return reply.status(401).send(httpError(401, 'This code is unknown, expired or used already', 'PAIRING_CODE_INVALID'))
   }
-  return { token: signBearer(req, paired.externalId, paired.expiresAt) }
+  return { token: signBearer(req, paired.externalId, paired.expiresAt, jwkThumbprint(jwk)) }
 }
 
 export async function remove(req: FastifyRequest, reply: FastifyReply) {

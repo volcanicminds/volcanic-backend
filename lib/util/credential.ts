@@ -39,6 +39,8 @@ export type Channel = 'cookie' | 'header'
 export interface Credential {
   token: string
   channel: Channel
+  /** The header named the `DPoP` scheme: a token bound to a key, with its proof beside it (lib/util/dpop.ts). */
+  dpop?: true
 }
 
 /**
@@ -81,11 +83,14 @@ export function isCookieMode(): boolean {
   return authMode() === 'COOKIE'
 }
 
-function headerToken(req: FastifyRequest): string | undefined {
+/** The token of the `Authorization` header, under `Bearer` or, for a token bound to a key, `DPoP` (RFC 9449). */
+function headerCredential(req: FastifyRequest): { token: string; dpop: boolean } | undefined {
   const auth = (req.headers?.authorization as string) || ''
   const [prefix, token] = auth.split(' ')
-  return prefix === 'Bearer' && token ? token : undefined
+  return (prefix === 'Bearer' || prefix === 'DPoP') && token ? { token, dpop: prefix === 'DPoP' } : undefined
 }
+
+const headerToken = (req: FastifyRequest): string | undefined => headerCredential(req)?.token
 
 function signedCookie(req: FastifyRequest, name: string): string | undefined {
   const raw = req.cookies?.[name]
@@ -104,8 +109,8 @@ function signedCookie(req: FastifyRequest, name: string): string | undefined {
  * authentication hook, which is the one place that knows what the subject turned out to be.
  */
 export function credentialOf(req: FastifyRequest, plane: Plane = 'tenant'): Credential | undefined {
-  const header = headerToken(req)
-  if (header) return { token: header, channel: 'header' }
+  const header = headerCredential(req)
+  if (header) return header.dpop ? { token: header.token, channel: 'header', dpop: true } : { token: header.token, channel: 'header' }
   if (!isCookieMode()) return undefined
 
   const cookie = signedCookie(req, SESSION_COOKIES[plane].access)

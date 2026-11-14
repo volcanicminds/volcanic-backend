@@ -15,6 +15,8 @@ import fastify from 'fastify'
 import jwt from '@fastify/jwt'
 import { create, update, remove, findOne, block, unblock, reissue, issuePairingCode, pair } from '../../lib/api/token/controller/token.js'
 import { fakeGovernanceLog } from './fixtures/governanceLog.js'
+import { machineKey } from './fixtures/dpop.js'
+import { jwkThumbprint, publicJwkOf } from '../../lib/util/dpop.js'
 
 ;(global as any).log = {}
 
@@ -146,8 +148,13 @@ describe('tokens · the pairing code, a reissue handed over later', () => {
   })
 
   it('answers every code that does not work alike, and signs the rotated subject for one that does', async () => {
+    const { jwk } = machineKey()
     const answers = []
-    for (const opts of [{ data: { code: 'nope' } }, { data: { code: '0000-0000-0000' } }, { data: { code: 'abcd-efgh-jkmn' }, claimed: { ...EXISTING, roles: ['admin'] } }]) {
+    for (const opts of [
+      { data: { code: 'nope', jwk } },
+      { data: { code: '0000-0000-0000', jwk } },
+      { data: { code: 'abcd-efgh-jkmn', jwk }, claimed: { ...EXISTING, roles: ['admin'] } }
+    ]) {
       const { req, reply } = request(opts)
       await pair(req, reply)
       answers.push(reply.sent)
@@ -156,11 +163,20 @@ describe('tokens · the pairing code, a reissue handed over later', () => {
     expect(answers).toEqual([answers[0], answers[0], answers[0]])
 
     // Typed in lower case, with the letters Crockford reads as digits.
-    const ok = request({ data: { code: 'abcd-efgh-jklo' }, claimed: EXISTING })
+    const ok = request({ data: { code: 'abcd-efgh-jklo', jwk }, claimed: EXISTING })
     const answer: any = await pair(ok.req, ok.reply)
     expect(Object.keys(answer)).toEqual(['token'])
-    expect(claimsOf(answer.token)).toEqual({ sub: 't-ext-rotated', typ: 'integration' })
+    expect(claimsOf(answer.token)).toEqual({ sub: 't-ext-rotated', typ: 'integration', cnf: { jkt: jwkThumbprint(publicJwkOf(jwk)!) } })
     expect(ok.calls).toEqual([['claimPairingCode', 'ABCDEFGHJK10'], ['resetExternalId', 't1']])
+  })
+
+  it('refuses a missing, a private or an unknown key before the code is spent', async () => {
+    const { jwk } = machineKey()
+    for (const key of [undefined, { ...jwk, d: jwk.x }, { kty: 'RSA', n: 'AQAB', e: 'AQAB' }]) {
+      const { req, reply, calls } = request({ data: { code: 'abcd-efgh-jklo', jwk: key }, claimed: EXISTING })
+      await pair(req, reply)
+      expect([reply.sent.code, reply.sent.body.code, calls]).toEqual([400, 'PAIRING_KEY_INVALID', []])
+    }
   })
 })
 

@@ -61,8 +61,21 @@ export const tokenPairingCodeSchema = {
 export const tokenPairBodySchema = {
   $id: 'tokenPairBodySchema',
   type: 'object',
-  required: ['code'],
-  properties: { code: { type: 'string', maxLength: 64 } }
+  required: ['code', 'jwk'],
+  properties: {
+    code: { type: 'string', maxLength: 64 },
+    // The public key the bearer is bound to (RFC 9449): Ed25519 (`OKP`) or P-256 (`EC`).
+    jwk: {
+      type: 'object',
+      required: ['kty', 'crv', 'x'],
+      properties: {
+        kty: { type: 'string', maxLength: 8 },
+        crv: { type: 'string', maxLength: 16 },
+        x: { type: 'string', maxLength: 64 },
+        y: { type: 'string', maxLength: 64 }
+      }
+    }
+  }
 }
 
 // The bearer alone: whoever holds a code learns nothing else about the token.

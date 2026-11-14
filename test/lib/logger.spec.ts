@@ -133,7 +133,7 @@ describe('util/logger · what never reaches a line (F63)', () => {
       {
         password: 'p1',
         body: { password: 'p2', oldPassword: 'p3', token: 't1', refreshToken: 't2', otp: '123456', clientSecret: 's1' },
-        headers: { authorization: 'Bearer abc', cookie: 'session=abc', 'set-cookie': ['session=abc'] },
+        headers: { authorization: 'Bearer abc', dpop: 'proof.abc', cookie: 'session=abc', 'set-cookie': ['session=abc'] },
         code: 'AUTH_INVALID_CREDENTIALS'
       },
       'login'
@@ -148,7 +148,7 @@ describe('util/logger · what never reaches a line (F63)', () => {
       otp: '[redacted]',
       clientSecret: '[redacted]'
     })
-    expect(line.headers).toEqual({ authorization: '[redacted]', cookie: '[redacted]', 'set-cookie': '[redacted]' })
+    expect(line.headers).toEqual({ authorization: '[redacted]', dpop: '[redacted]', cookie: '[redacted]', 'set-cookie': '[redacted]' })
     expect(line.code).toBe('AUTH_INVALID_CREDENTIALS')
     expect(JSON.stringify(line)).not.toMatch(/abc|p1|p2|p3|t1|t2|123456|s1/)
   })

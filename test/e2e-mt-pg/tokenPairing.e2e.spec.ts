@@ -6,6 +6,7 @@
 //
 import { expect } from 'expect'
 import { setup, teardown, inject, app, systemToken, createTenant, login, sql, bearer, ACME, HEADER } from './harness.js'
+import { machineKey } from '../lib/fixtures/dpop.js'
 
 const body = (res: any) => JSON.parse(res.body)
 const REFUSED = { statusCode: 401, code: 'PAIRING_CODE_INVALID' }
@@ -41,10 +42,14 @@ describe('Token pairing, switched on', function () {
   let admin: string
   let system: string
   const asAdmin = (url: string, payload?: any) => inject({ method: 'POST', url, headers: bearer(admin, ACME.slug), payload })
-  const exchange = (code: unknown) => inject({ method: 'POST', url: '/token/pair', headers: { [HEADER]: ACME.slug }, payload: { code } })
+  const key = machineKey()
+  const exchange = (code: unknown) => inject({ method: 'POST', url: '/token/pair', headers: { [HEADER]: ACME.slug }, payload: { code, jwk: key.jwk } })
   const mint = async (name: string) => body(await asAdmin('/token', { name, expiresAt: null }))
   const codeOf = async (id: string) => body(await asAdmin(`/token/${id}/pairing-code`))
   const probe = (token: string) => inject({ method: 'GET', url: '/probe/subject', headers: bearer(token) })
+  // A paired bearer is bound to the machine's key: it travels under DPoP, with a proof for the request.
+  const proved = (token: string) =>
+    inject({ method: 'GET', url: '/probe/subject', headers: { authorization: `DPoP ${token}`, dpop: key.proof('GET', 'http://localhost/probe/subject', token) } })
 
   before(async () => {
     await setup({}, { config: { tokenPairing: { enabled: true } } })
@@ -71,12 +76,37 @@ describe('Token pairing, switched on', function () {
     // The bearer issued at creation is dead, as after a reissue (controlToken.e2e.spec.ts): its
     // `sub` names no row any more. The new one works without naming the tenant.
     expect((await probe(token.token)).statusCode).toBe(404)
-    expect((await probe(body(paired).token)).statusCode).toBe(200)
+    expect((await proved(body(paired).token)).statusCode).toBe(200)
 
     const acts = (
       await sql().query(`select action from "${ACME.locator}".governance_log where target_id = $1 order by occurred_at, id`, [token.id])
     ).rows.map((r: any) => r.action)
     expect(acts).toEqual(['token.created', 'token.pairing_code_issued', 'token.paired'])
+  })
+
+  it('binds the bearer to the machine key: alone it is refused, with a proof it works once, and a pair without a key spends nothing', async () => {
+    const token = await mint('bound')
+    const issued = await codeOf(token.id)
+    // From an address of its own: the exchange allows ten a minute per address, and the other tests spend them.
+    const pairFrom = (payload: any) => inject({ method: 'POST', url: '/token/pair', remoteAddress: '10.15.0.15', headers: { [HEADER]: ACME.slug }, payload })
+    const keyless = await pairFrom({ code: issued.code })
+    expect([keyless.statusCode, body(keyless).code]).toEqual([400, 'FST_ERR_VALIDATION'])
+    const paired = body(await pairFrom({ code: issued.code, jwk: key.jwk })).token
+    expect(app().jwt.verify(paired)).toMatchObject({ typ: 'integration', cnf: { jkt: expect.any(String) } })
+
+    // The probe route is open to `public`: a credential that does not authenticate counts as none,
+    // and its middleware answers 401 for a request with no subject (the refusal codes: tokenBinding.spec.ts).
+    expect((await probe(paired)).statusCode).toBe(401)
+    const proof = key.proof('GET', 'http://localhost/probe/subject', paired)
+    const once = () => inject({ method: 'GET', url: '/probe/subject', headers: { authorization: `DPoP ${paired}`, dpop: proof } })
+    expect([(await once()).statusCode, (await once()).statusCode]).toEqual([200, 401])
+    const stranger = machineKey()
+    const foreign = await inject({
+      method: 'GET',
+      url: '/probe/subject',
+      headers: { authorization: `DPoP ${paired}`, dpop: stranger.proof('GET', 'http://localhost/probe/subject', paired) }
+    })
+    expect(foreign.statusCode).toBe(401)
   })
 
   it('refuses a used, a voided, an expired, an unknown and a malformed code alike', async () => {
@@ -137,15 +167,15 @@ describe('Token pairing, switched on', function () {
     const issued = await inject({ method: 'POST', url: `/system/tokens/${token.id}/pairing-code`, headers: bearer(system) })
     expect(issued.statusCode).toBe(200)
 
-    const paired = await inject({ method: 'POST', url: '/system/tokens/pair', payload: { code: body(issued).code } })
+    const paired = await inject({ method: 'POST', url: '/system/tokens/pair', payload: { code: body(issued).code, jwk: key.jwk } })
     expect(paired.statusCode).toBe(200)
     const claims: any = app().jwt.verify(body(paired).token)
-    expect(claims).toMatchObject({ scp: 'control', typ: 'integration' })
+    expect(claims).toMatchObject({ scp: 'control', typ: 'integration', cnf: { jkt: expect.any(String) } })
     const row = (await sql().query('select external_id from token where id = $1', [token.id])).rows[0]
     expect(claims.sub).toBe(row.external_id)
     expect(row.external_id).not.toBe(token.externalId)
 
-    const again = await inject({ method: 'POST', url: '/system/tokens/pair', payload: { code: body(issued).code } })
+    const again = await inject({ method: 'POST', url: '/system/tokens/pair', payload: { code: body(issued).code, jwk: key.jwk } })
     expect({ statusCode: again.statusCode, code: body(again).code }).toEqual(REFUSED)
   })
 
