@@ -18,7 +18,7 @@ type SessionClaims = {
   cnf?: { jkt?: string }
 }
 import { dataContext, isPlatformRoute } from '../util/tenancy.js'
-import { clearSessionCookies, credentialOf, INTEGRATION_TYP, isCookieMode, REFRESH_TYP } from '../util/credential.js'
+import { clearSessionCookies, credentialOf, INTEGRATION_TYP, isCookieMode, pathPrefix, REFRESH_TYP } from '../util/credential.js'
 import type { Credential, Plane } from '../util/credential.js'
 import { finishFreshness } from '../util/stepUp.js'
 import { DpopError, verifyProof } from '../util/dpop.js'
@@ -130,7 +130,7 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         }
         if (credential.dpop) {
           if (typeof jkt !== 'string') throw new DpopError('Only a token bound to a key travels under the DPoP scheme')
-          verifyProof(req.headers.dpop, { method: req.method, path: withoutQuery(req.url), token: credential.token, jkt })
+          verifyProof(req.headers.dpop, { method: req.method, path: pathPrefix() + withoutQuery(req.url), token: credential.token, jkt })
         }
 
         // No tenant check here. The comparison happens before anything is opened, in

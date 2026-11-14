@@ -108,12 +108,22 @@ describe('tokens · a bearer bound to a key needs a proof at every request (RFC 
     for (const name of Object.keys(proofs)) expect([name, answers[name]]).toEqual([name, { status: 401, code: 'DPOP_PROOF_INVALID' }])
   })
 
-  it('takes the path behind a proxy that strips a prefix, and a P-256 key as well', async () => {
+  it('takes the exact path the client called, the prefix a proxy strips included, and a P-256 key as well', async () => {
     const token = bound()
-    const res = await call('POST', '/orders', { authorization: `DPoP ${token}`, dpop: key.proof('POST', `${ORIGIN}/api/orders`, token) })
-    expect(res.statusCode).toBe(200)
-    // A suffix only on a segment boundary: `/xorders` does not end with `/orders`.
-    expect(answer(await call('POST', '/orders', { authorization: `DPoP ${token}`, dpop: key.proof('POST', `${ORIGIN}/xorders`, token) }))).toEqual({ status: 401, code: 'DPOP_PROOF_INVALID' })
+    const post = (url: string) => call('POST', '/orders', { authorization: `DPoP ${token}`, dpop: key.proof('POST', url, token) })
+    const refused = { status: 401, code: 'DPOP_PROOF_INVALID' }
+    // Signed for a longer path that ends with this one: another route, unless a proxy is declared.
+    expect(answer(await post(`${ORIGIN}/api/orders`))).toEqual(refused)
+    expect(answer(await post(`${ORIGIN}/xorders`))).toEqual(refused)
+    process.env.COOKIE_PATH_PREFIX = '/api'
+    try {
+      expect((await post(`${ORIGIN}/api/orders`)).statusCode).toBe(200)
+      expect(answer(await post(`${ORIGIN}/v2/api/orders`))).toEqual(refused)
+      expect(answer(await post(`${ORIGIN}/orders`))).toEqual(refused)
+    } finally {
+      delete process.env.COOKIE_PATH_PREFIX
+    }
+    expect((await post(`${ORIGIN}/orders`)).statusCode).toBe(200)
 
     const p256 = machineKey('p256')
     const ecToken = server.jwt.sign({ sub: TOKEN.externalId, typ: INTEGRATION_TYP, cnf: { jkt: jwkThumbprint(publicJwkOf(p256.jwk)!) } })

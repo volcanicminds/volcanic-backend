@@ -79,6 +79,19 @@ function spend(key: string, until: number, now: number): boolean {
   return true
 }
 
+/**
+ * A request's path as the URL parser reads an `htu`'s, or null for one that is not a path. Appended
+ * to an origin, not resolved against one: a path beginning `//` stays a path.
+ */
+const parsedPath = (path: string): string | null => {
+  if (!path.startsWith('/')) return null
+  try {
+    return new URL(`http://localhost${path}`).pathname
+  } catch {
+    return null
+  }
+}
+
 const json = (part: string): Record<string, unknown> | null => {
   try {
     const value = JSON.parse(Buffer.from(part, 'base64url').toString('utf8'))
@@ -90,9 +103,11 @@ const json = (part: string): Record<string, unknown> | null => {
 
 /**
  * Checks the proof of a request bound to `jkt`, and throws `DpopError` if it is not one. The URL
- * is compared on its path alone: behind a proxy the server does not see the origin the client
- * used, and a proxy that strips a prefix makes the client's path end with the server's. The query
- * is not part of `htu` (RFC 9449 §4.2).
+ * is compared on its path alone, since behind a proxy the server does not see the origin the
+ * client used; `request.path` is the path as the client called it, a proxy's stripped prefix
+ * included. The two must be equal once the same parser has read both, so neither an encoding nor
+ * a dot segment tells them apart, and a proof for one route never passes on another. The query is
+ * not part of `htu` (RFC 9449 §4.2).
  */
 export function verifyProof(
   proof: unknown,
@@ -126,8 +141,7 @@ export function verifyProof(
   } catch {
     throw new DpopError('The DPoP proof names no URL')
   }
-  // The request's path starts with `/`, so a suffix match falls on a segment boundary.
-  if (path !== request.path && !path.endsWith(request.path)) throw new DpopError('The DPoP proof was signed for another URL')
+  if (path !== parsedPath(request.path)) throw new DpopError('The DPoP proof was signed for another URL')
   if (claims.ath !== createHash('sha256').update(request.token).digest('base64url')) {
     throw new DpopError('The DPoP proof was signed for another token')
   }

@@ -147,9 +147,10 @@ export function sessionTokenOf(req: FastifyRequest, plane: Plane): string | unde
 /**
  * Where a proxy publishes this API, when it strips that prefix before forwarding
  * (`COOKIE_PATH_PREFIX=/api`). The refresh cookie is limited to the renewal route, and the
- * browser matches that path against the URL it sees, not the one this process receives.
+ * browser matches that path against the URL it sees, not the one this process receives; a DPoP
+ * proof names that URL too.
  */
-function pathPrefix(): string {
+export function pathPrefix(): string {
   const raw = (process.env.COOKIE_PATH_PREFIX || '').trim()
   if (!raw || raw === '/') return ''
   return ('/' + raw.replace(/^\/+|\/+$/g, '')).replace(/\/{2,}/g, '/')

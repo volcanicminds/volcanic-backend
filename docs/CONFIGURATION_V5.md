@@ -154,7 +154,7 @@ where it is used without passing through the configuration at all.
 | `PACKAGE_VERIFY_KEYS` | unset | comma-separated keys that only verify a package: a rotated signing key, or the one of the instance a tenant moves from | no key |
 | `AUTH_MODE` | `COOKIE` | where the session travels: `COOKIE` (httpOnly cookies; the header for integration tokens only) or `BEARER`. Any other value refuses the boot | no key |
 | `COOKIE_SECRET` | — | signs the session cookies; **required in cookie mode**, so required by default, with the same strength rule as the other secrets | `secret` of the `cookie` entry in `config/plugins.ts` |
-| `COOKIE_PATH_PREFIX` | — | the path a prefix-stripping proxy publishes the API under; the refresh cookie's `Path` starts with it | no key |
+| `COOKIE_PATH_PREFIX` | unset | the path a prefix-stripping proxy publishes the API under; the refresh cookie's `Path` starts with it, and so must a DPoP proof's `htu` path | no key |
 | `JWT_EXPIRES_IN` | `1h` | lifetime of the access token, and of its cookie in cookie mode | no key |
 | `JWT_REFRESH` | `true` | `false` turns renewal off: the session ends when the access token does, and the renewal routes answer 404 | no key |
 | `SESSION_IDLE_TTL` | `2592000` | seconds without a renewal before a session ends | `sessions.idleTtl`, and it **wins** over the configured value |

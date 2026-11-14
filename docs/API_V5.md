@@ -312,8 +312,11 @@ header, a proof the key signs for that request alone: a JWT typed `dpop+jwt`, si
 `ES256` with the public key in its header, whose claims are `htm` (the method), `htu` (the URL
 without query), `iat`, a unique `jti` and `ath` (the base64url SHA-256 of the bearer).
 
-The server compares `htu` on its path alone, and accepts a path that ends with its own, since
-behind a proxy it does not see the origin the client used and a proxy may strip a prefix. `iat`
+The server compares `htu` on its path alone, since behind a proxy it does not see the origin the
+client used. The path must be the one the client called: `COOKIE_PATH_PREFIX`, the prefix a proxy
+strips before forwarding (empty without one), followed by the path the server received, both read
+by the same URL parser. A proof signed for any other path is refused, a longer one ending with
+this path included. `iat`
 may sit up to 60 seconds from the server's clock either way, and a `jti` is spent by its first
 request until that window closes; the record of spent proofs is per process, so behind several
 instances a proof can be replayed once on each of the others within the window.

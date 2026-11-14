@@ -667,7 +667,7 @@ it, and either case logs a warning.
 | `JWT_REFRESH` | on | `false`, `0` or `no` turns session renewal off, so a session ends with its access token.¹ |
 | `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` | ignored | Read only to warn at boot: the refresh credential is opaque, and its two deadlines live in the `session` row. |
 | `COOKIE_SECRET` | none | **Required in cookie mode**, the default. Signs the session cookies. Missing refuses the boot; weak refuses it in production and warns elsewhere. |
-| `COOKIE_PATH_PREFIX` | unset | The path under which a proxy publishes the API when it strips it before forwarding (`/api`, for example), so the refresh cookie is limited to the renewal route as the browser sees it. |
+| `COOKIE_PATH_PREFIX` | unset | The path under which a proxy publishes the API when it strips it before forwarding (`/api`, for example), so the refresh cookie is limited to the renewal route as the browser sees it, and a DPoP proof's `htu` path is read with it. |
 | `SESSION_IDLE_TTL` | `2592000` (30 days) | Seconds without a renewal before a session ends. Wins over `options.sessions.idleTtl`. |
 | `SESSION_ABSOLUTE_TTL` | `15552000` (180 days) | Seconds a session may live, however often it renews. Wins over `options.sessions.absoluteTtl`. |
 | `SESSION_GRACE_SECONDS` | `10` | Seconds the just-rotated credential stays acceptable, for tabs that renew together; `0` means no tolerance. Wins over `options.sessions.graceSeconds`. |
@@ -4483,8 +4483,8 @@ it generated) is **bound to that key** (RFC 9449, DPoP): the bearer carries the 
 `dpop+jwt` the private key signs (`EdDSA` or `ES256`, public key in the header) over `htm`, `htu`,
 `iat`, a unique `jti` and `ath`, the SHA-256 of the bearer. The bearer alone is 401
 `DPOP_REQUIRED`; a proof missing, wrong, older than 60 s or replayed is 401 `DPOP_PROOF_INVALID`.
-The server compares `htu` on its path, and accepts a path ending with its own (a proxy may strip a
-prefix). `lib/util/dpop.ts`; docs/API_V5.md, "Tokens bound to a key".
+The server compares `htu` on its path, which must equal `COOKIE_PATH_PREFIX` (the prefix a proxy
+strips, if any) plus the path it received. `lib/util/dpop.ts`; docs/API_V5.md, "Tokens bound to a key".
 
 `SameSite=Strict` is a deployment constraint: the admin and the API must be on the same site, that
 is the same registrable domain (`admin.example.com` and `api.example.com` are; `admin.example.com`
