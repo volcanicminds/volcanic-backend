@@ -277,8 +277,8 @@ keeps only its SHA-256.
 **Why it is not a JWT.** A signature is worth having when the receiver can decide alone. Here it
 cannot: the renewal has to read the session row anyway, to learn whether that generation was
 already spent. The signature would therefore buy nothing and cost a second secret to manage, a
-second token namespace that verifies as the first whenever the two secrets coincide (which is why
-a `typ: 'refresh'` claim had to exist at all), and a set of claims that go stale against the row
+second token namespace that verifies as the first whenever the two secrets coincide (so every
+token would need a claim saying which of the two it is), and a set of claims that go stale against the row
 that actually decides. An opaque secret is worth nothing without the database, which is the
 property that matters.
 

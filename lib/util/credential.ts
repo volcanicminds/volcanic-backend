@@ -44,16 +44,6 @@ export interface Credential {
 }
 
 /**
- * The claim that made a refresh JWT unusable as an access token, and the reverse.
- *
- * The refresh credential is opaque and can never verify as a JWT, so nothing this
- * version issues carries it. The guards that read it stay for the upgrade window: a refresh
- * token signed by a 5.0 alpha is still a valid signature, and without the claim it would verify
- * as an access token wherever `JWT_REFRESH_SECRET` was left unset.
- */
-export const REFRESH_TYP = 'refresh'
-
-/**
  * The label of an integration token, signed into it as `typ`, on every plane. A session never
  * carries it, so the label alone says where the subject is looked up: a labelled credential
  * among the tokens only, any other among the persons only. Not the absence of `sid`: a session

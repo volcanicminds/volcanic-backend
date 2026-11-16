@@ -179,6 +179,20 @@ describe('hooks/onRequest · the refusals, each one provoked (T-9.5)', () => {
     await server.close()
   })
 
+  it('refuses a token whose label is neither absent nor the integration one', async () => {
+    const server = await build()
+    // A session carries no `typ` and an integration token its own: `refresh` is any other label,
+    // and the subject it names exists, so only the label can refuse it.
+    const labelled = server.jwt.sign({ sub: USER.externalId, typ: 'refresh' })
+
+    const refused = await call(server, '/orders', labelled)
+    expect([refused.statusCode, codeOf(refused)]).toEqual([401, 'UNAUTHORIZED'])
+
+    const open = await call(server, '/public', labelled)
+    expect([open.statusCode, JSON.parse(open.body)]).toEqual([200, { who: null }])
+    await server.close()
+  })
+
   it('answers 503 IMPERSONATION_NOT_AVAILABLE for an impersonation token in a build without one', async () => {
     // 503 and not 403: the caller did nothing wrong, the deployment cannot honour the token.
     // Recording the difference is what lets an operator tell a misconfiguration from an

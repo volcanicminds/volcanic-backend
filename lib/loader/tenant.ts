@@ -3,7 +3,7 @@ import type { ControlHandle, DataProvider, Tenant, TenantManagement } from '../.
 import { isTenancyEnabled, tenantsConfig } from '../util/tenancy.js'
 import { declaredTenant } from '../util/tenantResolution.js'
 import { migrationChecks, migrationsOf } from './schemaVersion.js'
-import { credentialOf, REFRESH_TYP } from '../util/credential.js'
+import { credentialOf } from '../util/credential.js'
 import { parseFlowState } from '../util/flowCredential.js'
 import { httpError } from '../util/httpError.js'
 import { withoutQuery } from '../util/logger.js'
@@ -245,10 +245,7 @@ function claimedTenant(req: FastifyRequest): string | typeof CONTROL_TOKEN | typ
   if (!raw) return undefined
 
   try {
-    const data = req.server.jwt.verify(raw) as { tid?: string; scp?: string; typ?: string }
-    // A refresh token proves nothing about the request it arrived with: it is read by the
-    // renewal route, from its own cookie or from the body, and never from here.
-    if (data?.typ === REFRESH_TYP) return undefined
+    const data = req.server.jwt.verify(raw) as { tid?: string; scp?: string }
     if (data?.scp === 'control') return CONTROL_TOKEN
     return typeof data?.tid === 'string' && data.tid ? data.tid : UNTENANTED_TOKEN
   } catch {

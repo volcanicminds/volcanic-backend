@@ -18,7 +18,7 @@ type SessionClaims = {
   cnf?: { jkt?: string }
 }
 import { dataContext, isPlatformRoute } from '../util/tenancy.js'
-import { clearSessionCookies, credentialOf, INTEGRATION_TYP, isCookieMode, pathPrefix, REFRESH_TYP } from '../util/credential.js'
+import { clearSessionCookies, credentialOf, INTEGRATION_TYP, isCookieMode, pathPrefix } from '../util/credential.js'
 import type { Credential, Plane } from '../util/credential.js'
 import { finishFreshness } from '../util/stepUp.js'
 import { DpopError, verifyProof } from '../util/dpop.js'
@@ -101,11 +101,10 @@ export default async (req: FastifyRequest, reply: FastifyReply) => {
         if (tokenData.role !== undefined) {
           throw refusal('This token does not authenticate a request', 'UNAUTHORIZED')
         }
-
-        // A refresh token never authenticates a request. It is signed with the access secret
-        // whenever `JWT_REFRESH_SECRET` is unset, so the signature alone cannot tell them apart.
-        if (tokenData.typ === REFRESH_TYP) {
-          throw refusal('A refresh token does not authenticate a request', 'UNAUTHORIZED')
+        // The same for the label: a session carries none and an integration token carries its
+        // own, so any other `typ` was not signed by this framework.
+        if (tokenData.typ !== undefined && tokenData.typ !== INTEGRATION_TYP) {
+          throw refusal('This token does not authenticate a request', 'UNAUTHORIZED')
         }
 
         // One kind of credential per channel, and the signed label says which kind this is

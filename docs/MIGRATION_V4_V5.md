@@ -34,7 +34,7 @@ mode of translating silently is not an error, it is an answer from the wrong con
 | Subpath | `@volcanicminds/backend/typeorm` | `@volcanicminds/backend/db` |
 | ORM | TypeORM 0.3.x | an implementation detail, not part of the API |
 | Engines | Postgres, PGlite, Mongo (declared) | Postgres, on a server or PGlite inside the process |
-| Encryption | `encrypt` / `decrypt`, synchronous | the same functions, `async` |
+| Encryption | `encrypt` / `decrypt`, synchronous; `decrypt` also reads the two formats older than `v2:`, and gives back a value in clear as it is | the same functions, `async`; `decrypt` reads `v2:` only and refuses anything else |
 
 The subpath carries no engine name any more: in v4 the ORM was part of the public API, so
 changing it was a breaking change for every consumer. PGlite stays for development and unit

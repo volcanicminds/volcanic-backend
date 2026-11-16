@@ -2,20 +2,20 @@ import * as crypto from 'crypto'
 import { promisify } from 'util'
 
 //
-// Encryption of the secrets the framework stores: today the MFA seed.
+// Encryption of the secrets the framework stores: the MFA seed of users and operators, the
+// client secret of an identity provider, the external identity a login flow carries. Exported
+// from `@volcanicminds/backend/db` for an application's own secrets.
 //
 // The derivation is asynchronous. `scryptSync` with N = 2^15 measured **82 ms of blocked
 // event loop per derivation** on the survey machine, and it sits on the MFA verification
 // path: at ten logins a second the process stops answering anything else. A memory-hard KDF
 // with a per-record salt is the right choice, it just must not be synchronous.
 //
-// The stored format is `v2:salt:iv:authTag:ciphertext`, and the two legacy read
-// paths are kept: a project migrating from v4 carries rows written years ago, and refusing to
-// read them would mean asking every user to enrol MFA again. Nothing is ever WRITTEN in a
-// legacy format.
+// One format, `v2:salt:iv:authTag:ciphertext`, written and read. Anything else is refused, a
+// value in clear included: returning it as it came would let an unencrypted secret pass for
+// a decrypted one.
 //
 const ALGORITHM_GCM = 'aes-256-gcm'
-const ALGORITHM_CBC_LEGACY = 'aes-256-cbc'
 
 const VERSION = 'v2'
 const IV_LENGTH = 12 // GCM standard nonce
@@ -50,11 +50,6 @@ async function deriveKey(salt: Buffer): Promise<Buffer> {
   })
 }
 
-/** Weak, saltless derivation of the pre-v2 records. Read-only, and never used to write. */
-function legacyKey(): Buffer {
-  return Buffer.from(crypto.createHash('sha256').update(getSecret()).digest('base64').substring(0, KEY_LENGTH))
-}
-
 export async function encrypt(text: string): Promise<string> {
   if (!text) return text
 
@@ -69,36 +64,19 @@ export async function encrypt(text: string): Promise<string> {
 }
 
 /**
- * Reads any supported format:
- *   - `v2:salt:iv:authTag:ciphertext` — scrypt key, GCM. What is written today.
- *   - `iv:authTag:ciphertext`         — legacy key, GCM.
- *   - `iv:ciphertext`                 — legacy key, CBC, unauthenticated. Oldest records.
- * A tampered v2 or GCM record throws on the authentication tag, which is the point of GCM.
+ * Reads what `encrypt` writes and nothing else: a value in another format throws, and so does
+ * a tampered one, on the authentication tag, which is the point of GCM.
  */
 export async function decrypt(text: string): Promise<string> {
   if (!text) return text
 
   const parts = text.split(':')
-
-  if (parts.length === 5 && parts[0] === VERSION) {
-    const [, salt, iv, authTag, payload] = parts
-    const decipher = crypto.createDecipheriv(ALGORITHM_GCM, await deriveKey(Buffer.from(salt, 'hex')), Buffer.from(iv, 'hex'))
-    decipher.setAuthTag(Buffer.from(authTag, 'hex'))
-    return decipher.update(Buffer.from(payload, 'hex'), undefined, 'utf8') + decipher.final('utf8')
+  if (parts.length !== 5 || parts[0] !== VERSION) {
+    throw new Error(`Not a value this framework encrypted: the stored format is ${VERSION}:salt:iv:authTag:ciphertext`)
   }
 
-  if (parts.length === 3) {
-    const [iv, authTag, payload] = parts
-    const decipher = crypto.createDecipheriv(ALGORITHM_GCM, legacyKey(), Buffer.from(iv, 'hex'))
-    decipher.setAuthTag(Buffer.from(authTag, 'hex'))
-    return decipher.update(Buffer.from(payload, 'hex'), undefined, 'utf8') + decipher.final('utf8')
-  }
-
-  if (parts.length === 2) {
-    const [iv, payload] = parts
-    const decipher = crypto.createDecipheriv(ALGORITHM_CBC_LEGACY, legacyKey(), Buffer.from(iv, 'hex'))
-    return Buffer.concat([decipher.update(Buffer.from(payload, 'hex')), decipher.final()]).toString()
-  }
-
-  return text
+  const [, salt, iv, authTag, payload] = parts
+  const decipher = crypto.createDecipheriv(ALGORITHM_GCM, await deriveKey(Buffer.from(salt, 'hex')), Buffer.from(iv, 'hex'))
+  decipher.setAuthTag(Buffer.from(authTag, 'hex'))
+  return decipher.update(Buffer.from(payload, 'hex'), undefined, 'utf8') + decipher.final('utf8')
 }

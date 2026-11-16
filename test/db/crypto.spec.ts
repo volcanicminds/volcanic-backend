@@ -32,21 +32,23 @@ describe('database/crypto', function () {
     await expect(decrypt(parts.join(':'))).rejects.toThrow()
   })
 
-  it('still reads the two legacy formats, and never writes them', async () => {
-    const legacyKey = Buffer.from(
-      crypto.createHash('sha256').update(process.env.MFA_DB_SECRET!).digest('base64').substring(0, 32)
-    )
+  it('refuses any value it did not write, a value in clear and the pre-v2 formats included', async () => {
+    // The two formats written before `v2:`, with their saltless key: valid ciphertexts, and still
+    // not a format this framework reads.
+    const oldKey = Buffer.from(crypto.createHash('sha256').update(process.env.MFA_DB_SECRET!).digest('base64').substring(0, 32))
 
     const gcmIv = crypto.randomBytes(12)
-    const gcm = crypto.createCipheriv('aes-256-gcm', legacyKey, gcmIv)
+    const gcm = crypto.createCipheriv('aes-256-gcm', oldKey, gcmIv)
     const gcmPayload = Buffer.concat([gcm.update('old gcm', 'utf8'), gcm.final()])
-    const legacyGcm = [gcmIv.toString('hex'), gcm.getAuthTag().toString('hex'), gcmPayload.toString('hex')].join(':')
-    expect(await decrypt(legacyGcm)).toBe('old gcm')
+    const oldGcm = [gcmIv.toString('hex'), gcm.getAuthTag().toString('hex'), gcmPayload.toString('hex')].join(':')
 
     const cbcIv = crypto.randomBytes(16)
-    const cbc = crypto.createCipheriv('aes-256-cbc', legacyKey, cbcIv)
-    const cbcPayload = Buffer.concat([cbc.update('old cbc', 'utf8'), cbc.final()])
-    expect(await decrypt([cbcIv.toString('hex'), cbcPayload.toString('hex')].join(':'))).toBe('old cbc')
+    const cbc = crypto.createCipheriv('aes-256-cbc', oldKey, cbcIv)
+    const oldCbc = [cbcIv.toString('hex'), Buffer.concat([cbc.update('old cbc', 'utf8'), cbc.final()]).toString('hex')].join(':')
+
+    for (const value of ['JBSWY3DPEHPK3PXP', oldGcm, oldCbc]) {
+      await expect(decrypt(value)).rejects.toThrow('Not a value this framework encrypted')
+    }
   })
 
   it('does not block the event loop while deriving', async () => {
