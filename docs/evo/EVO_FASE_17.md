@@ -1,7 +1,7 @@
 # EVO fase 17: il pacchetto di un tenant, esportato, verificato e ripristinato
 
 > **Questo file è il piano della fase, non lo stato.** Lo stato resta in `EVO_STATO.md`. La fase
-> nasce il 13 ottobre 2026 da una constatazione: l'export di un tenant esiste (T-6.2, F77, F78) e
+> nasce da una constatazione: l'export di un tenant esiste (T-6.2, F77, F78) e
 > niente lo ricarica. Nessuna prova ripristina un dump, nessuna rotta lo importa, e un export mai
 > ripristinato è un backup di cui qualcuno si fiderà. La fase deve servire due casi: il cliente
 > che esce o vuole una copia dei suoi dati, e noi che traslochiamo, dismettiamo o ricarichiamo un
@@ -9,9 +9,7 @@
 >
 > Regola unica, la stessa delle fasi precedenti: una casella si chiude solo con un'evidenza
 > citata. Perimetro: `volcanic-backend` su `v5`; la parte di `volcanic-rag`, il corpus
-> ripristinato con il tenant, va scritta in `volcanic-rag/TASKS.md`. Le decisioni sono del
-> proprietario, prese il 13 ottobre 2026. Il 19 ottobre 2026 il proprietario ha riaperto la fase:
-> F82, F83, F84 e F89 rivisti, F92 e F93 nuovi, compiti T-17.10 e T-17.11.
+> ripristinato con il tenant, va scritta in `volcanic-rag/TASKS.md`.
 
 | Simbolo | |
 |---|---|
@@ -116,7 +114,7 @@ fase 16.
   **Chiuso il 15 ottobre 2026.** La sezione "Exporting a container" del README non c'è più dopo
   la riscrittura a istantanea: F88 sta in un paragrafo di "What it gives you", e per esteso in
   `docs/API_V5.md` §6.3 e in `llms.txt` §2.12.
-- [x] **T-17.9** La firma del pacchetto (opzione A del proprietario, 15 ottobre 2026). La
+- [x] **T-17.9** La firma del pacchetto. La
   revisione di sicurezza ha aggirato il lettore dei meta-comandi in quattro modi (barra a metà
   riga, fine di `COPY` con `\.\r`, riga di `COPY` dentro `$$`, `client_encoding` SJIS): un hash
   dice che niente è cambiato, non chi ha sigillato. La busta porta un HMAC-SHA256 con
@@ -145,8 +143,8 @@ fase 16.
   se gli agganci hanno `pack` e il provider non l'ha chiamata. Il manifest porta `profile` e
   `unpack` per pacchetto, e `openPackage` rifiuta un profilo assente o sconosciuto e un `unpack`
   non booleano. Un export senza profilo valido risponde 400 `EXPORT_PROFILE_REQUIRED`; import e
-  trasloco rifiutano un pacchetto `client` con 409 `RESTORE_PROFILE_MISMATCH` (decisione del
-  proprietario del 19 ottobre 2026: un solo codice per i due); `unpack` gira solo per i pacchetti
+  trasloco rifiutano un pacchetto `client` con 409 `RESTORE_PROFILE_MISMATCH` (un solo
+  codice per i due); `unpack` gira solo per i pacchetti
   segnati, e un pacchetto segnato senza `unpack` in questa build risponde 409
   `RESTORE_PACKAGE_UNAVAILABLE`. Prove: in `tenantPackage.spec.ts` rifiuti, ordine dei passi al
   ripristino e annullamento di un `unpack` che fallisce; in `test/migrations/export.spec.ts`
@@ -175,10 +173,10 @@ fase 16.
   ricevono 403 sulle quattro rotte; un token senza conferma recente riceve `STEP_UP_REQUIRED` sui
   due piani; il download scrive l'evento; difetto piantato (tenant preso dal parametro,
   `freshAuth` tolto, `tenants` di nuovo sull'import).
-  **Decisioni del proprietario del 19 ottobre 2026, prima del codice.** Percorsi: una rotta ha un
+  **Decisioni di progetto.** Percorsi: una rotta ha un
   piano solo e il router rifiuta all'avvio quella che li mescola (`docs/AUTHORIZATION_V5.md`
   §2.1), quindi i due piani hanno gli stessi nomi e prefissi diversi. Nel controllo
-  `POST /tenants/:id/exports` (prima `/:id/export`) e `GET /tenants/:id/exports/:package`; nel
+  `POST /tenants/:id/exports` e `GET /tenants/:id/exports/:package`; nel
   tenant `POST /exports` e `GET /exports/:package`, in `lib/api/exports`, accese solo con i
   tenant. Il rinomino tocca il mock dell'admin, il test del rag-sample, gli e2e e i documenti.
   Export e download stanno in un solo modulo comune, e le rotte dei due piani sono due ingressi
@@ -190,7 +188,7 @@ fase 16.
   download non parte (503); l'esito a fine flusso. L'autore porta la colonna `actor_plane`
   (`control` o `tenant`), scritta direttamente in `0006_governance_log_control.sql` senza una
   migrazione nuova, perché non c'è produzione; i database locali che l'hanno già applicata si
-  ricreano. Rotazione, rivista dal proprietario lo stesso giorno: un posto per tenant in ciascun
+  ricreano. Rotazione: un posto per tenant in ciascun
   piano, quello degli export chiesti nel piano di controllo, in qualunque profilo, e quello
   dell'amministratore del tenant. La busta dice il posto. Un export nuovo riuscito cancella il
   precedente del suo posto dopo aver sigillato il suo, e il suo evento nomina il pacchetto

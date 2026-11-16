@@ -1,10 +1,10 @@
 # EVO fase 13: step-up, la riautenticazione fresca
 
 > **Questo file è il piano della fase, non lo stato.** Lo stato resta in `EVO_STATO.md`. La fase
-> riapre il rinvio di `EVO_FASE_12.md` §3 («il collegamento avviato dall'utente, insieme a uno
-> step-up») e la parte aperta di S13 in `docs/AUDIT_TASKS_TODO.md`. Riaperta dal manutentore il
-> 27 settembre 2026, con due scelte: la strada **A** (freschezza sulla sessione e un flusso
-> dedicato, non un codice TOTP nel corpo) e una finestra di **5 minuti**.
+> riprende il rinvio di `EVO_FASE_12.md` §3 («il collegamento avviato dall'utente, insieme a uno
+> step-up») e la parte aperta di S13 in `docs/AUDIT_TASKS_TODO.md`, con due scelte: la strada
+> **A** (freschezza sulla sessione e un flusso dedicato, non un codice TOTP nel corpo) e una
+> finestra di **5 minuti**.
 >
 > Regola unica, la stessa delle fasi precedenti: una casella si chiude solo con un'evidenza
 > citata. Perimetro: `volcanic-backend` su `v5`, poi `volcanic-admin` per la finestra di
@@ -33,7 +33,7 @@ nessuno la legge.
 
 | # | Decisione | Motivo |
 |---|---|---|
-| F50 | Strada A, finestra di 300 secondi (`STEP_UP_MAX_AGE`, fra 60 e 3600) | scelta del manutentore, 27 settembre 2026 |
+| F50 | Strada A, finestra di 300 secondi (`STEP_UP_MAX_AGE`, fra 60 e 3600) | la freschezza sta sulla sessione e il flusso è dedicato, non un codice TOTP nel corpo della richiesta |
 | F51 | La freschezza sta sulla **sessione** (`session.authenticated_at`) e viaggia nell'access token come claim `auth_time`, in secondi. Il rinnovo la copia dalla riga e non la sposta: rinnovare non è riautenticarsi | il controllo per richiesta legge un claim firmato, senza una lettura in più; la riga serve perché il rinnovo emette token nuovi |
 | F52 | Una rotta la chiede con `freshAuth: true`, al livello della rotta come `requireCapability`. Rifiuto **403 `STEP_UP_REQUIRED`** con `maxAge` nel corpo, dopo il controllo dei ruoli | 403 e non 401: un client che tratta il 401 come «sessione scaduta» manderebbe al login proprio chi deve solo riconfermare |
 | F53 | Il flusso parte da `POST /auth/flow/step-up` (e `/system/auth/flow/step-up`), autenticata, con lo stesso corpo di `start`; prosegue sulle rotte di sempre (`step`, `challenge`, `cancel`, `return`). La riga del flusso porta `purpose`, `session_sid` e `expected_subject_id` | un solo motore, gli stessi metodi del login (password, TOTP, email-otp, OIDC) e le stesse regole di MFA; lo scopo sta nella riga, quindi le rotte pubbliche successive non devono sapere niente |

@@ -14,10 +14,10 @@
 > row here.
 >
 > §24 keeps the browser session out of the page, and it is the break an upgrade meets first,
-> because an instance without `COOKIE_SECRET` no longer starts. §27 is the one break that also
-> hits whoever already runs a 5.0 alpha: the refresh token is no longer a JWT. §28 closes the
-> self-registration by default, on v4 ports and 5.0 alphas alike, and §29 replaces the login
-> routes with a flow: every client that logs anybody in changes.
+> because an instance without `COOKIE_SECRET` no longer starts. §27 makes the refresh token a
+> session instead of a JWT, so everybody logs in once after the upgrade. §28 closes the
+> self-registration by default, and §29 replaces the login routes with a flow: every client that
+> logs anybody in changes.
 
 v5 is breaking on purpose. There is no compatibility branch, no deprecated alias and no
 automatic translation of a v4 configuration: the compatibility with v4 is a document, and this
@@ -491,15 +491,14 @@ already refuse. `/auth/invalidate-tokens` ends every session of the user in both
 
 ## 25. One console per plane
 
-| | before (earlier 5.0.0-alpha) | now |
+| | v4 | v5 |
 |---|---|---|
-| `GET /admin/manifest` | control scope: with tenants, a platform identity only | **tenant scope**, the tenant routes only when tenants are declared |
+| `GET /admin/manifest` | outside the tenant context (`tenantContext: false`), for the roles holding `manifest` | **tenant scope**, the tenant routes only when tenants are declared |
 | the platform console's manifest | the same route | `GET /system/manifest`, control scope, only with tenants |
-| who a platform session is | no route: `/users/me` refuses a control token | `GET /system/auth/me` |
+| who a platform session is | no route | `GET /system/auth/me` |
 | `manifest.auth` | `mode`, `endpoints` of the tenant plane | also `plane`; the endpoints of that plane |
-| `manifest.tenancy` | `switchable: true`, `listEndpoint: '/tenants'` under the header resolver | `switchable: false`, no `listEndpoint`; `header` only on the tenant plane |
-| CORS preflight | `x-tenant-id` not allowed: a browser on another origin could not send a login | the tenant header is added to `allowedHeaders` wherever the backend reads it |
-| `requireCapability: 'manifest'` on a tenant route | refused at boot | allowed: the name is reserved by both catalogues |
+| `manifest.tenancy` | `switchable: true`, `listEndpoint: '/tenants'` with tenants | `switchable: false`, no `listEndpoint`; `header` only on the tenant plane |
+| CORS preflight | `x-tenant-id` not in the default `allowedHeaders`: a browser on another origin could not send a login | the tenant header is added to `allowedHeaders` wherever the backend reads it |
 
 **Why.** With tenants the two planes are distinct identity spaces, and one manifest for both handed a
 customer's users the platform's route map and role codes while drawing screens they could never call.
@@ -520,7 +519,7 @@ every call before the session exists, and stops expecting `tenancy.listEndpoint`
 
 ## 26. The second factor, per plane and per tenant
 
-| | before (v4 and earlier 5.0.0-alpha) | now |
+| | v4 | v5 |
 |---|---|---|
 | `MFA_POLICY` | one value for the deployment, read only by `/auth/*` | the **floor**: the control plane and each tenant may tighten it, never loosen it |
 | the platform's operators | no policy at all: `MANDATORY` did not oblige them | `SYSTEM_MFA_POLICY`, which defaults to `MFA_POLICY` |
@@ -544,7 +543,7 @@ the alternative is an instance where the first login locks everybody out.
 
 ## 27. The refresh token is a session, not a JWT
 
-| | v4, and earlier 5.0.0-alpha | now |
+| | v4 | v5 |
 |---|---|---|
 | what a refresh token is | a second JWT, signed with `JWT_REFRESH_SECRET` or, unset, with `JWT_SECRET` | an opaque credential, `vs1.<routing>.<sid>.<secret>`, whose SHA-256 is a row in the new `session` table |
 | what renewing does to it | nothing: the same string worked until its own expiry | it is spent. Every renewal mints a new secret and increments the generation |
@@ -580,8 +579,8 @@ and it makes the theft an event somebody can count. The full reasoning is `docs/
 
 **What a client has to change.**
 
-- **Every refresh token in circulation stops working**, whether it was issued by v4 or by an earlier
-  5.0 alpha: it is a JWT, and a JWT is not four segments of the new format. Everybody logs in once.
+- **Every refresh token in circulation stops working**: v4 issued a JWT, and a JWT is not four
+  segments of the new format. Everybody logs in once.
   There is no window in which both formats are accepted, because accepting the old one would mean
   accepting a credential nothing can revoke.
 - A bearer client sends `{ refreshToken }` and **must store the `refreshToken` it gets back**. A client
@@ -596,7 +595,7 @@ and it makes the theft an event somebody can count. The full reasoning is `docs/
 
 ## 28. Registration is closed by default
 
-v4, and the earlier 5.0 alphas, let anybody call `POST /auth/register` on any tenant. v5
+v4 lets anybody call `POST /auth/register` on any tenant. v5
 decides who may create an account per tenant, on two levels (docs/API_V5.md §2.5): the platform
 decides the set of modes a tenant may choose from, the tenant's administrator picks one. The
 deployment's own default is **`invite`**: accounts are created by an administrator, and
@@ -623,11 +622,11 @@ waits. A console lists the waiting accounts with `GET /users?approved=false`.
 
 ## 29. The login is a flow
 
-The login routes of v4 and of the 5.0 alphas are gone, on both planes, together with the temporary
+The login routes of v4 are gone, on both planes, together with the temporary
 token between the password and the second factor. The login is a flow of stages, specified in
 docs/AUTH_FLOW_V5.md, and a second factor, an email code or a provider login are stages of it.
 
-| | v4, and earlier 5.0.0-alpha | now |
+| | v4 | v5 |
 |---|---|---|
 | the login | `POST /auth/login { email, password }` | `POST /auth/flow/start { method: 'password', email, password }` |
 | the platform login | `POST /system/auth/login` | `POST /system/auth/flow/start`, same body |

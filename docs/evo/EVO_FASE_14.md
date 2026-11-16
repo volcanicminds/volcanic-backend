@@ -1,15 +1,14 @@
 # EVO fase 14: solo Postgres, poi lo stack del 1° ottobre
 
 > **Questo file è il piano della fase, non lo stato.** Lo stato resta in `EVO_STATO.md`. La fase
-> nasce dalle decisioni del manutentore del 1° ottobre 2026: restare sugli scenari S1, S2 e S3,
-> tenere Postgres come unico motore (voce 23 di `EVO_PUNTI_APERTI.md`, riaperta) e adottare gli
-> strumenti scelti per quegli scenari. Node 26 è già fatto: `.nvmrc` a v26.10.0 ed `engines` a
+> copre gli scenari S1, S2 e S3: Postgres come unico motore
+> e gli strumenti scelti per quegli scenari. Node 26 è già fatto: `.nvmrc` a v26.10.0 ed `engines` a
 > `>=26` nei sei repository di v5 (qui il commit `53befa8`).
 >
 > Regola unica, la stessa delle fasi precedenti: una casella si chiude solo con un'evidenza
 > citata. Perimetro: `volcanic-backend` su `v5` da T-14.1 a T-14.4, con i ritocchi che ne
 > discendono in `volcanic-backend-sample`, `volcanic-admin` (dati finti) e `volcanic-rag` (testi);
-> `volcanic-tools` e `volcanic-rag` per i compiti successivi. Ordine scelto dal manutentore:
+> `volcanic-tools` e `volcanic-rag` per i compiti successivi. Ordine:
 > SQLite per primo, poi gli statement preparati.
 
 | Simbolo | |
@@ -28,8 +27,8 @@ cambio di schema, scritto e provato due volte (T-13.1: `0004_step_up_*` nei quat
 `control` e `tenant` per `pg` e per `sqlite`), e nella Magic Query, che tiene due dialetti e
 rifiuta per nome gli operatori che SQLite non ha (Q9). Al 1° ottobre 2026 SQLite e libSQL
 compaiono in 29 file di `lib/`, 24 di `test/` e 10 fra `docs/`, `README.md` e `llms.txt`;
-l'adattatore conta 506 righe, il suo schema 371, la replica Litestream 184. Il manutentore ha
-deciso di tenere Postgres soltanto, per il piano di controllo e per i tenant.
+l'adattatore conta 506 righe, il suo schema 371, la replica Litestream 184. Il motore resta
+Postgres soltanto, per il piano di controllo e per i tenant.
 
 Togliere SQLite toglie anche il motore dei test. Oggi ogni suite del data layer gira su SQLite
 sempre e su Postgres solo con `DATABASE_URL`, quindi `npm test` senza Postgres applica soltanto le
@@ -60,23 +59,23 @@ connessione contro cento connessioni.
 
 | # | Decisione | Motivo |
 |---|---|---|
-| F58 | **Solo Postgres**, per il piano di controllo e per i tenant, con le strategie `none`, `schema` e `container`. Escono l'adattatore SQLite e libSQL, `schema/sqlite.ts`, gli insiemi `control/sqlite` e `tenant/sqlite`, i contenitori a file con la replica Litestream, la copia del file nell'export, i peer `better-sqlite3` e `@libsql/client`, le righe della matrice e i rami SQLite della Magic Query. `Engine` diventa `'postgres' \| 'pglite'` | scelta del manutentore, 1° ottobre 2026 |
+| F58 | **Solo Postgres**, per il piano di controllo e per i tenant, con le strategie `none`, `schema` e `container`. Escono l'adattatore SQLite e libSQL, `schema/sqlite.ts`, gli insiemi `control/sqlite` e `tenant/sqlite`, i contenitori a file con la replica Litestream, la copia del file nell'export, i peer `better-sqlite3` e `@libsql/client`, le righe della matrice e i rami SQLite della Magic Query. `Engine` diventa `'postgres' \| 'pglite'` | un motore solo da mantenere e da provare: SQLite compare in 29 file di `lib/` e 24 di `test/` (§0) |
 | F59 | La colonna `tenant.engine` del registro resta e vale `postgres`; l'API dei tenant non accetta altri motori | le migrazioni sono forward-only: toglierla costa una migrazione del piano di controllo e non cambia nessun comportamento |
 | F60 | **PGlite ha un percorso vero.** Il provider Postgres accetta un'istanza PGlite al posto del pool (`drizzle-orm/pglite`), con le stesse tabelle qualificate, gli stessi handle, le stesse migrazioni `pg` e la stessa guardia sullo stato di sessione. `control.engine: 'pglite'` lo usa, in memoria o su `control.dataDir`. La matrice non cambia: `pglite` solo con `none`, rifiutato con un blocco `tenants` in produzione; export (`pg_dump`) e strategia `container` restano di un server Postgres | realizza ciò che `docs/TESTING_V5.md` §1 e la decisione 13 di `EVO_FRAMEWORK.md` già dicono; oggi la casella `pglite + none` è `sì` senza codice |
 | F61 | I test del data layer girano **su PGlite sempre e su Postgres con `DATABASE_URL`**, come oggi su SQLite. Le fixture danno lo stesso contenitore migrato sui due motori; le prove legate al pool (D-01, D-02, la contesa dei lock) restano su Postgres reale | il verde senza `DATABASE_URL` continua a dire qualcosa, e da qui lo dice nel dialetto e con le migrazioni della produzione |
 | F62 | Statement preparati di Drizzle sui percorsi caldi: login, token, risoluzione del tenant. Restano solo dove la misura prima e dopo, sullo stesso banco, mostra il guadagno | il margine misurato sta lì (§0); un preparato che non guadagna è solo codice in più |
 | F63 | Log: pino resta, JSON in produzione e `pino-pretty` solo in sviluppo; Fastify riceve l'istanza come `loggerInstance`; `redact` sui segreti | oggi `lib/util/logger.ts` usa sempre il trasporto `pino-pretty`, anche in produzione, e Fastify ha un logger suo, spento di default (`index.ts:259`) |
-| F64 | Tracce e metriche: OpenTelemetry su OTLP con `@fastify/otel` | scelta del manutentore, 1° ottobre 2026 |
+| F64 | Tracce e metriche: OpenTelemetry su OTLP con `@fastify/otel` | è il plugin per le tracce HTTP di Fastify, non una patch (F68) |
 | F65 | Modelli e agenti: AI SDK 7 e il suo `ToolLoopAgent` in `volcanic-tools`, al posto dell'involucro di Mastra (`lib/ai/agent.ts`); intervalli dei peer chiusi | oggi `"@mastra/core": ">=1.0.0"` e `"ai": ">=4.0.0"` accettano qualunque major futura |
 | F66 | MCP: un contratto `defineTool` con adattatori in `volcanic-tools`; nel backend un server generato dalle rotte che lo dichiarano, che agisce con l'identità del chiamante e chiama l'API, mai il database | lo stesso confine di rag T-7.6: un assistente non vede più di quanto vedrebbe la persona che lo usa |
-| F67 | Vettori: pgvector e LanceDB, entrambi motori di rag dietro `RetrievalStore`. Il lavoro sta già in `volcanic-rag/TASKS.md` §K, da T-11.2 a T-11.6, e qui non si duplica | scelta del manutentore, 1° ottobre 2026; §K l'aveva già pianificato il 28 settembre (D10) |
-| F68 | Precisa F64: l'SDK di OpenTelemetry lo avvia il framework in `preload()` quando è configurato, **senza `--import` obbligatorio**. Span HTTP da `@fastify/otel` (un plugin, non una patch), span delle query emessi dal data layer, `fetch` in uscita dall'instrumentazione di undici su `diagnostics_channel`. Il `--import` resta facoltativo, per l'auto-instrumentazione di librerie di terzi | `import-in-the-middle` 3.5.2 documenta solo `module.register()`, che su Node 26.10 stampa `DEP0205` (provato il 2 ottobre 2026); ok del manutentore lo stesso giorno |
-| F69 | Precisa F65: `createAgent()` in `volcanic-tools` resta come **cablaggio** (modello da config ed env, tool di `defineTool`, identità del chiamante, span) e restituisce il `ToolLoopAgent` dell'SDK così com'è, senza un tipo suo. `ai` resta peer (`^7`): il consumer lo dichiara, come i provider `@ai-sdk/*`. Lo usano rag e il sample | un involucro dell'API di `ai` (messaggi, tool, stream, errori) insegue ogni minor, come TypeORM dentro il backend; una dipendenza interna darebbe due copie e tool non riconosciuti fra l'una e l'altra; ok del manutentore, 2 ottobre 2026 |
-| F70 | Precisa F66: il server MCP accetta **sessioni e token d'integrazione** (`/token`), le credenziali che esistono già. Niente `oidc-provider` per ora: OAuth 2.1 per i connettori di terzi è un compito a parte, se servirà | un client di terzi (connettore di Claude.ai o ChatGPT) è l'unico caso che lo richiede; ok del manutentore, 2 ottobre 2026 |
-| F71 | Precisa F69: l'identità del chiamante entra nel cablaggio dell'agente con T-14.7, insieme a `defineTool`, non con T-14.6 | l'identità serve ai tool, che agiscono a nome di chi chiama (F66): senza `defineTool` non avrebbe un consumatore; ok del manutentore, 3 ottobre 2026 |
-| F72 | Telemetria AI in `volcanic-tools`: la prima chiamata del modulo (`createModel`, `createEmbedder`, `createAgent`, `embedText`, `embedTexts`) registra l'integrazione OpenTelemetry dell'AI SDK, una volta per processo, solo se `@ai-sdk/otel` (peer opzionale) è installato; `AI_TELEMETRY=false` la spegne; se l'applicazione ne ha registrata una, non se ne aggiunge un'altra. Il **contenuto** (prompt, istruzioni, risposte, argomenti e risultati dei tool, testi da vettorizzare) è **spento di default**: lo accende `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`, e vince il `recordInputs`/`recordOutputs` della singola chiamata o dell'agente | l'SDK registra il contenuto se nessuno dice di no, e prompt e risposte portano dati personali; la variabile è il nome che usano le instrumentazioni GenAI (verificato nel README di `@elastic/opentelemetry-instrumentation-openai` 0.5.1, non in quello di `@opentelemetry/instrumentation-openai` 0.20.0); ok del manutentore, 3 ottobre 2026 |
-| F73 | Precisa F66: **il backend non sa niente di MCP**, né codice né peer. Il server MCP è un adattatore di `defineTool` in `volcanic-tools`, con `@modelcontextprotocol/server` (SDK MCP 2, Apache-2.0) peer opzionale; il consumer lo monta come una sua rotta autenticata (nel sample `/mcp`) e sceglie i tool uno per uno con `defineTool`, senza campi MCP nella configurazione delle rotte del framework. Il tool chiama l'API con la credenziale del chiamante attraverso una funzione di chiamata data dal consumer (nel sample `server.inject`), quindi nemmeno tools dipende da Fastify. Sessioni e token d'integrazione (F70) li verificano gli hook del backend come su ogni rotta; una rotta con `freshAuth` risponde col suo rifiuto di step-up (`lib/util/stepUp.ts`) e il tool lo restituisce come errore | il framework resta agnostico e i consumer importano tools (sample, rag); un campo di rotta o un rifiuto all'avvio legati a MCP rimetterebbero MCP nel backend; ok del manutentore, 3 ottobre 2026. Il pacchetto: `@modelcontextprotocol/server` 2.3.0 al posto di `@modelcontextprotocol/sdk` 1.32.0, che si porta dietro express, hono, jose e ajv; ok del manutentore, 4 ottobre 2026 |
-| F74 | Precisa F71: con i tool di `defineTool` l'agente di `createAgent` riceve il chiamante come **opzione di chiamata** dell'SDK (`agent.generate({ prompt, options: { caller } })`), che il suo `prepareCall` passa ai tool, non come `toolsContext`. Niente `callOptionsSchema`: il chiamante si controlla tutto nel `prepareCall`. Un agente prende tool di `defineTool` o tool dell'SDK, non entrambi, finché un consumer non li vuole mescolare | nei tipi di `ai` 7.0.127 `agent.generate` non accetta `toolsContext`, e `ToolLoopAgentSettings` lo vuole alla costruzione quando un tool ha un contesto obbligatorio, cioè la credenziale di qualcuno sull'agente condiviso; l'SDK valida le opzioni con `callOptionsSchema` solo quando la chiamata ne passa (`ToolLoopAgent.prepareCall`), quindi una chiamata senza opzioni lo salterebbe; un agente a una sola famiglia di tool tiene semplici i tipi; ok del manutentore, 4 ottobre 2026 |
+| F67 | Vettori: pgvector e LanceDB, entrambi motori di rag dietro `RetrievalStore`. Il lavoro sta già in `volcanic-rag/TASKS.md` §K, da T-11.2 a T-11.6, e qui non si duplica | il lavoro vive in un solo posto, `volcanic-rag/TASKS.md` §K |
+| F68 | Precisa F64: l'SDK di OpenTelemetry lo avvia il framework in `preload()` quando è configurato, **senza `--import` obbligatorio**. Span HTTP da `@fastify/otel` (un plugin, non una patch), span delle query emessi dal data layer, `fetch` in uscita dall'instrumentazione di undici su `diagnostics_channel`. Il `--import` resta facoltativo, per l'auto-instrumentazione di librerie di terzi | `import-in-the-middle` 3.5.2 documenta solo `module.register()`, che su Node 26.10 stampa `DEP0205` (provato il 2 ottobre 2026) |
+| F69 | Precisa F65: `createAgent()` in `volcanic-tools` resta come **cablaggio** (modello da config ed env, tool di `defineTool`, identità del chiamante, span) e restituisce il `ToolLoopAgent` dell'SDK così com'è, senza un tipo suo. `ai` resta peer (`^7`): il consumer lo dichiara, come i provider `@ai-sdk/*`. Lo usano rag e il sample | un involucro dell'API di `ai` (messaggi, tool, stream, errori) insegue ogni minor, come TypeORM dentro il backend; una dipendenza interna darebbe due copie e tool non riconosciuti fra l'una e l'altra |
+| F70 | Precisa F66: il server MCP accetta **sessioni e token d'integrazione** (`/token`), le credenziali che esistono già. Niente `oidc-provider` per ora: OAuth 2.1 per i connettori di terzi è un compito a parte, se servirà | un client di terzi (connettore di Claude.ai o ChatGPT) è l'unico caso che lo richiede |
+| F71 | Precisa F69: l'identità del chiamante entra nel cablaggio dell'agente con T-14.7, insieme a `defineTool`, non con T-14.6 | l'identità serve ai tool, che agiscono a nome di chi chiama (F66): senza `defineTool` non avrebbe un consumatore |
+| F72 | Telemetria AI in `volcanic-tools`: la prima chiamata del modulo (`createModel`, `createEmbedder`, `createAgent`, `embedText`, `embedTexts`) registra l'integrazione OpenTelemetry dell'AI SDK, una volta per processo, solo se `@ai-sdk/otel` (peer opzionale) è installato; `AI_TELEMETRY=false` la spegne; se l'applicazione ne ha registrata una, non se ne aggiunge un'altra. Il **contenuto** (prompt, istruzioni, risposte, argomenti e risultati dei tool, testi da vettorizzare) è **spento di default**: lo accende `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`, e vince il `recordInputs`/`recordOutputs` della singola chiamata o dell'agente | l'SDK registra il contenuto se nessuno dice di no, e prompt e risposte portano dati personali; la variabile è il nome che usano le instrumentazioni GenAI (verificato nel README di `@elastic/opentelemetry-instrumentation-openai` 0.5.1, non in quello di `@opentelemetry/instrumentation-openai` 0.20.0) |
+| F73 | Precisa F66: **il backend non sa niente di MCP**, né codice né peer. Il server MCP è un adattatore di `defineTool` in `volcanic-tools`, con `@modelcontextprotocol/server` (SDK MCP 2, Apache-2.0) peer opzionale; il consumer lo monta come una sua rotta autenticata (nel sample `/mcp`) e sceglie i tool uno per uno con `defineTool`, senza campi MCP nella configurazione delle rotte del framework. Il tool chiama l'API con la credenziale del chiamante attraverso una funzione di chiamata data dal consumer (nel sample `server.inject`), quindi nemmeno tools dipende da Fastify. Sessioni e token d'integrazione (F70) li verificano gli hook del backend come su ogni rotta; una rotta con `freshAuth` risponde col suo rifiuto di step-up (`lib/util/stepUp.ts`) e il tool lo restituisce come errore | il framework resta agnostico e i consumer importano tools (sample, rag); un campo di rotta o un rifiuto all'avvio legati a MCP rimetterebbero MCP nel backend. Il pacchetto è `@modelcontextprotocol/server` 2.3.0 e non `@modelcontextprotocol/sdk` 1.32.0, che si porta dietro express, hono, jose e ajv |
+| F74 | Precisa F71: con i tool di `defineTool` l'agente di `createAgent` riceve il chiamante come **opzione di chiamata** dell'SDK (`agent.generate({ prompt, options: { caller } })`), che il suo `prepareCall` passa ai tool, non come `toolsContext`. Niente `callOptionsSchema`: il chiamante si controlla tutto nel `prepareCall`. Un agente prende tool di `defineTool` o tool dell'SDK, non entrambi, finché un consumer non li vuole mescolare | nei tipi di `ai` 7.0.127 `agent.generate` non accetta `toolsContext`, e `ToolLoopAgentSettings` lo vuole alla costruzione quando un tool ha un contesto obbligatorio, cioè la credenziale di qualcuno sull'agente condiviso; l'SDK valida le opzioni con `callOptionsSchema` solo quando la chiamata ne passa (`ToolLoopAgent.prepareCall`), quindi una chiamata senza opzioni lo salterebbe; un agente a una sola famiglia di tool tiene semplici i tipi |
 
 ## 2. Compiti
 
@@ -328,7 +327,7 @@ connessione contro cento connessioni.
      con tre tool (`my_profile`, `find_partners`, `delete_partner`), `call` è `server.inject` con il
      `cookie` o l'`Authorization` della richiesta; le origini ammesse sono quelle di `CORS_ORIGINS`,
      `*` escluso; `GET` e `DELETE /mcp` rispondono 405 dall'SDK; `freshAuth` sulle due `DELETE` dei
-     partner. Il backend è cambiato, su ok del manutentore: `POST /token` riscriveva il JWT su una
+     partner. Il backend è cambiato: `POST /token` riscriveva il JWT su una
      colonna che la tabella v5 non ha e rispondeva senza, quindi nessun token d'integrazione
      funzionava (`bf8fec5`: il JWT si restituisce una volta e non si salva); `expiresAt` ora è
      obbligatorio come già diceva `docs/API_V5.md` §4, e finisce nel claim `exp`, perché senza
@@ -349,13 +348,13 @@ connessione contro cento connessioni.
      `POST /token`; il soggetto sbagliato nel JWT; il default di sessione sul token senza scadenza.
      Verde: backend `check-all`, `npm test` con Postgres (973, 1 saltata), banco multi-tenant (30);
      sample `check-all` (2 avvisi `any` preesistenti) e `npm test` (20); tools `tool.spec.ts` (14).
-     Suite girate su Node 24.11, non 26. Poi, su ok del manutentore (`a220ff6`): un token bloccato
+     Suite girate su Node 24.11, non 26. Poi (`a220ff6`): un token bloccato
      o cancellato autenticava ancora, perché `isValidToken` guardava solo il nome; ora rifiuta
      `blocked` e `deletedAt` (403 `TOKEN_NOT_VALID` alla richiesta dopo), e blocco e sblocco
      stanno su `/token/:id/block` e `/token/:id/unblock` come in `docs/API_V5.md`. Sesto caso nel
      banco, preso da due difetti piantati (solo il nome; senza `deletedAt`). Verde: `check-all`,
      `npm test` con Postgres (973, 1 saltata), banco multi-tenant (31), sample `npm test` (20).
-     Poi, su ok del manutentore (`2162407`): un utente cancellato teneva la sessione e la
+     Poi (`2162407`): un utente cancellato teneva la sessione e la
      rinnovava col refresh token, perché `deleteUser` scrive solo `deletedAt` e `isValidUser`
      guardava email e password; ora lo rifiuta (403 `USER_NOT_VALID` alla richiesta dopo, rinnovo
      403 con la sessione chiusa). Caso nel banco del rinnovo, preso da due difetti piantati (senza
@@ -396,15 +395,15 @@ connessione contro cento connessioni.
 
 ## 3. Segnalato, non toccato
 
-~~`docs/TESTING_V5.md` §1 elenca ancora suite PGlite della v4 che non esistono più.~~ **Corretto il
-4 ottobre 2026**, su ok del manutentore: la tabella elenca le quattro suite che hanno uno script
+~~`docs/TESTING_V5.md` §1 elenca ancora suite PGlite della v4 che non esistono più.~~ **Corretto**:
+la tabella elenca le quattro suite che hanno uno script
 (`test:lib`, `test:db` e `test:migrations`, `test:oidc:offline`, `test:e2e:mt:pg`); escono
 `test:e2e:pglite`, `test:e2e:mt:pglite`, le `test/e2e-*` e `test:perf`, che non hanno né cartella
 né script (le suite end-to-end della v4 non tornano, tabella «Fuori piano» di `EVO_STATO.md`); le
 prestazioni rimandano a `bench:paths` e `tune`.
 
-~~La risoluzione del tenant legge due volte la stessa riga di registro.~~ **Corretto il 2 ottobre
-2026**, su ok del manutentore: `DataProvider.tenant()` riceve la riga di registro che il chiamante ha
+~~La risoluzione del tenant legge due volte la stessa riga di registro.~~ **Corretto**:
+`DataProvider.tenant()` riceve la riga di registro che il chiamante ha
 appena letto dal tenant manager (mai una costruita dalla richiesta) e non la rilegge;
 `lookupTenant` è sparito, `openContainer(id)` legge la riga una volta sola. Il fan-out
 `every-tenant` rilegge ogni riga prima del suo job, perché la lista può avere minuti: un tenant
@@ -415,8 +414,8 @@ fida della lista: difetto piantato, 1 rosso su 12). Banco contro il giro senza n
 percorsi dentro la dispersione della baseline. Verde: `check-all`, coverage 832 test,
 `npm test` con Postgres 937 test, `test:e2e:mt:pg` 25 test.
 
-~~La genesi senza `ADMIN_EMAIL` non arriva al suo messaggio.~~ **Corretto il 3 ottobre 2026**, su
-ok del manutentore. Trovato il 2 ottobre durante la prova a runtime di T-14.5: `ensureGenesisAdmin`
+~~La genesi senza `ADMIN_EMAIL` non arriva al suo messaggio.~~ **Corretto**.
+Trovato durante la prova a runtime di T-14.5: `ensureGenesisAdmin`
 contava gli amministratori con `roles:in`, ma `roles` è una colonna `text[]` e l'avvio cadeva con
 `TypeError: value.map is not a function`, con o senza amministratori; i test passavano perché la
 genesi vi girava con `ADMIN_EMAIL` o con un manager finto. Ora conta con `roles:arrayContains`. La

@@ -14,9 +14,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true,
-    // On since F7 was closed: the 169 errors it used to produce were mostly one missing
-    // declaration (the injected managers were reached through an untyped index), and what
-    // remained was real. Leaving it off is what let four dead call sites compile.
+    // The injected managers are declared in the types, so an implicit any is a real defect:
+    // with the flag off, a call to a method that does not exist compiles.
     "noImplicitAny": true,
     "strictPropertyInitialization": false,
     "useUnknownInCatchVariables": false,

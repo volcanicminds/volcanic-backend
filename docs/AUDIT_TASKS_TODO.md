@@ -39,7 +39,7 @@
 - [x] **S4 — helmet disabled by default and absent with GraphQL** · `BE` ✅ *(2026-06-17)*
   - File: `lib/config/plugins.ts:46-49`, `index.ts:201` (`!loadApollo`)
   - Enable helmet by default; for Apollo use helmet with a compatible CSP instead of excluding it.
-  - **Done:** decided (with the maintainer) to **remove GraphQL entirely** — it was a demo stub (`helloWorld`), disabled by default, zero tests. This removes the `!loadApollo` condition on helmet at the root. helmet was also set to `enable: true` by default in `lib/config/plugins.ts`.
+  - **Done:** **GraphQL removed entirely** (it was a demo stub, `helloWorld`, disabled by default, zero tests). This removes the `!loadApollo` condition on helmet at the root. helmet was also set to `enable: true` by default in `lib/config/plugins.ts`.
   - **GraphQL removal:** removed Apollo imports/functions and `GRAPHQL`/`loadApollo` from `index.ts`; deleted the `lib/apollo/` folder; removed the `@apollo/server`, `@as-integrations/fastify`, `graphql` deps from `package.json` (+ the `apollo`/`graphql` keywords); cleaned up `.env` (backend+sample), `README.md`, `llms.txt` (removed Part 9 + TOC + env, 275 lines).
   - **Verification:** `type-check` + `build` + lint OK; real boot OK (39 routes, "Server up", helmet active). `npm audit` prod: from **13 → 9** vulnerabilities (4 removed with apollo/graphql).
   - **Note:** public-surface change (published package) → mark as **minor/breaking** in versioning. Cosmetic leftover: in `llms.txt` the numbering jumps "Part 8 → Part 10" (not renumbered to avoid touching the `10.x` sub-paragraphs).
@@ -117,7 +117,7 @@
   - Persist the audit log; reduce the TTL; consider step-up MFA; mandatory audit on the MFA reset via env.
   - **Done in v5:** the impersonation session is persisted and every request it makes is
     logged; the TTL is 1800 s (`IMPERSONATION_TTL`, `lib/config/general.ts`). The step-up is
-    reopened (2026-09-27) as phase 13 (`docs/evo/EVO_FASE_13.md`): the impersonation route asks for a
+    phase 13 (`docs/evo/EVO_FASE_13.md`): the impersonation route asks for a
     re-authentication younger than five minutes (`freshAuth` in `lib/api/tenants/routes.ts`).
     The reset via env writes `mfa.emergency_reset` in the access log of the control container
     (`lib/loader/mfaReset.ts`), proven in `test/lib/mfaReset.spec.ts` and `test/db/mfaReset.spec.ts`.

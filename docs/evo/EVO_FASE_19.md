@@ -33,7 +33,7 @@
 
 ## 2. Decisioni
 
-- **F94** (proprietario, 21 ottobre 2026): il backend presta il contenitore di un tenant anche
+- **F94**: il backend presta il contenitore di un tenant anche
   fuori da una richiesta o da un job, con una funzione pubblica, sullo stesso prestito dei job.
   Scartate una connessione aperta dal progetto, che resta fuori dal limite dei contenitori aperti
   e che export e distruzione non vedono, e la riscrittura via HTTP dei passi diretti delle prove.

@@ -520,7 +520,7 @@ export async function mfaEnable(req: FastifyRequest, reply: FastifyReply) {
       return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'Invalid token' })
     }
 
-    // 2. Save using userManager (typeorm)
+    // 2. Store the secret and turn the factor on
     await req.server['userManager'].saveMfaSecret(dataContext(req), user.id, secret)
     await req.server['userManager'].enableMfa(dataContext(req), user.id)
 

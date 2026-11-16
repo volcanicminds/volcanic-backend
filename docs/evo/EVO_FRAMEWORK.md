@@ -6,8 +6,9 @@
 >
 > **Base di partenza**: il rilievo del 1 settembre 2026 su `v4.0.3`. Le sezioni 2, 4 e le
 > appendici A e B sono quel rilievo e restano valide: descrivono il codice da cui si parte e
-> le prove che lo dimostrano. Le decisioni che hanno trasformato il rilievo in questo piano
-> sono in **`EVO_PUNTI_APERTI.md`**, che è il verbale e prevale in caso di divergenza.
+> le prove che lo dimostrano. Le regole in vigore stanno nelle specifiche (`docs/*_V5.md`,
+> `llms.txt`) e, quelle che nessuna specifica dice, in **`EVO_PUNTI_APERTI.md`**: in caso di
+> divergenza prevalgono su questo piano.
 >
 > **A chi è rivolto**: sviluppatori senior e agenti di coding che **non conoscono il contesto**
 > di questo progetto. Tutto ciò che serve per lavorare è in questo documento.
@@ -35,7 +36,7 @@ quest'ordine e non ha bisogno di altro.
 | # | Documento | Cos'è | Quando si legge |
 |---|---|---|---|
 | 1 | `EVO_FRAMEWORK.md` | questo file: difetti, invarianti, fasi, compiti | per primo, per intero |
-| 2 | `EVO_PUNTI_APERTI.md` | il verbale delle decisioni prese, con il perché | subito dopo. Prevale su questo piano in caso di divergenza |
+| 2 | `EVO_PUNTI_APERTI.md` | i punti aperti e le regole che nessuna specifica dice | subito dopo. Prevale su questo piano in caso di divergenza |
 | 3 | `EVO_STATO.md` | lo stato di avanzamento, una riga per compito | a ogni ripresa del lavoro, per sapere dove si è |
 | 4 | `docs/CONFIGURATION_V5.md` | forma della configurazione, combinazioni ammesse, variabili d'ambiente | prima della fase 1 |
 | 5 | `docs/MANAGERS_V5.md` | i due handle tipizzati, le firme di ogni manager, le porte interne | prima della fase 1 |
@@ -70,8 +71,8 @@ esposto come subpath.
 |---|---|---|
 | Sorgente | `lib/` (7.532 righe), `index.ts` (453), `typeorm.ts` (159) | stesso core, data layer riscritto |
 | Data layer | `lib/database/typeorm/` (2.003 righe, 26,6% di `lib/`), TypeORM 0.3.30 | `lib/database/` su **Drizzle**, subpath `@volcanicminds/backend/db` |
-| Motori | Postgres, PGlite, MongoDB (dichiarato) | **Postgres, SQLite, libSQL**. Mongo esce dal data layer |
-| Tenancy | `none` e `schema` su Postgres | `none`, `schema`, **`container`** (database dedicato o file) |
+| Motori | Postgres, PGlite, MongoDB (dichiarato) | **Postgres**, con PGlite nel processo per sviluppo e test. Mongo esce dal data layer |
+| Tenancy | `none` e `schema` su Postgres | `none`, `schema`, **`container`** (database dedicato) |
 | Runtime | Node >= 24, ESM puro, import con estensione `.js` anche nei `.ts` | Node >= 26, il resto invariato |
 | Confine architetturale | il core **non** importa il data layer, garantito in CI da `dependency-cruiser` | invariato, ed è il vincolo che decide dove sta la risoluzione del tenant (T-3.2) |
 | Integrazione | il consumer inietta i «manager» (`userManager`, `tokenManager`, `dataBaseManager`, `tenantManager`, `mfaManager`, `transferManager`) via `start(decorators)`; senza, partono i null-object di `lib/defaults/managers.ts` | invariato come meccanismo, firme riviste |
@@ -85,10 +86,10 @@ asse di test che qualcuno mantiene per anni.
 | Postgres | assente | ogni progetto single tenant |
 | Postgres | Postgres per schema | il multi-tenant denso, molti tenant piccoli |
 | Postgres | Postgres per contenitore | isolamento forte, backup e ripristino per tenant |
-| Postgres | SQLite o libSQL per file | il contenitore consegnabile e replicabile |
-| SQLite o libSQL | assente o per file | processi senza server: CLI, agenti, desktop, deploy a file singolo |
+| PGlite | assente, o per schema nella stessa istanza fuori produzione | sviluppo e test senza un server |
 
-Le altre combinazioni non esistono: la matrice di T-1.4 le rifiuta all'avvio.
+Le altre combinazioni non esistono: la matrice di T-1.4 (`lib/database/capabilities.ts`) le
+rifiuta all'avvio, e in produzione rifiuta anche i tenant su PGlite.
 
 ---
 
@@ -268,7 +269,7 @@ codice nuovo nasce senza di essi, e il compito indicato è quello che deve **dim
 
 ## 5. Decisioni già prese
 
-Vengono dal verbale in `EVO_PUNTI_APERTI.md`. **Non si riaprono.** Se una sembra sbagliata
+Sono le scelte su cui poggia il piano. **Non si riaprono.** Se una sembra sbagliata
 nella pratica, si segnala e ci si ferma.
 
 | # | Decisione | Motivo |
@@ -333,8 +334,8 @@ Obiettivo della fase: **esistono il giudice e la specifica, prima del codice da 
 1. Si lavora su **`develop`**, già allineato a `main` (dal 9 settembre 2026 il lavoro sta su `v5`,
    che contiene tutto `develop`). `main` resta la v4 e non riceve altro
    che eventuali correzioni di sicurezza per i consumer esistenti.
-2. Versione `5.0.0-alpha.0` in `package.json`, e pubblicazione alpha sul tag `v5.0.0-alpha.*`
-   con dist-tag `next`, mai `latest`, finché la fase 7 non è chiusa.
+2. Versione `5.0.0` in `package.json`; la pubblicazione va su `latest`, senza alpha e senza
+   `next`.
 3. **Togliere `test` dall'`exclude` di `tsconfig.json`** (D-25): i test devono passare dal
    type-check, altrimenti la loro rottura si scopre a runtime.
 4. Nel workflow di CI aggiungere `develop` ai rami che fanno partire la pipeline, e far uscire
@@ -348,7 +349,7 @@ Obiettivo della fase: **esistono il giudice e la specifica, prima del codice da 
 **Conseguenza dichiarata, da accettare prima di cominciare.** Con il punto 5 il repository
 **non compila e non ha suite verdi** finché il data layer Drizzle non regge le prove: le suite
 end-to-end iniettano i manager attraverso `typeorm.ts` e vanno riscritte man mano che la fase 2
-avanza. È la scelta fatta il 6 settembre 2026 (punto 26 del verbale). Durante quella finestra:
+avanza. Durante quella finestra:
 
 - `npm run check-all` resta il cancello che deve tornare verde per primo;
 - il banco nero di T-0.2 è scritto ma rosso, ed è **giusto** che lo sia: è il criterio di

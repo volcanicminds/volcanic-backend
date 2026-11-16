@@ -1,8 +1,8 @@
 # EVO fase 20: il registro delle modifiche si chiama `change_log`
 
 > **Questo file è il piano della fase, non lo stato.** Lo stato resta in `EVO_STATO.md`. La fase
-> nasce dalla revisione dei registri della piattaforma, fatta con il proprietario il 22 ottobre
-> 2026 insieme a quelli del RAG. La tabella completa, con cosa contiene ogni registro, dove sta e
+> nasce dalla revisione dei registri della piattaforma, fatta insieme a quella dei registri
+> del RAG. La tabella completa, con cosa contiene ogni registro, dove sta e
 > quanto dura, è nella decisione D11 di `volcanic-rag/TASKS.md`: qui c'è la parte del backend.
 >
 > Regola unica, la stessa delle fasi precedenti: una casella si chiude solo con un'evidenza
@@ -30,11 +30,11 @@
 
 ## 2. Decisioni
 
-- **F95** (proprietario, 22 ottobre 2026): `change` diventa `change_log`, come `access_log` e
+- **F95**: `change` diventa `change_log`, come `access_log` e
   `governance_log`. Fra le tabelle di `appTables` la chiave diventa `changeLog`, gli indici
   `change_log_entity_idx` e `change_log_created_at_idx`. Il contratto del manager non cambia
   (`TrackingManagement`, `addChange`, `retrieveBy`): una riga del registro resta una modifica.
-- **F96** (proprietario, 22 ottobre 2026): `access_log` e `governance_log` restano due tabelle, e
+- **F96**: `access_log` e `governance_log` restano due tabelle, e
   `impersonation` resta com'è. Gli accessi contengono dati personali e si cancellano dopo 90 giorni
   nei tenant e 180 per gli operatori, mentre la governance non si cancella mai: in una tabella sola
   «mai cancellato» smetterebbe di essere una proprietà della tabella e diventerebbe una condizione

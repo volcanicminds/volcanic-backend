@@ -1,10 +1,8 @@
 # EVO fase 11: registro delle sessioni e rotazione del refresh token
 
 > **Questo file è il piano della fase, non lo stato.** Lo stato resta in `EVO_STATO.md`, una
-> riga per compito; le decisioni prese qui vanno riportate in `EVO_PUNTI_APERTI.md` come
-> righe `F18` e seguenti. La fase nasce dal punto aperto **F11**
-> (`EVO_PUNTI_APERTI.md:171`), che dichiarava rotazione e rilevamento del riuso ancora da
-> fare, e dalla discussione del 18 settembre 2026 che ne ha allargato il perimetro.
+> riga per compito. La fase copre la rotazione del refresh token e il rilevamento del riuso; le
+> sue decisioni sono le righe `F18` e seguenti della sezione 1.
 >
 > **Regola unica**, la stessa delle fasi precedenti: una casella si chiude solo con
 > un'**evidenza citata**, cioè un `file:riga`, un identificativo di commit o l'output di un
@@ -42,7 +40,7 @@ rende il furto un evento **visibile e contabile**. Ma non esiste senza memoria l
 JWT si verifica, non si consuma, e «questa generazione è già stata spesa» è un fatto che vive
 solo in una riga scritta da qualche parte.
 
-## 1. Le decisioni prese, da riportare in `EVO_PUNTI_APERTI.md`
+## 1. Le decisioni
 
 | | Decisione | Criterio |
 |---|---|---|
@@ -160,8 +158,7 @@ non c'è emissione, senza emissione non c'è rotazione.
   rinnovano più, con test sui due limiti separati.
 
 - [x] **T-11.13** Configurazione.
-  **Dove**: blocco `sessions` in configurazione (camelCase, come i blocchi nuovi della v5 per
-  F5), con inattività, vita assoluta, finestra di grazia e politica di riuso; annuncio
+  **Dove**: blocco `sessions` in configurazione (camelCase, come i blocchi nuovi della v5), con inattività, vita assoluta, finestra di grazia e politica di riuso; annuncio
   all'avvio quando il registro non c'è.
   **Chiuso quando**: `docs/CONFIGURATION_V5.md` elenca le chiavi e un test verifica il
   comportamento senza data layer.
@@ -174,10 +171,12 @@ non c'è emissione, senza emissione non c'è rotazione.
 
 - [x] **T-11.15** Revisione di `reset_external_id_on_login`.
   **Dove**: `auth.ts:399`.
-  **Perché**: con il registro, ruotare l'identità a ogni login è il martello usato come
-  routine, e oggi significa che loggarsi dal telefono butta giù la sessione del portatile.
-  **Chiuso quando**: l'opzione è deprecata o ridefinita, con la scelta scritta in
-  `EVO_PUNTI_APERTI.md`.
+  **Perché**: con il registro, ruotare l'identità a ogni login chiude le sessioni degli altri
+  dispositivi: loggarsi dal telefono butta giù quella del portatile.
+  **Chiuso quando**: l'opzione è ridefinita e documentata.
+  **Evidenza**: `reset_external_id_on_login`, default `false`, ruota l'identificativo una volta,
+  alla fine del login, solo sul piano tenant, e mai in uno step-up (`docs/AUTH_FLOW_V5.md` §8.3,
+  `llms.txt`).
 
 ## E. Prove e documentazione
 

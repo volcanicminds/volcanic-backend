@@ -199,7 +199,7 @@ la forma di difetto che le fasi precedenti hanno inseguito con il nome D-11.
   **Non fatto, e scritto in §4**: l'unificazione delle due famiglie (`DATABASE_URL` contro
   `DB_*`), perché romperebbe chi usa la forma discreta; e una variabile per `tenants.engine`,
   che resta una decisione.
-  **Seguito, deciso l'11 settembre 2026**: `LOG_LEVEL` non impostato vale `info` in produzione e
+  **Seguito**: `LOG_LEVEL` non impostato vale `info` in produzione e
   `debug` altrove (`lib/util/logger.ts`, `getLogLevel`), e un valore esplicito vince sempre. Il
   livello è riletto in `index.ts` dopo `dotenv.config()`, perché il logger nasce durante gli
   import e prima non vedeva un `NODE_ENV` scritto in `.env`: verificato con un processo che ha
@@ -304,7 +304,7 @@ che segue è tutto il resto, che non è stato toccato dallo stesso commit.
   quando il manifest le descrive.
   **Chiuso quando**: l'admin può autenticarsi sul piano di controllo, e con un operatore di
   sistema la risorsa `tenant` compare in navigazione.
-  **Decisione del 15 settembre 2026**: prop `plane` sull'admin, e un manifest per piano.
+  **Decisione**: prop `plane` sull'admin, e un manifest per piano.
   **Evidenza**: backend: `GET /system/auth/me` (`systemAuth.me`, ruolo `public` più
   `isAuthenticated`, perché `roles: []` su una rotta di controllo vale il solo superuser) e
   `GET /system/manifest` (`systemManifest.get`, capability `manifest` del catalogo di controllo, solo
@@ -338,7 +338,7 @@ che segue è tutto il resto, che non è stato toccato dallo stesso commit.
   che oggi la lista arriva da una rotta autenticata.
   **Chiuso quando**: esiste un percorso di login documentato per il caso `resolver: 'header'`,
   provato contro il sample con il blocco `tenants` attivo.
-  **Decisione del 15 settembre 2026**: il tenant si chiede al login (campo ricordato nel browser) o
+  **Decisione**: il tenant si chiede al login (campo ricordato nel browser) o
   lo fissa la prop `tenant`; sul piano tenant il selettore sparisce, perché dal login il token lega
   il tenant.
   **Evidenza**: il client manda l'header di contesto su ogni chiamata, non solo sul rinnovo
@@ -369,9 +369,8 @@ che segue è tutto il resto, che non è stato toccato dallo stesso commit.
   **Nota**: questa non è una correzione, è un pezzo di grammatica del manifest da progettare.
   Va aperta come voce a sé e non chiusa insieme alle altre.
   **Chiuso quando**: esiste la specifica in `docs/` e almeno un'azione del registro tenant la usa.
-  **Decisione del 15 settembre 2026**: l'input si deriva dal body schema della rotta, e un hint
-  `config.manifest.input` aggiunge widget, etichette, esclusioni e `required` (F17 in
-  `EVO_PUNTI_APERTI.md`).
+  **Decisione**: l'input si deriva dal body schema della rotta, e un hint
+  `config.manifest.input` aggiunge widget, etichette, esclusioni e `required`.
   **Evidenza**: specifica in `docs/API_V5.md` §7.1. Il generatore la applica con `inputOf`
   (`lib/manifest/generator.ts`), il router porta l'hint per rotta (`input` in `ConfiguredRoute`,
   `ActionInputHints` in `types/global.d.ts`). Nel registro dei tenant la usano `suspend` e
@@ -429,7 +428,7 @@ che segue è tutto il resto, che non è stato toccato dallo stesso commit.
   `examples` resta solo `docs/ARCHITECTURE.md:26`, che dice che il manifest **non** usa
   `/admin/<resource>`.
 
-Le tre voci che seguono sono state aggiunte l'11 settembre 2026, su decisione: **di default la
+Le tre voci che seguono stabiliscono che **di default la
 sessione del browser sta in un cookie httpOnly, mai in `localStorage`**, e l'access token torna
 breve. Vanno fatte in quest'ordine, perché ciascuna regge la successiva.
 
@@ -532,7 +531,7 @@ chiuse queste voci, perché due di esse rendono il sample non funzionante su un 
   applied» ed esce verde: la tabella `partner` non nasce e il demo va in errore.
   **Chiuso quando**: i due file SQL stanno sotto `migrations/<set>/pg`, gli script generano lì,
   e `npm run db:migrate` su un database vuoto crea `partner`.
-  **Provato l'11 settembre 2026**, non più solo dedotto: avviato
+  **Provato l'11 settembre 2026**: avviato
   `postgres:16-alpine` vuoto sulla porta del sample e lanciato la sua suite, che al bootstrap
   applica le migrazioni. `psql \dt public.*` elenca otto tabelle, tutte del framework
   (`change`, `destruction_request`, `impersonation`, `migration`, `system_user`, `tenant`,
@@ -681,10 +680,9 @@ Nessuna di queste rompe niente. Sono residui, e vanno chiuse insieme in un commi
   **Perché ora**: dopo T-10.30 il costo è tre righe in tutto, misurato eseguendo il compilatore
   con quelle opzioni.
   **Chiuso quando**: le opzioni sono attive e `npm run check-all` è verde.
-  **Evidenza, in parte**: `noUnusedLocals` e `noUnusedParameters` attivi in `tsconfig.json`
-  (ereditati da `tsconfig.test.json`), `npm run type-check` verde. **`noImplicitAny` resta spento**:
-  attivarlo dà 167 errori nel codice e 166 nei test, misurati con `tsc --noImplicitAny`. Decisione
-  F7 in `EVO_PUNTI_APERTI.md`: si affronta per file.
+  **Evidenza**: `noImplicitAny`, `noUnusedLocals` e `noUnusedParameters` attivi in
+  `tsconfig.json` (ereditati da `tsconfig.test.json`), con i manager iniettati dichiarati nei tipi
+  (`1152566`); `npm run type-check` verde.
 
 - [-] **T-10.32** Il pacchetto pubblica i sorgenti TypeScript di `lib/`.
   **Dove**: `package.json` `files: ["dist", "lib", "bin"]`, mentre `exports` rende `lib`
@@ -727,8 +725,8 @@ Nessuna di queste rompe niente. Sono residui, e vanno chiuse insieme in un commi
   **Nota**: rinominare le chiavi storiche è una rottura per ogni consumer, quindi la voce è una
   **decisione**, non una modifica automatica. Se si sceglie di non toccarle, va scritto dove.
   **Chiuso quando**: la scelta è in `EVO_PUNTI_APERTI.md` con la motivazione.
-  **Evidenza**: decisione F5 in `EVO_PUNTI_APERTI.md`: nessuna rinomina in 5.0, chiavi nuove in
-  camelCase, convivenza dichiarata.
+  **Evidenza**: regola «Chiavi di configurazione» in `EVO_PUNTI_APERTI.md`: nessuna rinomina in
+  5.0, chiavi nuove in camelCase, convivenza dichiarata.
 
 - [x] **T-10.36** `scripts/copy-assets.mjs` cita ancora `types/database/typeorm/global.ts` in un
   commento, percorso che non esiste più.
@@ -739,7 +737,7 @@ Nessuna di queste rompe niente. Sono residui, e vanno chiuse insieme in un commi
 
 ## F. Coda del blocco C
 
-Aperta il 16 settembre 2026 chiudendo il blocco C: tre difetti corretti subito e tre pezzi che
+Dal blocco C vengono tre difetti corretti subito e tre pezzi che
 chiedono un disegno, non una riga. Vale la stessa regola dell'evidenza citata.
 
 - [x] **T-10.22** La regola di `depcruise` non guardava le peer del data layer.
@@ -858,11 +856,11 @@ chiedono un disegno, non una riga. Vale la stessa regola dell'evidenza citata.
   solo se l'operatore ha il fattore acceso, quindi `MANDATORY` non obbliga nessun operatore. Non
   esiste una disattivazione di sistema e `POST /system/users/:id/mfa/reset` è scritta in
   `docs/API_V5.md` §5 ma **la rotta non esiste**: chi perde il telefono rientra solo dal database.
-  **Decisione del 16 settembre 2026**: la politica si differenzia su tre livelli, deployment, piano
+  **Decisione**: la politica si differenzia su tre livelli, deployment, piano
   di controllo e singolo tenant, e per il tenant vive nel `config` della sua riga di registro, che
   la risoluzione carica già a ogni richiesta, quindi senza letture in più. Valori dal più debole al
   più forte: `OFF`, `OPTIONAL`, `ONE_WAY`, `MANDATORY`.
-  **Confermato il 16 settembre 2026**: il valore del deployment è un **pavimento** e un tenant può
+  **Confermato**: il valore del deployment è un **pavimento** e un tenant può
   solo stringere, mai allentare; una scrittura che allenta viene rifiutata con un codice suo e non
   ignorata in silenzio. `OFF` impedisce le attivazioni nuove ma **continua a chiedere il fattore a
   chi ce l'ha già**, che se ne libera solo con un reset: girare un interruttore non deve abbassare

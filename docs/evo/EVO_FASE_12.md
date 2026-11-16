@@ -1,10 +1,9 @@
 # EVO fase 12: motore di autenticazione componibile
 
 > **Questo file è il piano della fase, non lo stato.** Lo stato resta in `EVO_STATO.md`, una
-> riga per compito; le decisioni prese qui vanno riportate in `EVO_PUNTI_APERTI.md` come righe
-> `F29` e seguenti. La fase riprende il progetto rinviato di `docs/AUTH_COMPOSABLE_EVOLUTION.md`,
+> riga per compito; le decisioni della fase sono le righe `F29` e seguenti della sezione 1. La fase riprende il progetto rinviato di `docs/AUTH_COMPOSABLE_EVOLUTION.md`,
 > scritto contro la v4 e dichiarato fuori dalla v5 (`EVO_FRAMEWORK.md:50`), e lo riallinea al
-> codice della v5 su decisione del manutentore del 18 settembre 2026.
+> codice della v5.
 >
 > **Regola unica**, la stessa delle fasi precedenti: una casella si chiude solo con
 > un'**evidenza citata**, cioè un `file:riga`, un identificativo di commit o l'output di un
@@ -58,7 +57,7 @@ non è un compito di questa fase.
 
 ## 1. Le decisioni
 
-### 1.1 Le quattro del manutentore, da non riaprire
+### 1.1 Le quattro decisioni fissate
 
 | | Decisione | Criterio |
 |---|---|---|
@@ -69,9 +68,7 @@ non è un compito di questa fase.
 
 ### 1.2 Le decisioni di progetto
 
-Ogni voce ha una raccomandazione, il perché e le alternative scartate. Vanno trascritte in
-`EVO_PUNTI_APERTI.md` con la sola riga che vale, come si è fatto per la fase 11. F44 è stata
-decisa dal manutentore nella forma della tabella persistita; F48 chiusa con (b), rinviata dopo la 5.0.
+Ogni voce ha una raccomandazione, il perché e le alternative scartate.
 
 **F33. Dove vive la configurazione dei flussi.** Un file nuovo, `src/config/authFlows.ts`,
 scoperto come `roles.ts`: default del framework in `lib/config/authFlows.ts`, file del progetto
@@ -285,7 +282,7 @@ implementato, l'avvio si rifiuta, come oggi per `MANDATORY` senza MFA (`mfaPolic
 `index.ts:347-352`). Scartati: import di `@volcanicminds/tools` nel core (dipendenza circolare
 dell'ecosistema e testo nel backend), invio sincrono atteso (enumerazione per tempo).
 
-**F44. Registro degli accessi persistito, e rate limit.** Decisione del manutentore: una tabella
+**F44. Registro degli accessi persistito, e rate limit.** Una tabella
 `access_log`, non il solo log di processo. Il progetto:
 
 - **dove**: in `appTables`, quindi una tabella per contenitore con lo stesso nome sui due dialetti
@@ -316,7 +313,7 @@ dell'ecosistema e testo nel backend), invio sincrono atteso (enumerazione per te
   `ACCESS_LOG_IP=none` lo toglie del tutto per chi vuole meno ancora;
 - **conservazione**: `ACCESS_LOG_RETENTION_DAYS`, default **90** giorni per il piano tenant, e
   `ACCESS_LOG_CONTROL_RETENTION_DAYS`, default **180** per il piano di controllo, nel blocco
-  `accessLog` della configurazione (camelCase per F5) con l'ambiente che vince, come `sessions`.
+  `accessLog` della configurazione (camelCase, come ogni chiave nuova) con l'ambiente che vince, come `sessions`.
   Novanta giorni coprono una revisione trimestrale e la finestra tipica in cui un incidente viene
   scoperto; per gli operatori di piattaforma il default sale a sei mesi perché il provvedimento del
   Garante sugli amministratori di sistema (27 novembre 2008) chiede di conservarne gli accessi
@@ -398,7 +395,7 @@ inviato dal browser. Solo codici e identificatori, nessuna etichetta. `GET /auth
 senza stato: elenca gli identificatori del piano e, per il tenant risolto, i provider attivi,
 senza creare righe.
 
-**F48 (chiusa il 18 settembre 2026: (b), dopo la 5.0). Il collegamento avviato dall'utente già loggato.** È il pulsante «collega il mio
+**F48. Il collegamento avviato dall'utente già loggato.** È il pulsante «collega il mio
 account Google» nel profilo: l'utente, con una sessione valida, avvia un giro OIDC il cui esito
 si attacca **al soggetto della sessione** invece di aprire un login. La difficoltà non è tecnica,
 è di sicurezza: chi ruba una sessione, anche solo per l'ora di vita di un access token, può
@@ -420,14 +417,14 @@ Le due strade:
   È un'aggiunta pura: introdurla dopo non rompe nulla, perché è una rotta nuova e un valore nuovo
   di `purpose`.
 
-Raccomandazione: **(b)**. I casi SSO realistici di un framework multi-tenant (il cliente porta il
+Scelta: **(b)**, dopo la 5.0. I casi SSO realistici di un framework multi-tenant (il cliente porta il
 suo IdP aziendale) sono coperti da JIT e dal collegamento per dominio; il collegamento
 self-service serve soprattutto ai login social dei prodotti consumer, e farlo senza step-up
 significa spedire la porta sul retro descritta sopra. Meglio farlo una volta, insieme allo step-up
 (che servirà anche a cambiare password e fattore in modo sicuro), che due volte. Nessun compito
-finché il manutentore non decide.
+in questa fase.
 
-**F49 (decisa il 23 settembre 2026). Chi può creare un account in un tenant.** Tre modalità, dalla
+**F49. Chi può creare un account in un tenant.** Tre modalità, dalla
 più chiusa alla più aperta: `invite` (gli account li crea un amministratore, o il JIT di un provider
 ristretto a una directory), `approval` (registrazione libera con l'email verificata, poi
 l'approvazione esplicita di un amministratore del tenant) e `open` (registrazione libera con
@@ -577,7 +574,7 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
 - [x] **T-12.5** Il file `authFlows.ts` e il suo caricatore.
   **Cosa fare**: default del framework in `lib/config/authFlows.ts` (parità con oggi, F34);
   caricatore con semantica di **sostituzione per piano**; esposizione in sola lettura su
-  `global.authFlows` per il manifest; blocco `limits` in camelCase (F5) con le quattro variabili
+  `global.authFlows` per il manifest; blocco `limits` in camelCase con le quattro variabili
   d'ambiente che vincono.
   **Dove**: `lib/config/authFlows.ts`, `lib/loader/authFlows.ts` (nuovi), chiamata da `preload()`
   in `index.ts`.
@@ -1300,7 +1297,7 @@ dopo E, perché ogni blocco successivo scrive i propri eventi.
   **Cosa fare**: la sezione di autenticazione (`llms.txt:1969` descrive ancora il token
   temporaneo), la riga «MFA pendente» di `CLAUDE.md`, aggiornata a fase chiusa e non durante.
   **Criterio di chiusura**: come T-12.42.
-  **Evidenza**: commit `b7a5eae`: `README.md` (matrice, changelog 5.0.0-alpha, modalità cookie e
+  **Evidenza**: commit `b7a5eae`: `README.md` (matrice, modalità cookie e
   bearer, variabili, sezione «Login flows and multi-factor authentication»), `llms.txt` §6.2 riscritta,
   §11.1 e le chiavi dei decoratori (mancavano `sessionManager` e i sette della fase 12), `CLAUDE.md`
   (riga «Auth» e mappa dei documenti). Stesso grep di T-12.42. `CLAUDE.md` aggiornato ora e non a fase

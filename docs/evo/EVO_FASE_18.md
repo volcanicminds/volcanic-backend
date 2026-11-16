@@ -2,7 +2,7 @@
 
 > **Questo file è il piano della fase, non lo stato.** Lo stato resta in `EVO_STATO.md`. La fase
 > nasce da T-7.3 di `volcanic-rag`, il corpus condiviso: un dato della piattaforma, sul piano di
-> controllo, concesso ai tenant fino a un livello per contesto. Il 20 ottobre 2026 è deciso che per
+> controllo, concesso ai tenant fino a un livello per contesto. Per
 > ora lo carica il server; perché lo carichi il sentinel, come fa con il corpus di un tenant, serve
 > una credenziale macchina sul piano di controllo, che il backend non ha.
 >
@@ -42,17 +42,14 @@
 
 ## 2. Decisioni
 
-Le quattro aperte il 20 ottobre 2026 il proprietario le ha prese il 23 ottobre 2026 (F97, F98,
-F99, F103); discutendole sono nate F100, F101 e F102.
-
-- **F97** (proprietario, 23 ottobre 2026): dietro il token di controllo c'è una riga della tabella
+- **F97**: dietro il token di controllo c'è una riga della tabella
   `token` del piano di controllo, che lo schema porta già (`lib/database/schema/entry/control.pg.ts:19`)
   e che oggi serve solo ai deployment senza tenant, dove l'unico database è il piano di controllo.
   Scartato un utente di sistema di tipo macchina: login, MFA, step-up, console ed elenco degli
   utenti di sistema dovrebbero sapere di un utente che non entra mai. Come nel tenant, dove
   `admin` non si assegna a un token (`lib/api/token/controller/token.ts:60`), un token di
   controllo non porta mai `system:admin`.
-- **F98** (proprietario, 23 ottobre 2026): il catalogo di sistema diventa estendibile, come quello
+- **F98**: il catalogo di sistema diventa estendibile, come quello
   del tenant. Oltre ai permessi del framework (`lib/loader/roles.ts:17-26`) valgono quelli
   dichiarati dal progetto o da un pacchetto; un ruolo che nomina un permesso non dichiarato resta
   scartato all'avvio, come oggi (`lib/loader/roles.ts:93-97`). Le rotte di piattaforma di rag,
@@ -62,11 +59,11 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   superuser. Scartato un permesso generico per le macchine: al secondo pacchetto con una macchina
   sul piano di controllo aprirebbe le rotte di entrambi. Riapre il catalogo chiuso di
   `docs/AUTHORIZATION_V5.md` §4, che si riscrive insieme al codice.
-- **F99** (proprietario, 23 ottobre 2026): il token di controllo lo emette solo una persona
+- **F99**: il token di controllo lo emette solo una persona
   `system:admin`, con lo step-up (F101). La scadenza si dichiara sempre, anche quando è «nessuna», come
   per i token del tenant (`lib/database/schema/pg.ts`, colonna `expires_at`). Emissione, rinnovo
   e revoca scrivono ciascuna una riga di `governance_log` del piano di controllo.
-- **F100** (proprietario, 23 ottobre 2026): un `governance_log` immutabile in ogni database. Il
+- **F100**: un `governance_log` immutabile in ogni database. Il
   piano di controllo lo ha già (`lib/database/migrations/control/pg/0006_governance_log_control.sql`),
   e lo ha già l'unico database di un deployment senza tenant, perché lì l'insieme di controllo
   porta anche le tabelle dell'applicazione; il contenitore di un tenant non lo ha ancora. Ogni
@@ -76,19 +73,19 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   tracciarle e ricostruirle, e `access_log`, che si cancella dopo 90 giorni (F96) mentre un token
   può non scadere mai. Nessuna migrazione nuova: la tabella entra nell'insieme tenant come ogni
   modifica di schema della v5 prima della produzione. Compito T-18.2.
-- **F101** (proprietario, 23 ottobre 2026): lo step-up vale sulla creazione, sulla modifica dei
+- **F101**: lo step-up vale sulla creazione, sulla modifica dei
   ruoli, sulla rigenerazione e sullo sblocco di un token, su ogni piano e anche senza tenant: lo
   sblocco ridà un accesso come la creazione. Non vale sul blocco né sull'eliminazione, perché in un
   incidente togliere un accesso deve essere immediato. Lo step-up
   rifiuta sempre un token e un'impersonificazione (`lib/util/stepUp.ts:58`): un token non ne crea
   un altro, e chi impersona un tenant non vi lascia una credenziale.
-- **F102** (proprietario, 23 ottobre 2026): il database rifiuta `UPDATE`, `DELETE` e `TRUNCATE` su
+- **F102**: il database rifiuta `UPDATE`, `DELETE` e `TRUNCATE` su
   `governance_log`, in ogni database. Oggi l'immutabilità la garantisce solo il codice, perché il
   manager sa scrivere e leggere (`lib/database/managers/governanceLog.ts`), mentre il database
   accetta tutte e tre. Restano possibili la distruzione di un tenant, che elimina il contenitore,
   e il ripristino, che scrive righe nuove.
 
-- **F103** (proprietario, 23 ottobre 2026): una regola unica distingue un token di integrazione
+- **F103**: una regola unica distingue un token di integrazione
   da una sessione, su ogni piano, con o senza tenant. Il token porta un'etichetta firmata che lo
   dice di integrazione, e una sessione non la porta mai. Con l'etichetta il soggetto si cerca solo
   fra i token; senza, solo fra le persone: gli utenti nel tenant, gli utenti di sistema sul piano
@@ -99,7 +96,7 @@ F99, F103); discutendole sono nate F100, F101 e F102.
   `lib/util/session.ts:146`), e quelle persone verrebbero cercate fra i token. Oggi, in modalità
   bearer, un token si cerca prima fra gli utenti e poi fra i token
   (`lib/hooks/onRequest.ts:178-197`); con la regola basta una lettura.
-- **F104** (proprietario, 23 ottobre 2026): l'autore di una riga di `governance_log` si dice con
+- **F104**: l'autore di una riga di `governance_log` si dice con
   `actor_kind`, che prende il posto di `actor_plane` e nomina la tabella da cui viene: `user`,
   `system_user` o `token`. Con un token, `actor_id` è l'id della sua riga, nel contenitore del
   registro. Nata chiudendo T-18.2: un token con il permesso `tokens` che blocca o elimina un
