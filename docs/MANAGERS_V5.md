@@ -99,7 +99,9 @@ export interface UserManagement {
   isImplemented(): boolean
   isValidUser(data: unknown): boolean
 
-  createUser(ctx: DataHandle, data: NewUser): Promise<User>
+  // `created`, when given, runs in the transaction that inserts the user, with that transaction as
+  // its handle: a throw undoes both. Not run when the address is taken (EMAIL_ALREADY_REGISTERED).
+  createUser(ctx: DataHandle, data: NewUser, created?: (tx: DataHandle, user: User) => Promise<void>): Promise<User>
   updateUserById(ctx: DataHandle, id: string, data: Partial<User>): Promise<User | null>
   deleteUser(ctx: DataHandle, id: string): Promise<boolean>            // soft delete: sets deleted_at
   resetExternalId(ctx: DataHandle, id: string): Promise<string>        // invalidates every token of the user

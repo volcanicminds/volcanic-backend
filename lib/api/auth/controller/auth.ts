@@ -6,6 +6,7 @@ import { httpError } from '../../../util/httpError.js'
 import { dataContext, isTenancyEnabled } from '../../../util/tenancy.js'
 import { uuidv7 } from '../../../util/uuid.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../../config/constants.js'
+import { authRegisterBodySchema } from '../../../schemas/auth.js'
 import { clearSessionCookies, sessionTokenOf } from '../../../util/credential.js'
 import { renew } from '../../../util/renewal.js'
 import { recordTenantAccess } from '../../../util/accessLog.js'
@@ -43,6 +44,21 @@ function isResetTokenExpired(code: string): boolean {
   const expiresAt = Number(String(code ?? '').split('.')[0])
   if (!Number.isFinite(expiresAt)) return true
   return Date.now() / 1000 > expiresAt
+}
+
+/**
+ * The body's values for the properties a project added to `authRegisterBodySchema`, and only
+ * those: the framework's own fields never reach `onRegister`, and neither does a key the schema
+ * does not declare, which the visitor wrote and nobody validated.
+ */
+function projectFields(req: FastifyRequest, data: Record<string, unknown>): Record<string, unknown> {
+  const declared = (req.server.getSchema('authRegisterBodySchema') as { properties?: Record<string, unknown> } | undefined)?.properties
+  const fields: Record<string, unknown> = {}
+  for (const key of Object.keys(declared ?? {})) {
+    if (key in authRegisterBodySchema.properties || data[key] === undefined) continue
+    fields[key] = data[key]
+  }
+  return fields
 }
 
 export async function register(req: FastifyRequest, reply: FastifyReply) {
@@ -96,17 +112,24 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   // Whatever the body says: only the mode decides whether the account waits for an administrator.
   data.approved = creation.mode !== 'approval'
 
+  const onRegister = req.server.onRegister
+  const fields = onRegister ? projectFields(req, data) : {}
+
   let user: any
   try {
     // Named field by field: the body is the visitor's, and a spread would hand them `isFounder`,
     // `confirmed` or `attributes`, which `createUser` takes from its trusted callers.
-    user = await req.server['userManager'].createUser(dataContext(req), {
-      username: data.username,
-      email: data.email,
-      password,
-      roles: data.roles,
-      approved: data.approved
-    })
+    user = await req.server['userManager'].createUser(
+      dataContext(req),
+      {
+        username: data.username,
+        email: data.email,
+        password,
+        roles: data.roles,
+        approved: data.approved
+      },
+      onRegister ? (tx: any, created: any) => onRegister(tx, created, fields) : undefined
+    )
   } catch (err: any) {
     if (err?.code !== EMAIL_ALREADY_REGISTERED) throw err
 

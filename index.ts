@@ -5,6 +5,7 @@ dotenv.config()
 
 import yn from './lib/util/yn.js'
 import { envInt } from './lib/util/env.js'
+import { trustedProxies } from './lib/util/proxies.js'
 import { createLogger } from './lib/util/logger.js'
 import * as mark from './lib/util/mark.js'
 import { TranslatedError } from './lib/util/errors.js'
@@ -65,6 +66,7 @@ import type {
   SessionManagement,
   SettingManagement,
   SystemUserManagement,
+  OnRegister,
   TenantLifecycle,
   TenantManagement,
   TokenManagement,
@@ -239,6 +241,8 @@ export interface StartOptions {
   authenticators?: readonly Authenticator[]
   /** The packages that follow a tenant's life: created, exported, destroyed with it. */
   tenantLifecycles?: readonly TenantLifecycle[]
+  /** The project's part in a self-registration, in the transaction that creates the user. */
+  onRegister?: OnRegister
   [key: string]: unknown
 }
 
@@ -266,7 +270,8 @@ const start = async (decorators: StartOptions = {}) => {
   const server: FastifyInstance = fastify({
     loggerInstance: logger as FastifyBaseLogger,
     logController: new LogController({ disableRequestLogging: !yn(process.env.LOG_FASTIFY, false) }),
-    bodyLimit
+    bodyLimit,
+    trustProxy: trustedProxies(process.env.TRUSTED_PROXIES)
   })
   global.server = server
   await registerTelemetry(server)
@@ -416,11 +421,15 @@ const start = async (decorators: StartOptions = {}) => {
   const closing = loaderSchedules.closingSignal(server)
 
   // `authenticators` is not a manager and is not decorated: it feeds the registry, which is.
-  // `tenantLifecycles` is not a manager either: it is checked here and decorated as a list.
+  // `tenantLifecycles` is not a manager either: it is checked here and decorated as a list, and
+  // `onRegister` as a function or null.
   // An `undefined` value keeps the default: `{ ...layer, challengeDeliveryManager: maybe() }` must not
   // replace a Null Object with nothing, which every caller asks `isImplemented()` of.
-  const { authenticators, tenantLifecycles, ...given } = decorators
+  const { authenticators, tenantLifecycles, onRegister, ...given } = decorators
   const lifecycles = tenantLifecyclesOf(tenantLifecycles)
+  if (onRegister !== undefined && typeof onRegister !== 'function') {
+    throw new Error('start({ onRegister }): expected a function (tx, user, fields)')
+  }
   const injected = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined))
 
   // Decorators with Defaults (Null Object Pattern)
@@ -454,6 +463,7 @@ const start = async (decorators: StartOptions = {}) => {
   const authRegistry = buildAuthenticatorRegistry(authenticators ?? [])
   server.decorate('authRegistry', authRegistry)
   server.decorate('tenantLifecycles', lifecycles)
+  server.decorate('onRegister', onRegister ?? null)
 
   // After the injection, because a project may bring its own managers and methods: a flow this
   // build cannot run, or a policy that demands a second factor it cannot issue, is a
@@ -677,6 +687,7 @@ export type {
   Tenant,
   TenantPlace,
   TenantLifecycle,
+  OnRegister,
   PackageProfile,
   ExportedArtifact,
   JobRun,

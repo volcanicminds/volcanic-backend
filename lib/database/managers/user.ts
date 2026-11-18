@@ -3,7 +3,7 @@ import { eq, and, isNull, sql, type SQL } from 'drizzle-orm'
 import type { UserManagement, DataHandle, VQuery } from '../../../types/global.js'
 import { executeFind, executeCount } from '../query/index.js'
 import { encrypt, decrypt } from '../crypto.js'
-import { runtime, table, column } from './runtime.js'
+import { runtime, table, column, inTransaction } from './runtime.js'
 import { firstBy } from '../prepared.js'
 import { envInt } from '../env.js'
 
@@ -131,15 +131,19 @@ export function createUserManager(): UserManagement {
      * reach the database, so the two are the same length. A collision comes back as an error
      * carrying `EMAIL_ALREADY_REGISTERED`, which the caller turns into the same 200 a real
      * registration gets.
+     *
+     * With `created`, the insert and `created` share one transaction. The lookup after a
+     * collision runs once the transaction is over: on Postgres an aborted transaction answers
+     * nothing more, and on PGlite a call on the outer handle would wait for the transaction.
      */
-    async createUser(ctx: DataHandle, data: Record<string, unknown>) {
-      const { handle, user } = users(ctx, 'createUser')
+    async createUser(ctx: DataHandle, data: Record<string, unknown>, created?: (tx: DataHandle, user: unknown) => Promise<void>) {
+      const { user } = users(ctx, 'createUser')
       const email = String(data.email).trim().toLowerCase()
       const password = await bcrypt.hash(String(data.password), BCRYPT_COST)
 
-      try {
-        const rows = await handle.db
-          .insert(user)
+      const insert = async (on: unknown) => {
+        const rows = await runtime(on, 'userManager.createUser')
+          .db.insert(user)
           .values({
             email,
             username: data.username ?? null,
@@ -158,6 +162,15 @@ export function createUserManager(): UserManagement {
           })
           .returning()
         return rows[0]
+      }
+
+      try {
+        if (!created) return await insert(ctx)
+        return await inTransaction(ctx, `${NAME}.createUser`, async (tx) => {
+          const row = await insert(tx)
+          await created(tx as unknown as DataHandle, row)
+          return row
+        })
       } catch (err) {
         // Which constraint fired is answered by asking the table rather than by parsing the
         // error: if a row now holds that address, the address is why the insert failed.

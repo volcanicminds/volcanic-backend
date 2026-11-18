@@ -658,6 +658,7 @@ it, and either case logs a warning.
 | `HOST` | `0.0.0.0` | Address the server listens on. `0.0.0.0` is what a container needs. |
 | `PORT` | `2230` | Port the server listens on. |
 | `BODY_LIMIT` | `1048576` | Largest request body Fastify parses, in bytes; also the default `fileSize` of a multipart upload. Positive integer. |
+| `TRUSTED_PROXIES` | unset (off) | Comma-separated IP addresses and CIDR ranges of the reverse proxies in front of the server. From them, and only from them, `X-Forwarded-For` gives `req.ip`, which the rate limits, the access log and the logs read. Unset, behind a proxy every client has the proxy's address and shares one rate limit. An entry that is not an address or a range refuses the boot; `true` is not accepted. See 8.2. |
 | `HIDE_ERROR_DETAILS` | `true` in production, `false` otherwise | Keeps the `message` out of error responses. Honoured by **every** error path, the `onError` hook included. |
 | `CORS_ORIGINS` | unset (every origin) | Comma-separated allowlist. **Required in production**: a wildcard that arrived by omission refuses the boot there, and so does a wildcard with credentials however it was written; off production both are a warning. Credentials are granted only against a real list. `CORS_ORIGINS=*` written out allows every origin, without credentials. With tenants resolved by header, the tenant header joins the allowed headers by itself. |
 | **Auth and sessions** | | |
@@ -1118,6 +1119,51 @@ const userProfile = table('user_profile', {
 No foreign key is declared, deliberately: the framework owns `user` and migrates it, so a
 constraint pointing into a table this project does not migrate would make the two sets of
 migrations depend on each other's order.
+
+**Filling it at registration.** Two steps, and the framework's table is not touched by either.
+The fields go into the registration body by extending its schema, as any core schema is extended
+(Part 5, a file in `src/schemas` with the same `$id`); the row is written by `onRegister`, given to
+`start()`, which runs in the transaction that creates the user:
+
+```typescript
+// src/schemas/auth.ts
+export const authRegisterBodySchema = {
+  $id: 'authRegisterBodySchema', // SAME ID as core: merged with it
+  type: 'object',
+  properties: {
+    firstName: { type: 'string', minLength: 1 },
+    lastName: { type: 'string', minLength: 1 },
+    consent: { type: 'boolean', const: true }
+  },
+  required: ['firstName', 'lastName', 'consent']
+}
+
+// server.ts
+import { access } from '@volcanicminds/backend/db'
+
+await startServer({
+  ...layer,
+  onRegister: async (tx, user, fields) => {
+    const { userProfile } = tablesFor(tx)
+    await access(tx, 'onRegister').db.insert(userProfile).values({
+      userId: user.id,
+      firstName: fields.firstName,
+      lastName: fields.lastName
+    })
+  }
+})
+```
+
+- `fields` holds the body's values for the properties the project added, never `email`, the
+  passwords or the other fields of the framework, nor a key the schema does not declare.
+- Write through `tx` only. A throw undoes the account: the visitor gets the error and no user
+  exists, so the two are never half written.
+- A taken address does not run it, and answers like a free one, as without it.
+- It writes and does nothing else: the transaction stays open while it runs, and the response
+  waits. A welcome mail goes in `global.postAuth`, after the commit.
+- Only the self-registration runs it. A user created by an administrator, by an identity provider
+  or at genesis has no profile row until the project writes one, so read the profile with a left
+  join.
 
 The reason for the rule is not tidiness. A framework table redefined by a consumer collides with
 every future framework migration, and the collision arrives **at upgrade time, on a deployment
@@ -3728,7 +3774,9 @@ server {
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
 
-        # IP Passthrough (Fundamental for backend audit logs)
+        # IP passthrough: the backend reads X-Forwarded-For only from the addresses in
+        # TRUSTED_PROXIES, the proxy's address as the server sees it (127.0.0.1 without Docker;
+        # in a container, the Docker bridge's gateway, often 172.17.0.1)
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -4209,7 +4257,7 @@ The decorator keys (all optional): `userManager`, `tokenManager`, `trackingManag
 `AccessLogManagement`, `GovernanceLogManagement`, `SettingManagement`, all re-exported from
 `@volcanicminds/backend`). The data layer's `start()` returns all
 of them except `mfaManager`, `transferManager` and `challengeDeliveryManager`, which come from the consumer.
-Two more keys are not managers: `authenticators`, the project's own login methods (Part 6.2), and `tenantLifecycles`, the packages that follow a tenant's life (§2.8). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
+Three more keys are not managers: `authenticators`, the project's own login methods (Part 6.2), `tenantLifecycles`, the packages that follow a tenant's life (§2.8), and `onRegister`, the project's part in a self-registration (§2.3). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
 resolve a consumer entity by name through `global.entity`, and neither is a thing v5 does.
 
 Two more keys the data layer's `start()` returns and the server carries: `provider` (how a request

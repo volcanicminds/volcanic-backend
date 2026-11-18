@@ -14,7 +14,7 @@ import type { Authenticator } from '../../types/global.js'
 import type { VolcanicLogger } from '../../lib/util/logger.js'
 
 const GLOBAL_KEYS = ['log', 'config', 'roles', 'systemRoles', 't', 'server', 'tracking', 'trackingConfig', 'cache', 'transferPath', 'authFlows']
-const ENV_KEYS = ['JWT_SECRET', 'MANIFEST_DUMP', 'MANIFEST_DUMP_EXIT', 'AUTH_MODE']
+const ENV_KEYS = ['JWT_SECRET', 'MANIFEST_DUMP', 'MANIFEST_DUMP_EXIT', 'AUTH_MODE', 'TRUSTED_PROXIES']
 
 const bag = globalThis as unknown as Record<string, unknown>
 const dump = path.join(os.tmpdir(), `volcanic-auth-boot-${process.pid}.json`)
@@ -100,6 +100,22 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
     }
     // `email-otp` is a built-in: what this build cannot run is a delivery nobody injected.
     await expect(start({})).rejects.toThrow("authFlows.tenant: lists 'email-otp' and no challenge delivery is injected")
+  })
+
+  it('refuses to boot on a TRUSTED_PROXIES entry that is not an address or a range', async () => {
+    process.env.TRUSTED_PROXIES = '10.0.0.5,proxy.local'
+    try {
+      await expect(boot()).rejects.toThrow("TRUSTED_PROXIES: 'proxy.local' is not an IP address or a CIDR range")
+    } finally {
+      delete process.env.TRUSTED_PROXIES
+    }
+  })
+
+  it('decorates onRegister as given, null without one, and refuses one that is not a function', async () => {
+    const onRegister = async () => {}
+    expect((await boot({ onRegister })).onRegister).toBe(onRegister)
+    expect((await boot()).onRegister).toBeNull()
+    await expect(boot({ onRegister: 'profile' })).rejects.toThrow('start({ onRegister }): expected a function')
   })
 
   it('keeps an injected manager over its default', async () => {

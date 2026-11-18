@@ -362,6 +362,17 @@ export type TenantPlace = Pick<Tenant, 'slug' | 'locator' | 'strategy'>
 export type PackageProfile = 'client' | 'operator'
 
 /**
+ * A project's part in a self-registration (`POST /auth/register`), passed to `start({ onRegister })`.
+ *
+ * Runs in the transaction that creates the user, before it commits: every write goes through
+ * `tx`, and a throw undoes the account. `fields` holds the body's values for the properties the
+ * project added to `authRegisterBodySchema` (a schema with that `$id` in `src/schemas`), never the
+ * framework's own. Meant for a table of the project keyed by `user.id`, such as a profile: it
+ * should only write, since the transaction stays open and the response waits for it.
+ */
+export type OnRegister = (tx: DataHandle, user: any, fields: Record<string, unknown>) => Promise<void>
+
+/**
  * A package's part in the life of a tenant, passed to `start({ tenantLifecycles })`.
  *
  * What a package keeps for a tenant inside the container goes with the container. What it keeps
@@ -654,7 +665,12 @@ export interface UserManagement {
   /** Whether the password has aged past `PASSWORD_EXPIRATION_DAYS`. Reads the row, asks nothing. */
   isPasswordToBeChanged(user: any): boolean
 
-  createUser(ctx: DataHandle, data: any): Promise<any>
+  /**
+   * With `created`, the insert and `created` run in one transaction, `created` on the handle bound
+   * to it: a throw from `created` leaves no user. A taken address throws `EMAIL_ALREADY_REGISTERED`
+   * either way, and `created` does not run.
+   */
+  createUser(ctx: DataHandle, data: any, created?: (tx: DataHandle, user: any) => Promise<void>): Promise<any>
   updateUserById(ctx: DataHandle, id: string, data: any): Promise<any | null>
   deleteUser(ctx: DataHandle, id: string): Promise<boolean>
   /** Rotates the public identifier, which invalidates every token of that user. */
@@ -1872,6 +1888,8 @@ declare module 'fastify' {
     authRegistry: AuthenticatorRegistry
     /** Not a manager: the packages that follow a tenant's life, in the order given to `start()`. */
     tenantLifecycles: readonly TenantLifecycle[]
+    /** Not a manager: the project's part in a self-registration, null without one. */
+    onRegister: OnRegister | null
   }
 }
 

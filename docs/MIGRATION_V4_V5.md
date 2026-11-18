@@ -44,7 +44,9 @@ surviving on a pooled connection.
 **The framework's `user` has no name any more.** v4 projects added `firstName` and `lastName` by
 subclassing the `User` entity; v5 forbids redefining a framework table (docs/SCHEMA_V5.md §6),
 so names live in a table of the project's own, keyed by `user.id` (the sample's `user_profile`
-is the pattern). The two fields are not in `userBodySchema`, `currentUserBodySchema` or the
+is the pattern). A self-registration fills that table through `start({ onRegister })`, in the
+transaction that creates the user, with fields added to `authRegisterBodySchema` (llms.txt §2.3).
+The two fields are not in `userBodySchema`, `currentUserBodySchema` or the
 self-edit whitelist of `PUT /users/me`, and the console titles a user by `email`. A client that
 still sends them sees them stripped, because Fastify removes properties a schema does not declare.
 

@@ -332,6 +332,66 @@ describe('auth · account creation, the registration and the wait (F49, T-12.48)
     expect(Object.keys(created[0]).sort()).toEqual(['approved', 'email', 'password', 'roles', 'username'])
   })
 
+  describe("onRegister, the project's part", () => {
+    // The register schema as a project extends it in `src/schemas`: the loader merges the two.
+    const extended = {
+      properties: {
+        username: {},
+        email: {},
+        password1: {},
+        password2: {},
+        requiredRoles: {},
+        firstName: { type: 'string' },
+        lastName: { type: 'string' },
+        consent: { type: 'boolean' }
+      }
+    }
+
+    function withHook(mode: 'approval' | 'open' = 'open') {
+      const fixture = registration(mode)
+      const calls: any[] = []
+      const server: any = fixture.server
+      server.getSchema = (id: string) => (id === 'authRegisterBodySchema' ? extended : undefined)
+      server.onRegister = async (tx: any, user: any, fields: any) => void calls.push({ tx, user, fields })
+      server.userManager.createUser = async (_c: any, data: any, created?: any) => {
+        const row = { id: 'u1', externalId: 'x-new', email: data.email, roles: data.roles, approved: data.approved }
+        if (created) await created('tx', row)
+        return row
+      }
+      return { server, calls }
+    }
+
+    it("hands it the user and the project's declared fields, never the framework's nor an undeclared key", async () => {
+      const { server, calls } = withHook()
+      const data = { ...body, firstName: 'Anna', consent: false, isFounder: true, nickname: 'x' }
+      await register(fakeRequest({ server, data }), fakeReply())
+      expect(calls).toEqual([{ tx: 'tx', user: expect.objectContaining({ id: 'u1' }), fields: { firstName: 'Anna', consent: false } }])
+    })
+
+    it('passes nothing to createUser without one, as before', async () => {
+      const { server, created } = registration('open')
+      const seen: any[] = []
+      server.userManager.createUser = async (_c: any, data: any, ...rest: any[]) => {
+        created.push(data)
+        seen.push(rest)
+        return { id: 'u1', externalId: 'x-new', email: data.email, roles: data.roles, approved: data.approved }
+      }
+      await register(fakeRequest({ server, data: { ...body, firstName: 'Anna' } }), fakeReply())
+      expect(seen).toEqual([[undefined]])
+    })
+
+    it('does not run for a taken address, which still answers like a free one', async () => {
+      const { server, calls } = withHook()
+      server.userManager.createUser = async () => {
+        throw Object.assign(new Error('Email already registered'), { code: EMAIL_ALREADY_REGISTERED })
+      }
+      const reply = fakeReply()
+      await register(fakeRequest({ server, data: { ...body, firstName: 'Anna' } }), reply)
+      expect(reply.sent.code).toBe(200)
+      expect(calls).toEqual([])
+    })
+  })
+
   it('keeps a waiting account out, with the cause for the log only', async () => {
     const users: any = { isValidUser: async (u: any) => !!u?.email && !!u?.password }
     const row = { email: 'a@acme.test', password: 'h', confirmed: true, blocked: false }
