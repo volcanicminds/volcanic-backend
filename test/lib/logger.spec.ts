@@ -16,7 +16,8 @@ import { Writable } from 'node:stream'
 import { expect } from 'expect'
 import fastify, { LogController } from 'fastify'
 import { globSync } from 'glob'
-import { createLogger, getLogFormat, getLogLevel, withoutQuery } from '../../lib/util/logger.js'
+import pino from 'pino'
+import { createLogger, getLogFormat, getLogLevel, requestLogger, withoutQuery } from '../../lib/util/logger.js'
 
 const withEnv = (vars: Record<string, string | undefined>, fn: () => void) => {
   const previous: Record<string, string | undefined> = {}
@@ -187,9 +188,10 @@ describe('util/logger · what never reaches a line (F63)', () => {
 describe('util/logger · Fastify writes through the same instance (F63)', () => {
   it("gives a route's req.log the request id and the redaction, and its own lines the short URL", async () => {
     const { logger, lines } = capture('info')
-    const server = fastify({ loggerInstance: logger })
+    const server = fastify({ loggerInstance: logger, childLoggerFactory: requestLogger })
     server.get('/return', async (req) => {
       req.log.info({ body: { password: 'hunter2' } }, 'inside the route')
+      req.log.child({ step: 'nested' }).info({ body: { password: 'hunter3' } }, 'inside a child')
       return { ok: true }
     })
     try {
@@ -202,14 +204,44 @@ describe('util/logger · Fastify writes through the same instance (F63)', () => 
     const inside = lines.find((l) => l.msg === 'inside the route')
     expect(inside?.reqId).toBeDefined()
     expect(inside?.body.password).toBe('[redacted]')
+    const nested = lines.find((l) => l.msg === 'inside a child')
+    expect(nested?.reqId).toBe(inside?.reqId)
+    expect(nested?.step).toBe('nested')
+    expect(nested?.body.password).toBe('[redacted]')
     const incoming = lines.find((l) => l.msg === 'incoming request')
     expect(incoming?.req.url).toBe('/return')
-    expect(JSON.stringify(lines)).not.toMatch(/hunter2|c0de|st4te/)
+    expect(incoming?.reqId).toBe(inside?.reqId)
+    expect(JSON.stringify(lines)).not.toMatch(/hunter2|hunter3|c0de|st4te/)
+  })
+
+  // pino passes every binding of a child through the redaction, and @pinojs/redact walks all
+  // the paths again on each call: bound to `req.log`, the request id paid that on every request.
+  it('builds req.log without running the redaction when the request writes no line', async () => {
+    const { logger } = capture('warn')
+    const stringifiers = (logger as any)[pino.symbols.stringifiersSym]
+    const wildcard = stringifiers[pino.symbols.wildcardFirstSym]
+    let calls = 0
+    stringifiers[pino.symbols.wildcardFirstSym] = (...args: unknown[]) => {
+      calls++
+      return wildcard(...args)
+    }
+    const server = fastify({ loggerInstance: logger, childLoggerFactory: requestLogger })
+    server.get('/quiet', async () => ({ ok: true }))
+    try {
+      for (let i = 0; i < 3; i++) expect((await server.inject({ method: 'GET', url: '/quiet' })).statusCode).toBe(200)
+    } finally {
+      await server.close()
+    }
+    expect(calls).toBe(0)
   })
 
   it('writes no per-request line when request logging is off, as without LOG_FASTIFY', async () => {
     const { logger, lines } = capture('info')
-    const server = fastify({ loggerInstance: logger, logController: new LogController({ disableRequestLogging: true }) })
+    const server = fastify({
+      loggerInstance: logger,
+      childLoggerFactory: requestLogger,
+      logController: new LogController({ disableRequestLogging: true })
+    })
     server.get('/quiet', async () => ({ ok: true }))
     try {
       await server.inject({ method: 'GET', url: '/quiet' })

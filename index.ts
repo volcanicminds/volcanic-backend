@@ -6,7 +6,7 @@ dotenv.config()
 import yn from './lib/util/yn.js'
 import { envInt } from './lib/util/env.js'
 import { trustedProxies } from './lib/util/proxies.js'
-import { createLogger } from './lib/util/logger.js'
+import { createLogger, requestLogger } from './lib/util/logger.js'
 import * as mark from './lib/util/mark.js'
 import { TranslatedError } from './lib/util/errors.js'
 import { tenantLifecyclesOf } from './lib/util/tenantLifecycle.js'
@@ -263,12 +263,13 @@ const start = async (decorators: StartOptions = {}) => {
   global.trackingConfig = trackingConfig
 
   // Fastify logs through the framework's logger, so `req.log` writes where `log` does, with
-  // the request id. Its per-request lines stay off unless `LOG_FASTIFY` asks for them.
+  // the request id (`requestLogger`). Its per-request lines stay off unless `LOG_FASTIFY` asks for them.
   // Written out rather than left to Fastify's default, so the ceiling on a JSON body is a
   // number the deployment can read and change. Transfers do not go through it: they stream.
   const bodyLimit = envInt('BODY_LIMIT', 1048576)
   const server: FastifyInstance = fastify({
     loggerInstance: logger as FastifyBaseLogger,
+    childLoggerFactory: requestLogger,
     logController: new LogController({ disableRequestLogging: !yn(process.env.LOG_FASTIFY, false) }),
     bodyLimit,
     trustProxy: trustedProxies(process.env.TRUSTED_PROXIES)

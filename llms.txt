@@ -753,7 +753,8 @@ the operator, so one URL cannot mean two things on two servers).
 ### Log levels, redaction and `tenant_id`
 
 `log` is global, a pino logger built from the `LOG_*` variables, and Fastify logs through the same
-instance, so `req.log` writes where `log` does, with the request id. Each level has a flag that is
+instance, so `req.log` writes where `log` does, with the request id. The id is added to each line
+written, not bound to `req.log`, so `req.log.bindings()` does not list it. Each level has a flag that is
 true while the level is on (`log.t`, `log.d`, `log.i`, `log.w`, `log.e`, `log.f`), so a line whose
 arguments cost something skips the work when its level is off:
 

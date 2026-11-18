@@ -11,7 +11,8 @@
 //
 
 import { isSpanContextValid, trace } from '@opentelemetry/api'
-import pino, { type DestinationStream, type LoggerOptions } from 'pino'
+import type { FastifyServerOptions } from 'fastify'
+import pino, { type Bindings, type DestinationStream, type LoggerOptions } from 'pino'
 import { tenantFields } from './requestContext.js'
 import yn from './yn.js'
 
@@ -111,6 +112,22 @@ export function traceFields(): Record<string, string> {
   }
 }
 
+const REQUEST_BINDINGS = Symbol('volcanic.requestBindings')
+
+/**
+ * Fastify's `childLoggerFactory`: the per-request logger, with Fastify's bindings (the request
+ * id) written by `mixin` instead of bound to the child. pino runs every binding through the
+ * redaction, and @pinojs/redact walks every path again on each call, even for a string where
+ * none can match: that was most of the cost of creating `req.log`, paid on every request even
+ * when nothing is logged. A line that is written still goes through the redaction, its request
+ * id included. A child of `req.log` inherits the bindings through its prototype.
+ */
+export const requestLogger: NonNullable<FastifyServerOptions['childLoggerFactory']> = function (logger, bindings, opts) {
+  const child = logger.child({}, opts)
+  ;(child as unknown as Record<symbol, Bindings>)[REQUEST_BINDINGS] = bindings
+  return child
+}
+
 /**
  * A logger configured from the environment as it is now. With a `destination`, the lines go
  * there as JSON whatever `LOG_FORMAT` says: pretty printing is for a console, and pino runs it in
@@ -126,7 +143,11 @@ export function createLogger(destination?: DestinationStream) {
     redact: { paths: REDACTED_PATHS, censor: '[redacted]' },
     // Listing serializers replaces pino's defaults, so `err` is named again.
     serializers: { err: pino.stdSerializers.err, req: serializeRequest },
-    mixin: () => ({ ...traceFields(), ...tenantFields() })
+    mixin: (_line, _level, instance) => ({
+      ...(instance as unknown as Record<symbol, Bindings | undefined>)[REQUEST_BINDINGS],
+      ...traceFields(),
+      ...tenantFields()
+    })
   }
   if (format === 'pretty') {
     options.transport = {
