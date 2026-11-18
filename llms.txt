@@ -662,7 +662,7 @@ it, and either case logs a warning.
 | `HIDE_ERROR_DETAILS` | `true` in production, `false` otherwise | Keeps the `message` out of error responses. Honoured by **every** error path, the `onError` hook included. |
 | `CORS_ORIGINS` | unset (every origin) | Comma-separated allowlist. **Required in production**: a wildcard that arrived by omission refuses the boot there, and so does a wildcard with credentials however it was written; off production both are a warning. Credentials are granted only against a real list. `CORS_ORIGINS=*` written out allows every origin, without credentials. With tenants resolved by header, the tenant header joins the allowed headers by itself. |
 | **Auth and sessions** | | |
-| `AUTH_MODE` | `COOKIE` | Where the session travels: `COOKIE` (httpOnly cookies, needs the `cookie` plugin) or `BEARER` (the `Authorization` header). Any other value refuses the boot. See 11.2. |
+| `AUTH_MODE` | `COOKIE` | Where the session travels: `COOKIE` (httpOnly cookies, needs the `cookie` plugin) or `BEARER` (the `Authorization` header). Any other value refuses the boot. Read once at boot: a change needs a restart. See 11.2. |
 | `JWT_SECRET` | none | **Required.** Signs the access tokens. Missing refuses the boot; weak refuses it in production and warns elsewhere. |
 | `JWT_EXPIRES_IN` | `1h` | Lifetime of the access token (`1h`, `15m`), and of its cookie. |
 | `JWT_REFRESH` | on | `false`, `0` or `no` turns session renewal off, so a session ends with its access token.¹ |

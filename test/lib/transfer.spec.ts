@@ -15,7 +15,7 @@ import jwtValidator from '@fastify/jwt'
 import authHook from '../../lib/hooks/onRequest.js'
 import { apply as applyTenancy } from '../../lib/loader/tenant.js'
 import { mountTransfer } from '../../lib/loader/transfer.js'
-import { INTEGRATION_TYP } from '../../lib/util/credential.js'
+import { INTEGRATION_TYP, loadAuthMode } from '../../lib/util/credential.js'
 
 const SECRET = 'transfer-route-test-secret-32-chars'
 const USER = { id: 'u1', externalId: 'u-ext-1', email: 'anna@acme.test', roles: ['admin'], blocked: false }
@@ -98,6 +98,7 @@ describe('loader/transfer · who reaches the upload endpoint', () => {
       sentinel: { code: 'sentinel', name: 'Sentinel' }
     }
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
   })
 
   // The roles are read when the endpoint is mounted, so each test builds after setting them.
@@ -111,6 +112,7 @@ describe('loader/transfer · who reaches the upload endpoint', () => {
     bag.transferPath = saved.transferPath
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
   })
 
   it('refuses an anonymous request with 401 when isValid does not vouch for it', async () => {
@@ -262,6 +264,7 @@ describe('loader/transfer · with tenants, the upload is a tenant route', () => 
     bag.roles = { public: { code: 'public', name: 'Public' }, sentinel: { code: 'sentinel', name: 'Sentinel' } }
     bag.config = { options: { tenants: TENANTS, transfer: { roles: ['sentinel'] } } }
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
   })
 
   after(() => {
@@ -270,6 +273,7 @@ describe('loader/transfer · with tenants, the upload is a tenant route', () => 
     bag.transferPath = saved.transferPath
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
   })
 
   /** The real resolution, authentication and mounting; a machine's integration token lives in acme's container only. */

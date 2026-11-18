@@ -12,6 +12,7 @@ import { rmSync } from 'node:fs'
 import type { FastifyInstance } from 'fastify'
 import type { Authenticator } from '../../types/global.js'
 import type { VolcanicLogger } from '../../lib/util/logger.js'
+import { loadAuthMode } from '../../lib/util/credential.js'
 
 const GLOBAL_KEYS = ['log', 'config', 'roles', 'systemRoles', 't', 'server', 'tracking', 'trackingConfig', 'cache', 'transferPath', 'authFlows']
 const ENV_KEYS = ['JWT_SECRET', 'MANIFEST_DUMP', 'MANIFEST_DUMP_EXIT', 'AUTH_MODE', 'TRUSTED_PROXIES']
@@ -35,6 +36,7 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
     for (const key of ENV_KEYS) savedEnv[key] = process.env[key]
     process.env.JWT_SECRET = 'unit-test-secret-please-change-32-chars-long'
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
     process.env.MANIFEST_DUMP = dump
     process.env.MANIFEST_DUMP_EXIT = 'true'
     const entry = await import('../../index.js')
@@ -51,6 +53,7 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
       if (savedEnv[key] === undefined) delete process.env[key]
       else process.env[key] = savedEnv[key]
     }
+    loadAuthMode()
     rmSync(dump, { force: true })
   })
 

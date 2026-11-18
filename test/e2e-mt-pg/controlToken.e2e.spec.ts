@@ -10,6 +10,7 @@
 // What the rows say is checked from outside, with plain `pg`.
 //
 import { expect } from 'expect'
+import { loadAuthMode } from '../../lib/util/credential.js'
 import { setup, teardown, inject, app, systemToken, createTenant, login, staled, sql, bearer, ACME, SYSTEM } from './harness.js'
 
 const body = (res: any) => JSON.parse(res.body)
@@ -299,6 +300,7 @@ for (const strategy of ['schema', 'container'] as const) {
       const machine = await issue({ name: 'cookie-mode', requiredRoles: ['system:prober'] })
       const saved = process.env.AUTH_MODE
       process.env.AUTH_MODE = 'COOKIE'
+      loadAuthMode()
       try {
         expect((await probe(bearer(machine.token))).statusCode).toBe(200)
         for (const session of [system, acmeAdmin]) {
@@ -307,6 +309,7 @@ for (const strategy of ['schema', 'container'] as const) {
         }
       } finally {
         process.env.AUTH_MODE = saved
+        loadAuthMode()
       }
     })
   })

@@ -13,6 +13,7 @@ import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import cookie from '@fastify/cookie'
 import authHook from '../../lib/hooks/onRequest.js'
+import { loadAuthMode } from '../../lib/util/credential.js'
 import { listSessions, revokeSession, logout, refreshToken } from '../../lib/api/auth/controller/auth.js'
 import { decorateAuthRegistry, passwordLogin, tenantStart, useFrameworkFlows } from './fixtures/flowLogin.js'
 import { authRefreshTokenBodySchema, authRefreshTokenResponseSchema } from '../../lib/schemas/auth.js'
@@ -107,6 +108,7 @@ describe('auth · the renewal contract survives serialization (T-11.8)', () => {
     ;(global as any).roles = { public: { code: 'public', name: 'Public' }, admin: { code: 'admin', name: 'Admin' } }
     ;(global as any).config = { options: {} }
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
   })
 
   after(() => {
@@ -114,6 +116,7 @@ describe('auth · the renewal contract survives serialization (T-11.8)', () => {
     ;(global as any).config = saved.config
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
   })
 
   it('returns the rotated credential, and not only the access token', async () => {
@@ -176,6 +179,7 @@ describe('auth · the sessions of the caller (T-11.14)', () => {
     // Declared rather than assumed: the mode is process-wide, another spec file may have left it
     // on bearer, and these tests are about what the browser holds.
     process.env.AUTH_MODE = 'COOKIE'
+    loadAuthMode()
   })
 
   after(() => {
@@ -183,6 +187,7 @@ describe('auth · the sessions of the caller (T-11.14)', () => {
     ;(global as any).config = saved.config
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
   })
 
   it('lists one row per device, and marks the one the request came from', async () => {

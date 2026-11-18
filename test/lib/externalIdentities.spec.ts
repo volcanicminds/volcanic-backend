@@ -9,6 +9,7 @@ import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import cookie from '@fastify/cookie'
 import authHook from '../../lib/hooks/onRequest.js'
+import { loadAuthMode } from '../../lib/util/credential.js'
 import { processRoute } from '../../lib/loader/router.js'
 import * as authSchemas from '../../lib/schemas/auth.js'
 import { globalParamsSchema } from '../../lib/schemas/global.js'
@@ -38,6 +39,7 @@ describe('auth · external identity routes (T-12.27)', () => {
       }
     })
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
   })
   after(() => {
     bag.config = saved.config
@@ -45,6 +47,7 @@ describe('auth · external identity routes (T-12.27)', () => {
     bag.authFlows = saved.authFlows
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
   })
 
   async function build() {

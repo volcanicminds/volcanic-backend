@@ -9,6 +9,7 @@ import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import cookie from '@fastify/cookie'
 import authHook from '../../lib/hooks/onRequest.js'
+import { loadAuthMode } from '../../lib/util/credential.js'
 import tenantRoutes from '../../lib/api/auth/routes.js'
 import * as tenantFlow from '../../lib/api/auth/controller/flow.js'
 import * as authSchemas from '../../lib/schemas/auth.js'
@@ -48,6 +49,7 @@ describe('auth · OIDC over the flow routes (T-12.29)', () => {
     })
     captureDeploymentSecrets(bag.authFlows, { ACME_IDP_SECRET: 'console-secret' } as any)
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
     useOidcFetch(idp.fetch as any)
   })
   after(() => {
@@ -57,6 +59,7 @@ describe('auth · OIDC over the flow routes (T-12.29)', () => {
     bag.authFlows = saved.authFlows
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
   })
 
   async function build() {

@@ -12,6 +12,7 @@ import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import cookie from '@fastify/cookie'
 import authHook from '../../lib/hooks/onRequest.js'
+import { loadAuthMode } from '../../lib/util/credential.js'
 import tenantRoutes from '../../lib/api/auth/routes.js'
 import systemRoutes from '../../lib/api/system/routes.js'
 import * as tenantFlow from '../../lib/api/auth/controller/flow.js'
@@ -159,6 +160,7 @@ describe('auth · the flow routes of both planes (T-12.15, T-12.16, T-12.19 to T
     bag.roles = { public: { code: 'public' }, admin: { code: 'admin' } }
     bag.authFlows = resolveAuthFlows(frameworkFlows)
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
   })
   beforeEach(() => {
     bag.config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }
@@ -169,6 +171,7 @@ describe('auth · the flow routes of both planes (T-12.15, T-12.16, T-12.19 to T
     bag.authFlows = saved.authFlows
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
   })
 
   describe('the tenant plane, bearer', () => {
@@ -352,9 +355,11 @@ describe('auth · the flow routes of both planes (T-12.15, T-12.16, T-12.19 to T
   describe('the tenant plane, cookie', () => {
     before(() => {
       process.env.AUTH_MODE = 'COOKIE'
+      loadAuthMode()
     })
     after(() => {
       process.env.AUTH_MODE = 'BEARER'
+      loadAuthMode()
     })
 
     it('keeps the credential in a cookie of its own, scoped to the flow routes, and ignores the body', async () => {

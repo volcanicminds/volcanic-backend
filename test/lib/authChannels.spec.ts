@@ -21,7 +21,7 @@ import authHook from '../../lib/hooks/onRequest.js'
 import { logout, refreshToken } from '../../lib/api/auth/controller/auth.js'
 import { renew as systemRenew } from '../../lib/api/system/controller/systemAuth.js'
 import { impersonate, endImpersonation } from '../../lib/api/tenants/controller/tenants.js'
-import { authMode, INTEGRATION_TYP, refreshCookiePath } from '../../lib/util/credential.js'
+import { authMode, INTEGRATION_TYP, loadAuthMode, refreshCookiePath } from '../../lib/util/credential.js'
 import { parseRefreshCredential } from '../../lib/util/session.js'
 import { fakeSessionStore } from './fixtures/sessionStore.js'
 import { fakeFlowStore } from './fixtures/flowStore.js'
@@ -165,6 +165,7 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
     ;(global as any).roles = { public: { code: 'public', name: 'Public' }, admin: { code: 'admin', name: 'Admin' } }
     ;(global as any).config = { options: { tenants: { strategy: 'schema', engine: 'postgres' } } }
     delete process.env.AUTH_MODE
+    loadAuthMode()
     delete process.env.COOKIE_PATH_PREFIX
   })
 
@@ -174,12 +175,16 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
     ;(global as any).config = prev.config
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
     if (saved.prefix === undefined) delete process.env.COOKIE_PATH_PREFIX
     else process.env.COOKIE_PATH_PREFIX = saved.prefix
   })
 
   describe('the mode', () => {
-    afterEach(() => delete process.env.AUTH_MODE)
+    afterEach(() => {
+      delete process.env.AUTH_MODE
+      loadAuthMode()
+    })
 
     it('is COOKIE when nobody sets it', () => {
       expect(authMode()).toBe('COOKIE')
@@ -188,9 +193,17 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
     it('refuses a value that is not a mode, instead of reading it as the other one', () => {
       // Case does not matter, and a value that is not a mode is never read as `BEARER`.
       process.env.AUTH_MODE = 'cookie'
-      expect(authMode()).toBe('COOKIE')
+      expect(loadAuthMode()).toBe('COOKIE')
       process.env.AUTH_MODE = 'COOKIES'
-      expect(() => authMode()).toThrow(/COOKIE or BEARER/)
+      expect(() => loadAuthMode()).toThrow(/COOKIE or BEARER/)
+    })
+
+    it('is read once at boot, not from the environment on every request', () => {
+      process.env.AUTH_MODE = 'BEARER'
+      expect(loadAuthMode()).toBe('BEARER')
+      process.env.AUTH_MODE = 'COOKIE'
+      expect(authMode()).toBe('BEARER')
+      expect(loadAuthMode()).toBe('COOKIE')
     })
   })
 
@@ -561,8 +574,12 @@ describe('auth channels · the session in a cookie by default (T-10.37, T-10.38,
   describe('bearer mode keeps its contract, and rotates too', () => {
     beforeEach(() => {
       process.env.AUTH_MODE = 'BEARER'
+      loadAuthMode()
     })
-    afterEach(() => delete process.env.AUTH_MODE)
+    afterEach(() => {
+      delete process.env.AUTH_MODE
+      loadAuthMode()
+    })
 
     it('returns both credentials in the body and rotates the refresh one on renewal', async () => {
       const server = await build()

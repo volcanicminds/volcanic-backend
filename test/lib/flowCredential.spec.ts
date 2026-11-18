@@ -17,6 +17,7 @@ import {
   parseFlowState,
   presentedFlow
 } from '../../lib/util/flowCredential.js'
+import { loadAuthMode } from '../../lib/util/credential.js'
 
 const request = (over: any = {}): any => ({
   cookies: {},
@@ -33,6 +34,7 @@ describe('auth · the flow credential and the return state (T-12.13)', () => {
   after(() => {
     if (saved === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved
+    loadAuthMode()
   })
 
   it('composes and reads back the four segments, and only the secret is a credential', () => {
@@ -72,11 +74,13 @@ describe('auth · the flow credential and the return state (T-12.13)', () => {
     const inCookie = request({ cookies: { auth_flow: 'from-cookie', control_flow: 'control-cookie' }, body: { flow: 'from-body' } })
 
     process.env.AUTH_MODE = 'COOKIE'
+    loadAuthMode()
     expect(presentedFlow(inCookie, 'tenant')).toBe('from-cookie')
     expect(presentedFlow(inCookie, 'control')).toBe('control-cookie')
     expect(presentedFlow(request({ body: { flow: 'from-body' } }), 'tenant')).toBeUndefined()
 
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
     expect(presentedFlow(inCookie, 'tenant')).toBe('from-body')
     expect(presentedFlow(request({ body: { flow: 7 } }), 'tenant')).toBeUndefined()
     // The header is never a channel for it: the tenant resolution and the hook both read that one.

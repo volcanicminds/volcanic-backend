@@ -19,6 +19,7 @@ import * as systemAuth from '../../lib/api/system/controller/systemAuth.js'
 import * as systemUser from '../../lib/api/system/controller/systemUser.js'
 import { resetMfaByAdmin } from '../../lib/api/users/controller/user.js'
 import { recordAccess } from '../../lib/util/accessLog.js'
+import { loadAuthMode } from '../../lib/util/credential.js'
 import { fakeSessionStore } from './fixtures/sessionStore.js'
 import { controlStart, decorateAuthRegistry, passwordLogin, tenantStart, useFrameworkFlows } from './fixtures/flowLogin.js'
 import { processRoute } from '../../lib/loader/router.js'
@@ -169,6 +170,7 @@ describe('access log · the writes of the session and factor routes (T-12.31)', 
     bag.roles = { public: { code: 'public' }, admin: { code: 'admin' } }
     bag.systemRoles = { 'system:admin': { code: 'system:admin', capabilities: [] } }
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
     // No tolerance: the second presentation of a spent credential is reuse, not two tabs.
     process.env.SESSION_GRACE_SECONDS = '0'
   })
@@ -416,6 +418,7 @@ describe('access log · the read routes of both planes (T-12.32)', () => {
     bag.roles = { public: { code: 'public' }, admin: { code: 'admin' }, viewer: { code: 'viewer' } }
     bag.systemRoles = (await loadSystem()).roles
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
   })
   after(() => {
     bag.config = saved.config
@@ -423,6 +426,7 @@ describe('access log · the read routes of both planes (T-12.32)', () => {
     bag.systemRoles = saved.systemRoles
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
   })
 
   async function reader() {

@@ -56,17 +56,29 @@ export const SESSION_COOKIES: Record<Plane, { access: string; refresh: string; r
   control: { access: 'control_token', refresh: 'control_refresh_token', refreshRoute: '/system/auth/refresh-token' }
 }
 
+let loadedMode: AuthMode | undefined
+
 /**
- * The configured mode. Unset means `COOKIE`; anything that is not one of the two modes is
- * refused, never read as the other one. `index.ts` calls this before registering anything, so
- * a bad value stops the boot instead of the first request.
+ * Reads `AUTH_MODE` and keeps it for `authMode()`. Unset means `COOKIE`; anything that is not
+ * one of the two modes is refused, never read as the other one. `index.ts` calls this before
+ * registering anything, so a bad value stops the boot instead of the first request. A test
+ * that changes `AUTH_MODE` calls it again.
+ */
+export function loadAuthMode(): AuthMode {
+  loadedMode = undefined
+  const raw = process.env.AUTH_MODE
+  if (raw === undefined || raw.trim() === '') return (loadedMode = 'COOKIE')
+  const mode = raw.trim().toUpperCase()
+  if (mode === 'COOKIE' || mode === 'BEARER') return (loadedMode = mode)
+  throw new Error(`AUTH_MODE='${raw}' is not an authentication mode: write COOKIE or BEARER`)
+}
+
+/**
+ * The mode read by `loadAuthMode()`, loaded on first use if nothing has loaded it. Every
+ * request asks for it, and reading `process.env` costs a call into the runtime each time.
  */
 export function authMode(): AuthMode {
-  const raw = process.env.AUTH_MODE
-  if (raw === undefined || raw.trim() === '') return 'COOKIE'
-  const mode = raw.trim().toUpperCase()
-  if (mode === 'COOKIE' || mode === 'BEARER') return mode
-  throw new Error(`AUTH_MODE='${raw}' is not an authentication mode: write COOKIE or BEARER`)
+  return loadedMode ?? loadAuthMode()
 }
 
 export function isCookieMode(): boolean {

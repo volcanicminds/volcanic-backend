@@ -15,7 +15,7 @@ import { expect } from 'expect'
 import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import authHook from '../../lib/hooks/onRequest.js'
-import { INTEGRATION_TYP } from '../../lib/util/credential.js'
+import { INTEGRATION_TYP, loadAuthMode } from '../../lib/util/credential.js'
 
 const SECRET = 'auth-refusals-test-secret-32-chars!'
 
@@ -93,6 +93,7 @@ describe('hooks/onRequest · the refusals, each one provoked (T-9.5)', () => {
     // mode only. The channel rules of the default mode are authChannels.spec.ts.
     savedMode = process.env.AUTH_MODE
     process.env.AUTH_MODE = 'BEARER'
+    loadAuthMode()
   })
 
   after(() => {
@@ -100,6 +101,7 @@ describe('hooks/onRequest · the refusals, each one provoked (T-9.5)', () => {
     ;(global as any).config = savedConfig
     if (savedMode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = savedMode
+    loadAuthMode()
   })
 
   it('answers 401 UNAUTHORIZED to an anonymous request for a protected route', async () => {

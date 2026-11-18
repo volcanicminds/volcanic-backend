@@ -15,6 +15,7 @@ import fastify from 'fastify'
 import jwtValidator from '@fastify/jwt'
 import cookie from '@fastify/cookie'
 import authHook from '../../lib/hooks/onRequest.js'
+import { loadAuthMode } from '../../lib/util/credential.js'
 import { preHandler as isAuthenticated } from '../../lib/middleware/isAuthenticated.js'
 import tenantRoutes from '../../lib/api/auth/routes.js'
 import systemRoutes from '../../lib/api/system/routes.js'
@@ -117,12 +118,14 @@ describe('mfa · the account routes of the second factor, on both planes', () =>
   })
   beforeEach(() => {
     delete process.env.AUTH_MODE
+    loadAuthMode()
   })
   after(() => {
     ;(global as any).roles = saved.roles
     ;(global as any).config = saved.config
     if (saved.mode === undefined) delete process.env.AUTH_MODE
     else process.env.AUTH_MODE = saved.mode
+    loadAuthMode()
   })
 
   describe('a pre-auth token authenticates nothing (T-12.35, F36)', () => {
@@ -153,6 +156,7 @@ describe('mfa · the account routes of the second factor, on both planes', () =>
 
     it('is 401 UNAUTHORIZED in the header of a bearer deployment, on both planes', async () => {
       process.env.AUTH_MODE = 'BEARER'
+      loadAuthMode()
       const { server } = await build()
       const tenant = preAuthToken(server, { sub: MFA_USER.externalId, tid: ACME.id })
       const control = preAuthToken(server, { sub: MFA_OPERATOR.externalId, scp: 'control' })
@@ -272,6 +276,7 @@ describe('mfa · the account routes of the second factor, on both planes', () =>
 
     it('returns no token in the body of a bearer deployment either', async () => {
       process.env.AUTH_MODE = 'BEARER'
+      loadAuthMode()
       const { server } = await build()
       const token = server.jwt.sign({ sub: USER.externalId, tid: ACME.id })
       const res = await server.inject({

@@ -79,7 +79,7 @@ import type {
 // skips that merge. A static import is also hoisted above `dotenv.config()`, so the
 // `process.env` reads inside it would run before `.env` is loaded.
 import { MfaPolicy } from './lib/config/constants.js'
-import { isCookieMode } from './lib/util/credential.js'
+import { loadAuthMode } from './lib/util/credential.js'
 import { stepUpMaxAge } from './lib/util/stepUp.js'
 import {
   defaultUserManager,
@@ -289,7 +289,7 @@ const start = async (decorators: StartOptions = {}) => {
 
   // Read before anything is registered: a value that is not a mode stops the boot here, not
   // at the first request (lib/util/credential.ts).
-  const cookieMode = isCookieMode()
+  const cookieMode = loadAuthMode() === 'COOKIE'
   stepUpMaxAge()
   const plugins = await loaderPlugins.load()
 
