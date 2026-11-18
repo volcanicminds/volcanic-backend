@@ -1725,7 +1725,8 @@ framework refuses a half-aliased query rather than guessing which conditions it 
 
 `_page` is 1-based, `_pageSize` is clamped, and the applied values come back in headers:
 `v-total`, `v-count`, `v-page`, `v-pageSize`, `v-pageCount`. A client paginates from the headers,
-never from a count it computed.
+never from a count it computed. `v-total` costs a second statement only when the page is full or
+empty past the first: a shorter page is the last one, and its total is known from it.
 
 `_sort=-createdAt,name` — descending on the first, ascending on the second. An unknown field
 answers 400 rather than being skipped, because a skipped sort field returns the right rows in the

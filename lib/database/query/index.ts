@@ -286,7 +286,11 @@ export async function executeFind<T>(
   if (parsed.orderBy.length) query = query.orderBy(...parsed.orderBy)
   const records = await query.limit(parsed.limit).offset(parsed.offset)
 
-  const total = await executeCount(handle, table, params, options)
+  // A page shorter than the limit is the last one, so the rows before it and on it are all
+  // there are. An empty page past the first proves nothing (the rows may all be before it),
+  // so that one is counted.
+  const lastPage = records.length < parsed.limit && (records.length > 0 || parsed.offset === 0)
+  const total = lastPage ? parsed.offset + records.length : await countParsed(handle, table, parsed)
   return { records: records as T[], headers: headersFor(parsed, records.length, total) }
 }
 
@@ -296,10 +300,12 @@ export async function executeCount(
   params: Record<string, unknown>,
   options: QueryOptions = {}
 ): Promise<number> {
-  const parsed = parseQuery(table, params, options)
+  return countParsed(handle, table, parseQuery(table, params, options))
+}
 
-  let query = handle.db.select({ count: sql<number>`count(*)` }).from(table)
-  if (parsed.where) query = query.where(parsed.where)
-  const rows = await query
-  return Number(rows[0]?.count ?? 0)
+async function countParsed(handle: Pick<RuntimeHandle, 'db'>, table: Table, parsed: ParsedQuery): Promise<number> {
+  // A plain statement rather than the select builder: the same SQL, less work to build it.
+  const where = parsed.where ? sql` where ${parsed.where}` : sql``
+  const result = await handle.db.execute(sql`select count(*) as count from ${table}${where}`)
+  return Number(result.rows?.[0]?.count ?? 0)
 }

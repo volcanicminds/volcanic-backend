@@ -105,6 +105,33 @@ describe('database/query (T-2.4)', () => {
       expect(page.headers).toEqual({ 'v-count': 1, 'v-total': 3, 'v-page': 2, 'v-pageSize': 2, 'v-pageCount': 2 })
     })
 
+    // A page shorter than the limit is the last one, so its total needs no second statement.
+    it('counts only when the page cannot tell the total', async () => {
+      let statements = 0
+      const spy = {
+        db: {
+          select: (...args: any[]) => {
+            statements++
+            return handle.db.select(...args)
+          },
+          execute: (...args: any[]) => {
+            statements++
+            return handle.db.execute(...args)
+          }
+        }
+      }
+      const run = async (params: any) => {
+        statements = 0
+        const { headers } = await executeFind(spy as any, pg.user, params, options)
+        return { total: headers['v-total'], statements }
+      }
+      expect(await run({ _pageSize: '2' })).toEqual({ total: 3, statements: 2 }) // full page
+      expect(await run({ _pageSize: '2', _page: '2' })).toEqual({ total: 3, statements: 1 }) // short last page
+      expect(await run({})).toEqual({ total: 3, statements: 1 }) // short first page
+      expect(await run({ _pageSize: '2', _page: '5' })).toEqual({ total: 3, statements: 2 }) // empty, past the end
+      expect(await run({ 'email:contains': 'nobody' })).toEqual({ total: 0, statements: 1 }) // empty first page
+    })
+
     it('clamps an oversized page instead of trusting it', () => {
       const parsed = parseQuery(pg.user, { _pageSize: '10000' }, { ...options, maxPageSize: 100 })
       expect(parsed.pageSize).toBe(100)
