@@ -172,6 +172,7 @@ where it is used without passing through the configuration at all.
 | `IMPERSONATION_TTL` | `1800` | seconds an impersonation token lasts; hard maximum 14400 | `impersonation_ttl` |
 | `AUTH_RATELIMIT_MAX` | `10` | requests per window, per address, on the routes that take a secret (the start of a login and of a step-up on both planes, register, unregister, change, forgot and reset password, email confirmation, the platform's renewal) | no key: read by `lib/api/auth/routes.ts` and `lib/api/system/routes.ts` |
 | `AUTH_RATELIMIT_WINDOW` | `60000` | that window, in milliseconds | no key: same |
+| `AUTH_REGISTER_MIN_TIME` | `1000` | milliseconds before `POST /auth/register` answers, whatever the outcome, so a taken address and a free one take the same time; at most 10000; a registration slower than it is logged once as a warning | no key: read by `lib/api/auth/controller/auth.ts` at each registration |
 | `AUTH_FLOW_TTL` | `600` | seconds a login in progress lives, never extended | `limits.flowTtl` of `config/authFlows.ts`, and it **wins** over the file |
 | `AUTH_OTP_TTL` | `300` | seconds a sent code stays valid | `limits.otpTtl`, same rule |
 | `AUTH_OTP_MAX_ATTEMPTS` | `5` | wrong codes before a login ends; the account is never locked by it | `limits.otpMaxAttempts`, same rule |

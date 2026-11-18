@@ -76,7 +76,7 @@ every rejection that happens before a successful password verification, on both 
 | unconfirmed user | `User email unconfirmed` | `AUTH_INVALID_CREDENTIALS`, 401 |
 | blocked user | `User blocked` | `AUTH_INVALID_CREDENTIALS`, 401 |
 | account waiting for approval (§2.5) | did not exist | `AUTH_INVALID_CREDENTIALS`, 401 |
-| email already registered | `Email already registered` | 200 with the same body as a successful registration, and no account created |
+| email already registered | `Email already registered` | 200 with the same body as a successful registration, and no account created; every answer of `/auth/register` leaves after `AUTH_REGISTER_MIN_TIME`, so the time does not tell the two apart either |
 | password expired | `Password is expired` | `PASSWORD_TO_BE_CHANGED`, 403 — **stays distinct**, because it happens *after* the password verified |
 
 The routes that take a secret outside the login (`unregister`, `change-password`, `confirm-email`,

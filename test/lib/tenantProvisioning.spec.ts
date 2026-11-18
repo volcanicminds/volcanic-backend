@@ -58,12 +58,15 @@ async function build(over: any = {}) {
   })
   server.decorate('userManager', {
     isImplemented: () => true,
-    createUser: async (_c: any, data: any) => {
+    createUser: async (_c: any, data: any, onCreated?: any) => {
       if (over.founderFails) throw new Error('the founder could not be written')
       started.push('founder')
-      return { id: 'u1', ...data }
+      const row = { id: 'u1', ...data }
+      if (onCreated) await onCreated('tx', row)
+      return row
     }
   })
+  server.decorate('onUserCreated', over.onUserCreated ?? null)
   if (over.mfa) server.decorate('mfaManager', { isImplemented: () => true })
   server.decorate('authFlowManager', { isImplemented: () => over.noFlowStore !== true })
   if (over.registry) server.decorate('authRegistry', over.registry)
@@ -226,6 +229,16 @@ describe('tenants · what provisioning refuses (T-9.5)', () => {
     })
     expect(res.statusCode).toBeLessThan(400)
     expect(created[0].locator).toBe('tenant_acme')
+    await server.close()
+  })
+
+  it("runs the project's onUserCreated on the tenant's founder, as tenant and with no fields", async () => {
+    const calls: any[] = []
+    const onUserCreated = async (tx: any, user: any, context: any) => void calls.push({ tx, user, ...context })
+    const { server } = await build({ onUserCreated })
+    const res = await provision(server, { slug: 'acme', name: 'Acme', admin: { email: 'admin@acme.test', password: 'Str0ng-passw0rd!' } })
+    expect(res.statusCode).toBeLessThan(400)
+    expect(calls).toEqual([{ tx: 'tx', user: expect.objectContaining({ email: 'admin@acme.test', isFounder: true }), origin: 'tenant', fields: {} }])
     await server.close()
   })
 

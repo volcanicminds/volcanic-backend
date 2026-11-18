@@ -21,7 +21,8 @@ import { register } from '../../lib/api/auth/controller/auth.js'
 import * as platform from '../../lib/api/system/controller/systemAccountCreation.js'
 import * as tenantSettings from '../../lib/api/settings/controller/settings.js'
 import { update as updateTenant } from '../../lib/api/tenants/controller/tenants.js'
-import { approve } from '../../lib/api/users/controller/user.js'
+import { approve, create as createByAdmin } from '../../lib/api/users/controller/user.js'
+import { userBodySchema } from '../../lib/schemas/user.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../lib/config/constants.js'
 import { fakeGovernanceLog } from './fixtures/governanceLog.js'
 
@@ -255,11 +256,19 @@ describe('auth · account creation, the routes (F49, T-12.47)', () => {
 
 describe('auth · account creation, the registration and the wait (F49, T-12.48)', () => {
   let saved: any
+  let savedFloor: string | undefined
   beforeEach(() => {
     saved = bag.config
     bag.config = { options: {} }
+    // The answer's minimum time is proved on its own below; the rest would each wait a second.
+    savedFloor = process.env.AUTH_REGISTER_MIN_TIME
+    process.env.AUTH_REGISTER_MIN_TIME = '1'
   })
-  afterEach(() => (bag.config = saved))
+  afterEach(() => {
+    bag.config = saved
+    if (savedFloor === undefined) delete process.env.AUTH_REGISTER_MIN_TIME
+    else process.env.AUTH_REGISTER_MIN_TIME = savedFloor
+  })
 
   const body = { username: 'someone', email: 'someone@acme.test', password1: GOOD, password2: GOOD }
 
@@ -332,27 +341,30 @@ describe('auth · account creation, the registration and the wait (F49, T-12.48)
     expect(Object.keys(created[0]).sort()).toEqual(['approved', 'email', 'password', 'roles', 'username'])
   })
 
-  describe("onRegister, the project's part", () => {
-    // The register schema as a project extends it in `src/schemas`: the loader merges the two.
-    const extended = {
-      properties: {
-        username: {},
-        email: {},
-        password1: {},
-        password2: {},
-        requiredRoles: {},
-        firstName: { type: 'string' },
-        lastName: { type: 'string' },
-        consent: { type: 'boolean' }
-      }
+  describe("onUserCreated, the project's part", () => {
+    // The two schemas as a project extends them in `src/schemas`: the loader merges each with the core one.
+    const schemas: Record<string, any> = {
+      authRegisterBodySchema: {
+        properties: {
+          username: {},
+          email: {},
+          password1: {},
+          password2: {},
+          requiredRoles: {},
+          firstName: { type: 'string' },
+          lastName: { type: 'string' },
+          consent: { type: 'boolean' }
+        }
+      },
+      userBodySchema: { properties: { ...userBodySchema.properties, firstName: { type: 'string' } } }
     }
 
     function withHook(mode: 'approval' | 'open' = 'open') {
       const fixture = registration(mode)
       const calls: any[] = []
       const server: any = fixture.server
-      server.getSchema = (id: string) => (id === 'authRegisterBodySchema' ? extended : undefined)
-      server.onRegister = async (tx: any, user: any, fields: any) => void calls.push({ tx, user, fields })
+      server.getSchema = (id: string) => schemas[id]
+      server.onUserCreated = async (tx: any, user: any, context: any) => void calls.push({ tx, user, ...context })
       server.userManager.createUser = async (_c: any, data: any, created?: any) => {
         const row = { id: 'u1', externalId: 'x-new', email: data.email, roles: data.roles, approved: data.approved }
         if (created) await created('tx', row)
@@ -361,11 +373,22 @@ describe('auth · account creation, the registration and the wait (F49, T-12.48)
       return { server, calls }
     }
 
-    it("hands it the user and the project's declared fields, never the framework's nor an undeclared key", async () => {
+    it("hands a registration's user to it with the project's declared fields, never the framework's nor an undeclared key", async () => {
       const { server, calls } = withHook()
       const data = { ...body, firstName: 'Anna', consent: false, isFounder: true, nickname: 'x' }
       await register(fakeRequest({ server, data }), fakeReply())
-      expect(calls).toEqual([{ tx: 'tx', user: expect.objectContaining({ id: 'u1' }), fields: { firstName: 'Anna', consent: false } }])
+      expect(calls).toEqual([
+        { tx: 'tx', user: expect.objectContaining({ id: 'u1' }), origin: 'register', fields: { firstName: 'Anna', consent: false } }
+      ])
+    })
+
+    it("hands an administrator's user to it too, with the fields the project added to userBodySchema", async () => {
+      const { server, calls } = withHook()
+      const req = Object.assign(fakeRequest({ server, data: { email: 'b@acme.test', password: GOOD, firstName: 'Bruno', confirmed: false } }), {
+        hasRole: () => true
+      })
+      await createByAdmin(req, fakeReply())
+      expect(calls).toEqual([{ tx: 'tx', user: expect.objectContaining({ email: 'b@acme.test' }), origin: 'admin', fields: { firstName: 'Bruno' } }])
     })
 
     it('passes nothing to createUser without one, as before', async () => {
@@ -389,6 +412,32 @@ describe('auth · account creation, the registration and the wait (F49, T-12.48)
       await register(fakeRequest({ server, data: { ...body, firstName: 'Anna' } }), reply)
       expect(reply.sent.code).toBe(200)
       expect(calls).toEqual([])
+    })
+  })
+
+  describe('the minimum time of an answer', () => {
+    const FLOOR = 80
+    const timed = async (server: any) => {
+      const started = performance.now()
+      await register(fakeRequest({ server, data: body }), fakeReply())
+      return performance.now() - started
+    }
+
+    it('holds a free address and a taken one to AUTH_REGISTER_MIN_TIME, whatever the work behind each', async () => {
+      process.env.AUTH_REGISTER_MIN_TIME = String(FLOOR)
+      const free = registration('open').server
+      const taken = registration('open').server
+      taken.userManager.createUser = async () => {
+        throw Object.assign(new Error('Email already registered'), { code: EMAIL_ALREADY_REGISTERED })
+      }
+      // A timer may fire a millisecond early; the floor is what matters, not the exact value.
+      expect(await timed(free)).toBeGreaterThanOrEqual(FLOOR - 2)
+      expect(await timed(taken)).toBeGreaterThanOrEqual(FLOOR - 2)
+    })
+
+    it('holds a refusal to it as well, a closed registration included', async () => {
+      process.env.AUTH_REGISTER_MIN_TIME = String(FLOOR)
+      expect(await timed(registration('invite').server)).toBeGreaterThanOrEqual(FLOOR - 2)
     })
   })
 

@@ -678,6 +678,7 @@ it, and either case logs a warning.
 | `AUTH_OTP_MAX_SENDS` | `3` | Codes sent within one login. |
 | `AUTH_RATELIMIT_MAX` | `10` | Requests per window on the routes that take a secret (login, register, unregister, password change and reset, email confirmation), on both planes. |
 | `AUTH_RATELIMIT_WINDOW` | `60000` | That window, in milliseconds. |
+| `AUTH_REGISTER_MIN_TIME` | `1000` | Milliseconds before `POST /auth/register` answers, whatever the outcome, so a taken address and a free one take the same time. At most 10000. A registration slower than it is logged once as a warning: raise it. |
 | `STEP_UP_MAX_AGE` | `300` | Seconds within which the person must have proved to be there for a `freshAuth: true` route to answer; otherwise 403 `STEP_UP_REQUIRED`. Not an integer from 60 to 3600: the boot refuses. |
 | `RESET_PASSWORD_TOKEN_TTL` | `3600` | Seconds a `/auth/forgot-password` token stays usable. Feeds `reset_password_token_ttl`. |
 | `PASSWORD_EXPIRATION_DAYS` | unset (never) | Days after which a password must be changed; past them a password login fails with `PASSWORD_TO_BE_CHANGED`. A value that is not a positive number makes every password login fail rather than read as "never". |
@@ -1120,10 +1121,19 @@ No foreign key is declared, deliberately: the framework owns `user` and migrates
 constraint pointing into a table this project does not migrate would make the two sets of
 migrations depend on each other's order.
 
-**Filling it at registration.** Two steps, and the framework's table is not touched by either.
-The fields go into the registration body by extending its schema, as any core schema is extended
-(Part 5, a file in `src/schemas` with the same `$id`); the row is written by `onRegister`, given to
-`start()`, which runs in the transaction that creates the user:
+**Filling it for every user.** Two steps, and the framework's table is not touched by either.
+The fields go into the bodies that create a user by extending their schemas, as any core schema
+is extended (Part 5, a file in `src/schemas` with the same `$id`): `authRegisterBodySchema` for the
+self-registration, `userBodySchema` for an administrator. The row is written by `onUserCreated`,
+given to `start()`, which runs in the transaction that creates the user, whichever way it came:
+
+| `origin` | Who creates the user | `fields` |
+|---|---|---|
+| `register` | the visitor, `POST /auth/register` | the properties added to `authRegisterBodySchema` |
+| `admin` | an administrator, `POST /users` | the properties added to `userBodySchema` |
+| `provider` | the first login through an identity provider, just in time | empty |
+| `genesis` | the boot, from `ADMIN_EMAIL` | empty |
+| `tenant` | `POST /tenants`, the tenant's founder | empty |
 
 ```typescript
 // src/schemas/auth.ts
@@ -1138,32 +1148,45 @@ export const authRegisterBodySchema = {
   required: ['firstName', 'lastName', 'consent']
 }
 
+// src/schemas/user.ts: the administrator's form sends the names too
+export const userBodySchema = {
+  $id: 'userBodySchema',
+  type: 'object',
+  properties: {
+    firstName: { type: 'string' },
+    lastName: { type: 'string' }
+  }
+}
+
 // server.ts
 import { access } from '@volcanicminds/backend/db'
 
 await startServer({
   ...layer,
-  onRegister: async (tx, user, fields) => {
+  onUserCreated: async (tx, user, { fields }) => {
     const { userProfile } = tablesFor(tx)
-    await access(tx, 'onRegister').db.insert(userProfile).values({
+    await access(tx, 'onUserCreated').db.insert(userProfile).values({
       userId: user.id,
-      firstName: fields.firstName,
-      lastName: fields.lastName
+      firstName: (fields.firstName as string) ?? null,
+      lastName: (fields.lastName as string) ?? null
     })
   }
 })
 ```
 
+- Every user gets its row, so a profile is read with a plain join. The columns stay nullable
+  where an origin brings no fields (`provider`, `genesis`, `tenant`); `origin` is there to tell
+  them apart.
 - `fields` holds the body's values for the properties the project added, never `email`, the
   passwords or the other fields of the framework, nor a key the schema does not declare.
-- Write through `tx` only. A throw undoes the account: the visitor gets the error and no user
-  exists, so the two are never half written.
-- A taken address does not run it, and answers like a free one, as without it.
+- Write through `tx` only. A throw undoes the account: a registration answers the error, a first
+  login through a provider is refused, a tenant is not created, and at genesis the boot stops.
+  The two are never half written.
+- A taken address does not run it, and the registration answers like a free one, after the same
+  minimum time (`AUTH_REGISTER_MIN_TIME`), so the hook's work does not show on the stopwatch.
 - It writes and does nothing else: the transaction stays open while it runs, and the response
   waits. A welcome mail goes in `global.postAuth`, after the commit.
-- Only the self-registration runs it. A user created by an administrator, by an identity provider
-  or at genesis has no profile row until the project writes one, so read the profile with a left
-  join.
+- A platform operator (`system_user`) is not a `user` and does not run it.
 
 The reason for the rule is not tidiness. A framework table redefined by a consumer collides with
 every future framework migration, and the collision arrives **at upgrade time, on a deployment
@@ -4257,7 +4280,7 @@ The decorator keys (all optional): `userManager`, `tokenManager`, `trackingManag
 `AccessLogManagement`, `GovernanceLogManagement`, `SettingManagement`, all re-exported from
 `@volcanicminds/backend`). The data layer's `start()` returns all
 of them except `mfaManager`, `transferManager` and `challengeDeliveryManager`, which come from the consumer.
-Three more keys are not managers: `authenticators`, the project's own login methods (Part 6.2), `tenantLifecycles`, the packages that follow a tenant's life (§2.8), and `onRegister`, the project's part in a self-registration (§2.3). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
+Three more keys are not managers: `authenticators`, the project's own login methods (Part 6.2), `tenantLifecycles`, the packages that follow a tenant's life (§2.8), and `onUserCreated`, the project's part in the creation of every user (§2.3). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
 resolve a consumer entity by name through `global.entity`, and neither is a thing v5 does.
 
 Two more keys the data layer's `start()` returns and the server carries: `provider` (how a request

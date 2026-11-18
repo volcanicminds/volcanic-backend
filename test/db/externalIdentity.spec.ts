@@ -132,6 +132,28 @@ function behaviours(name: string, open: () => Promise<Migrated>) {
       expect(await users.retrieveUserByEmail(db.tenant, unverifiedEmail)).toBeNull()
     })
 
+    it("runs the project's onUserCreated on a provisioned account, in its transaction, as provider", async () => {
+      const email = `hooked${unique()}@acme.test`
+      const calls: any[] = []
+      const onUserCreated = async (tx: any, user: any, context: any) => {
+        calls.push({ email: user.email, ...context })
+        // Inside the transaction the row is already visible through `tx`.
+        expect((await users.retrieveUserById(tx, user.id))?.email).toBe(email)
+      }
+      const on = await resolveExternal({ ...ctx(), onUserCreated }, provider({ jit: { enabled: true, roles: ['member'] } }), claims({ email, emailVerified: true }))
+      expect(on.outcome).toBe('resolved')
+      expect(calls).toEqual([{ email, origin: 'provider', fields: {} }])
+
+      const refusedEmail = `undone${unique()}@acme.test`
+      const failing = async () => {
+        throw new Error('profile refused')
+      }
+      await expect(
+        resolveExternal({ ...ctx(), onUserCreated: failing }, provider({ jit: { enabled: true, roles: ['member'] } }), claims({ email: refusedEmail, emailVerified: true }))
+      ).rejects.toThrow('profile refused')
+      expect(await users.retrieveUserByEmail(db.tenant, refusedEmail)).toBeNull()
+    })
+
     it('never provisions an admin, never over an existing account, never on the control plane', async () => {
       const email = `boss${unique()}@acme.test`
       const admin = await resolveExternal(ctx(), provider({ jit: { enabled: true, roles: ['admin'] } }), claims({ email, emailVerified: true }))

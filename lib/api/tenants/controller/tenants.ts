@@ -23,6 +23,7 @@ import { checkTenantPolicy, demandsEnrolment, mfaAvailable, type PolicyVerdict }
 import { checkTenantOverride } from '../../../auth/accountCreation.js'
 import { absoluteStep, isReplay } from '../../../util/mfaCounter.js'
 import { envInt } from '../../../util/env.js'
+import { createUserWith } from '../../../util/userCreation.js'
 import { ENROLMENT_METHOD, floorEnrollable, isImplemented } from '../../../auth/validate.js'
 import { maskEmail, newCode } from '../../../auth/authenticators/emailOtp.js'
 import { accessCookieOf, clearAccessCookie, clearRefreshCookie, isCookieMode, setAccessCookie } from '../../../util/credential.js'
@@ -260,18 +261,24 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
 
     const container = await provider.forLocator(locator, draft.id)
     const users = req.server['userManager'] as UserManagement
-    await users.createUser(container as never, {
-      email: admin.email,
-      username: admin.email,
-      password: admin.password,
-      roles: [global.roles?.admin?.code || 'admin'],
-      // TRUE by default on this route: login refuses unconfirmed users, and a tenant whose
-      // administrator cannot log in is not provisioned, it is broken.
-      confirmed: admin.adminConfirmed !== false,
-      // The sovereign of ITS container, written into the row. Each tenant has its
-      // own founder and inherits nobody else's.
-      isFounder: true
-    })
+    await createUserWith(
+      req.server.onUserCreated,
+      users,
+      container as never,
+      {
+        email: admin.email,
+        username: admin.email,
+        password: admin.password,
+        roles: [global.roles?.admin?.code || 'admin'],
+        // TRUE by default on this route: login refuses unconfirmed users, and a tenant whose
+        // administrator cannot log in is not provisioned, it is broken.
+        confirmed: admin.adminConfirmed !== false,
+        // The sovereign of ITS container, written into the row. Each tenant has its
+        // own founder and inherits nobody else's.
+        isFounder: true
+      },
+      'tenant'
+    )
 
     // The packages build their part last before the row, on a container that is already whole.
     await createInPackages(lifecyclesOf(req), place, container, started)

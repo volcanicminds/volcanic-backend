@@ -7,6 +7,8 @@ import { dataContext, isTenancyEnabled } from '../../../util/tenancy.js'
 import { uuidv7 } from '../../../util/uuid.js'
 import { EMAIL_ALREADY_REGISTERED } from '../../../config/constants.js'
 import { authRegisterBodySchema } from '../../../schemas/auth.js'
+import { createUserWith, projectFields } from '../../../util/userCreation.js'
+import { envInt } from '../../../util/env.js'
 import { clearSessionCookies, sessionTokenOf } from '../../../util/credential.js'
 import { renew } from '../../../util/renewal.js'
 import { recordTenantAccess } from '../../../util/accessLog.js'
@@ -46,22 +48,32 @@ function isResetTokenExpired(code: string): boolean {
   return Date.now() / 1000 > expiresAt
 }
 
+const REGISTER_MIN_TIME_DEFAULT = 1000
+let registerOverrunWarned = false
+
 /**
- * The body's values for the properties a project added to `authRegisterBodySchema`, and only
- * those: the framework's own fields never reach `onRegister`, and neither does a key the schema
- * does not declare, which the visitor wrote and nobody validated.
+ * Every answer of the registration leaves after the same minimum time, `AUTH_REGISTER_MIN_TIME`
+ * milliseconds from its start. A taken address and a free one do different work (a lookup after
+ * the collision on one side, the project's `onUserCreated` on the other), and the floor is what
+ * keeps that difference off the stopwatch. A registration slower than the floor is no longer
+ * covered, so the first one is reported.
  */
-function projectFields(req: FastifyRequest, data: Record<string, unknown>): Record<string, unknown> {
-  const declared = (req.server.getSchema('authRegisterBodySchema') as { properties?: Record<string, unknown> } | undefined)?.properties
-  const fields: Record<string, unknown> = {}
-  for (const key of Object.keys(declared ?? {})) {
-    if (key in authRegisterBodySchema.properties || data[key] === undefined) continue
-    fields[key] = data[key]
+export async function register(req: FastifyRequest, reply: FastifyReply) {
+  const started = performance.now()
+  const floor = envInt('AUTH_REGISTER_MIN_TIME', REGISTER_MIN_TIME_DEFAULT, { max: 10000 })
+  try {
+    return await registerOnce(req, reply)
+  } finally {
+    const elapsed = performance.now() - started
+    if (elapsed < floor) await new Promise((resolve) => setTimeout(resolve, floor - elapsed))
+    else if (!registerOverrunWarned && log.w) {
+      registerOverrunWarned = true
+      log.warn(`A registration took ${Math.round(elapsed)} ms, over AUTH_REGISTER_MIN_TIME (${floor} ms): raise it, or the time tells a taken address from a free one`)
+    }
   }
-  return fields
 }
 
-export async function register(req: FastifyRequest, reply: FastifyReply) {
+async function registerOnce(req: FastifyRequest, reply: FastifyReply) {
   const { password1: password, password2, ...data } = req.data()
 
   if (!req.server['userManager'].isImplemented()) {
@@ -112,14 +124,15 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   // Whatever the body says: only the mode decides whether the account waits for an administrator.
   data.approved = creation.mode !== 'approval'
 
-  const onRegister = req.server.onRegister
-  const fields = onRegister ? projectFields(req, data) : {}
+  const hook = req.server.onUserCreated
 
   let user: any
   try {
     // Named field by field: the body is the visitor's, and a spread would hand them `isFounder`,
     // `confirmed` or `attributes`, which `createUser` takes from its trusted callers.
-    user = await req.server['userManager'].createUser(
+    user = await createUserWith(
+      hook,
+      req.server['userManager'],
       dataContext(req),
       {
         username: data.username,
@@ -128,7 +141,8 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
         roles: data.roles,
         approved: data.approved
       },
-      onRegister ? (tx: any, created: any) => onRegister(tx, created, fields) : undefined
+      'register',
+      hook ? projectFields(req.server, 'authRegisterBodySchema', authRegisterBodySchema.properties, data) : {}
     )
   } catch (err: any) {
     if (err?.code !== EMAIL_ALREADY_REGISTERED) throw err

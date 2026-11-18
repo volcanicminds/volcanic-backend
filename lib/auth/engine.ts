@@ -5,6 +5,7 @@ import type {
   AuthFlowLimits,
   AuthInput,
   AuthManagers,
+  OnUserCreated,
   AuthPlane,
   AuthPlaneFlows,
   AuthResult,
@@ -56,6 +57,8 @@ export interface FlowPlane<R = unknown> {
   readonly limits: AuthFlowLimits
   readonly registry: AuthenticatorRegistry
   readonly managers: AuthManagers
+  /** The project's part in the creation of a user, for an account provisioned at login. */
+  readonly onUserCreated?: OnUserCreated | null
   readonly ip: string | null
   readonly userAgent: string | null
   /** The subject by its `externalId`, or null when it may not log in: missing, invalid, unconfirmed, blocked, waiting. */
@@ -200,6 +203,7 @@ const context = <R>(p: FlowPlane<R>, subject: AuthSubject | null, flow: AuthFlow
   subject,
   policy: p.policy,
   managers: p.managers,
+  onUserCreated: p.onUserCreated ?? null,
   flow,
   limits: p.limits,
   challenges: flow && secret && storeAvailable(p) ? challengesOf(p, flow, secret) : null,

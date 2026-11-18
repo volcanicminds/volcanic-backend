@@ -362,15 +362,27 @@ export type TenantPlace = Pick<Tenant, 'slug' | 'locator' | 'strategy'>
 export type PackageProfile = 'client' | 'operator'
 
 /**
- * A project's part in a self-registration (`POST /auth/register`), passed to `start({ onRegister })`.
- *
- * Runs in the transaction that creates the user, before it commits: every write goes through
- * `tx`, and a throw undoes the account. `fields` holds the body's values for the properties the
- * project added to `authRegisterBodySchema` (a schema with that `$id` in `src/schemas`), never the
- * framework's own. Meant for a table of the project keyed by `user.id`, such as a profile: it
- * should only write, since the transaction stays open and the response waits for it.
+ * Where a `user` row came from:
+ * - `register`: the self-registration, `POST /auth/register`;
+ * - `admin`: an administrator, `POST /users`;
+ * - `provider`: the first login through an identity provider, provisioned just in time;
+ * - `genesis`: the first administrator, created at boot from `ADMIN_EMAIL`;
+ * - `tenant`: the founder of a tenant, created with it by `POST /tenants`.
  */
-export type OnRegister = (tx: DataHandle, user: any, fields: Record<string, unknown>) => Promise<void>
+export type UserOrigin = 'register' | 'admin' | 'provider' | 'genesis' | 'tenant'
+
+/**
+ * A project's part in the creation of every user, passed to `start({ onUserCreated })`.
+ *
+ * Runs in the transaction that creates the user, before it commits, whatever the origin: every
+ * write goes through `tx`, and a throw undoes the account (a failed registration, a failed first
+ * login, a refused boot). `fields` holds the body's values for the properties the project added
+ * to the schema of that request: `authRegisterBodySchema` for `register`, `userBodySchema` for
+ * `admin`; never the framework's own, and empty for the other origins. Meant for a table of the
+ * project keyed by `user.id`, such as a profile: it should only write, since the transaction stays
+ * open and the response waits for it.
+ */
+export type OnUserCreated = (tx: DataHandle, user: any, context: { origin: UserOrigin; fields: Record<string, unknown> }) => Promise<void>
 
 /**
  * A package's part in the life of a tenant, passed to `start({ tenantLifecycles })`.
@@ -1106,6 +1118,8 @@ export interface AuthContext {
   /** The effective policy of this plane and tenant, the floor already applied. */
   readonly policy: MfaPolicy
   readonly managers: AuthManagers
+  /** The project's part in the creation of a user, for an account provisioned at login; null without one. */
+  readonly onUserCreated?: OnUserCreated | null
   readonly flow: Readonly<AuthFlow> | null
   /** The limits of the deployment, the environment already applied. */
   readonly limits: Readonly<AuthFlowLimits>
@@ -1888,8 +1902,8 @@ declare module 'fastify' {
     authRegistry: AuthenticatorRegistry
     /** Not a manager: the packages that follow a tenant's life, in the order given to `start()`. */
     tenantLifecycles: readonly TenantLifecycle[]
-    /** Not a manager: the project's part in a self-registration, null without one. */
-    onRegister: OnRegister | null
+    /** Not a manager: the project's part in the creation of every user, null without one. */
+    onUserCreated: OnUserCreated | null
   }
 }
 

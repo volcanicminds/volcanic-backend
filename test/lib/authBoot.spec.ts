@@ -111,11 +111,11 @@ describe('auth · booting with the default flows and no data layer (T-12.3, T-12
     }
   })
 
-  it('decorates onRegister as given, null without one, and refuses one that is not a function', async () => {
-    const onRegister = async () => {}
-    expect((await boot({ onRegister })).onRegister).toBe(onRegister)
-    expect((await boot()).onRegister).toBeNull()
-    await expect(boot({ onRegister: 'profile' })).rejects.toThrow('start({ onRegister }): expected a function')
+  it('decorates onUserCreated as given, null without one, and refuses one that is not a function', async () => {
+    const onUserCreated = async () => {}
+    expect((await boot({ onUserCreated })).onUserCreated).toBe(onUserCreated)
+    expect((await boot()).onUserCreated).toBeNull()
+    await expect(boot({ onUserCreated: 'profile' })).rejects.toThrow('start({ onUserCreated }): expected a function')
   })
 
   it('keeps an injected manager over its default', async () => {

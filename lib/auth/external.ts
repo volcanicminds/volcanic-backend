@@ -9,6 +9,7 @@ import type {
 } from '../../types/global.js'
 import type { ResolvedProvider } from './providers.js'
 import { mayLogIn, systemUserMayLogIn, toSubject } from './subjects.js'
+import { createUserWith } from '../util/userCreation.js'
 
 //
 // Who an identity from a provider is here: the resolution a return from an IdP goes
@@ -130,17 +131,23 @@ export async function resolveExternal(ctx: AuthContext, provider: ResolvedProvid
     if ((jit.roles ?? []).includes(admin)) return refused('just-in-time roles include the admin role')
     const users = ctx.managers.userManager
     if (await users.retrieveUserByEmail(ctx.handle, email)) return refused('an account with this address exists and is not linked')
-    const created = await users.createUser(ctx.handle, {
-      email,
-      // A password nobody knows and nobody is shown: the column is required, the login is the IdP's.
-      password: randomBytes(32).toString('base64url'),
-      // The provider verified the address, which is what confirming it here would prove.
-      confirmed: true,
-      // Under `approval` the account waits for an administrator; the link is made now, so the
-      // first login after the approval goes through it.
-      approved: mode !== 'approval',
-      roles: [...(jit.roles ?? [])]
-    })
+    const created = await createUserWith(
+      ctx.onUserCreated,
+      users,
+      ctx.handle,
+      {
+        email,
+        // A password nobody knows and nobody is shown: the column is required, the login is the IdP's.
+        password: randomBytes(32).toString('base64url'),
+        // The provider verified the address, which is what confirming it here would prove.
+        confirmed: true,
+        // Under `approval` the account waits for an administrator; the link is made now, so the
+        // first login after the approval goes through it.
+        approved: mode !== 'approval',
+        roles: [...(jit.roles ?? [])]
+      },
+      'provider'
+    )
     await links.createLink(ctx.handle, { ...key, subjectId: String(created.externalId), emailAtLink: email })
     if (mode === 'approval') return waiting(String(created.externalId), 'account.pending', 'the provisioned account awaits approval')
     const subject = await usable(ctx, created)

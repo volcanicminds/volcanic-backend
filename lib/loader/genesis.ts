@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import type { ControlHandle, DataHandle, DataProvider } from '../../types/global.js'
 import { includesRole, isFounder } from '../util/authz.js'
 import { isTenancyEnabled } from '../util/tenancy.js'
+import { createUserWith } from '../util/userCreation.js'
 
 // Random credential for a generated founder. base64url is alphanumeric; the suffix
 // satisfies any upper/lower/digit/symbol policy. Printed once; rotate after first login.
@@ -126,16 +127,22 @@ export async function ensureGenesisAdmin(server: FastifyInstance, opts: GenesisO
 
   const envPassword = process.env.ADMIN_PASSWORD
   const password = envPassword || generatePassword()
-  const created = await um.createUser(ctx, {
-    email,
-    username: email,
-    password,
-    roles: [adminCode],
-    // The first identity on an empty container is the sovereign one, and from here on the
-    // question "is this the founder?" is answered by this column and never by the
-    // environment.
-    isFounder: !(await founderExists(um, ctx))
-  })
+  const created = await createUserWith(
+    server.onUserCreated,
+    um,
+    ctx,
+    {
+      email,
+      username: email,
+      password,
+      roles: [adminCode],
+      // The first identity on an empty container is the sovereign one, and from here on the
+      // question "is this the founder?" is answered by this column and never by the
+      // environment.
+      isFounder: !(await founderExists(um, ctx))
+    },
+    'genesis'
+  )
   await um.userConfirmation(ctx, created)
   if (!envPassword) {
     // The generated secret goes to stdout only — never through the structured logger,

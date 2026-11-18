@@ -33,10 +33,12 @@ function fakeManager(overrides: any = {}) {
       seen(ctx)
       return overrides.existing ?? null
     },
-    createUser: async (ctx: any, data: any) => {
+    createUser: async (ctx: any, data: any, created?: any) => {
       seen(ctx)
       calls.created = data
-      return { id: 'new-id', ...data }
+      const row = { id: 'new-id', ...data }
+      if (created) await created('tx', row)
+      return row
     },
     userConfirmation: async (ctx: any, u: any) => {
       seen(ctx)
@@ -95,6 +97,15 @@ describe('loader/genesis — ensureGenesisAdmin', () => {
     expect(um.calls.created.email).toBe('founder@x.com')
     expect(um.calls.created.roles).toEqual(['admin'])
     expect(um.calls.confirmed).toBeTruthy()
+  })
+
+  it("runs the project's onUserCreated on the founder it creates, as genesis and with no fields", async () => {
+    process.env.ADMIN_EMAIL = 'founder@x.com'
+    process.env.ADMIN_PASSWORD = 'Given-pw-123'
+    const calls: any[] = []
+    const server = { ...serverWith(fakeManager({ existing: null })), onUserCreated: async (tx: any, user: any, context: any) => void calls.push({ tx, user, ...context }) }
+    await ensureGenesisAdmin(server as any)
+    expect(calls).toEqual([{ tx: 'tx', user: expect.objectContaining({ email: 'founder@x.com' }), origin: 'genesis', fields: {} }])
   })
 
   it('promotes an existing non-admin founder', async () => {

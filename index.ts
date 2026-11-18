@@ -66,7 +66,7 @@ import type {
   SessionManagement,
   SettingManagement,
   SystemUserManagement,
-  OnRegister,
+  OnUserCreated,
   TenantLifecycle,
   TenantManagement,
   TokenManagement,
@@ -241,8 +241,8 @@ export interface StartOptions {
   authenticators?: readonly Authenticator[]
   /** The packages that follow a tenant's life: created, exported, destroyed with it. */
   tenantLifecycles?: readonly TenantLifecycle[]
-  /** The project's part in a self-registration, in the transaction that creates the user. */
-  onRegister?: OnRegister
+  /** The project's part in the creation of every user, in the transaction that creates it. */
+  onUserCreated?: OnUserCreated
   [key: string]: unknown
 }
 
@@ -422,13 +422,13 @@ const start = async (decorators: StartOptions = {}) => {
 
   // `authenticators` is not a manager and is not decorated: it feeds the registry, which is.
   // `tenantLifecycles` is not a manager either: it is checked here and decorated as a list, and
-  // `onRegister` as a function or null.
+  // `onUserCreated` as a function or null.
   // An `undefined` value keeps the default: `{ ...layer, challengeDeliveryManager: maybe() }` must not
   // replace a Null Object with nothing, which every caller asks `isImplemented()` of.
-  const { authenticators, tenantLifecycles, onRegister, ...given } = decorators
+  const { authenticators, tenantLifecycles, onUserCreated, ...given } = decorators
   const lifecycles = tenantLifecyclesOf(tenantLifecycles)
-  if (onRegister !== undefined && typeof onRegister !== 'function') {
-    throw new Error('start({ onRegister }): expected a function (tx, user, fields)')
+  if (onUserCreated !== undefined && typeof onUserCreated !== 'function') {
+    throw new Error('start({ onUserCreated }): expected a function (tx, user, { origin, fields })')
   }
   const injected = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined))
 
@@ -463,7 +463,7 @@ const start = async (decorators: StartOptions = {}) => {
   const authRegistry = buildAuthenticatorRegistry(authenticators ?? [])
   server.decorate('authRegistry', authRegistry)
   server.decorate('tenantLifecycles', lifecycles)
-  server.decorate('onRegister', onRegister ?? null)
+  server.decorate('onUserCreated', onUserCreated ?? null)
 
   // After the injection, because a project may bring its own managers and methods: a flow this
   // build cannot run, or a policy that demands a second factor it cannot issue, is a
@@ -687,7 +687,8 @@ export type {
   Tenant,
   TenantPlace,
   TenantLifecycle,
-  OnRegister,
+  OnUserCreated,
+  UserOrigin,
   PackageProfile,
   ExportedArtifact,
   JobRun,

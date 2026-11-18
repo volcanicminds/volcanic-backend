@@ -5,6 +5,8 @@ import { includesRole, isFounder } from '../../../util/authz.js'
 import { dataContext } from '../../../util/tenancy.js'
 import { recordTenantAccess } from '../../../util/accessLog.js'
 import { httpError } from '../../../util/httpError.js'
+import { createUserWith, projectFields } from '../../../util/userCreation.js'
+import { userBodySchema } from '../../../schemas/user.js'
 
 const forbidden = (reply: FastifyReply, message: string) =>
   reply.status(403).send({ statusCode: 403, error: 'Forbidden', message })
@@ -55,7 +57,14 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   // createUser already persists and returns the saved entity, so do NOT re-save via
   // entity.User.save() — that active-record call always targets the global/public
   // connection and would both double-write and break tenant isolation.
-  const user = await req.server['userManager'].createUser(dataContext(req), data)
+  const user = await createUserWith(
+    req.server.onUserCreated,
+    req.server['userManager'],
+    dataContext(req),
+    data,
+    'admin',
+    req.server.onUserCreated ? projectFields(req.server, 'userBodySchema', userBodySchema.properties, data) : {}
+  )
   if (!user) {
     return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'User not creatable' })
   }

@@ -92,6 +92,7 @@ function planeOf(req: FastifyRequest, reply: FastifyReply, plane: AuthPlane): Fl
     limits: global.authFlows.limits,
     registry: req.server.authRegistry,
     managers: managersOf(req),
+    onUserCreated: req.server.onUserCreated ?? null,
     ip: req.ip ?? null,
     userAgent: userAgentOf(req),
     provider: (key: string) =>
