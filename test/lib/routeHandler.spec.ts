@@ -2,9 +2,11 @@
 import { expect } from 'expect'
 import Fastify from 'fastify'
 import fs from 'fs'
+import { registerHooks } from 'module'
 import os from 'os'
 import path from 'path'
 import { Writable } from 'stream'
+import { pathToFileURL } from 'url'
 import { controllerHandler } from '../../lib/loader/router.js'
 
 //
@@ -75,5 +77,45 @@ describe('loader/router: controllerHandler', () => {
     const { res } = await serve('missing')
     expect(res.statusCode).toBe(500)
     expect(res.body).toBe('Invalid handler method probe.missing')
+  })
+
+  // Node caches the module anyway, so the only trace of a per-request import() is the loader
+  // resolving the specifier again: the resolve hook sees every call.
+  it('imports the controller module once, not on every request', async () => {
+    const target = pathToFileURL(controller + '.js').href
+    let resolves = 0
+    const hooks = registerHooks({
+      resolve(specifier, context, next) {
+        if (specifier === target) resolves++
+        return next(specifier, context)
+      }
+    })
+    try {
+      const server = Fastify()
+      server.get('/probe', controllerHandler(controller, 'syncReturnValue', 'probe.syncReturnValue'))
+      await server.ready()
+      for (let i = 0; i < 3; i++) {
+        expect((await server.inject({ method: 'GET', url: '/probe' })).statusCode).toBe(200)
+      }
+      await server.close()
+    } finally {
+      hooks.deregister()
+    }
+    expect(resolves).toBe(1)
+  })
+
+  it('tries a failed import again on the next request', async () => {
+    const late = path.join(dir, 'late')
+    const server = Fastify()
+    server.get('/late', controllerHandler(late, 'syncReturnValue', 'late.syncReturnValue'))
+    await server.ready()
+    const missing = await server.inject({ method: 'GET', url: '/late' })
+    expect(missing.statusCode).toBe(500)
+    expect(missing.body).toBe('Invalid handler module late.syncReturnValue')
+    fs.writeFileSync(late + '.js', 'export function syncReturnValue() { return { ok: true } }')
+    const found = await server.inject({ method: 'GET', url: '/late' })
+    await server.close()
+    expect(found.statusCode).toBe(200)
+    expect(found.json()).toEqual({ ok: true })
   })
 })

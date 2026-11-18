@@ -442,25 +442,36 @@ async function load(): Promise<ConfiguredRoute[]> {
   return validRoutes
 }
 
-export function controllerHandler(file: string, func: string, handler: string) {
-  return async function (req: FastifyRequest, reply: FastifyReply) {
-    let module
+async function importController(file: string): Promise<any> {
+  // A bare path and a file URL are two module keys for the same file: the loader
+  // would compile the handler (and everything it imports) a second time, with its
+  // own module-level state. The URL form is also the only one Windows accepts.
+  try {
+    return await import(pathToFileURL(file + '.js').href)
+  } catch {
     try {
-      // A bare path and a file URL are two module keys for the same file: the loader
-      // would compile the handler (and everything it imports) a second time, with its
-      // own module-level state. The URL form is also the only one Windows accepts.
+      return await import(pathToFileURL(file + '.ts').href)
+    } catch {
+      return await import(pathToFileURL(file).href)
+    }
+  }
+}
+
+export function controllerHandler(file: string, func: string, handler: string) {
+  // The module is imported on the first request and kept. Node caches it either way, but every
+  // import() still pays the URL conversion and the loader's resolution, a large share of the CPU
+  // of a route that does no I/O. A failed import is not kept, so the next request tries again.
+  // The namespace is kept rather than the function, so a reassigned export is still seen.
+  let module: any = null
+
+  return async function (req: FastifyRequest, reply: FastifyReply) {
+    if (!module) {
       try {
-        module = await import(pathToFileURL(file + '.js').href)
-      } catch {
-        try {
-          module = await import(pathToFileURL(file + '.ts').href)
-        } catch {
-          module = await import(pathToFileURL(file).href)
-        }
+        module = await importController(file)
+      } catch (err) {
+        if (log.e) log.error(`Cannot load module ${file}: ${err}`)
+        return reply.code(500).send(`Invalid handler module ${handler}`)
       }
-    } catch (err) {
-      if (log.e) log.error(`Cannot load module ${file}: ${err}`)
-      return reply.code(500).send(`Invalid handler module ${handler}`)
     }
 
     if (!module || typeof module[func] !== 'function') {
