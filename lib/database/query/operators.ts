@@ -10,15 +10,32 @@ import { queryError } from './errors.js'
 // URL, and never of an environment variable: the same URL returns the same results on every
 // server.
 //
+// Each operator works in two steps, so that a list query can keep its statement (index.ts):
+// `bind` validates and coerces the raw value, and raises every error a condition can raise;
+// `render` writes the SQL from the bound shape alone, with `arg(i)` standing for the i-th value.
+// Whatever `render` writes differently must show in the `variant`, because two conditions with
+// the same operator and variant share a statement.
+//
 export interface OperatorContext {
   column: Column
   /** The raw string from the query string, already checked for emptiness. */
   raw: string
 }
 
+export interface Bound {
+  variant: string
+  values: unknown[]
+  /** True when `render` binds the values with the column's encoder, `arg(i, column)`. */
+  typed: boolean
+}
+
+/** The i-th bound value, typed by `column` when given (the column's encoder runs on it). */
+export type Arg = (index: number, column?: Column) => SQL
+
 export interface Operator {
   name: string
-  build(ctx: OperatorContext): SQL
+  bind(ctx: OperatorContext): Bound
+  render(column: Column, variant: string, arg: Arg): SQL
 }
 
 const LIKE_ESCAPE = /[\\%_]/g
@@ -73,11 +90,13 @@ const boolValue = (ctx: OperatorContext): boolean => {
   throw queryError('QUERY_INVALID_VALUE', `'${ctx.column.name}' with this operator takes true or false`)
 }
 
-// --- text matching --------------------------------------------------------------------
-const likeSensitive = (ctx: OperatorContext, pattern: string): SQL =>
-  sql`${ctx.column} like ${pattern} escape '\\'`
+const one = (value: unknown): Bound => ({ variant: '', values: [value], typed: false })
+const flag = (ctx: OperatorContext): Bound => ({ variant: String(boolValue(ctx)), values: [], typed: false })
+const indices = (count: number) => Array.from({ length: count }, (_, i) => i)
 
-const likeInsensitive = (ctx: OperatorContext, pattern: string): SQL => sql`${ctx.column} ilike ${pattern} escape '\\'`
+// --- text matching --------------------------------------------------------------------
+const likeSensitive = (column: Column, pattern: SQL): SQL => sql`${column} like ${pattern} escape '\\'`
+const likeInsensitive = (column: Column, pattern: SQL): SQL => sql`${column} ilike ${pattern} escape '\\'`
 
 const patterns = {
   contains: (v: string) => `%${escapeLike(v)}%`,
@@ -91,9 +110,9 @@ type PatternKind = keyof typeof patterns
 function textOperator(name: string, kind: PatternKind, insensitive: boolean, negated: boolean): Operator {
   return {
     name,
-    build(ctx) {
-      const pattern = patterns[kind](ctx.raw)
-      const condition = insensitive ? likeInsensitive(ctx, pattern) : likeSensitive(ctx, pattern)
+    bind: (ctx) => one(patterns[kind](ctx.raw)),
+    render(column, _variant, arg) {
+      const condition = insensitive ? likeInsensitive(column, arg(0)) : likeSensitive(column, arg(0))
       return negated ? (not(condition) as SQL) : condition
     }
   }
@@ -102,41 +121,82 @@ function textOperator(name: string, kind: PatternKind, insensitive: boolean, neg
 // --- array and json operators ---------------------------------------------------------
 // A JS array interpolated into `sql` becomes a list, `($1, $2)`, which no cast turns into an
 // array: the values go as ONE parameter, which the driver sends as an array literal.
-const textArray = (raw: string): SQL => sql`${sql.param(raw.split(','))}::text[]`
-
 const arrayOperator = (name: string, operator: string): Operator => ({
   name,
-  build: (ctx) => sql`${ctx.column} ${sql.raw(operator)} ${textArray(ctx.raw)}`
+  bind: (ctx) => one(ctx.raw.split(',')),
+  render: (column, _variant, arg) => sql`${column} ${sql.raw(operator)} ${arg(0)}::text[]`
 })
 
 const jsonKeyOperator = (name: string, operator: string, many: boolean): Operator => ({
   name,
-  build: (ctx) =>
-    many
-      ? sql`${ctx.column} ${sql.raw(operator)} ${textArray(ctx.raw)}`
-      : sql`${ctx.column} ${sql.raw(operator)} ${ctx.raw}`
+  bind: (ctx) => one(many ? ctx.raw.split(',') : ctx.raw),
+  render: (column, _variant, arg) =>
+    many ? sql`${column} ${sql.raw(operator)} ${arg(0)}::text[]` : sql`${column} ${sql.raw(operator)} ${arg(0)}`
+})
+
+const comparison = (name: string, compare: (column: Column, value: SQL) => SQL): Operator => ({
+  name,
+  bind: (ctx) => ({ variant: '', values: [coerce(ctx.column, ctx.raw)], typed: true }),
+  render: (column, _variant, arg) => compare(column, arg(0, column))
+})
+
+/** A list: its length is the variant, since `in ($1, $2)` and `in ($1, $2, $3)` are two statements. */
+const membership = (name: string, negated: boolean): Operator => ({
+  name,
+  bind: (ctx) => {
+    const values = list(ctx)
+    return { variant: String(values.length), values, typed: true }
+  },
+  render: (column, variant, arg) => {
+    const args = indices(Number(variant)).map((i) => arg(i, column))
+    return (negated ? notInArray(column, args) : inArray(column, args)) as SQL
+  }
+})
+
+/** The range separator is `..`: with `:` an ISO timestamp would split the condition apart. */
+const range = (name: string, negated: boolean): Operator => ({
+  name,
+  bind: (ctx) => {
+    const parts = ctx.raw.split('..')
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      throw queryError('QUERY_INVALID_RANGE', `'${ctx.column.name}' takes a range written as from..to`)
+    }
+    return { variant: '', values: [coerce(ctx.column, parts[0]), coerce(ctx.column, parts[1])], typed: true }
+  },
+  render: (column, _variant, arg) => {
+    const condition = between(column, arg(0, column), arg(1, column))
+    return (negated ? not(condition) : condition) as SQL
+  }
 })
 
 export const OPERATORS: Record<string, Operator> = {
   // null and empty
-  null: { name: 'null', build: (ctx) => (boolValue(ctx) ? isNull(ctx.column) : isNotNull(ctx.column)) },
-  empty: { name: 'empty', build: (ctx) => (boolValue(ctx) ? eq(ctx.column, '' as never) : ne(ctx.column, '' as never)) },
+  null: { name: 'null', bind: flag, render: (column, variant) => (variant === 'true' ? isNull(column) : isNotNull(column)) },
+  empty: {
+    name: 'empty',
+    bind: flag,
+    render: (column, variant) => (variant === 'true' ? eq(column, '' as never) : ne(column, '' as never))
+  },
 
   // equality and set membership
-  eq: { name: 'eq', build: (ctx) => eq(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  neq: { name: 'neq', build: (ctx) => ne(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  eqi: { name: 'eqi', build: (ctx) => likeInsensitive(ctx, escapeLike(ctx.raw)) },
-  neqi: { name: 'neqi', build: (ctx) => not(likeInsensitive(ctx, escapeLike(ctx.raw))) as SQL },
-  in: { name: 'in', build: (ctx) => inArray(ctx.column, list(ctx) as never[]) },
-  nin: { name: 'nin', build: (ctx) => notInArray(ctx.column, list(ctx) as never[]) },
+  eq: comparison('eq', (column, value) => eq(column, value)),
+  neq: comparison('neq', (column, value) => ne(column, value)),
+  eqi: { name: 'eqi', bind: (ctx) => one(escapeLike(ctx.raw)), render: (column, _variant, arg) => likeInsensitive(column, arg(0)) },
+  neqi: {
+    name: 'neqi',
+    bind: (ctx) => one(escapeLike(ctx.raw)),
+    render: (column, _variant, arg) => not(likeInsensitive(column, arg(0))) as SQL
+  },
+  in: membership('in', false),
+  nin: membership('nin', true),
 
   // comparison
-  gt: { name: 'gt', build: (ctx) => gt(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  ge: { name: 'ge', build: (ctx) => gte(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  lt: { name: 'lt', build: (ctx) => lt(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  le: { name: 'le', build: (ctx) => lte(ctx.column, coerce(ctx.column, ctx.raw) as never) },
-  between: { name: 'between', build: (ctx) => range(ctx, false) },
-  nbetween: { name: 'nbetween', build: (ctx) => range(ctx, true) },
+  gt: comparison('gt', (column, value) => gt(column, value)),
+  ge: comparison('ge', (column, value) => gte(column, value)),
+  lt: comparison('lt', (column, value) => lt(column, value)),
+  le: comparison('le', (column, value) => lte(column, value)),
+  between: range('between', false),
+  nbetween: range('nbetween', true),
 
   // arrays and json
   arrayContains: arrayOperator('arrayContains', '@>'),
@@ -145,16 +205,6 @@ export const OPERATORS: Record<string, Operator> = {
   jsonHasKey: jsonKeyOperator('jsonHasKey', '?', false),
   jsonHasAllKeys: jsonKeyOperator('jsonHasAllKeys', '?&', true),
   jsonHasAnyKey: jsonKeyOperator('jsonHasAnyKey', '?|', true)
-}
-
-/** The range separator is `..`: with `:` an ISO timestamp would split the condition apart. */
-function range(ctx: OperatorContext, negated: boolean): SQL {
-  const parts = ctx.raw.split('..')
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw queryError('QUERY_INVALID_RANGE', `'${ctx.column.name}' takes a range written as from..to`)
-  }
-  const condition = between(ctx.column, coerce(ctx.column, parts[0]) as never, coerce(ctx.column, parts[1]) as never)
-  return (negated ? not(condition) : condition) as SQL
 }
 
 // text operators, generated so the naming rule cannot drift from the catalogue

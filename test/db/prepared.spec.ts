@@ -13,6 +13,9 @@ import { PostgresProvider, openPglite } from '../../lib/database/adapters/postgr
 import { createMigrationRunner } from '../../lib/database/migrations/runner.js'
 import { createUserManager } from '../../lib/database/managers/user.js'
 import { migrationSets } from '../../db.js'
+import { executeFind, executeCount } from '../../lib/database/query/index.js'
+import { table } from '../../lib/database/managers/runtime.js'
+import { preparedCount } from '../../lib/database/prepared.js'
 
 process.env.MFA_DB_SECRET = process.env.MFA_DB_SECRET || 'unit-test-secret-please-change-32xyz'
 
@@ -65,6 +68,20 @@ function suite(engine: string, open: () => Promise<PostgresProvider>) {
         expect(await users.retrieveUserByExternalId(a, bruno.externalId)).toBeNull()
       }
     })
+
+    it('answers a list query from the container it was asked on, with the same shape on both', async () => {
+      await users.createUser(a, { email: 'carla@a.test', password: 'Acme-pw-123456' })
+      await users.createUser(b, { email: 'dario@b.test', password: 'Beta-pw-123456' })
+      const emails = async (handle: any, params: any) =>
+        (await executeFind<any>(handle, table(handle, 'user'), params)).records.map((r: any) => r.email).sort()
+
+      for (let round = 0; round < 8; round++) {
+        expect(await emails(a, { 'email:contains': '@' })).toEqual(['anna@a.test', 'carla@a.test'])
+        expect(await emails(b, { 'email:contains': '@' })).toEqual(['bruno@b.test', 'dario@b.test'])
+        expect(await emails(a, { 'email:contains': 'b.test' })).toEqual([])
+        expect(await executeCount(b, table(b, 'user'), { 'email:contains': 'a.test' })).toBe(0)
+      }
+    })
   })
 }
 
@@ -96,6 +113,17 @@ if (URL) {
       const anna: any = await users.createUser(a, { email: 'anna@a.test', password: 'Acme-pw-123456' })
       expect((await users.retrieveUserByExternalId(a, anna.externalId))?.email).toBe('anna@a.test')
 
+      const result: any = await a.db.execute(sql`select count(*)::int as n from pg_prepared_statements`)
+      expect(result.rows[0].n).toBe(0)
+    })
+
+    it('leaves no named statement on the connection after a kept list query', async () => {
+      const user = table(a, 'user')
+      for (const value of ['anna', 'bruno']) {
+        await executeFind(a, user, { 'email:contains': value, _pageSize: '1' })
+        await executeCount(a, user, { 'email:contains': value })
+      }
+      expect(preparedCount(a.db, user)).toBeGreaterThan(0)
       const result: any = await a.db.execute(sql`select count(*)::int as n from pg_prepared_statements`)
       expect(result.rows[0].n).toBe(0)
     })

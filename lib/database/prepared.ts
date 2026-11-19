@@ -14,12 +14,19 @@ import type { UntypedDb } from './managers/runtime.js'
 // back to the pool as it came out. The empty name keeps the parse on the server and
 // saves the builder in Node, which is where the measured cost was (docs/TUNING.md).
 //
-// Only where `scripts/bench-paths.ts` measured the gain: preparing every query would add
+// Only where a bench measured the gain: the lookups of `scripts/bench-paths.ts`, and the list
+// queries of `executeFind` and `executeCount` (docs/TUNING.md). Preparing every query would add
 // statements without adding speed.
+//
+// BOUNDED per table: the key of a list query is the shape the client wrote (its filters, sort
+// and fields), so a client can make up as many keys as it likes. Past the bound the statement
+// used least recently goes; it is rebuilt if its shape comes back.
 //
 
 type Prepared = { execute(values?: Record<string, unknown>): Promise<unknown[]> }
 type Buildable = { prepare(name: string): Prepared }
+
+export const MAX_STATEMENTS_PER_TABLE = 256
 
 const statements = new WeakMap<object, WeakMap<Table, Map<string, Prepared>>>()
 
@@ -30,11 +37,20 @@ export function prepared(db: object, table: Table, key: string, build: () => Bui
   let byKey = byTable.get(table)
   if (!byKey) byTable.set(table, (byKey = new Map()))
   let statement = byKey.get(key)
-  if (!statement) {
+  if (statement) {
+    // A Map iterates in insertion order: moving a hit to the end keeps the first key the oldest.
+    byKey.delete(key)
+  } else {
     statement = build().prepare('')
-    byKey.set(key, statement)
+    if (byKey.size >= MAX_STATEMENTS_PER_TABLE) byKey.delete(byKey.keys().next().value!)
   }
+  byKey.set(key, statement)
   return statement
+}
+
+/** How many statements are kept for this database and this table: for the tests of the bound. */
+export function preparedCount(db: object, table: Table): number {
+  return statements.get(db)?.get(table)?.size ?? 0
 }
 
 /** The first row of `table` whose `field` equals `value`, or null. */

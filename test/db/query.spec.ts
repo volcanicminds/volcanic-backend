@@ -13,6 +13,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { appTables as pgTables, registryTables } from '../../lib/database/schema/pg.js'
 import { parseQuery, executeFind, executeCount } from '../../lib/database/query/index.js'
 import { migratedPglite, type Migrated } from './fixtures/migrated.js'
+import { installTracing } from './fixtures/tracing.js'
 
 const pg = pgTables('public')
 const options = { allowWithDeleted: false }
@@ -107,29 +108,24 @@ describe('database/query (T-2.4)', () => {
 
     // A page shorter than the limit is the last one, so its total needs no second statement.
     it('counts only when the page cannot tell the total', async () => {
-      let statements = 0
-      const spy = {
-        db: {
-          select: (...args: any[]) => {
-            statements++
-            return handle.db.select(...args)
-          },
-          execute: (...args: any[]) => {
-            statements++
-            return handle.db.execute(...args)
-          }
+      // Statements are counted at the driver, one span each, so a kept statement counts too.
+      const tracing = installTracing()
+      try {
+        const run = async (params: any, o: any = {}) => {
+          tracing.reset()
+          const { headers } = await find(params, o)
+          return { total: headers['v-total'], statements: tracing.spans().length }
         }
+        for (const o of [{}, { extraWhere: sql`true` }]) {
+          expect(await run({ _pageSize: '2' }, o)).toEqual({ total: 3, statements: 2 }) // full page
+          expect(await run({ _pageSize: '2', _page: '2' }, o)).toEqual({ total: 3, statements: 1 }) // short last page
+          expect(await run({}, o)).toEqual({ total: 3, statements: 1 }) // short first page
+          expect(await run({ _pageSize: '2', _page: '5' }, o)).toEqual({ total: 3, statements: 2 }) // empty, past the end
+          expect(await run({ 'email:contains': 'nobody' }, o)).toEqual({ total: 0, statements: 1 }) // empty first page
+        }
+      } finally {
+        await tracing.uninstall()
       }
-      const run = async (params: any) => {
-        statements = 0
-        const { headers } = await executeFind(spy as any, pg.user, params, options)
-        return { total: headers['v-total'], statements }
-      }
-      expect(await run({ _pageSize: '2' })).toEqual({ total: 3, statements: 2 }) // full page
-      expect(await run({ _pageSize: '2', _page: '2' })).toEqual({ total: 3, statements: 1 }) // short last page
-      expect(await run({})).toEqual({ total: 3, statements: 1 }) // short first page
-      expect(await run({ _pageSize: '2', _page: '5' })).toEqual({ total: 3, statements: 2 }) // empty, past the end
-      expect(await run({ 'email:contains': 'nobody' })).toEqual({ total: 0, statements: 1 }) // empty first page
     })
 
     it('clamps an oversized page instead of trusting it', () => {

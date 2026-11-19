@@ -1720,6 +1720,7 @@ framework refuses a half-aliased query rather than guessing which conditions it 
 | condition defined and never used | 400 `QUERY_LOGIC_UNUSED_ALIAS` |
 | `_logic` present, some conditions unaliased | 400 `QUERY_LOGIC_MISSING_ALIAS` |
 | the same field twice with no alias | 400 `QUERY_DUPLICATE_CONDITION` |
+| one alias on two conditions | 400 `QUERY_DUPLICATE_CONDITION` |
 
 ## 3.5 Pagination and sorting
 
@@ -1727,6 +1728,11 @@ framework refuses a half-aliased query rather than guessing which conditions it 
 `v-total`, `v-count`, `v-page`, `v-pageSize`, `v-pageCount`. A client paginates from the headers,
 never from a count it computed. `v-total` costs a second statement only when the page is full or
 empty past the first: a shorter page is the last one, and its total is known from it.
+
+The page and the count keep their statement per query shape (fields, operators, list lengths,
+`_logic`, sort, projection), at most 256 per table, and bind the values of each request; every
+request is still validated in full. A query carrying `extraWhere` is never kept, so a
+restriction written per user cannot be served to another.
 
 `_sort=-createdAt,name` — descending on the first, ascending on the second. An unknown field
 answers 400 rather than being skipped, because a skipped sort field returns the right rows in the

@@ -225,6 +225,25 @@ concurrency 1 (0.52) and 52.1 to 28.5 at concurrency 10 (0.55), level with `tena
 `every-tenant` job reads each row again right before its run, because the fleet list can be
 minutes old: `test/lib/schedules.spec.ts` fails if it trusts the list.
 
+### List queries, 19 November 2026
+
+`executeFind` and `executeCount` keep their statements too, keyed by the shape of the query: the
+fields, operators, list lengths, `_logic` tree, `_withDeleted`, sort and projection, never a
+value. A client writes the shape, so the cache is bounded at 256 statements per table, least
+recently used out first. A query carrying `extraWhere` is never kept, and neither is one whose
+column encodes a value as SQL. `test/db/queryCache.spec.ts` and `test/db/prepared.spec.ts` hold
+the data, security and per-container cases.
+
+Measured over HTTP against v4 on the same machine (`kerkyra-2.local`, Node 26.10.0, Postgres 18
+in Docker, 100 rows): the sample's public list route and its authenticated one, autocannon at
+50 connections and pipelining 10, 15 seconds, 3 rounds alternating which version goes first.
+Median requests per second; v4 itself moved between the two runs, so the ratio is the figure.
+
+| Route | v4, before | v5, before | v5 / v4 | v4, after | v5, after | v5 / v4 |
+|---|---|---|---|---|---|---|
+| public list | 3198 | 3238 | 1.01 | 3536 | 4236 | 1.20 |
+| authenticated list | 2200 | 2500 | 1.14 | 2467 | 3001 | 1.22 |
+
 ## The whole request: the HTTP bench
 
 ```sh

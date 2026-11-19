@@ -66,7 +66,9 @@ field[:operator][alias]=value
 Omitting the operator means `:eq`: `?status=active` is `?status:eq=active`.
 
 **Repeating a field with the same operator and no alias** responds 400. It is ambiguous, and v4
-silently kept the last one.
+silently kept the last one. **Giving one alias to two conditions** responds 400 too
+(`QUERY_DUPLICATE_CONDITION`): `_logic` resolves an alias to one condition, and the other would
+vanish from the query.
 
 ---
 
@@ -299,3 +301,10 @@ Two explicit accessors exist for code that must not guess: `req.queryData()` and
    fall back to any more.
 5. The test suite runs the battery on PGlite: the rows a query returns, and the 400 with the
    right `code` when it is refused.
+6. A list query keeps its statement per shape: the fields, operators, list lengths, `_logic`
+   tree, `_withDeleted`, sort and projection, never a value. Each operator validates and
+   coerces in `bind`, so a kept shape still checks every request in full, and writes its SQL in
+   `render` from the shape alone. A query with `extraWhere` is never kept: the shape cannot tell
+   one caller's restriction from another's. Neither is a value its column encodes as SQL. At
+   most 256 statements per table, least recently used out first (`docs/TUNING.md`).
+   `test/db/queryCache.spec.ts` holds the data and security cases.
