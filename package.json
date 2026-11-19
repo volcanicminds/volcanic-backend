@@ -127,7 +127,7 @@
     "bcrypt": "^6.0.0",
     "drizzle-orm": "^0.45.2",
     "openid-client": "^6.8.8",
-    "pg": "^8.13.0"
+    "pg": "^8.23.0"
   },
   "peerDependenciesMeta": {
     "drizzle-orm": {
@@ -185,7 +185,7 @@
     "mocha": "^12.0.3",
     "monocart-coverage-reports": "^2.13.0",
     "openid-client": "^6.8.8",
-    "pg": "^8.13.0",
+    "pg": "^8.23.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
