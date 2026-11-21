@@ -6,7 +6,7 @@
 > implementation, the task is not done. If something here turns out to be wrong **in practice**,
 > stop, report it, and fix this document first.
 
-The framework owns fourteen tables. Nine live **inside every tenant container** (schema or dedicated
+The framework owns sixteen tables. Eleven live **inside every tenant container** (schema or dedicated
 database), and the control plane carries them too, for its own identities. Five live
 **only in the control plane**. A consumer adds its own tables to either side; the framework never
 touches them.
@@ -23,6 +23,7 @@ touches them.
 | `external_identity` | every container | identities at a provider linked to a subject |
 | `access_log` | every container | the access log: logins, factors, logouts, revocations |
 | `governance_log` | every container | on the control plane what the operators did to the platform, kept after the tenant is gone; in a tenant's container the acts on its integration tokens. The database refuses to rewrite it |
+| `notice_seen` | every container | which administrators' notice each reader has marked seen |
 | `tenant` | control plane only | the tenant registry |
 | `system_user` | control plane only | people who administer the platform |
 | `impersonation` | control plane only | audit of impersonation sessions |
@@ -374,6 +375,26 @@ it names, which is also why no column carries a foreign key.
 
 Never a value written to the registry, a password, a client secret, a bearer or an error message,
 which may quote a connection string: a failure keeps its code.
+
+### 2.11 `notice_seen`
+
+Which of the administrators' notices each reader has marked seen (docs/API_V5.md §5.2). The
+notices themselves are never stored: the packages registered as `noticeSources` compute them at
+every read, and this table keeps only the reader's marks. A row lives in the reader's container: a
+tenant user's in the tenant's container, an operator's in the control plane.
+
+A mark whose notice its source no longer serves is deleted on the reader's next read of that
+plane, so a notice that clears and comes back is unseen again. The marks of a source that failed
+on that read are kept: a source that could not answer says nothing about what cleared.
+
+| Column | Type | Null | Default | Notes |
+|---|---|:---:|---|---|
+| `notice` | text | no | | `<source>:<id>`: the name of the source, then the id it gave the notice |
+| `reader` | text | no | | the reader's `id`: a `user.id` or a `system_user.id`, as `scope` says |
+| `scope` | text | no | `tenant` | `tenant` for a `user`, `system` for a `system_user`, so an id of one table never reads the marks of the other, as for `session.scope` |
+| `seen_at` | timestamp | no | now | the first mark: marking the same notice again keeps it |
+
+**Primary key**: `(notice, reader, scope)`. No foreign key to `user` or `system_user`.
 
 ---
 

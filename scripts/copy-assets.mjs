@@ -4,6 +4,7 @@
 // under dist/ at runtime. Without this the published package ships with an
 // empty i18n catalog and every translation falls back to its key.
 import { cpSync, existsSync } from 'node:fs'
+import path from 'node:path'
 
 const assets = [
   ['lib/locales', 'dist/lib/locales'],
@@ -25,7 +26,9 @@ const assets = [
 
 for (const [from, to] of assets) {
   if (existsSync(from)) {
-    cpSync(from, to, { recursive: true })
+    // Hidden entries (a tool's `.claude`, `.DS_Store`) are no asset, and inside a migrations
+    // `meta` folder drizzle-kit would read them as snapshots.
+    cpSync(from, to, { recursive: true, filter: (src) => !path.basename(src).startsWith('.') })
     console.log(`copy-assets: ${from} -> ${to}`)
   }
 }

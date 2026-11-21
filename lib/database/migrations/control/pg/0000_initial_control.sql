@@ -43,6 +43,14 @@ CREATE TABLE "migration" (
 	"applied_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "notice_seen" (
+	"notice" text NOT NULL,
+	"reader" text NOT NULL,
+	"scope" text DEFAULT 'tenant' NOT NULL,
+	"seen_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "notice_seen_notice_reader_scope_pk" PRIMARY KEY("notice","reader","scope")
+);
+--> statement-breakpoint
 CREATE TABLE "system_user" (
 	"id" text PRIMARY KEY NOT NULL,
 	"external_id" text NOT NULL,

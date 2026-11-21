@@ -19,3 +19,4 @@ export const externalIdentity = app.externalIdentity
 export const accessLog = app.accessLog
 export const governanceLog = app.governanceLog
 export const setting = app.setting
+export const noticeSeen = app.noticeSeen

@@ -1322,6 +1322,58 @@ A package that writes its own SQL instead of using the ORM reaches the container
 tenant database's pool, which the LRU and the idle sweep close: nothing taken from `raw` outlives
 the request or the job that borrowed the container.
 
+### What a package tells the administrators
+
+Next to `TenantLifecycle`, a package that has something to tell the administrators (a corpus
+waiting for triage, a model being retired) hands the framework a `NoticeSource`, also exported
+from `@volcanicminds/backend`. The framework knows no source: it asks each one when an
+administrator reads the notices, and keeps which ones that reader has seen (`notice_seen`, in the
+reader's container).
+
+```typescript
+type NoticePlane = 'tenant' | 'control'
+
+interface Notice {
+  id: string                       // stable for one occurrence, unique within the source; a new occurrence, a new id
+  kind: string                     // the console's dictionary key is notice.<source>.<kind>
+  level: 'info' | 'warning'
+  at?: string                      // full ISO instant of the occurrence, when it has one
+  data?: Record<string, unknown>   // JSON values the sentence interpolates; instants as full ISO strings
+}
+
+interface NoticeSource {
+  readonly name: string                     // letters, digits, '-' and '_', unique: it prefixes the ids
+  readonly planes: readonly NoticePlane[]   // 'tenant': GET /notices; 'control': GET /system/notices
+  notices(req: FastifyRequest, plane: NoticePlane): Promise<Notice[]>   // already filtered for the reader
+}
+```
+
+```typescript
+import type { NoticeSource } from '@volcanicminds/backend'
+
+const backupNotices = (): NoticeSource => ({
+  name: 'backup',
+  planes: ['control'],
+  async notices(req) {
+    const last = await lastBackupAt()                      // the package's own state
+    if (Date.now() - last.getTime() < 24 * 3600_000) return []
+    return [{ id: `late:${last.toISOString()}`, kind: 'late', level: 'warning', data: { since: last.toISOString() } }]
+  }
+})
+
+await startServer({ ...layer, tenantLifecycles: [ragLifecycle()], noticeSources: [backupNotices()] })
+```
+
+The server sends no text: the console composes the sentence from `notice.<source>.<kind>` and
+`data`. `notices` runs on every read of a plane the source declares, so it should be cheap, and it
+answers only what the reader of `req` may see (`req.user` on the tenant plane, `req.systemUser` on
+the control one): the framework filters nothing. A notice that clears is simply no longer
+returned; the reader's mark of it is then deleted, so the same id coming back pops up again, while
+a new occurrence takes a new id. A throw, or an answer outside the contract (no `id` or `kind`, an
+id twice, an unknown `level`, an `at` that is not an instant), fails that source alone: it is
+logged, named in `failed`, and its marks are kept. Names, planes and `notices()` are checked at
+boot, and the list is frozen. Routes and shapes: docs/API_V5.md §5.2.
+
 ## 2.9 The fleet migrator
 
 Tenant containers are migrated many times over, so they have their own command in the package's
@@ -1995,7 +2047,8 @@ export default [{ code: 'system:ingestor', name: 'Ingestor', description: 'feeds
 
 A declared name is a plain word (`[a-z][a-z0-9:-]*`) the framework does not reserve, or it is dropped at
 boot with an error; a control role naming a capability outside the catalogue is dropped too. A tenant
-route that requires a control capability is refused at boot. `global.systemCapabilities` holds the whole
+route that requires a control capability is refused at boot, except `manifest`, `governance-log` and
+`notices`, which both catalogues reserve, each for its own plane. `global.systemCapabilities` holds the whole
 catalogue.
 
 With tenants the platform has integration tokens of its own, at `/system/tokens`, for `system:admin` alone:
@@ -4281,14 +4334,14 @@ The decorator keys (all optional): `userManager`, `tokenManager`, `trackingManag
 `transferManager`, `tenantManager`, `systemUserManager`, `impersonationManager`,
 `destructionManager`, `sessionManager`, `authFlowManager`, `externalIdentityManager`,
 `identityProviderManager`, `challengeDeliveryManager`, `accessLogManager`, `governanceLogManager`,
-`settingManager`. Each maps 1:1 to an exported interface (`UserManagement`, `TokenManagement`,
+`settingManager`, `noticeManager`. Each maps 1:1 to an exported interface (`UserManagement`, `TokenManagement`,
 `TrackingManagement`, `MfaManagement`, `TransferManagement`, `TenantManagement`, `SystemUserManagement`,
 `ImpersonationManagement`, `DestructionManagement`, `SessionManagement`, `AuthFlowManagement`,
 `ExternalIdentityManagement`, `IdentityProviderManagement`, `ChallengeDeliveryManagement`,
-`AccessLogManagement`, `GovernanceLogManagement`, `SettingManagement`, all re-exported from
+`AccessLogManagement`, `GovernanceLogManagement`, `SettingManagement`, `NoticeManagement`, all re-exported from
 `@volcanicminds/backend`). The data layer's `start()` returns all
 of them except `mfaManager`, `transferManager` and `challengeDeliveryManager`, which come from the consumer.
-Three more keys are not managers: `authenticators`, the project's own login methods (Part 6.2), `tenantLifecycles`, the packages that follow a tenant's life (§2.8), and `onUserCreated`, the project's part in the creation of every user (§2.3). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
+Four more keys are not managers: `authenticators`, the project's own login methods (Part 6.2), `tenantLifecycles`, the packages that follow a tenant's life (§2.8), `noticeSources`, the packages that have notices for the administrators (§2.8), and `onUserCreated`, the project's part in the creation of every user (§2.3). `dataBaseManager` is **gone**: it existed to synchronise schemas and to
 resolve a consumer entity by name through `global.entity`, and neither is a thing v5 does.
 
 Two more keys the data layer's `start()` returns and the server carries: `provider` (how a request
@@ -4426,6 +4479,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | Token | `GET /token` · `/count` · `/:id` | `tokens` cap | (read)³ | `tokenManager` |
 | Token | `POST /token` · `PUT /token/:id` · `DELETE /token/:id` · `POST /token/:id/block` · `/:id/unblock` · `/:id/reissue` · `/:id/pairing-code` (fresh: create, update, unblock, reissue, pairing-code) · `POST /token/pair` (public, 10/min per IP; both opt-in with `options.tokenPairing.enabled`) | `tokens` cap⁵ | **yes** | `tokenManager` + `governanceLogManager` |
 | Governance log | `GET /governance-log` · `/count` (tenant plane, the `token.*` acts only) | `governance-log` cap | **yes** | `governanceLogManager` |
+| Notices | `GET /notices` · `POST /notices/seen` (tenant plane; a person only, 403 to a token) | `notices` cap | **yes** | `noticeManager` + the `noticeSources` (§2.8) |
 | Tenants | `GET /tenants` · `GET /tenants/:id` | `tenants:read` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants` · `PUT /tenants/:id` · `POST /tenants/:id/suspend` · `/restore` · `DELETE /tenants/:id` | `tenants` cap | **yes** | `tenantManager` |
 | Tenants | `POST /tenants/:id/exports` · `GET /tenants/:id/exports/:package` (fresh) · `POST /tenants/import` · `POST /tenants/:id/move` | `system:admin` only | **yes** | `provider.exportContainer` + `governanceLogManager` |
@@ -4438,6 +4492,7 @@ each becomes *functional* only when its backing manager is implemented (Part 10.
 | System | `GET /system/users` · `POST /system/users` · `PUT/DELETE /system/users/:id` · `/block` · `/unblock` · `/mfa/reset` (fresh: create, update, unblock, reset; a superuser alone grants `system:admin` or acts on one, else 403 `SUPERUSER_ONLY`) | `system-users` cap | **yes** | `systemUserManager` |
 | System | `GET /system/tokens` · `/count` · `/:id` · `POST /system/tokens` · `PUT/DELETE /system/tokens/:id` · `/block` · `/unblock` · `/reissue` (only with tenants; fresh: create, update, unblock, reissue) | `system:admin` only | **yes** | `tokenManager` + `governanceLogManager` |
 | System | `GET /system/manifest` (control plane, only with tenants) | `manifest` cap (control) | **yes** | — (schema only) |
+| System | `GET /system/notices` · `POST /system/notices/seen` (control plane, only with tenants; a person only) | `notices` cap (control) | **yes** | `noticeManager` + the `noticeSources` (§2.8) |
 | Admin | `GET /admin/manifest` (tenant plane) | `manifest` cap | **yes** | — (schema only) |
 
 `/tool/*` is **gone**, with `POST /tool/synchronize-schemas`: schemas are versioned migrations now,
@@ -4699,7 +4754,7 @@ must require authentication, or the boot refuses it.
 
 **Capabilities.** A role may declare `capabilities: string[]`; a route gates on one with `requireCapability: 'X'`
 (top-level, alongside/instead of `roles`). At **boot** the allowed set is resolved to `admin` ∪ {every role that
-declares `X`}; the request gate is unchanged. The framework reserves four capability names and gates its native
+declares `X`}; the request gate is unchanged. The framework reserves five capability names and gates its native
 surfaces with them:
 
 | Capability | Native routes | Grant it to a role to allow… |
@@ -4708,6 +4763,7 @@ surfaces with them:
 | `tokens` | `/token/*` | non-admin integration-token management |
 | `manifest` | `GET /admin/manifest` | loading the admin console without being admin |
 | `governance-log` | `GET /governance-log` · `/count` | reading what was done to the tenant's integration tokens |
+| `notices` | `GET /notices` · `POST /notices/seen` | reading the administrators' notices without being admin |
 
 Consumers coin their **own** capability names for their **own** routes. Capabilities live only on consumer roles
 (never on `admin`/`public`): `admin` already satisfies every capability via the append, and a capability on `public`

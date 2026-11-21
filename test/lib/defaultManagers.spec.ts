@@ -24,7 +24,8 @@ import {
   defaultIdentityProviderManager,
   defaultChallengeDeliveryManager,
   defaultAccessLogManager,
-  defaultSettingManager
+  defaultSettingManager,
+  defaultNoticeManager
 } from '../../lib/defaults/managers.js'
 
 ;(global as any).log = {}
@@ -45,7 +46,8 @@ const ALL: Array<[string, any]> = [
   ['identityProviderManager', defaultIdentityProviderManager],
   ['challengeDeliveryManager', defaultChallengeDeliveryManager],
   ['accessLogManager', defaultAccessLogManager],
-  ['settingManager', defaultSettingManager]
+  ['settingManager', defaultSettingManager],
+  ['noticeManager', defaultNoticeManager]
 ]
 
 describe('defaults/managers · booting without a data layer (T-9.5)', () => {
@@ -74,7 +76,8 @@ describe('defaults/managers · booting without a data layer (T-9.5)', () => {
       ['identityProviderManager', (defaultIdentityProviderManager as any).get({}, 't', 'k')],
       ['challengeDeliveryManager', (defaultChallengeDeliveryManager as any).deliver({})],
       ['accessLogManager', (defaultAccessLogManager as any).record({}, {})],
-      ['settingManager', (defaultSettingManager as any).get({}, 'k')]
+      ['settingManager', (defaultSettingManager as any).get({}, 'k')],
+      ['noticeManager', (defaultNoticeManager as any).seenOf({}, { id: 'u', scope: 'tenant' }, ['s:1'])]
     ]
 
     for (const [name, call] of calls) {

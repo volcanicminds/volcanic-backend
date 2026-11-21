@@ -850,3 +850,24 @@ container, read by its administrator; without tenants the control plane holds bo
 handle bound to it (docs/MANAGERS_V5.md §18). A custom `tenantManager`, `systemUserManager`,
 `impersonationManager`, `destructionManager`, `identityProviderManager` or `settingManager` is called
 with that handle and writes through it, or its write and the event no longer commit together.
+
+## 37. Notices for the administrators
+
+v4 had no way for a package to tell an administrator something. v5 has a channel: the packages
+given to `start({ noticeSources })` answer with notices as data, and the framework serves them at
+`GET /notices` on the tenant plane and `GET /system/notices` on the control one, with what each
+reader has already seen (docs/API_V5.md §5.2, llms.txt §2.8). The framework knows no source; with
+none registered both routes answer an empty list.
+
+**What a deployment has to do.**
+
+- **Apply the migrations**: the first migration of each set creates `notice_seen`
+  (docs/SCHEMA_V5.md §2.11). A build without a `noticeManager` answers both routes 404.
+- **Register the sources** it wants, `start({ ...layer, noticeSources: [...] })`. The list is
+  checked at boot: a name outside letters, digits, `-` and `_`, a name given
+  twice, a source without `notices()` or without planes stop the start.
+- **Grant `notices`** to whoever reads them besides `admin` and `system:admin`: `system:operator`
+  and `system:auditor` do not hold it.
+
+**What a custom manager has to do.** A custom `noticeManager` keeps the marks in the reader's
+container and the two scopes apart (docs/MANAGERS_V5.md §19).

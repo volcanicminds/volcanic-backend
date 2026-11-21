@@ -25,7 +25,7 @@ const dirOf = (set) => path.join(ROOT, 'lib/database/migrations', set, 'pg')
 // Tables of the platform. Nothing that describes the fleet belongs inside one of its members:
 // outside the customer's container goes only what you could publish.
 const CONTROL_ONLY = ['tenant', 'system_user', 'impersonation', 'destruction_request', 'identity_provider']
-const SHARED = ['user', 'token', 'change_log', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log', 'governance_log']
+const SHARED = ['user', 'token', 'change_log', 'migration', 'session', 'auth_flow', 'external_identity', 'access_log', 'governance_log', 'notice_seen']
 
 // The trigger that makes the governance log append-only. Written by hand, since
 // drizzle-kit does not generate triggers: a regenerated file would lose it without a word.
@@ -76,9 +76,15 @@ for (const set of SETS) {
   if (tables.has('governance_log') && !APPEND_ONLY.every((pattern) => pattern.test(all))) {
     problems.push(`${set} creates 'governance_log' without the trigger that refuses UPDATE, DELETE and TRUNCATE (F102)`)
   }
+  // 5. `meta` holds the journal and the snapshots alone: drizzle-kit reads every entry whose name
+  //    does not start with `_` as a snapshot, so a stray folder (a tool's `.claude`, a `.DS_Store`)
+  //    stops `db:generate` with EISDIR or a malformed snapshot.
+  const meta = path.join(dirOf(set), 'meta')
+  const stray = existsSync(meta) ? readdirSync(meta).filter((f) => f !== '_journal.json' && !/^\d{4}_snapshot\.json$/.test(f)) : []
+  if (stray.length) problems.push(`${set}/pg/meta holds ${stray.map((f) => `'${f}'`).join(', ')}, which drizzle-kit would read as a snapshot: remove it`)
 }
 
-// 5. No file name is reused across the two sets: it would make the order ambiguous.
+// 6. No file name is reused across the two sets: it would make the order ambiguous.
 const control = (files.control ?? []).map((f) => f.name)
 const shared = control.filter((n) => (files.tenant ?? []).some((f) => f.name === n))
 if (shared.length) problems.push(`${shared.join(', ')} is used by both sets, which makes the order ambiguous`)

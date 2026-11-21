@@ -278,6 +278,32 @@ export default {
         response: { 200: { type: 'number' } }
       }
     },
+    // The notices of the control plane for the operator who reads them, the twins of `/notices`.
+    {
+      method: 'GET',
+      path: '/notices',
+      requireCapability: 'notices',
+      handler: 'systemNotices.find',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Read the platform notices',
+        description: 'Every current notice of the control plane for the reader, seen or not, newest first, and the sources that failed',
+        response: { 200: { $ref: 'noticeListSchema#' } }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/notices/seen',
+      requireCapability: 'notices',
+      handler: 'systemNotices.seen',
+      middlewares: ['global.isAuthenticated'],
+      config: {
+        title: 'Mark platform notices seen',
+        description: 'Ids as `<source>:<id>`, 1 to 100; an id its source does not serve now is ignored',
+        body: { $ref: 'noticeSeenBodySchema#' },
+        response: { 204: { type: 'null' } }
+      }
+    },
     // Who may create an account in a tenant, for every tenant. Reading it is oversight,
     // writing it changes how every customer's users get in.
     {

@@ -786,3 +786,34 @@ The table refuses `UPDATE`, `DELETE` and `TRUNCATE` by itself, for every role (d
 it. **Without this manager** a build with tenants refuses every governed route with 503
 `GOVERNANCE_LOG_NOT_AVAILABLE`, every build refuses the token writes the same way, and
 `/system/governance-log` and `/governance-log` answer 404.
+
+## 19. `NoticeManagement` (new in v5)
+
+Which of the administrators' notices each reader has seen (docs/SCHEMA_V5.md §2.11, docs/API_V5.md
+§5.2). The notices come from the packages registered as `noticeSources`, never from this manager:
+it keeps only the marks, in the reader's container.
+
+```typescript
+interface NoticeReader {
+  id: string                    // a user.id or a system_user.id
+  scope: 'tenant' | 'system'    // which of the two tables the id comes from
+}
+
+interface NoticeManagement {
+  isImplemented(): boolean
+  /** The ones among `notices` the reader has marked seen. */
+  seenOf(ctx: DataHandle, reader: NoticeReader, notices: readonly string[]): Promise<string[]>
+  /** Marks them seen; one already marked keeps its first mark. */
+  markSeen(ctx: DataHandle, reader: NoticeReader, notices: readonly string[]): Promise<void>
+  /** Deletes the reader's marks of `sources` whose notice is not in `current`; answers how many. */
+  forgetCleared(ctx: DataHandle, reader: NoticeReader, sources: readonly string[], current: readonly string[]): Promise<number>
+}
+```
+
+A notice is named `<source>:<id>`. The core calls `forgetCleared` on every read with the sources
+that answered and the notices they serve now, then `seenOf` on those notices; `markSeen` gets only
+ids their source serves at that moment. A custom manager matches a source by the `<source>:` prefix
+as a literal, never as a `LIKE` pattern: `_` is a legal character of a source name and a wildcard
+of `LIKE`. It keeps the two scopes apart, so an id of one table never reads the marks of the other.
+**Without this manager** `/notices` and `/system/notices` answer 404: a notice that pops up at
+every login is noise, not a notice.

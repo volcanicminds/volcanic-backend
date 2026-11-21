@@ -1,4 +1,4 @@
-import { pgSchema, pgTable, text, boolean, integer, jsonb, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
+import { pgSchema, pgTable, text, boolean, integer, jsonb, timestamp, uniqueIndex, index, primaryKey } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { uuidv7 } from '../uuid.js'
 
@@ -366,7 +366,22 @@ export function appTables(schemaName: string) {
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
   })
 
-  return { user, token, changeLog, migration, session, authFlow, externalIdentity, accessLog, governanceLog, setting }
+  // Which notice each reader has seen (lib/util/notices.ts). `notice` is `<source>:<id>`, `reader`
+  // the reader's `id`. `scope` tells a `user` ('tenant') from a `system_user` ('system'): both
+  // kinds read in the control container of a deployment without tenants, as for `session.scope`.
+  // A row whose notice is no longer current is deleted on the reader's next read.
+  const noticeSeen = table(
+    'notice_seen',
+    {
+      notice: text('notice').notNull(),
+      reader: text('reader').notNull(),
+      scope: text('scope').notNull().default('tenant'),
+      seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow()
+    },
+    (t) => [primaryKey({ columns: [t.notice, t.reader, t.scope] })]
+  )
+
+  return { user, token, changeLog, migration, session, authFlow, externalIdentity, accessLog, governanceLog, setting, noticeSeen }
 }
 
 /** The registry and the platform's own identities. Control plane only, never in a container. */

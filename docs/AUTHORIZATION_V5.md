@@ -97,11 +97,16 @@ The tenant catalogue is unchanged: `manifest`, `users`, `tokens` (see
 with them, but a reader may: the RAG opens a context from `department`. Whoever holds `users`
 can therefore widen what a person reads there, as it can already change their roles.
 
-`manifest` and `governance-log` are the two names both catalogues reserve, each for its own plane.
-With the tenant catalogue `manifest` gates `GET /admin/manifest`, the manifest of a customer's
-console, and `governance-log` gates `GET /governance-log`, what was done to the tenant's integration
-tokens; with the control catalogue they gate `GET /system/manifest` and `GET /system/governance-log`.
-Each reads its own plane and no other. Every other control capability is refused on a tenant route
+`manifest`, `governance-log` and `notices` are the three names both catalogues reserve, each for
+its own plane. With the tenant catalogue `manifest` gates `GET /admin/manifest`, the manifest of a
+customer's console, `governance-log` gates `GET /governance-log`, what was done to the tenant's
+integration tokens, and `notices` gates `GET /notices` and `POST /notices/seen`, what the packages
+tell the tenant's administrators (docs/API_V5.md §5.2); with the control catalogue they gate
+`GET /system/manifest`, `GET /system/governance-log` and the `/system/notices` pair. Each reads its
+own plane and no other. `admin` and `system:admin` hold `notices` like every capability;
+`system:operator` and `system:auditor` do not, and a role of the consumer may be given it on
+either plane. A credential that holds it and is not a person, as an integration token, is refused
+with 403 by the notice routes: a notice has a reader. Every other control capability is refused on a tenant route
 at boot (`SHARED_CAPABILITIES`, `lib/loader/roles.ts`).
 
 The control catalogue is **new and reserved**:
@@ -117,6 +122,7 @@ The control catalogue is **new and reserved**:
 | `system-users` | manage platform identities, never a superuser (§3) | `/system/users/*` |
 | `access-log` | read the operators' access log, never a tenant's | `GET /system/access-log`, `GET /system/access-log/count` |
 | `governance-log` | read what the operators did to the platform | `GET /system/governance-log`, `GET /system/governance-log/count` |
+| `notices` | read the notices of the control plane and mark them seen | `GET /system/notices`, `POST /system/notices/seen` |
 
 `tenants:destroy` is deliberately **not** part of `tenants`: creating a tenant and destroying its
 data are not the same job, and an operator who can do the first must not automatically do the

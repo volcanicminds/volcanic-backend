@@ -189,6 +189,11 @@ La rotta degli upload (tus) risponde 401 `UNAUTHORIZED` salvo `isValid(req) === 
 26 è nei sei repository (qui `53befa8`). Tutto il ramo `v5` è alla `5.0.0` (tabella «Fuori
 piano»). Sample, admin e rag-sample girano sulla v5.
 
+Un pacchetto con avvisi per gli amministratori li registra con `start({ noticeSources })`; il
+backend li serve su `GET /notices` e `GET /system/notices`, filtrati per chi legge, e tiene in
+`notice_seen` chi ha visto cosa, nel contenitore di chi legge (F105, F108, T-21.1,
+`EVO_FASE_21.md`).
+
 ## Cosa resta aperto
 
 - **Pubblicazione su npm** di backend, tools e admin, su richiesta esplicita: `5.0.0` su
@@ -208,8 +213,9 @@ piano»). Sample, admin e rag-sample girano sulla v5.
   rag); dettaglio nella tabella «Fuori piano».
 - **Dipendenze**: le major di sviluppo (TypeScript 7, ESLint 10, `globals` 17, PGlite) non sono
   aggiornate; gli avvisi Dependabot su GitHub sono del branch di default `main`, che non si tocca.
-- **Versionamento delle API** e **canale degli avvisi per gli amministratori**: tabella «Fuori
-  piano».
+- **Versionamento delle API**: tabella «Fuori piano».
+- **Canale degli avvisi**: la prima fonte (il RAG, T-7.18 di `volcanic-rag/TASKS.md`) e la pagina
+  della console (T-21.2, `EVO_FASE_21.md`).
 - In rag, vettori, ricerca e ingestion sono T-11.3, T-11.6 e da T-8.2 a T-8.4 di
   `volcanic-rag/TASKS.md`.
 
@@ -356,4 +362,4 @@ documenti esistono e in che ordine si leggono.
 | Vulnerabilità delle dipendenze su `v5` | `[x]` | `npm audit` 0, anche di sviluppo. `expect` 30.5.2 sostituisce `micromatch` e `braces` (nessuna versione corretta di `braces` esiste) con `picomatch`; `mocha` 12.0.3 e `serialize-javascript` 7.1.2. Le due per cui npm propone solo un downgrade si chiudono con `overrides` in `package.json`: `esbuild` ^0.25.12 sotto `@esbuild-kit/core-utils` (`drizzle-kit`), `uuid` ^11.1.1 sotto `hyperid` (`autocannon`), che su Node 26 usa `crypto.randomUUID` e tiene `uuid` come ripiego. `db:generate` e `db:generate:tenant` rispondono «No schema changes»; check-all, build, 1088 prove con `DATABASE_URL`, banco multi-tenant 61. Gli avvisi Dependabot su GitHub sono del branch di default `main`, che non si tocca |
 | Aggiornamenti delle dipendenze prima della 5.0.0 | `[x]` | `npm update` dentro gli intervalli dichiarati (tra gli altri `fastify` 5.12.7, `@fastify/jwt` 10.2.4, `drizzle-orm` 0.45.4, `pg` 8.23.1) e `@types/node` 26. `@fastify/jwt` 10.2 scarta un `expiresIn: undefined` e rimette la durata di sessione sopra l'`exp` della riga: il bearer di un token macchina si firma con `jwt.sign` e opzioni proprie, e `test/lib/tokenApex.spec.ts` lo prova con un firmatario vero. Poi le major di runtime, una per commit e dopo il changelog: `@fastify/compress` 9, `@fastify/multipart` 10, `@fastify/rate-limit` 11, `@fastify/schedule` 7, `fastify-raw-body` 6, `dotenv` 18 (la riga «injected» va su stderr), `nanoid` 6, `toad-scheduler` 4. L'ultima porta croner 10: `0/10` è rifiutato e `?` vale `*`, scritto in `docs/MIGRATION_V4_V5.md` §20 e provato in `test/lib/schedules.spec.ts`. Nessuna suite esercitava compress, multipart, raw body e rate limit: provati a runtime con un banco fuori dal repo e sul server vero (health 200, 429 alla terza chiamata di una rotta di auth). Fuori: le major di sviluppo (TypeScript 7, ESLint 10, `globals` 17, PGlite). Un'espressione cron o un fuso che croner rifiuta si leggono al caricamento (`croner` diretto, stessa major di `toad-scheduler`): il job non si carica, il log lo nomina e il server parte, come dice `llms.txt`. Lo stesso per un job attivo con `scheduler` spento: non si carica e il log dice di accendere `scheduler: true` |
 | Versionamento delle API | `[ ]` | idea che nessun piano ha ancora preso |
-| Canale degli avvisi per gli amministratori | `[ ]` | specificato in `volcanic-rag/TASKS.md`, T-7.18. Il backend tiene chi ha visto quale avviso (`notice_seen`, nel tenant e nel piano di controllo) e una rotta che raccoglie gli avvisi delle fonti registrate, filtrati per chi legge; non conosce nessuna fonte, il RAG è la prima. Da disegnare: il contratto tra una fonte e il backend |
+| Canale degli avvisi per gli amministratori | `[~]` | preso dalla fase 21 (`EVO_FASE_21.md`): il canale del backend è fatto (T-21.1); restano la prima fonte, il RAG (T-7.18 di `volcanic-rag/TASKS.md`), e la pagina della console (T-21.2) |

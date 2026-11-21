@@ -15,7 +15,8 @@ import {
   IdentityProviderManagement,
   ChallengeDeliveryManagement,
   AccessLogManagement,
-  GovernanceLogManagement
+  GovernanceLogManagement,
+  NoticeManagement
 } from '../../types/global.js'
 
 //
@@ -108,6 +109,8 @@ const CHALLENGE_DELIVERY_METHODS = ['deliver'] as const
 
 const SETTING_METHODS = ['get', 'set', 'remove'] as const
 
+const NOTICE_METHODS = ['seenOf', 'markSeen', 'forgetCleared'] as const
+
 const ACCESS_LOG_METHODS = ['record', 'findQuery', 'countQuery', 'purgeBefore', 'purgeExpired'] as const
 
 const GOVERNANCE_LOG_METHODS = ['record', 'within', 'findQuery', 'countQuery'] as const
@@ -160,3 +163,6 @@ export const defaultGovernanceLogManager = notImplemented<GovernanceLogManagemen
 // Without a settings store every account-creation rule falls back to the deployment's own values: nothing
 // a tenant or an operator chose at runtime can be read, and nothing can be written.
 export const defaultSettingManager = notImplemented<SettingManagement>('settingManager', SETTING_METHODS)
+// Without a store of seen marks the notice routes answer 404: a notice that pops up at every login is
+// noise, not a notice.
+export const defaultNoticeManager = notImplemented<NoticeManagement>('noticeManager', NOTICE_METHODS)

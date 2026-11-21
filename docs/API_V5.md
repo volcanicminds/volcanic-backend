@@ -16,6 +16,7 @@
 | `/settings/*` | tenant | choices of the tenant's administrator, inside what the platform allows (§2.5) |
 | `/token/*` | tenant | machine credentials inside a tenant |
 | `/governance-log/*` | tenant | what was done to the tenant's integration tokens, read by its administrator (§4) |
+| `/notices/*` | tenant | what the packages tell the tenant's administrators, and which notices each has seen (§4, §5.2) |
 | `/exports/*` | tenant | the tenant administrator's copy of the tenant's data, mounted only with tenants (§4.1) |
 | `/health` | control | liveness |
 | `/admin/manifest` | tenant | description of the manageable API, for a customer's console |
@@ -23,6 +24,7 @@
 | `/system/auth/*` | control | authentication of platform administrators |
 | `/system/users/*` | control | management of platform administrators |
 | `/system/tokens/*` | control | machine credentials of the platform, managed by the superuser (§5) |
+| `/system/notices/*` | control | what the packages tell the platform's administrators, and which notices each has seen (§5.2) |
 | `/tenants/*` | control | the tenant registry and container life cycle |
 
 **`/tool/*` does not exist in v5.** Its only route, `POST /tool/synchronize-schemas`, rebuilt a
@@ -353,6 +355,16 @@ a token; the IP is truncated to /24 or /48, or absent with `ACCESS_LOG_IP=none`.
 | GET | `/access-log` | role `admin` | Magic Query over `id`, `occurredAt`, `scope`, `event`, `outcome`, `code`, `subjectId`, `methods`, `provider`, `flowId`, `sid`, `ip`; any other field is `QUERY_UNKNOWN_FIELD`. Only `scope: 'tenant'` rows, a condition the URL cannot relax. 404 `NOT_FOUND` in a build without the table |
 | GET | `/access-log/count` | role `admin` | |
 
+### `/notices` (tenant scope, new in v5)
+
+What the packages registered as `noticeSources` tell this tenant's administrators, each notice as
+data the console turns into a sentence (§5.2).
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/notices` | capability `notices` | every current notice of the tenant plane for the reader, seen or not, newest first, and the sources that failed: `{ notices, failed }` (§5.2) |
+| POST | `/notices/seen` | capability `notices` | body `{ ids }`, 1 to 100 ids as `<source>:<id>`; marks the ones served now and ignores the others. 204 |
+
 ### 4.1 `/exports` (tenant scope, new in v5)
 
 The tenant's administrator takes the tenant's data out, in the `client` profile and no other: the
@@ -415,6 +427,8 @@ Platform administrators authenticate on their own routes and receive a token car
 | GET | `/system/access-log/count` | capability `access-log` | |
 | GET | `/system/governance-log` | capability `governance-log`, granted to `system:auditor` | Magic Query over what the operators did to the platform (§5.1): `tenantId`, `action`, `actorId`, `actorKind`, `outcome`, `occurredAt`. A build without the governance log manager answers 404 `NOT_FOUND` |
 | GET | `/system/governance-log/count` | capability `governance-log` | |
+| GET | `/system/notices` | capability `notices` (control catalogue) | the twin of `GET /notices` on the control plane (§5.2) |
+| POST | `/system/notices/seen` | capability `notices` (control catalogue) | the twin of `POST /notices/seen` (§5.2). 204 |
 | GET | `/system/account-creation` | capability `tenants:read` | the rule for every tenant (§2.5): `allowed`, `default`, `from` (`control` or `deployment`) and the deployment's own rule |
 | PUT | `/system/account-creation` | capability `tenants` | body `{ allowed, default }`, the default inside the set; otherwise 400 `ACCOUNT_CREATION_INVALID` |
 | DELETE | `/system/account-creation` | capability `tenants` | back to the deployment's rule |
@@ -444,6 +458,57 @@ transaction reaches, write their intent first and do not start without it; their
 (`success` or `failure`, with `intentId` pointing at the intent) follows. A build with tenants and
 no governance log manager answers every one of these routes with 503
 `GOVERNANCE_LOG_NOT_AVAILABLE`, before anything is changed.
+
+### 5.2 The administrators' notices
+
+A package that has something to tell the administrators registers a `NoticeSource` with
+`start({ noticeSources })` (llms.txt §2.8), naming the planes it is asked on: `tenant`, read at
+`/notices`, `control`, read at `/system/notices`. The framework knows no source: it asks them,
+merges their answers and keeps which notices each reader has seen (docs/SCHEMA_V5.md §2.11). The
+server sends no text: a notice is a `kind` and its `data`, and the console composes the sentence
+from its dictionary key `notice.<source>.<kind>`, interpolating `data`. Like the rest of `/system`,
+the control pair is mounted only with tenants.
+
+`GET` asks every source registered on the plane, in parallel, and each answers with the notices
+current now for the reader of the request (`req.user` on the tenant plane, `req.systemUser` on the
+control one), already filtered by what that reader may see:
+
+```json
+{
+  "notices": [
+    { "source": "backup", "id": "backup:late:2026-11-21", "kind": "late", "level": "warning",
+      "at": "2026-11-21T09:30:00.000Z", "data": { "hours": 26 }, "seen": false },
+    { "source": "backup", "id": "backup:retention", "kind": "retention", "level": "info", "seen": true }
+  ],
+  "failed": ["mailer"]
+}
+```
+
+- `id` is `<source>:<id>`, the value `POST .../seen` takes back. `level` is `info` or `warning`;
+  `at`, the instant of the occurrence, and `data`, the JSON values the sentence interpolates, are
+  there only when the source gave them.
+- Newest `at` first; the notices without `at` come last, in the order their source gave them.
+- `seen` is true when the reader has marked that notice. On every read, the reader's marks of each
+  source that answered and whose notice that source no longer serves are deleted, so a notice that
+  clears and comes back is unseen again.
+- A source that throws, or answers something outside the contract (no `id` or `kind`, an `id`
+  given twice, an unknown `level`, an `at` that is not an instant, a `data` that is not an object),
+  is logged as a warning with its name and listed in `failed`; the other sources still answer, and
+  the reader's marks of the failed source are kept. Fields outside the contract are dropped.
+
+`POST .../seen` takes `{ ids }`: 1 to 100 strings of the form `<source>:<id>`, each at most 512
+characters; anything else is 400. It asks only the sources the ids name, keeps the ids those
+sources serve now and marks them for the reader; an id already cleared, of a source not registered
+on the plane, or of a source that fails is ignored, so a mark never waits for a notice that has not
+happened yet. Marking a notice again keeps its first mark. A valid body is answered 204, whether
+any id was kept or none.
+
+Both routes answer:
+
+| Status | When |
+|---|---|
+| 403 `FORBIDDEN` | the credential holds `notices` but is not a person, as an integration token: a notice has a reader, and a token has no marks to keep |
+| 404 `NOT_FOUND` | a build without a `noticeManager` (no table of marks to keep them in) |
 
 ---
 

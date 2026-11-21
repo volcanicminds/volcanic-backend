@@ -31,3 +31,4 @@ export const impersonation = registry.impersonation
 export const destructionRequest = registry.destructionRequest
 export const identityProvider = registry.identityProvider
 export const setting = app.setting
+export const noticeSeen = app.noticeSeen

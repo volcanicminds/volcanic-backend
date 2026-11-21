@@ -10,6 +10,7 @@ import { createLogger, requestLogger } from './lib/util/logger.js'
 import * as mark from './lib/util/mark.js'
 import { TranslatedError } from './lib/util/errors.js'
 import { tenantLifecyclesOf } from './lib/util/tenantLifecycle.js'
+import { noticeSourcesOf } from './lib/util/notices.js'
 import { warnExportCleanupOff } from './lib/util/tenantExport.js'
 import * as loaderPlugins from './lib/loader/plugins.js'
 import * as loaderRoles from './lib/loader/roles.js'
@@ -67,6 +68,8 @@ import type {
   SettingManagement,
   SystemUserManagement,
   OnUserCreated,
+  NoticeManagement,
+  NoticeSource,
   TenantLifecycle,
   TenantManagement,
   TokenManagement,
@@ -98,7 +101,8 @@ import {
   defaultChallengeDeliveryManager,
   defaultAccessLogManager,
   defaultGovernanceLogManager,
-  defaultSettingManager
+  defaultSettingManager,
+  defaultNoticeManager
 } from './lib/defaults/managers.js'
 import { buildAuthenticatorRegistry } from './lib/auth/registry.js'
 import { authFlowProblems, canImport, isImplemented, listsMethod, OIDC, OIDC_LIBRARY } from './lib/auth/validate.js'
@@ -238,9 +242,12 @@ export interface StartOptions {
   accessLogManager?: AccessLogManagement
   governanceLogManager?: GovernanceLogManagement
   settingManager?: SettingManagement
+  noticeManager?: NoticeManagement
   authenticators?: readonly Authenticator[]
   /** The packages that follow a tenant's life: created, exported, destroyed with it. */
   tenantLifecycles?: readonly TenantLifecycle[]
+  /** The packages that have notices for the administrators, asked at `/notices` and `/system/notices`. */
+  noticeSources?: readonly NoticeSource[]
   /** The project's part in the creation of every user, in the transaction that creates it. */
   onUserCreated?: OnUserCreated
   [key: string]: unknown
@@ -422,12 +429,13 @@ const start = async (decorators: StartOptions = {}) => {
   const closing = loaderSchedules.closingSignal(server)
 
   // `authenticators` is not a manager and is not decorated: it feeds the registry, which is.
-  // `tenantLifecycles` is not a manager either: it is checked here and decorated as a list, and
-  // `onUserCreated` as a function or null.
+  // `tenantLifecycles` and `noticeSources` are not managers either: each is checked here and
+  // decorated as a list, and `onUserCreated` as a function or null.
   // An `undefined` value keeps the default: `{ ...layer, challengeDeliveryManager: maybe() }` must not
   // replace a Null Object with nothing, which every caller asks `isImplemented()` of.
-  const { authenticators, tenantLifecycles, onUserCreated, ...given } = decorators
+  const { authenticators, tenantLifecycles, noticeSources, onUserCreated, ...given } = decorators
   const lifecycles = tenantLifecyclesOf(tenantLifecycles)
+  const sources = noticeSourcesOf(noticeSources)
   if (onUserCreated !== undefined && typeof onUserCreated !== 'function') {
     throw new Error('start({ onUserCreated }): expected a function (tx, user, { origin, fields })')
   }
@@ -452,6 +460,7 @@ const start = async (decorators: StartOptions = {}) => {
     accessLogManager: defaultAccessLogManager,
     governanceLogManager: defaultGovernanceLogManager,
     settingManager: defaultSettingManager,
+    noticeManager: defaultNoticeManager,
     ...injected
   }
 
@@ -464,6 +473,7 @@ const start = async (decorators: StartOptions = {}) => {
   const authRegistry = buildAuthenticatorRegistry(authenticators ?? [])
   server.decorate('authRegistry', authRegistry)
   server.decorate('tenantLifecycles', lifecycles)
+  server.decorate('noticeSources', sources)
   server.decorate('onUserCreated', onUserCreated ?? null)
 
   // After the injection, because a project may bring its own managers and methods: a flow this
@@ -688,6 +698,12 @@ export type {
   Tenant,
   TenantPlace,
   TenantLifecycle,
+  NoticePlane,
+  Notice,
+  NoticeSource,
+  ServedNotice,
+  NoticeReader,
+  NoticeManagement,
   OnUserCreated,
   UserOrigin,
   PackageProfile,

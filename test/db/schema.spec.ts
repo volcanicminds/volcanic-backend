@@ -66,8 +66,9 @@ describe('database/schema · the tables', () => {
     // belongs to, so it is part of what defines a container.
     // `authFlow`, `externalIdentity`, `accessLog` and `setting` for the same reason.
     // `governanceLog` too: each container keeps the acts on its own credentials.
+    // `noticeSeen` too: a reader's seen marks live where the reader lives.
     expect(Object.keys(pgApp).sort()).toEqual([
-      'accessLog', 'authFlow', 'changeLog', 'externalIdentity', 'governanceLog', 'migration', 'session', 'setting', 'token', 'user'
+      'accessLog', 'authFlow', 'changeLog', 'externalIdentity', 'governanceLog', 'migration', 'noticeSeen', 'session', 'setting', 'token', 'user'
     ])
     expect(Object.keys(pgReg).sort()).toEqual([
       'destructionRequest', 'identityProvider', 'impersonation', 'systemUser', 'tenant'

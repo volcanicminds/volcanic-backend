@@ -78,6 +78,7 @@ export type FrameworkSystemCapability =
   | 'system-users'
   | 'access-log'
   | 'governance-log'
+  | 'notices'
 
 /** A control capability: the framework's, or one declared in a `config/systemRoles.ts`. */
 export type SystemCapability = FrameworkSystemCapability | (string & {})
@@ -449,6 +450,74 @@ export interface ExportedArtifact {
   name: string
   path: string
   bytes: number
+}
+
+/** Where a notice source is asked: `/notices` on the tenant plane, `/system/notices` on the control one. */
+export type NoticePlane = 'tenant' | 'control'
+
+/**
+ * Something a package tells the administrators, as data and never as text: the console composes the
+ * sentence from its dictionary key `notice.<source>.<kind>`, interpolating `data`.
+ */
+export interface Notice {
+  /** Stable for one occurrence and unique within its source; a new occurrence gets a new id. */
+  id: string
+  kind: string
+  level: 'info' | 'warning'
+  /** The full ISO instant of the occurrence, when it has one. */
+  at?: string
+  /** JSON values the sentence interpolates; an instant as a full ISO string. */
+  data?: Record<string, unknown>
+}
+
+/**
+ * A package that has notices for the administrators, passed to `start({ noticeSources })`. Asked
+ * on every read of the notices of a plane it declares, so `notices` should be cheap.
+ */
+export interface NoticeSource {
+  /** Prefixes the ids of its notices (`<name>:<id>`): letters, digits, `-` and `_`, unique. */
+  readonly name: string
+  /** The planes it is asked on. */
+  readonly planes: readonly NoticePlane[]
+  /**
+   * The notices current now, already filtered for the reader of `req` (`req.user` on the tenant
+   * plane, `req.systemUser` on the control one). A throw is logged and the source named in
+   * `failed`; the other sources still answer.
+   */
+  notices(req: FastifyRequest, plane: NoticePlane): Promise<Notice[]>
+}
+
+/** A notice as `GET /notices` and `GET /system/notices` serve it: `id` is `<source>:<id>`. */
+export interface ServedNotice extends Notice {
+  source: string
+  seen: boolean
+}
+
+/**
+ * Whose seen marks, by the reader's `id`: a `user` (`tenant`) or a `system_user` (`system`). Both
+ * read in the control container of a deployment without tenants, where the control plane is read
+ * by the application's own users.
+ */
+export interface NoticeReader {
+  id: string
+  scope: 'tenant' | 'system'
+}
+
+/**
+ * Which notices each reader has seen, in the container of the reader. A notice is named
+ * `<source>:<id>`; the control container of a deployment without tenants holds both scopes.
+ */
+export interface NoticeManagement {
+  isImplemented(): boolean
+  /** The ones among `notices` the reader has marked seen. */
+  seenOf(ctx: DataHandle, reader: NoticeReader, notices: readonly string[]): Promise<string[]>
+  /** Marks them seen; one already marked keeps its first mark. */
+  markSeen(ctx: DataHandle, reader: NoticeReader, notices: readonly string[]): Promise<void>
+  /**
+   * Deletes the reader's marks of `sources` whose notice is not in `current`, so a notice that
+   * clears and comes back is unseen again. Answers how many were deleted.
+   */
+  forgetCleared(ctx: DataHandle, reader: NoticeReader, sources: readonly string[], current: readonly string[]): Promise<number>
 }
 
 export interface GeneralConfig {
@@ -1898,10 +1967,13 @@ declare module 'fastify' {
     accessLogManager: AccessLogManagement
     governanceLogManager: GovernanceLogManagement
     settingManager: SettingManagement
+    noticeManager: NoticeManagement
     /** Not a manager: the authenticators of both planes, built by `start()`. */
     authRegistry: AuthenticatorRegistry
     /** Not a manager: the packages that follow a tenant's life, in the order given to `start()`. */
     tenantLifecycles: readonly TenantLifecycle[]
+    /** Not a manager: the packages that have notices for the administrators, in the order given to `start()`. */
+    noticeSources: readonly NoticeSource[]
     /** Not a manager: the project's part in the creation of every user, null without one. */
     onUserCreated: OnUserCreated | null
   }
