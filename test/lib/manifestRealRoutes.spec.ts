@@ -183,4 +183,23 @@ describe('manifest · the framework own routes, through the loader', () => {
       expect(control(routes).resources.find((r: any) => r.name === 'accessLog')).toBeUndefined()
     })
   })
+
+  describe('the notices stay out of both manifests: the console draws them on a page of its own', () => {
+    // A route with no resource of its own lands among the top-level capabilities, so both are read.
+    const paths = (m: any) => [
+      ...m.resources.flatMap((r: any) => [r.path, ...r.capabilities.map((c: any) => c.path)]),
+      ...(m.capabilities ?? []).map((c: any) => c.path)
+    ]
+
+    it('leaves `/notices` out of the tenant manifest, through the file-level hint, while the route is served', async () => {
+      const routes = await routesOf('notices')
+      expect(routes.map((r: any) => `${r.method} ${r.path}`)).toEqual(['GET /notices', 'POST /notices/seen'])
+      const tenant = buildManifest({ routes, schemas: SCHEMAS, options: { plane: 'tenant', splitPlanes: true } })
+      expect(paths(tenant).filter((p: string) => p.includes('notices'))).toEqual([])
+    })
+
+    it('leaves `/system/notices` out of the platform manifest, through the per-route hint', () => {
+      expect(paths(manifest).filter((p: string) => p.includes('notices'))).toEqual([])
+    })
+  })
 })

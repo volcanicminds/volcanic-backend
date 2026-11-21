@@ -4728,6 +4728,11 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
   `config.manifest` keeps the manifest hints separate from the operational route config. `resource.name` maps the
   schemas to a canonical resource (e.g. path `users` → name `user`); without it the URL segment is used. The native
   `users` / `tenants` APIs ship such hints (resource `user` / `tenant`, group `system`).
+- **`manifest: { exclude: true }`** keeps a route out of the manifest: no resource, no capability, no menu entry.
+  For a route a console serves with a page of its own, or one no generic screen can draw. The route is still served
+  and still guarded by its roles; only the description leaves it out. File-level it covers every route of the file,
+  and a route sets `exclude: false` to come back. The notices (`/notices`, `/system/notices`) use it: the console
+  draws them on its own page.
 - **`global.routes`** holds the mounted routes (`ConfiguredRoute[]`) for introspection — populated by the router on
   every boot.
 - **Sensitive policy** (always applied): `password` is write-only (in create/update bodies, never in read/list);

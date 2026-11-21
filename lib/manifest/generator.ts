@@ -272,9 +272,10 @@ export function buildManifest(input: {
   // resolved `scope: 'control'` into `tenantContext: false`. Describing the other plane's routes
   // would hand a customer's users the platform's route map and role codes, and would draw
   // screens whose every call is refused with SCOPE_MISMATCH.
-  const described = options.splitPlanes
-    ? routes.filter((r) => (r.tenantContext === false ? 'control' : 'tenant') === plane)
-    : routes
+  // A route marked `exclude` is served but never described (ManifestHints.exclude).
+  const described = routes.filter(
+    (r) => r.exclude !== true && (!options.splitPlanes || (r.tenantContext === false ? 'control' : 'tenant') === plane)
+  )
 
   // group routes by the path their resource lives under: the first URL segment, or the longer
   // prefix a route declares

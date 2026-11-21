@@ -87,6 +87,17 @@ describe('manifest · resources and capabilities (T-9.5)', () => {
     expect(names).not.toContain('count')
   })
 
+  it('describes no route marked exclude: no resource, no capability', () => {
+    const m = build([
+      ...CRUD,
+      route({ method: 'POST', path: '/products/:id/archive', exclude: true }),
+      route({ method: 'GET', path: '/inbox', exclude: true }),
+      route({ method: 'POST', path: '/inbox/seen', exclude: true })
+    ])
+    expect(m.resources.map((r: any) => r.name)).toEqual(['products'])
+    expect(resourceOf(m).capabilities.map((c: any) => c.name)).not.toContain('archive')
+  })
+
   it('binds delete to the item path when both a row and a bulk delete exist', () => {
     // `DELETE /products` and `DELETE /products/:id` are two different buttons, and a console
     // that bound the row button to the collection path deletes everything.

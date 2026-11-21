@@ -11,7 +11,9 @@ export default {
     description: 'What the packages tell the administrators of this tenant',
     controller: 'controller',
     tags: ['notices'],
-    version: false
+    version: false,
+    // The console draws the notices on a page of its own, and the list is no list of rows.
+    manifest: { exclude: true }
   },
   routes: [
     {

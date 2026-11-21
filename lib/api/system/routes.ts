@@ -278,7 +278,8 @@ export default {
         response: { 200: { type: 'number' } }
       }
     },
-    // The notices of the control plane for the operator who reads them, the twins of `/notices`.
+    // The notices of the control plane for the operator who reads them, the twins of `/notices`,
+    // and like them out of the manifest: the console draws them on a page of its own.
     {
       method: 'GET',
       path: '/notices',
@@ -286,6 +287,7 @@ export default {
       handler: 'systemNotices.find',
       middlewares: ['global.isAuthenticated'],
       config: {
+        manifest: { exclude: true },
         title: 'Read the platform notices',
         description: 'Every current notice of the control plane for the reader, seen or not, newest first, and the sources that failed',
         response: { 200: { $ref: 'noticeListSchema#' } }
@@ -298,6 +300,7 @@ export default {
       handler: 'systemNotices.seen',
       middlewares: ['global.isAuthenticated'],
       config: {
+        manifest: { exclude: true },
         title: 'Mark platform notices seen',
         description: 'Ids as `<source>:<id>`, 1 to 100; an id its source does not serve now is ignored',
         body: { $ref: 'noticeSeenBodySchema#' },

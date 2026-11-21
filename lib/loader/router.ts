@@ -379,7 +379,8 @@ export function processRoute(
       resource: config?.manifest?.resource ?? defaultConfig?.manifest?.resource,
       // Per route only: an input hint describes one body, and a file-level default would lend it
       // to every other action of the file.
-      input: config?.manifest?.input
+      input: config?.manifest?.input,
+      exclude: config?.manifest?.exclude ?? defaultConfig?.manifest?.exclude
     }
   }
 

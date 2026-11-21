@@ -79,5 +79,8 @@
   e il pop-up, con la frase composta dai dizionari (`test/engine/notices.test.ts`, 10 test). Nel
   browser sul sample: il pop-up compare una volta, chiuderlo scrive il segno di visto sul server,
   dopo il ricaricamento non ricompare e la pagina conserva l'avviso.
-  **Resta**: il manifest genera una risorsa da `GET /notices`, che nella console compare come
-  seconda voce «Notices»; la prova su un secondo computer.
+  Le rotte degli avvisi stanno fuori dal manifest con `manifest: { exclude: true }`, così la
+  console non ne disegna una seconda voce: `test/lib/manifestRealRoutes.spec.ts` lo verifica su
+  entrambi i piani e fallisce se il router non passa l'opzione; il manifest del sample, generato
+  all'avvio, non ha più la risorsa `notices`.
+  **Resta**: la prova su un secondo computer.

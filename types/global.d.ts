@@ -130,6 +130,14 @@ export interface ManifestHints {
   group?: string // sidebar group hint
   resource?: ResourceHints // resource-level hints (name, titleField, …)
   input?: ActionInputHints // per route: what the body schema of a custom action cannot say
+  /**
+   * The route stays out of the manifest: no resource, no capability, no menu entry. For a route a
+   * console serves with a page of its own, or one no generic screen can draw (a response that is
+   * not a list of rows). It only hides the route from the description: the route is still served
+   * and still guarded by its roles. Set on a file's `config.manifest` it covers every route of the
+   * file, and a route can set `false` to come back.
+   */
+  exclude?: boolean
 }
 
 /**
@@ -707,6 +715,7 @@ export interface ConfiguredRoute {
   group?: string // structural hint (manifest)
   resource?: ResourceHints // structural hints (manifest)
   input?: ActionInputHints // action input hint (manifest), per route only
+  exclude?: boolean // structural hint (manifest): served, never described (ManifestHints.exclude)
   cache?: NormalizedRouteCache // per-route caching (normalized)
 }
 
