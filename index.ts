@@ -423,7 +423,7 @@ const start = async (decorators: StartOptions = {}) => {
   await addFastifyRouting(server)
   await addFastifySchedule(server)
 
-  const schedules = loaderSchedules.load()
+  const schedules = await loaderSchedules.load()
   warnExportCleanupOff()
   // Before `ready()` and `listen()`, the only moments Fastify accepts a hook.
   const closing = loaderSchedules.closingSignal(server)

@@ -195,23 +195,23 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
     ;(global as any).config = undefined
   })
 
-  it('loads a job that names a plane, and refuses the ones that do not', () => {
-    const jobs = load()
+  it('loads a job that names a plane, and refuses the ones that do not', async () => {
+    const jobs = await load()
     const names = jobs.map((j: any) => j.jobName).sort()
 
     // `plain` declares nothing and is kept: its plane is the control plane, by default.
-    expect(names).toEqual(['cron.job', 'good.job', 'pair.job:corpus', 'pair.job:shared', 'plain.job'])
+    expect(names).toEqual(['cron.job', 'good.job', 'pair.job:corpus', 'pair.job:shared', 'plain.job', 'shared.job'])
     expect(jobs.find((j: any) => j.jobName === 'good.job').schedule.concurrency).toBe(2)
     expect(jobs.find((j: any) => j.jobName === 'plain.job').schedule.scope).toBe('control')
   })
 
-  it('refuses at load a cron expression or a timezone the scheduler would refuse, naming the job', () => {
+  it('refuses at load a cron expression or a timezone the scheduler would refuse, naming the job', async () => {
     // Left to the scheduler, the refusal comes after listen() and stops the start.
     const previousLog = (global as any).log
     const errors: string[] = []
     ;(global as any).log = { e: true, error: (m: string) => errors.push(m) }
     try {
-      load()
+      await load()
     } finally {
       ;(global as any).log = previousLog
     }
@@ -221,13 +221,13 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
     expect(errors.some((m) => m.startsWith('* Job cron.job'))).toBe(false)
   })
 
-  it("loads each job of a file's `jobs` under its own name, checks each alone, and refuses a file exporting both forms", () => {
+  it("loads each job of a file's `jobs` under its own name, checks each alone, and refuses a file exporting both forms", async () => {
     const previousLog = (global as any).log
     const errors: string[] = []
     ;(global as any).log = { e: true, error: (m: string) => errors.push(m) }
     let jobs: any[] = []
     try {
-      jobs = load()
+      jobs = await load()
     } finally {
       ;(global as any).log = previousLog
     }
@@ -244,7 +244,7 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
     expect(jobs.some((j: any) => j.jobName.startsWith('both.job'))).toBe(false)
   })
 
-  it('loads no job while the scheduler is off, and says how to turn it on', () => {
+  it('loads no job while the scheduler is off, and says how to turn it on', async () => {
     // Left to the start, the first job is added to a scheduler that was never registered.
     const previousLog = (global as any).log
     const previousConfig = (global as any).config
@@ -253,7 +253,7 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
     ;(global as any).config = { options: { ...previousConfig.options, scheduler: false } }
     let jobs: any[] = []
     try {
-      jobs = load()
+      jobs = await load()
     } finally {
       ;(global as any).log = previousLog
       ;(global as any).config = previousConfig
@@ -261,6 +261,16 @@ describe('loader/schedules · what loads and what does not (T-3.4)', () => {
 
     expect(jobs).toEqual([])
     expect(errors).toContain('* Job plain.job: the scheduler is off: set `scheduler: true` in config/general.ts')
+  })
+
+  it('loads a job file as the routes load theirs: one instance of the modules it shares with the process', async () => {
+    // Loaded with `require` under tsx, the job file and what it imports would be a second copy: state
+    // a job writes (a tenant's model marked unavailable) would never reach the requests reading the first.
+    const jobs = await load()
+    const { state } = await import(path.join(FIXTURES, 'src', 'state.ts'))
+    const before = state.runs
+    await jobs.find((j: any) => j.jobName === 'shared.job').job()
+    expect(state.runs).toBe(before + 1)
   })
 })
 

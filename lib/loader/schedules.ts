@@ -6,7 +6,7 @@ import { CronJob, SimpleIntervalJob, Task, AsyncTask } from 'toad-scheduler'
 import { Cron } from 'croner'
 import { globSync } from 'glob'
 import path from 'path'
-import require from '../util/require.js'
+import { pathToFileURL } from 'url'
 import { isTenancyEnabled } from '../util/tenancy.js'
 import { activeTenant, lendTenant } from '../util/withTenant.js'
 
@@ -46,7 +46,7 @@ function cronRefusal(expression: string, timezone?: string): string | null {
   }
 }
 
-export function load(): any[] {
+export async function load(): Promise<any[]> {
   const patterns = normalizePatterns(['..', 'schedules', '*.job.{ts,js}'], ['src', 'schedules', '*.job.{ts,js}'])
   const jobs: any = []
 
@@ -73,26 +73,37 @@ export function load(): any[] {
   // A file carries one job, `job` with `schedule`, or several, `jobs` keyed by a name of their
   // own: work that needs more than one plane ships in one file, and a project mounting that file
   // cannot leave a part out. A file exporting both is refused, since which one runs would be a guess.
-  patterns.forEach((pattern) => {
+  // Imported as the routes are, never with `require`: under tsx a required file and what it imports
+  // are a second copy of those modules, and state a job writes would not reach the requests.
+  for (const pattern of patterns) {
     if (log.t) log.trace('Looking for ' + pattern)
-    globSync(pattern, { windowsPathsNoEscape: true }).forEach((f: string) => {
+    for (const f of globSync(pattern, { windowsPathsNoEscape: true })) {
       if (log.t) log.trace(`* Add job schedule from ${f}`)
 
       const fileName = path.basename(f, path.extname(f))
-      const { job, schedule, jobs: several } = require(f)
-      if (several === undefined) return admit(fileName, job, schedule)
+      const { job, schedule, jobs: several } = await import(pathToFileURL(path.resolve(f)).href)
+      if (several === undefined) {
+        admit(fileName, job, schedule)
+        continue
+      }
 
       const refuse = (why: string) => {
         if (log.e) log.error(`* Job ${fileName}: ${why}`)
       }
-      if (job !== undefined || schedule !== undefined) return refuse('exports `jobs` next to `job` or `schedule`')
-      if (!_.isPlainObject(several)) return refuse('`jobs` must be an object of `{ job, schedule }` by name')
+      if (job !== undefined || schedule !== undefined) {
+        refuse('exports `jobs` next to `job` or `schedule`')
+        continue
+      }
+      if (!_.isPlainObject(several)) {
+        refuse('`jobs` must be an object of `{ job, schedule }` by name')
+        continue
+      }
       for (const [key, entry] of Object.entries(several as Record<string, any>)) {
         if (!JOB_KEY.test(key)) refuse(`'${key}' in \`jobs\` is not a name: letters, digits, '-' and '_'`)
         else admit(`${fileName}:${key}`, entry?.job, entry?.schedule)
       }
-    })
-  })
+    }
+  }
 
   function admit(jobName: string, job: any, s: any) {
     let isLoadedAndEnabled = false

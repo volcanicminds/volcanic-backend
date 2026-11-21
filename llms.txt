@@ -3358,7 +3358,9 @@ The framework runs recurring tasks (reporting, cleanup) on `toad-scheduler`.
     }
     ```
 2.  Create jobs in `src/schedules/*.job.ts` (or `.job.js`). The file name without its extension is the job's
-    name in the logs and in `run.jobName`; a file carrying several jobs names each `<file>:<key>`.
+    name in the logs and in `run.jobName`; a file carrying several jobs names each `<file>:<key>`. Job files are
+    loaded with `import()`, as the routes are, so a job and a request share one instance of every module: state a
+    job writes in a module is what the requests read.
 
 ### Job structure
 
