@@ -169,8 +169,8 @@ di `lib/api/`, i 5 file di `lib/config/`, i 6 schemi di `lib/schemas/`,
 | B7 | La concorrenza è tappata dal pool | **CONFERMATA e quantificata**: il muro è `max_connections`, non la memoria | D-10, appendice A.3 |
 | B8 | Nessuna strategia contenitore | **CONFERMATA** | fase 4 |
 | B9 | Nessun piano di controllo separato | **CONFERMATA** | fase 3 |
-| B10 | Non c'è CI | **SMENTITA**: `.github/workflows/ci.yml` esiste ed è completa (lint, type-check, depcruise, build, publint, attw, test, pubblicazione al tag) | sezione 2 |
-| B11 | 13 voci di audit aperte | **PARZIALE**: le caselle aperte sono 13, ma **Q11 (niente CI) è obsoleta** e **S5 (niente rate limit su auth) è in gran parte chiusa**: le rotte di autenticazione dichiarano `rateLimit` (10 richieste per 60 s, configurabile). **Q12 è invece sottostimata**: 6 vulnerabilità in produzione, 5 alte | D-22 |
+| B10 | Non c'è CI | **SMENTITA**: `.github/workflows/ci.yml` esiste ed è completa (lint, type-check, depcruise, build, publint, attw, test, pubblicazione al tag); su GitHub è disattivata apposta, come CodeQL (`gh workflow list --all`: `disabled_manually`), quindi le verifiche girano solo in locale | sezione 2 |
+| B11 | 13 voci di audit aperte | **SMENTITA**: le 33 voci di `docs/AUDIT_TASKS_TODO.md` sono tutte chiuse con evidenza, comprese Q11 (CI), S5 (rate limit su autenticazione e MFA) e Q12 (vulnerabilità residue) | D-22 |
 | B12 | Un solo motore nei test | **CONFERMATA, ed è la scoperta più importante sul piano dei test**: PGlite non ha un pool, quindi l'intera classe D-01 è irraggiungibile | T-0.3 |
 | B13 | TypeORM confinato a 3 file fuori dal data layer | **CONFERMATA** | fase 5 |
 | B14 | Il data layer è circa il 24% del codice | **CONFERMATA**: 2.003 righe su 7.532 di `lib/`, cioè il 26,6% | fase 5 |
