@@ -18,11 +18,11 @@ export const systemUserSchema = {
     roles: { type: 'array', items: { type: 'string' } },
     blocked: { type: 'boolean' },
     blockedReason: { type: 'string' },
-    blockedAt: { type: 'string' },
+    blockedAt: { type: 'string', format: 'date-time' },
     mfaEnabled: { type: 'boolean' },
     version: { type: 'number' },
-    createdAt: { type: 'string' },
-    updatedAt: { type: 'string' }
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' }
   }
 }
 

@@ -127,8 +127,8 @@ export const tenantResponseSchema = {
     // Where a `moved` tenant went, as the operator wrote it; null for every other status.
     movedTo: { type: ['string', 'null'] },
     config: { type: 'object', additionalProperties: true },
-    createdAt: { type: 'string' },
-    updatedAt: { type: 'string' }
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' }
   }
 }
 

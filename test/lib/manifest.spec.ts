@@ -11,6 +11,7 @@
 // It reads `global.routes` and the registered JSON Schemas and touches no database, so it can
 // be exercised directly on the shapes the router produces.
 //
+import { readdirSync } from 'node:fs'
 import { expect } from 'expect'
 import { buildManifest, manifestI18n, tenancyOf } from '../../lib/manifest/generator.js'
 
@@ -539,5 +540,30 @@ describe('manifest · the languages a console offers, from options.manifest.i18n
     expect(() => manifestI18n({ defaultLocale: 'it', locales: [] })).toThrow(/non-empty list/)
     expect(() => manifestI18n({ defaultLocale: 'it', locales: ['it', ' en'] })).toThrow(/non-empty list/)
     expect(() => manifestI18n({ defaultLocale: 'it', locales: ['it', 'it'] })).toThrow(/listed twice/)
+  })
+})
+
+describe('manifest · instants are declared as instants', () => {
+  // A console formats a `datetime` field in the reader's locale and prints anything else as it
+  // came: an `...At` string without `format: 'date-time'` reaches the screen as a raw ISO string.
+  it("gives every `...At` string of the framework's schemas format 'date-time'", async () => {
+    const dir = new URL('../../lib/schemas/', import.meta.url)
+    const files = readdirSync(dir).filter((f) => f.endsWith('.ts'))
+    const missing: string[] = []
+    const walk = (node: any, path: string): void => {
+      if (!node || typeof node !== 'object') return
+      for (const [name, prop] of Object.entries<any>(node.properties ?? {})) {
+        const types = [prop?.type].flat()
+        if (/At$/.test(name) && types.includes('string') && prop.format !== 'date-time') missing.push(`${path}.${name}`)
+        walk(prop, `${path}.${name}`)
+      }
+      walk(node.items, `${path}[]`)
+    }
+    for (const file of files) {
+      const mod = await import(new URL(file, dir).href)
+      for (const [name, schema] of Object.entries(mod)) walk(schema, `${file}:${name}`)
+    }
+    expect(files.length).toBeGreaterThan(5)
+    expect(missing).toEqual([])
   })
 })

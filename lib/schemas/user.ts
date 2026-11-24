@@ -28,9 +28,9 @@ export const userBodySchema = {
     password: { type: 'string' },
     blocked: { type: 'boolean' },
     blockedReason: { type: 'string' },
-    blockedAt: { type: 'string' },
+    blockedAt: { type: 'string', format: 'date-time' },
     confirmed: { type: 'boolean' },
-    confirmedAt: { type: 'string' },
+    confirmedAt: { type: 'string', format: 'date-time' },
     roles: { type: 'array', items: { type: 'string' } },
     // Read by authorization policies, so set here under `users` and never by the person: not in
     // `currentUserBodySchema`. The whole map is replaced on update.
@@ -60,17 +60,17 @@ export const userSchema = {
     email: { type: 'string' },
     blocked: { type: 'boolean' },
     blockedReason: { type: 'string' },
-    blockedAt: { type: 'string' },
+    blockedAt: { type: 'string', format: 'date-time' },
     confirmed: { type: 'boolean' },
-    confirmedAt: { type: 'string' },
+    confirmedAt: { type: 'string', format: 'date-time' },
     // False while a self-created account waits for an administrator.
     approved: { type: 'boolean' },
-    approvedAt: { type: 'string' },
+    approvedAt: { type: 'string', format: 'date-time' },
     roles: { type: 'array', items: { type: 'string' } },
     attributes: { type: 'object', additionalProperties: { type: 'array', items: { type: 'string' } } },
-    createdAt: { type: 'string' },
+    createdAt: { type: 'string', format: 'date-time' },
     version: { type: 'number' },
-    updatedAt: { type: 'string' },
+    updatedAt: { type: 'string', format: 'date-time' },
     mfaEnabled: { type: 'boolean' }
   }
 }

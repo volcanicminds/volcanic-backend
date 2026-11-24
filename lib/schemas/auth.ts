@@ -271,7 +271,7 @@ export const authFlowPartialResponseSchema = {
   type: 'object',
   properties: {
     flow: { type: 'string', nullable: true },
-    expiresAt: { type: 'string' },
+    expiresAt: { type: 'string', format: 'date-time' },
     stage: {
       type: 'object',
       properties: {
@@ -287,8 +287,8 @@ export const authFlowPartialResponseSchema = {
                 properties: {
                   channel: { type: 'string' },
                   destination: { type: 'string' },
-                  expiresAt: { type: 'string' },
-                  resendAt: { type: 'string', nullable: true }
+                  expiresAt: { type: 'string', format: 'date-time' },
+                  resendAt: { type: 'string', format: 'date-time', nullable: true }
                 }
               },
               enrol: {},
