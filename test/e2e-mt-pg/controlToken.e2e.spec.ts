@@ -9,11 +9,16 @@
 // subject is looked up, on either plane: among the tokens with it, among the persons without it.
 // What the rows say is checked from outside, with plain `pg`.
 //
+import path from 'path'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { expect } from 'expect'
-import { loadAuthMode } from '../../lib/util/credential.js'
 import { setup, teardown, inject, app, systemToken, createTenant, login, staled, sql, bearer, ACME, SYSTEM } from './harness.js'
 
 const body = (res: any) => JSON.parse(res.body)
+// Mocha loads this file through tsx's require, while the app imports its hooks with import(): each
+// side holds its own copy of lib/util/credential.ts, and the hooks read the mode from theirs.
+const hooksCredential = (): Promise<typeof import('../../lib/util/credential.js')> =>
+  import(pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../lib/util/credential.ts')).href)
 const ACTS = ['token.created', 'token.updated', 'token.reissued', 'token.blocked', 'token.unblocked', 'token.deleted']
 
 for (const strategy of ['schema', 'container'] as const) {
@@ -298,6 +303,7 @@ for (const strategy of ['schema', 'container'] as const) {
     // is proven in test/lib/authChannels.spec.ts.
     it('in cookie mode takes the token from the header and no session from there', async () => {
       const machine = await issue({ name: 'cookie-mode', requiredRoles: ['system:prober'] })
+      const { loadAuthMode } = await hooksCredential()
       const saved = process.env.AUTH_MODE
       process.env.AUTH_MODE = 'COOKIE'
       loadAuthMode()
