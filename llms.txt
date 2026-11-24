@@ -4725,7 +4725,9 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
 - **Schema-only generation.** The manifest is derived from `global.routes` + the registered JSON Schemas
   (`server.getSchemas()`) — **never** from entity metadata, so the core stays decoupled from the data layer
   (enforced by `depcruise`). Consequence: relations are emitted "thin" (target only, no kind/foreign-key) and enums
-  only when declared in the schema; the rest is filled by admin-side overrides.
+  only when declared in the schema; the rest is filled by admin-side overrides. A list of strings goes out as an
+  `enum` with `multiple: true`, its options taken from `items.enum` when the items declare one and absent otherwise
+  (the console then takes values typed one by one); any other list or object is `json`.
 - **Structural hints** (optional, domain-only) live under `config.manifest` of a `routes.ts` (file-level, overridable
   per-route): `manifest: { group, resource: { name, titleField, subtitleField, globalSearch, sort } }`. `sort` names
   the fields a list sorts by when it is not a Magic Query collection (`[]` for none): every other field goes out
@@ -4737,7 +4739,7 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
   For a route a console serves with a page of its own, or one no generic screen can draw. The route is still served
   and still guarded by its roles; only the description leaves it out. File-level it covers every route of the file,
   and a route sets `exclude: false` to come back. The notices (`/notices`, `/system/notices`) use it: the console
-  draws them on its own page.
+  draws them on its own page. So does `/health`, a liveness probe with no rows to draw.
 - **`global.routes`** holds the mounted routes (`ConfiguredRoute[]`) for introspection — populated by the router on
   every boot.
 - **Sensitive policy** (always applied): `password` is write-only (in create/update bodies, never in read/list);

@@ -93,7 +93,7 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   }
   data.expiresAt = expiresAt
 
-  data.roles = planeRoles(req, data.requiredRoles)
+  data.roles = planeRoles(req, data.roles)
   if (grantsSovereignty(req, data.roles)) {
     return sovereignRefused(reply, isPlatformRoute(req) ? 'A token never carries system:admin' : 'Cannot assign the admin role to a token')
   }

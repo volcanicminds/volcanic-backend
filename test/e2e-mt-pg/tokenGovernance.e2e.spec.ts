@@ -138,7 +138,7 @@ for (const strategy of ['schema', 'container'] as const) {
     it('never lets a token or an impersonation give a credential, and lets both take one away', async () => {
       const fresh = as(acmeAdmin, ACME.slug)
       const target = body(await fresh('POST', '/token', { name: 'target', expiresAt: null }))
-      const machine = body(await fresh('POST', '/token', { name: 'machine', expiresAt: null, requiredRoles: [INTEGRATOR.code] }))
+      const machine = body(await fresh('POST', '/token', { name: 'machine', expiresAt: null, roles: [INTEGRATOR.code] }))
       expect(machine.roles).toContain(INTEGRATOR.code)
 
       const started = await inject({

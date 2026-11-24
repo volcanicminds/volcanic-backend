@@ -62,6 +62,8 @@ export interface FieldSpec {
   /** `false` on a field the list does not sort by, from the route's `resource.sort`; absent otherwise. */
   sortable?: boolean
   enum?: { value: string; label: string }[]
+  /** A list of strings: an `enum` holding several values, with or without a closed option set. */
+  multiple?: boolean
   validation?: Record<string, any>
 }
 export interface ResourceSpec {
@@ -192,9 +194,15 @@ function deref(schema: any, schemas: Record<string, any>, depth = 0): any {
   return schema
 }
 
+/** The item schema of a list of strings, the one array shape a console edits as values. */
+function stringItems(ps: any): any {
+  return ps?.type === 'array' && ps.items?.type === 'string' ? ps.items : undefined
+}
+
 function mapType(ps: any): FieldType {
   if (!ps) return 'string'
   if (Array.isArray(ps.enum) && ps.enum.length) return 'enum'
+  if (stringItems(ps)) return 'enum'
   switch (ps.type) {
     case 'integer':
       return 'integer'
@@ -460,8 +468,11 @@ function collectFields(
         const val = validationOf(ps)
         if (val) f.validation = val
       }
-      if (!f.enum && Array.isArray(ps.enum) && ps.enum.length) {
-        f.enum = ps.enum.map((v: any) => ({ value: String(v), label: `enum.${fname}.${v}` }))
+      const items = stringItems(ps)
+      if (items) f.multiple = true
+      const options = items ? items.enum : ps.enum
+      if (!f.enum && Array.isArray(options) && options.length) {
+        f.enum = options.map((v: any) => ({ value: String(v), label: `enum.${fname}.${v}` }))
       }
       if (required.includes(fname)) f.required = true
       if (side === 'read') f._read = true

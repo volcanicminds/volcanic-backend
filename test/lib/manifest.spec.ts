@@ -32,6 +32,9 @@ const productSchema = {
     site: { type: 'string', format: 'uri' },
     createdAt: { type: 'string', format: 'date-time' },
     meta: { type: 'object' },
+    labels: { type: 'array', items: { type: 'string' } },
+    channels: { type: 'array', items: { type: 'string', enum: ['mail', 'sms'] } },
+    points: { type: 'array', items: { type: 'number' } },
     // Never read, never listed, never on a form.
     mfaSecret: { type: 'string' },
     token: { type: 'string' },
@@ -139,6 +142,22 @@ describe('manifest · fields, and what never leaves the server (T-9.5)', () => {
     expect(type('id')).toBe('uuid')
     expect(type('createdAt')).toBe('datetime')
     expect(type('meta')).toBe('json')
+  })
+
+  it('describes a list of strings as an enum of several values, and other lists as json', () => {
+    const m = build()
+    expect(fieldOf(m, 'labels')).toMatchObject({ type: 'enum', multiple: true })
+    expect(fieldOf(m, 'labels').enum).toBeUndefined()
+    expect(fieldOf(m, 'channels')).toMatchObject({
+      type: 'enum',
+      multiple: true,
+      enum: [
+        { value: 'mail', label: 'enum.channels.mail' },
+        { value: 'sms', label: 'enum.channels.sms' }
+      ]
+    })
+    expect(fieldOf(m, 'points').type).toBe('json')
+    expect(fieldOf(m, 'points').multiple).toBeUndefined()
   })
 
   it('never emits a field that must not leave the server', () => {

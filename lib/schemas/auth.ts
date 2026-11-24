@@ -38,7 +38,6 @@ export const authLoginResponseSchema = {
   nullable: true,
   properties: {
     id: { type: 'string' },
-    _id: { type: 'string' },
     externalId: { type: 'string' },
     username: { type: 'string' },
     email: { type: 'string' },
@@ -114,7 +113,6 @@ export const authRegisterResponseSchema = {
   nullable: true,
   properties: {
     id: { type: 'string' },
-    _id: { type: 'string' },
     externalId: { type: 'string' },
     username: { type: 'string' },
     email: { type: 'string' },
@@ -181,7 +179,7 @@ export const authSessionsResponseSchema = {
   items: {
     type: 'object',
     properties: {
-      sid: { type: 'string' },
+      sid: { type: 'string', format: 'uuid' },
       current: { type: 'boolean' },
       createdAt: { type: 'string', format: 'date-time' },
       lastUsedAt: { type: 'string', format: 'date-time' },

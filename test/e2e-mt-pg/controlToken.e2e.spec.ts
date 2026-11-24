@@ -59,7 +59,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it('issues a token of the control plane to the superuser, in the control table, never with system:admin', async () => {
-      const machine = await issue({ name: 'sentinel', requiredRoles: ['system:prober', 'system:misnamed', 'admin'] })
+      const machine = await issue({ name: 'sentinel', roles: ['system:prober', 'system:misnamed', 'admin'] })
       // Only the system catalogue, and no `public` default.
       expect(machine.roles).toEqual(['system:prober'])
       const { iat: _iat, ...claims } = app().jwt.decode(machine.token) as any
@@ -68,7 +68,7 @@ for (const strategy of ['schema', 'container'] as const) {
       expect(rows).toEqual([{ id: machine.id, roles: ['system:prober'] }])
       expect(JSON.stringify(rows[0])).not.toContain(machine.token)
 
-      const sovereign = await as(system)('POST', '/system/tokens', { name: 'root', expiresAt: null, requiredRoles: ['system:admin'] })
+      const sovereign = await as(system)('POST', '/system/tokens', { name: 'root', expiresAt: null, roles: ['system:admin'] })
       expect([sovereign.statusCode, body(sovereign).code]).toEqual([403, 'TOKEN_ROLE_FORBIDDEN'])
       const promoted = await as(system)('PUT', `/system/tokens/${machine.id}`, { roles: ['system:admin'] })
       expect([promoted.statusCode, body(promoted).code]).toEqual([403, 'TOKEN_ROLE_FORBIDDEN'])
@@ -79,7 +79,7 @@ for (const strategy of ['schema', 'container'] as const) {
       // The fields that have routes of their own, which a body reaching the row whole would rewrite.
       const smuggled = { blocked: false, deletedAt: null, externalId: 'chosen', expiresAt: '2099-01-01T00:00:00.000Z' }
 
-      const machine = await issue({ name: 'labels', requiredRoles: ['system:prober'] })
+      const machine = await issue({ name: 'labels', roles: ['system:prober'] })
       expect((await as(system)('POST', `/system/tokens/${machine.id}/block`, { reason: 'paused' })).statusCode).toBe(200)
       const changed = await as(system)('PUT', `/system/tokens/${machine.id}`, {
         name: 'renamed',
@@ -100,7 +100,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it('lets a machine reach the control route its capability opens, and no other', async () => {
-      const machine = await issue({ name: 'prober', requiredRoles: ['system:prober'] })
+      const machine = await issue({ name: 'prober', roles: ['system:prober'] })
       const opened = await probe(bearer(machine.token))
       expect(opened.statusCode).toBe(200)
       expect(body(opened)).toEqual({ systemUser: null, token: machine.id })
@@ -112,7 +112,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it("refuses the platform's token inside a tenant, and a tenant's credential on the platform", async () => {
-      const machine = await issue({ name: 'outsider', requiredRoles: ['system:prober'] })
+      const machine = await issue({ name: 'outsider', roles: ['system:prober'] })
       const inside = await inject({ method: 'GET', url: '/probe/subject', headers: bearer(machine.token, ACME.slug) })
       expect([inside.statusCode, body(inside).code]).toEqual([403, 'SCOPE_MISMATCH'])
 
@@ -125,7 +125,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it('refuses a blocked, a removed or a reissued bearer from the next request', async () => {
-      const machine = await issue({ name: 'revocable', requiredRoles: ['system:prober'] })
+      const machine = await issue({ name: 'revocable', roles: ['system:prober'] })
       expect((await probe(bearer(machine.token))).statusCode).toBe(200)
 
       expect((await as(system)('POST', `/system/tokens/${machine.id}/block`, { reason: 'leaked' })).statusCode).toBe(200)
@@ -145,7 +145,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it('asks a session not confirmed lately to confirm before issuing, changing, reissuing or unblocking, never before blocking or removing', async () => {
-      const target = await issue({ name: 'guarded', requiredRoles: ['system:prober'] })
+      const target = await issue({ name: 'guarded', roles: ['system:prober'] })
       const stale = as(staled(system).token)
       const before = (await controlLog(ACTS)).length
       for (const [method, url, payload] of [
@@ -182,7 +182,7 @@ for (const strategy of ['schema', 'container'] as const) {
       expect(apex.n).toBe(1)
 
       // A token with the same capability lists and takes access away, and confirms nobody for the rest.
-      const machine = as((await issue({ name: 'steward', requiredRoles: ['system:steward'] })).token)
+      const machine = as((await issue({ name: 'steward', roles: ['system:steward'] })).token)
       expect((await machine('GET', '/system/users')).statusCode).toBe(200)
       for (const [method, url, payload] of [
         ['POST', '/system/users', { email: `machine-${strategy}@system.test`, password, roles: ['system:auditor'] }],
@@ -206,7 +206,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it("writes every act in the control plane's governance log, by its operator, and in no tenant's", async () => {
-      const machine = await issue({ name: 'audited', requiredRoles: ['system:prober'] })
+      const machine = await issue({ name: 'audited', roles: ['system:prober'] })
       const by = as(system)
       expect((await by('PUT', `/system/tokens/${machine.id}`, { name: 'audited-renamed' })).statusCode).toBe(200)
       expect((await by('POST', `/system/tokens/${machine.id}/reissue`)).statusCode).toBe(200)
@@ -223,7 +223,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it('names a control token as the author of what it does on the platform', async () => {
-      const machine = await issue({ name: 'provisioner', requiredRoles: ['system:operator'] })
+      const machine = await issue({ name: 'provisioner', roles: ['system:operator'] })
       const renamed = await as(machine.token)('PUT', `/tenants/${acme.id}`, { name: 'Acme by a machine' })
       expect(renamed.statusCode).toBe(200)
       const [row] = (await controlLog(['tenant.updated'])).filter((r: any) => r.tenant_id === acme.id).slice(-1)
@@ -231,7 +231,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it('looks a labelled credential up among the tokens alone and any other among the persons alone, on either plane', async () => {
-      const machine = await issue({ name: 'labelled', requiredRoles: ['system:prober'] })
+      const machine = await issue({ name: 'labelled', roles: ['system:prober'] })
       const sign = (claims: Record<string, unknown>) => bearer(app().jwt.sign(claims))
       // A session's subject is the person's external id.
       const admin = (app().jwt.decode(acmeAdmin) as any).sub
@@ -276,7 +276,7 @@ for (const strategy of ['schema', 'container'] as const) {
     })
 
     it('reads a token in one query, and never among the persons, in bearer mode', async () => {
-      const machine = await issue({ name: 'counted', requiredRoles: ['system:prober'] })
+      const machine = await issue({ name: 'counted', roles: ['system:prober'] })
       const reads = { token: 0, user: 0, systemUser: 0 }
       const spy = (manager: any, method: string, key: keyof typeof reads) => {
         const original = manager[method]
@@ -302,7 +302,7 @@ for (const strategy of ['schema', 'container'] as const) {
     // The app boots in bearer mode and registers no cookie reader, so a token planted in a cookie
     // is proven in test/lib/authChannels.spec.ts.
     it('in cookie mode takes the token from the header and no session from there', async () => {
-      const machine = await issue({ name: 'cookie-mode', requiredRoles: ['system:prober'] })
+      const machine = await issue({ name: 'cookie-mode', roles: ['system:prober'] })
       const { loadAuthMode } = await hooksCredential()
       const saved = process.env.AUTH_MODE
       process.env.AUTH_MODE = 'COOKIE'

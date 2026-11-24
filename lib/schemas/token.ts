@@ -8,7 +8,7 @@ export const tokenCreateBodySchema = {
     // `null` for a token that never expires: a machine credential without an expiry is a choice
     // the caller writes down, not a field it forgot (docs/API_V5.md §4).
     expiresAt: { type: 'string', format: 'date-time', nullable: true },
-    requiredRoles: { type: 'array', items: { type: 'string' } }
+    roles: { type: 'array', items: { type: 'string' } }
   }
 }
 
@@ -29,7 +29,6 @@ export const tokenSchema = {
   nullable: true,
   properties: {
     id: { type: 'string' },
-    _id: { type: 'string' },
     externalId: { type: 'string' },
     name: { type: 'string' },
     description: { type: 'string' },

@@ -17,7 +17,7 @@ export const accessLogSchema = {
     methods: { type: 'array', items: { type: 'string' }, nullable: true },
     provider: { type: 'string', nullable: true },
     flowId: { type: 'string', nullable: true },
-    sid: { type: 'string', nullable: true },
+    sid: { type: 'string', format: 'uuid', nullable: true },
     ip: { type: 'string', nullable: true }
   }
 }

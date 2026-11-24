@@ -198,7 +198,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
   it('refuses a name-less token, before writing anything', async () => {
     ;(global as any).config = { options: {} }
-    const { req, calls, reply } = request({ data: { requiredRoles: ['editor'] } })
+    const { req, calls, reply } = request({ data: { roles: ['editor'] } })
 
     await create(req, reply)
     expect(reply.sent.code).toBe(404)
@@ -207,7 +207,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
   it('always carries `public`, so a token is never a credential with no roles at all', async () => {
     ;(global as any).config = { options: {} }
-    const { req, calls, reply } = request({ data: { name: 'ci', expiresAt: null, requiredRoles: ['editor'] } })
+    const { req, calls, reply } = request({ data: { name: 'ci', expiresAt: null, roles: ['editor'] } })
 
     await create(req, reply)
     expect(calls[0][1].roles).toEqual(['editor', 'public'])
@@ -217,7 +217,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     // A role that resolves to nothing at authorization time is worse than an absent one: it
     // reads like a grant and behaves like a gap.
     ;(global as any).config = { options: {} }
-    const { req, calls, reply } = request({ data: { name: 'ci', expiresAt: null, requiredRoles: ['editor', 'invented'] } })
+    const { req, calls, reply } = request({ data: { name: 'ci', expiresAt: null, roles: ['editor', 'invented'] } })
 
     await create(req, reply)
     expect(calls[0][1].roles).toEqual(['editor', 'public'])
@@ -225,7 +225,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
   it('refuses to mint an admin token for a caller who is not an admin', async () => {
     ;(global as any).config = { options: { allow_multiple_admin: true } }
-    const { req, calls, reply } = request({ callerRoles: ['editor'], data: { name: 'ci', expiresAt: null, requiredRoles: ['admin'] } })
+    const { req, calls, reply } = request({ callerRoles: ['editor'], data: { name: 'ci', expiresAt: null, roles: ['admin'] } })
 
     await create(req, reply)
     expect(reply.sent.code).toBe(403)
@@ -235,7 +235,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
 
   it('refuses it for an admin caller too when the deployment declares a single apex', async () => {
     ;(global as any).config = { options: { allow_multiple_admin: false } }
-    const { req, calls, reply } = request({ callerRoles: ['admin'], data: { name: 'ci', expiresAt: null, requiredRoles: ['admin'] } })
+    const { req, calls, reply } = request({ callerRoles: ['admin'], data: { name: 'ci', expiresAt: null, roles: ['admin'] } })
 
     await create(req, reply)
     expect(reply.sent.code).toBe(403)
@@ -439,7 +439,7 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     const by = { actorId: 'u-admin', actorKind: 'user', tenantId: undefined }
     const at = new Date(Date.now() + 3600_000)
 
-    expect(await acts((r) => create(r.req, r.reply), { data: { name: 'ci', expiresAt: at.toISOString(), requiredRoles: ['editor'] } })).toEqual([
+    expect(await acts((r) => create(r.req, r.reply), { data: { name: 'ci', expiresAt: at.toISOString(), roles: ['editor'] } })).toEqual([
       { action: 'token.created', targetId: 't-new', detail: { roles: ['editor', 'public'], expiresAt: at.toISOString() }, ...by }
     ])
     expect(await acts((r) => update(r.req, r.reply), { data: { name: 'renamed', roles: ['editor'] } })).toEqual([
@@ -469,14 +469,14 @@ describe('tokens · roles, and the apex rule that applies to them too (T-9.5)', 
     }
     try {
       const operator = { systemUser: { id: 's-admin' } }
-      const issued = request({ ...operator, data: { name: 'sentinel', expiresAt: null, requiredRoles: ['system:auditor', 'editor', 'invented'] } })
+      const issued = request({ ...operator, data: { name: 'sentinel', expiresAt: null, roles: ['system:auditor', 'editor', 'invented'] } })
       const created: any = await create(issued.req, issued.reply)
       // The tenant catalogue's `editor` names nothing here, and the control plane has no `public`.
       expect(issued.calls[0][1].roles).toEqual(['system:auditor'])
       expect(claimsOf(created.token)).toEqual({ sub: 't-ext-new', typ: 'integration', scp: 'control' })
       expect(issued.governance.rows.map((r: any) => [r.action, r.actorKind, r.actorId])).toEqual([['token.created', 'system_user', 's-admin']])
 
-      const sovereign = request({ ...operator, data: { name: 'root', expiresAt: null, requiredRoles: ['system:admin'] } })
+      const sovereign = request({ ...operator, data: { name: 'root', expiresAt: null, roles: ['system:admin'] } })
       await create(sovereign.req, sovereign.reply)
       expect([sovereign.reply.sent.code, sovereign.reply.sent.body.code]).toEqual([403, 'TOKEN_ROLE_FORBIDDEN'])
 

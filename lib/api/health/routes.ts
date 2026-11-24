@@ -3,7 +3,9 @@ export default {
     title: 'Health functions',
     description: 'Health functions',
     controller: 'controller',
-    tags: ['health']
+    tags: ['health'],
+    // A liveness probe for load balancers, answering `{ ok }`: no rows for a console to draw.
+    manifest: { exclude: true }
   },
   routes: [
     {
