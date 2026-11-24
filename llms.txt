@@ -4712,6 +4712,9 @@ UI. The full contract lives in the admin repo (`MANIFEST_DESIGN.md` + `manifest.
   `scheduler` and the `tenants` block. When enabled, the framework mounts `GET /admin/manifest`
   (`requireCapability: 'manifest'` — `admin` plus any role granted the `manifest` capability; operators need the
   manifest to boot the admin console, the engine hides what their roles cannot reach, and every API route still enforces).
+- **Languages**: `options.manifest.i18n = { defaultLocale: 'it', locales: ['it', 'en'] }` is what the manifest's
+  `i18n` says, on both planes; absent, English alone. A default missing from the list, an empty list, a blank or a
+  repeated code stops `start()`. The console draws its language menu from it and translates with its own dictionaries.
 - **One manifest per console plane**. `GET /admin/manifest` is tenant scope; with a `tenants` block it
   describes only the tenant routes, with `auth.plane: 'tenant'` and the `/auth/*` endpoints. `GET /system/manifest`
   (control scope, mounted only with tenants) describes only the control routes, with `auth.plane: 'control'` and the

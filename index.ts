@@ -15,7 +15,7 @@ import { warnExportCleanupOff } from './lib/util/tenantExport.js'
 import * as loaderPlugins from './lib/loader/plugins.js'
 import * as loaderRoles from './lib/loader/roles.js'
 import * as loaderRouter from './lib/loader/router.js'
-import { generateManifest } from './lib/manifest/generator.js'
+import { generateManifest, manifestI18n } from './lib/manifest/generator.js'
 import * as loaderHooks from './lib/loader/hooks.js'
 import * as loaderSchemas from './lib/loader/schemas.js'
 import * as loaderTracking from './lib/loader/tracking.js'
@@ -436,6 +436,7 @@ const start = async (decorators: StartOptions = {}) => {
   const { authenticators, tenantLifecycles, noticeSources, onUserCreated, ...given } = decorators
   const lifecycles = tenantLifecyclesOf(tenantLifecycles)
   const sources = noticeSourcesOf(noticeSources)
+  if (global.config?.options?.manifest?.enabled) manifestI18n()
   if (onUserCreated !== undefined && typeof onUserCreated !== 'function') {
     throw new Error('start({ onUserCreated }): expected a function (tx, user, { origin, fields })')
   }

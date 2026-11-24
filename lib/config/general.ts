@@ -48,6 +48,7 @@ export default {
     manifest: {
       // opt-in: exposes GET /admin/manifest (gated by the `manifest` capability) for the admin console
       enabled: false
+      // i18n: { defaultLocale: 'it', locales: ['it', 'en'] }, the console's languages; absent, English alone
     },
     tokenPairing: {
       // opt-in: an integration token's bearer handed over as a ten-minute, single-use code

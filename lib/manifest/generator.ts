@@ -377,7 +377,7 @@ export function buildManifest(input: {
   const manifest: Manifest = {
     version: 2,
     generatedAt: options.generatedAt || '1970-01-01T00:00:00.000Z',
-    i18n: options.i18n || { defaultLocale: 'en', locales: ['en'] },
+    i18n: options.i18n || manifestI18n(undefined),
     auth: {
       // The framework default: a manifest built without saying otherwise
       // describes a deployment that keeps the session in a cookie.
@@ -494,6 +494,26 @@ function collectFields(
   return out
 }
 
+/**
+ * The languages a console offers, from `options.manifest.i18n` of the project's config; English
+ * alone when the block is absent. `start()` calls it at boot when the manifest is enabled, so a
+ * default missing from the list stops the deploy instead of the first console that opens.
+ */
+export function manifestI18n(given: unknown = (global as any).config?.options?.manifest?.i18n): Manifest['i18n'] {
+  if (given === undefined || given === null) return { defaultLocale: 'en', locales: ['en'] }
+  const { defaultLocale, locales } = given as Partial<Manifest['i18n']>
+  if (!Array.isArray(locales) || locales.length === 0 || !locales.every((l) => typeof l === 'string' && l.trim() === l && l !== '')) {
+    throw new Error('options.manifest.i18n.locales: expected a non-empty list of language codes, such as ["it", "en"]')
+  }
+  if (new Set(locales).size !== locales.length) {
+    throw new Error(`options.manifest.i18n.locales: a language is listed twice in ${locales.join(', ')}`)
+  }
+  if (typeof defaultLocale !== 'string' || !locales.includes(defaultLocale)) {
+    throw new Error(`options.manifest.i18n.defaultLocale: expected one of ${locales.join(', ')}`)
+  }
+  return { defaultLocale, locales: [...locales] }
+}
+
 /** Build the manifest from the live server (`global.routes` + registered schemas). */
 export function generateManifest(server: any, options: BuildOptions = {}): Manifest {
   const routes: ConfiguredRoute[] = ((global as any).routes as ConfiguredRoute[]) || []
@@ -508,6 +528,7 @@ export function generateManifest(server: any, options: BuildOptions = {}): Manif
       plane,
       splitPlanes: isTenancyEnabled(),
       tenancy: tenancyOf(plane),
+      i18n: manifestI18n(),
       generatedAt: new Date().toISOString(),
       ...options
     }

@@ -12,7 +12,7 @@
 // be exercised directly on the shapes the router produces.
 //
 import { expect } from 'expect'
-import { buildManifest, tenancyOf } from '../../lib/manifest/generator.js'
+import { buildManifest, manifestI18n, tenancyOf } from '../../lib/manifest/generator.js'
 
 ;(global as any).log = {}
 
@@ -521,5 +521,23 @@ describe('manifest · the fields a list sorts by', () => {
 
   it('makes every field unsortable for a list that sorts by none', () => {
     expect(sortable(sorted([]))).toEqual([])
+  })
+})
+
+describe('manifest · the languages a console offers, from options.manifest.i18n', () => {
+  it('offers English alone when the project declares nothing', () => {
+    expect(manifestI18n(undefined)).toEqual({ defaultLocale: 'en', locales: ['en'] })
+    expect(buildManifest({ routes: [], schemas: {} }).i18n).toEqual({ defaultLocale: 'en', locales: ['en'] })
+  })
+
+  it('passes on the languages the project declares, the default among them', () => {
+    expect(manifestI18n({ defaultLocale: 'it', locales: ['it', 'en'] })).toEqual({ defaultLocale: 'it', locales: ['it', 'en'] })
+  })
+
+  it('refuses a default the list does not hold, an empty list, a blank code and a repeated one', () => {
+    expect(() => manifestI18n({ defaultLocale: 'fr', locales: ['it', 'en'] })).toThrow(/defaultLocale: expected one of it, en/)
+    expect(() => manifestI18n({ defaultLocale: 'it', locales: [] })).toThrow(/non-empty list/)
+    expect(() => manifestI18n({ defaultLocale: 'it', locales: ['it', ' en'] })).toThrow(/non-empty list/)
+    expect(() => manifestI18n({ defaultLocale: 'it', locales: ['it', 'it'] })).toThrow(/listed twice/)
   })
 })
